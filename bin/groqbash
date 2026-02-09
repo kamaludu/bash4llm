@@ -69,8 +69,20 @@ GROQBASH_EXTRAS_DIR="${GROQBASH_EXTRAS_DIR:-$GROQBASH_DIR/extras}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 
 umask 077
-mkdir -p "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR/providers" 2>/dev/null || true
-chmod 700 "$GROQBASH_DIR" 2>/dev/null || true
+
+# Create project-local directories with strict perms
+umask 077
+mkdir -p "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$GROQBASH_EXTRAS_DIR/providers" 2>/dev/null || true
+
+# Ensure directories are not symlinks and have strict permissions
+for d in "$GROQBASH_DIR" "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$GROQBASH_EXTRAS_DIR/providers"; do
+  if [ -L "$d" ]; then
+    printf 'Security error: directory is a symlink: %s\n' "$d" >&2
+    exit "$GROQBASHERRTMP"
+  fi
+  mkdir -p "$d" 2>/dev/null || { printf 'Error: cannot create directory: %s\n' "$d" >&2; exit "$GROQBASHERRTMP"; }
+  chmod 700 "$d" 2>/dev/null || true
+done
 
 # Enforce project-local tmpdir only; refuse symlinks or world/group writable dirs
 GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
@@ -185,10 +197,19 @@ atomic_write() {
   fi
 }
 
-# Debug helper
+# Debug helper (masks sensitive values)
 dbg() {
   [ "${DEBUG:-0}" -eq 1 ] || return 0
   local msg="$*"
+  # Mask known sensitive environment variables if present
+  if [ -n "${GROQ_API_KEY:-}" ]; then
+    # Escape for use in sed: replace literal occurrences of the key
+    local key_escaped
+    key_escaped="$(printf '%s' "${GROQ_API_KEY}" | sed -e 's/[\/&]/\\&/g')"
+    msg="$(printf '%s' "$msg" | sed -e "s/${key_escaped}/***REDACTED***/g")"
+  fi
+  # Generic mask for common-looking API keys (heuristic): long alnum strings >20 chars
+  msg="$(printf '%s' "$msg" | sed -E 's/[A-Za-z0-9_\-]{20,}/***REDACTED***/g')"
   printf '%s\n' "$msg" >&2
 }
 
@@ -269,8 +290,12 @@ make_tmpdir() {
       return 0
     fi
   fi
-  # Fallback: try mktemp using TMPDIR env (already set to GROQBASH_TMPDIR)
-  tmpd="$(mktemp -d groq.XXXX 2>/dev/null || true)"
+  # Fallback: explicitly create under GROQBASH_TMPDIR
+  if [ -n "${GROQBASH_TMPDIR:-}" ]; then
+    tmpd="$(mktemp -d -p "$GROQBASH_TMPDIR" groq.XXXX 2>/dev/null || true)"
+  else
+    tmpd="$(mktemp -d -p "$(pwd)" groq.XXXX 2>/dev/null || true)"
+  fi
   if [ -n "$tmpd" ] && [ -d "$tmpd" ]; then
     chmod 700 "$tmpd" 2>/dev/null || true
     printf '%s' "$tmpd"
@@ -735,7 +760,12 @@ finalize_and_output() {
       tmpf="$(mktemp -p "$RUN_TMPDIR" groq-out.XXXX 2>/dev/null || true)"
       [ -z "$tmpf" ] && { printf 'Error: cannot create temporary file for saving. Skipping save.\n' >&2; return "$GROQBASHERRTMP"; }
       printf '%s\n' "$text" > "$tmpf"
-      if mv "$tmpf" "$dest_path" 2>/dev/null; then chmod 600 "$dest_path" 2>/dev/null || true; printf 'Output saved to: %s\n' "$dest_path" >&2; else printf 'Output saved to (tmp): %s\n' "$tmpf" >&2; fi
+      if mv "$tmpf" "$dest_path" 2>/dev/null; then
+        chmod 600 "$dest_path" 2>/dev/null || true
+        printf 'Output saved to: %s\n' "$dest_path" >&2
+      else
+        printf 'Output saved to (tmp): %s\n' "$tmpf" >&2
+      fi
     fi
   fi
 }
@@ -938,7 +968,10 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     printf 'Error: cannot create extras directories under %s\n' "$dest_base" >&2
     exit "$GROQBASHERRTMP"
   fi
+  chmod 700 "$dest_base" "$dest_docs" "$dest_lib" "$dest_prov" 2>/dev/null || true
 
+  # Verify source files exist and are not symlinks and are owned by current user
+  current_user="$(id -un 2>/dev/null || printf '')"
   for src in "$src_docs" "$src_utils" "$src_debug" "$src_groq"; do
     if [ ! -f "$src" ]; then
       printf 'Error: bundled extras file not found: %s\n' "$src" >&2
@@ -946,6 +979,11 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     fi
     if [ -L "$src" ]; then
       printf 'Security error: bundled extras file is a symlink: %s\n' "$src" >&2
+      exit "$GROQBASHERRTMP"
+    fi
+    src_owner="$(_get_owner "$src")"
+    if [ -n "$src_owner" ] && [ -n "$current_user" ] && [ "$src_owner" != "$current_user" ]; then
+      printf 'Security error: bundled extras file not owned by current user: %s\n' "$src" >&2
       exit "$GROQBASHERRTMP"
     fi
   done
@@ -957,7 +995,8 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
       printf 'Error copying %s to %s\n' "$srcf" "$destf" >&2
       exit "$GROQBASHERRTMP"
     fi
-    chmod 644 "$destf" 2>/dev/null || true
+    # Ensure secure perms on installed files
+    chmod 600 "$destf" 2>/dev/null || true
   done
 
   printf 'Extras installed under %s/extras/\n' "$GROQBASH_DIR" >&2
@@ -991,6 +1030,7 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_CLI}" != "list" ]; then
     printf 'Error: cannot persist provider selection.\n' >&2
     exit "$GROQBASHERRTMP"
   fi
+  chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
   refresh_models_dispatch "$MODELS_FILE" || true
 fi
 
