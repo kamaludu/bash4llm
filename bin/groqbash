@@ -917,6 +917,7 @@ JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-
 REFRESH_MODELS="${REFRESH_MODELS:-0}" LIST_MODELS="${LIST_MODELS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}"
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
+SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
 
 while [ $# -gt 0 ]; do
@@ -931,7 +932,7 @@ while [ $# -gt 0 ]; do
     --batch) BATCH_FILE="${2:-}"; shift 2 ;;
     --system) SYSTEM_PROMPT="${2:-}"; shift 2 ;;
     --ture) TURE="${2:-}"; shift 2 ;;
-    --temperature) TURE="${2:-}"; shift 2 ;;  # alias for --ture
+    --temperature) TURE="${2:-}"; shift 2 ;;
     --max) MAX_TOKENS="${2:-}"; shift 2 ;;
     --debug) DEBUG=1; shift ;;
     --save) FORCE_SAVE_MODE="save"; shift ;;
@@ -947,93 +948,62 @@ while [ $# -gt 0 ]; do
     --text) OUTPUT_MODE="text"; shift ;;
     --raw) OUTPUT_MODE="raw"; shift ;;
     --chat) CHAT_MODE=1; shift ;;
+    --show-config) SHOW_CONFIG=1; shift ;;
+    --diagnostics) DIAGNOSTICS=1; shift ;;
     --provider)
       if [ "${2:-}" ] && [ "${2:0:1}" != "-" ]; then PROVIDER_CLI="${2:-}"; shift 2; else PROVIDER_INTERACTIVE=1; shift; fi
       ;;
-    --install-extras)
-      INSTALL_EXTRAS=1; shift ;;
+    --install-extras) INSTALL_EXTRAS=1; shift ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
       help_file="$GROQBASH_EXTRAS_DIR/docs/help.txt"
-      if [ -f "$help_file" ]; then
-        cat "$help_file"
-      else
-        printf 'Help file not found: %s\n' "$help_file" >&2
-      fi
-      exit 0
-      ;;
+      if [ -f "$help_file" ]; then cat "$help_file"; else printf 'Help file not found: %s\n' "$help_file" >&2; fi
+      exit 0 ;;
     --) shift; break ;;
-    -*)
-      printf 'Unknown option: %s\n' "$1" >&2
-      exit "$GROQBASHERRTMP"
-      ;;
-    *)
-      ARGS+=("$1")
-      shift
-      ;;
+    -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$GROQBASHERRTMP" ;;
+    *) ARGS+=("$1"); shift ;;
   esac
 done
 
-# Normalize boolean-like flags to 1/0 using PRECORE is_truthy
-if is_truthy "${DRY_RUN:-0}"; then DRY_RUN=1; else DRY_RUN=0; fi
-if is_truthy "${STREAM_MODE:-0}"; then STREAM_MODE=1; else STREAM_MODE=0; fi
-if is_truthy "${INSTALL_EXTRAS:-0}"; then INSTALL_EXTRAS=1; else INSTALL_EXTRAS=0; fi
-if is_truthy "${PROVIDER_INTERACTIVE:-0}"; then PROVIDER_INTERACTIVE=1; else PROVIDER_INTERACTIVE=0; fi
-if is_truthy "${REFRESH_MODELS:-0}"; then REFRESH_MODELS=1; else REFRESH_MODELS=0; fi
-if is_truthy "${LIST_MODELS:-0}"; then LIST_MODELS=1; else LIST_MODELS=0; fi
-if is_truthy "${CHAT_MODE:-0}"; then CHAT_MODE=1; else CHAT_MODE=0; fi
-if is_truthy "${QUIET:-0}"; then QUIET=1; else QUIET=0; fi
+# Normalize boolean-like flags
+for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE REFRESH_MODELS LIST_MODELS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
+  if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
+done
 
-# Guard: prevent accidental real API calls unless explicitly allowed or in dry-run
-# This check must run after CLI/env parsing so DRY_RUN and ALLOW_API_CALLS are respected.
+# Guard: prevent accidental real API calls
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
-  printf 'Error: GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1. Set ALLOW_API_CALLS=1 to permit real API calls, or use DRY_RUN=1 for testing.\n' >&2
+  printf 'Error: GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1.\n' >&2
   exit "$GROQBASHERRTMP"
 fi
 
-# Handle immediate CLI actions that don't require a prompt
-if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
+# Immediate CLI actions
+if [ "$REFRESH_MODELS" -eq 1 ]; then
   refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
   exit 0
 fi
 
-if [ "${LIST_MODELS:-0}" -eq 1 ]; then
-  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    cat "$MODELS_FILE" >&2
-    exit 0
-  else
-    printf 'No models available locally. Consider --refresh-models.\n' >&2
-    exit "$GROQBASHERRTMP"
-  fi
+if [ "$LIST_MODELS" -eq 1 ]; then
+  if [ -s "$MODELS_FILE" ]; then cat "$MODELS_FILE" >&2; exit 0
+  else printf 'No models available locally. Consider --refresh-models.\n' >&2; exit "$GROQBASHERRTMP"; fi
 fi
 
-if [ -n "${SET_DEFAULT_MODEL:-}" ]; then
+if [ -n "$SET_DEFAULT_MODEL" ]; then
   mkdir -p "$GROQBASH_CONFIG_DIR" 2>/dev/null || true
-  # Security checks for config dir
-  if [ -L "$GROQBASH_CONFIG_DIR" ]; then
-    printf 'Security error: config dir is a symlink: %s\n' "$GROQBASH_CONFIG_DIR" >&2
-    exit "$GROQBASHERRTMP"
-  fi
-  perms="$(_get_perm_string "$GROQBASH_CONFIG_DIR" 2>/dev/null || true)"
-  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
-  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
-  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
-    printf 'Security error: config dir is writable by group or others: %s\n' "$GROQBASH_CONFIG_DIR" >&2
-    exit "$GROQBASHERRTMP"
-  fi
-  # Use atomic_write helper from PRECORE
-  printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$GROQBASH_CONFIG_DIR/model.$PROVIDER" || { printf 'Error: cannot write default model.\n' >&2; exit "$GROQBASHERRTMP"; }
+  if [ -L "$GROQBASH_CONFIG_DIR" ]; then printf 'Security error: config dir is a symlink.\n' >&2; exit "$GROQBASHERRTMP"; fi
+  printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$GROQBASH_CONFIG_DIR/model.$PROVIDER" \
+    || { printf 'Error: cannot write default model.\n' >&2; exit "$GROQBASHERRTMP"; }
   printf 'Default model for provider %s set to: %s\n' "$PROVIDER" "$SET_DEFAULT_MODEL" >&2
   exit 0
 fi
 
-if [ "${STREAM_MODE:-0}" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE" = "pretty" ]; }; then
-  printf 'Error: --stream is not compatible with --json/--pretty (streaming produces partial JSON). Use --text or --raw for streaming.\n' >&2
+if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE" = "pretty" ]; }; then
+  printf 'Error: --stream incompatible with --json/--pretty.\n' >&2
   exit "$GROQBASHERRTMP"
 fi
 
-if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
+if [ "$INSTALL_EXTRAS" -eq 1 ]; then
+  # unchanged block
   dest_base="$GROQBASH_EXTRAS_DIR"
   dest_docs="$dest_base/docs"
   dest_lib="$dest_base/lib"
@@ -1044,39 +1014,20 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   src_debug="$src_base/lib/debug.sh"
   src_groq="$src_base/providers/groq.sh"
 
-  # Ensure destination directories exist and are secure
-  if ! mkdir -p "$dest_docs" "$dest_lib" "$dest_prov" 2>/dev/null; then
-    printf 'Error: cannot create extras directories under %s\n' "$dest_base" >&2
-    exit "$GROQBASHERRTMP"
-  fi
+  mkdir -p "$dest_docs" "$dest_lib" "$dest_prov" 2>/dev/null || { printf 'Error: cannot create extras dirs.\n' >&2; exit "$GROQBASHERRTMP"; }
   chmod 700 "$dest_base" "$dest_docs" "$dest_lib" "$dest_prov" 2>/dev/null || true
 
-  # Verify source files exist and are not symlinks and are owned by current user
   current_user="$(id -un 2>/dev/null || printf '')"
   for src in "$src_docs" "$src_utils" "$src_debug" "$src_groq"; do
-    if [ ! -f "$src" ]; then
-      printf 'Error: bundled extras file not found: %s\n' "$src" >&2
-      exit "$GROQBASHERRTMP"
-    fi
-    if [ -L "$src" ]; then
-      printf 'Security error: bundled extras file is a symlink: %s\n' "$src" >&2
-      exit "$GROQBASHERRTMP"
-    fi
+    [ -f "$src" ] || { printf 'Error: missing extras file: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
+    [ -L "$src" ] && { printf 'Security error: extras file is symlink: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
     src_owner="$(_get_owner "$src")"
-    if [ -n "$src_owner" ] && [ -n "$current_user" ] && [ "$src_owner" != "$current_user" ]; then
-      printf 'Security error: bundled extras file not owned by current user: %s\n' "$src" >&2
-      exit "$GROQBASHERRTMP"
-    fi
+    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { printf 'Security error: wrong owner: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
   done
 
-  # Copy with atomic writes and secure perms using atomic_write
   for pair in "$src_docs:$dest_docs/core-notes.sh" "$src_utils:$dest_lib/utils.sh" "$src_debug:$dest_lib/debug.sh" "$src_groq:$dest_prov/groq.sh"; do
     srcf="${pair%%:*}"; destf="${pair##*:}"
-    if ! cat "$srcf" | atomic_write "$destf"; then
-      printf 'Error copying %s to %s\n' "$srcf" "$destf" >&2
-      exit "$GROQBASHERRTMP"
-    fi
-    # Ensure secure perms on installed files
+    cat "$srcf" | atomic_write "$destf" || { printf 'Error copying %s\n' "$srcf" >&2; exit "$GROQBASHERRTMP"; }
     chmod 600 "$destf" 2>/dev/null || true
   done
 
@@ -1084,194 +1035,174 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   exit 0
 fi
 
-# Provider selection and validation is handled centrally in CORE3.
-# CORE2 performs CLI parsing and immediate actions only; provider persistence and interactive selection
-# are implemented in CORE3 to avoid duplication.
-
 load_local_config
 load_whitelist
+
+# ==== MODEL RESOLUTION (unified, final) ====
+
+final_model=""
+
+# 1. CLI override
+if [ -n "$MODEL" ]; then
+  final_model="$MODEL"
+else
+  # 2. Provider-specific default
+  MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
+  if [ -s "$MODEL_PROVIDER_CFG" ]; then
+    final_model="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
+  fi
+
+  # 3. Auto-select
+  if [ -z "$final_model" ]; then
+    final_model="$(auto_select_model_dispatch 2>/dev/null || true)"
+  fi
+
+  # 4. Global config fallback
+  if [ -z "$final_model" ] && [ -f "$GROQBASH_CONFIG_DIR/config" ]; then
+    final_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "$GROQBASH_CONFIG_DIR/config" 2>/dev/null || true)"
+  fi
+
+  # 5. Whitelist fallback
+  if [ -z "$final_model" ] && [ -n "$ALLOWED_MODELS" ]; then
+    final_model="$(printf '%s\n' "$ALLOWED_MODELS" | awk 'NF{print; exit}')"
+  fi
+fi
+
+# 6. Validation
+if [ -z "$final_model" ]; then
+  printf 'Error: no model could be selected.\n' >&2
+  exit "$GROQBASHERRBAD_MODEL"
+fi
+
+if ! validate_model_dispatch "$final_model"; then
+  printf 'Error: invalid model: %s\n' "$final_model" >&2
+  exit "$GROQBASHERRBAD_MODEL"
+fi
+
+MODEL="$final_model"
+
 # ==== CORE2 END ====
 # ==== CORE3 BEGIN ====
 # Provider selection, model discovery, and provider module loading (secure)
 
-# Ensure PROVIDER_FILE is defined (path to persisted provider selection)
 PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
 
-# Load provider from config file if present and not overridden by CLI/interactive
-if [ -f "$PROVIDER_FILE" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ]; then
+# Load provider from config file if present and not overridden
+if [ -f "$PROVIDER_FILE" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_INTERACTIVE" -eq 0 ]; then
   prov="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
   [ -n "$prov" ] && PROVIDER="$prov"
 fi
 
-# If CLI provided a provider, validate and persist atomically using atomic_write from PRECORE
-if [ -n "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_CLI}" != "list" ]; then
-  case " $SUPPORTED_PROVIDERS " in *" $PROVIDER_CLI "*) PROVIDER="$PROVIDER_CLI" ;; *) printf 'Error: unknown provider: %s\n' "$PROVIDER_CLI" >&2; exit "$GROQBASHERRTMP" ;; esac
+# CLI provider override
+if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
+  case " $SUPPORTED_PROVIDERS " in
+    *" $PROVIDER_CLI "*) PROVIDER="$PROVIDER_CLI" ;;
+    *) printf 'Error: unknown provider: %s\n' "$PROVIDER_CLI" >&2; exit "$GROQBASHERRTMP" ;;
+  esac
+
   mkdir -p "$(dirname "$PROVIDER_FILE")" 2>/dev/null || true
-  if ! printf '%s\n' "$PROVIDER" | atomic_write "$PROVIDER_FILE"; then
-    printf 'Error: cannot persist provider selection.\n' >&2
-    exit "$GROQBASHERRTMP"
-  fi
+  printf '%s\n' "$PROVIDER" | atomic_write "$PROVIDER_FILE" \
+    || { printf 'Error: cannot persist provider selection.\n' >&2; exit "$GROQBASHERRTMP"; }
   chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
   refresh_models_dispatch "$MODELS_FILE" || true
 fi
 
-# Interactive provider selection (validated, numeric input)
-if [ "${PROVIDER_INTERACTIVE:-0}" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
+# Interactive provider selection
+if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "$PROVIDER_CLI" = "list" ]; then
   IFS=' ' read -r -a _prov_arr <<EOF
 $SUPPORTED_PROVIDERS
 EOF
   current_default="$PROVIDER"
   [ -f "$PROVIDER_FILE" ] && pf="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)" && [ -n "$pf" ] && current_default="$pf"
+
   printf 'Select provider:\n' >&2
   i=1
   for p in "${_prov_arr[@]}"; do
-    if [ "$p" = "$current_default" ]; then printf '%d) %s (default)\n' "$i" "$p" >&2; else printf '%d) %s\n' "$i" "$p" >&2; fi
+    if [ "$p" = "$current_default" ]; then printf '%d) %s (default)\n' "$i" "$p" >&2
+    else printf '%d) %s\n' "$i" "$p" >&2; fi
     i=$((i+1))
   done
+
   printf '> ' >&2
-  if ! IFS= read -r sel; then printf 'No selection made. Exiting.\n' >&2; exit "$GROQBASHERRTMP"; fi
+  if ! IFS= read -r sel; then printf 'No selection made.\n' >&2; exit "$GROQBASHERRTMP"; fi
   sel="$(trim "$sel")"
-  if ! printf '%s\n' "$sel" | grep -qE '^[0-9]+$'; then printf 'Invalid selection. Exiting.\n' >&2; exit "$GROQBASHERRTMP"; fi
-  idx="$sel"; chosen="${_prov_arr[$((idx-1))]}"
-  [ -z "$chosen" ] && { printf 'Selection out of range. Exiting.\n' >&2; exit "$GROQBASHERRTMP"; }
-  if ! printf '%s\n' "$chosen" | atomic_write "$PROVIDER_FILE"; then
-    printf 'Error: cannot persist provider selection.\n' >&2
-    exit "$GROQBASHERRTMP"
-  fi
+  printf '%s\n' "$sel" | grep -qE '^[0-9]+$' || { printf 'Invalid selection.\n' >&2; exit "$GROQBASHERRTMP"; }
+
+  idx="$sel"
+  chosen="${_prov_arr[$((idx-1))]}"
+  [ -z "$chosen" ] && { printf 'Selection out of range.\n' >&2; exit "$GROQBASHERRTMP"; }
+
+  printf '%s\n' "$chosen" | atomic_write "$PROVIDER_FILE" \
+    || { printf 'Error: cannot persist provider selection.\n' >&2; exit "$GROQBASHERRTMP"; }
   chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
   PROVIDER="$chosen"
   refresh_models_dispatch "$MODELS_FILE" || true
   exit 0
 fi
 
-# Model selection: check provider-specific config, auto-select, fallback to global config or whitelist
-MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
-if [ -z "${MODEL:-}" ] && [ -f "$MODEL_PROVIDER_CFG" ] && [ -s "$MODEL_PROVIDER_CFG" ]; then
-  cand="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"; [ -n "$cand" ] && MODEL="$cand"
-fi
-
-if [ -z "${MODEL:-}" ]; then
-  cand="$(auto_select_model_dispatch 2>/dev/null || true)"
-  [ -n "$cand" ] && MODEL="$cand"
-fi
-
-if [ -z "$MODEL" ] && [ -f "$GROQBASH_CONFIG_DIR/config" ]; then
-  cand="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print $0; exit}' "$GROQBASH_CONFIG_DIR/config" 2>/dev/null || true)"
-  [ -n "$cand" ] && MODEL="$cand"
-fi
-
-[ -z "$MODEL" ] && [ -n "$ALLOWED_MODELS" ] && MODEL="$(awk 'NF{print; exit}' <<<"$ALLOWED_MODELS" 2>/dev/null || printf '')"
-
-if [ -n "$MODEL" ]; then
-  if ! validate_model_dispatch "$MODEL"; then
-    printf 'Error: model '\''%s'\'' not supported or deprecated.\n' "$MODEL" >&2
-    if [ -n "$ALLOWED_MODELS" ]; then
-      printf 'Available models (local whitelist):\n' >&2
-      printf '%s\n' "$ALLOWED_MODELS" >&2
-    fi
-    exit "$GROQBASHERRBAD_MODEL"
-  fi
-fi
-
-# Provider module loading: secure checks before sourcing
+# Provider module loading
 PROVIDER_MODULE_LOADED=0
 PROVIDER_MODULE_PATH="$GROQBASH_EXTRAS_DIR/providers/${PROVIDER}.sh"
 PROVIDER_DIR="$(dirname "$PROVIDER_MODULE_PATH")"
 
-# Ensure provider directory exists and is secure
 if [ ! -d "$PROVIDER_DIR" ]; then
-  if ! mkdir -p "$PROVIDER_DIR" 2>/dev/null; then
-    printf 'Error: cannot create provider directory: %s\n' "$PROVIDER_DIR" >&2
-    exit "$GROQBASHERRTMP"
-  fi
+  mkdir -p "$PROVIDER_DIR" 2>/dev/null || { printf 'Error: cannot create provider directory.\n' >&2; exit "$GROQBASHERRTMP"; }
 fi
+
 if _is_world_writable "$PROVIDER_DIR"; then
-  printf 'Security error: extras/providers directory is world-writable; refusing to load provider modules.\n' >&2
+  printf 'Security error: provider directory is world-writable.\n' >&2
   exit "$GROQBASHERRTMP"
 fi
 
-# Warn if owner differs
 current_user="$(id -un 2>/dev/null || printf '')"
 owner="$(_get_owner "$PROVIDER_DIR")"
-if [ -n "$owner" ] && [ -n "$current_user" ] && [ "$owner" != "$current_user" ]; then
-  dbg "Warning: provider directory $PROVIDER_DIR is owned by $owner, not $current_user."
-fi
+[ -n "$owner" ] && [ "$owner" != "$current_user" ] && dbg "Warning: provider directory owned by $owner"
 
-# If provider module file does not exist, allow default built-in provider 'groq' to proceed
 if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
   if [ "$PROVIDER" != "groq" ]; then
-    printf 'Provider '\''%s'\'' is not installed. Run --install-extras or provide a valid provider plugin.\n' "$PROVIDER" >&2
+    printf 'Provider %s is not installed.\n' "$PROVIDER" >&2
     PROVIDER_MODULE_LOADED=0
   else
-    # Embedded provider will be defined later in this file; do not assume functions exist yet.
-    # Mark as not loaded so that later validation (after embedded definitions) performs the definitive check.
     PROVIDER_MODULE_LOADED=1
   fi
 else
-  # Security checks on provider file before sourcing
-  if [ -L "$PROVIDER_MODULE_PATH" ]; then
-    printf 'Security error: provider file is a symlink: %s\n' "$PROVIDER_MODULE_PATH" >&2
-    exit "$GROQBASHERRTMP"
-  fi
+  if [ -L "$PROVIDER_MODULE_PATH" ]; then printf 'Security error: provider file is symlink.\n' >&2; exit "$GROQBASHERRTMP"; fi
 
   file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
-  current_user="${USER:-$(id -un 2>/dev/null || printf '')}"
-  if [ -n "$file_owner" ] && [ -n "$current_user" ] && [ "$file_owner" != "$current_user" ]; then
-    printf 'Security error: provider file not owned by current user: %s\n' "$PROVIDER_MODULE_PATH" >&2
-    exit "$GROQBASHERRTMP"
-  fi
+  [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ] && { printf 'Security error: wrong owner.\n' >&2; exit "$GROQBASHERRTMP"; }
 
   perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
   group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
   if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
-    printf 'Security error: provider file is writable by group or world: %s\n' "$PROVIDER_MODULE_PATH" >&2
+    printf 'Security error: provider file writable by group/world.\n' >&2
     exit "$GROQBASHERRTMP"
   fi
 
-  # Compute signature before testing using PRECORE wrapper
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
 
-  # Test-source provider module in a clean subshell to verify it defines required functions.
-  # Do not import anything into the current shell until validated.
-  if bash -c ". \"$PROVIDER_MODULE_PATH\" >/dev/null 2>&1 || true; \
-       declare -F | grep -q -E \"\\bbuildpayload_${PROVIDER}\\b\" && declare -F | grep -q -E \"\\bcall_api_${PROVIDER}\\b\""; then
-
-    # Recompute signature and ensure file did not change between test and actual load
+  if bash -c ". \"$PROVIDER_MODULE_PATH\" >/dev/null 2>&1 || true; declare -F | grep -q \"buildpayload_${PROVIDER}\" && declare -F | grep -q \"call_api_${PROVIDER}\""; then
     aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-    if [ -n "$beforesig" ] && [ -n "$aftersig" ] && [ "$beforesig" != "$aftersig" ]; then
-      printf 'Security error: provider file changed during validation: %s\n' "$PROVIDER_MODULE_PATH" >&2
-      exit "$GROQBASHERRTMP"
-    fi
+    [ "$beforesig" != "$aftersig" ] && { printf 'Security error: provider file changed.\n' >&2; exit "$GROQBASHERRTMP"; }
 
-    # Source into current shell now that basic presence of required symbols is confirmed and signature matched.
-    # shellcheck source=/dev/null
     . "$PROVIDER_MODULE_PATH"
     PROVIDER_MODULE_LOADED=1
 
-    # Verify that the provider module actually implements the required functions.
     invalid_provider=0
     for _req in "buildpayload_${PROVIDER}" "call_api_${PROVIDER}"; do
-      if ! type "$_req" >/dev/null 2>&1; then
-        dbg "Provider module %s missing required function %s()" "$PROVIDER_MODULE_PATH" "$_req" || true
-        invalid_provider=1
-      fi
+      type "$_req" >/dev/null 2>&1 || invalid_provider=1
     done
 
     if [ "$invalid_provider" -eq 1 ]; then
-      printf 'Warning: provider module %s is incomplete or invalid; falling back to embedded provider.\n' "$PROVIDER" >&2
-
-      # Treat as not loaded; embedded fallback will be validated later in CORE4.
+      printf 'Warning: provider module incomplete; falling back to embedded provider.\n' >&2
       PROVIDER_MODULE_LOADED=0
     fi
-
   else
-    # Provider file exists but does not define required symbols when tested in a clean subshell.
-    # Treat as invalid and fall back to embedded provider if available.
-    printf 'Warning: provider module %s appears invalid or empty; falling back to embedded provider.\n' "$PROVIDER" >&2
+    printf 'Warning: provider module invalid; falling back to embedded provider.\n' >&2
     PROVIDER_MODULE_LOADED=0
   fi
 fi
+
 # ==== CORE3 END ====
 # ==== CORE4 BEGIN ====
 # Provider interface validation, input validation, content assembly, and runtime modes
@@ -1295,13 +1226,84 @@ validate_provider_interface() {
   return $missing
 }
 
-# Ensure a provider module was loaded and that it implements required functions
+# Ensure provider module is valid
 if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
   validate_provider_interface "$PROVIDER" || exit "$GROQBASHERRAPI"
 else
   printf 'Error: no valid provider loaded for '\''%s'\''. Install or configure a provider plugin.\n' "$PROVIDER" >&2
   exit "$GROQBASHERRAPI"
 fi
+
+# ==== SHOW-CONFIG / DIAGNOSTICS ====
+
+if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
+  printf 'GroqBash configuration:\n'
+  printf '  Version: %s (%s)\n' "$SCRIPT_VERSION" "$SCRIPT_DATE"
+  printf '  Provider: %s\n' "$PROVIDER"
+  printf '  Model (active): %s\n' "$MODEL"
+  MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
+  if [ -s "$MODEL_PROVIDER_CFG" ]; then
+    printf '  Model (default): %s\n' "$(sed -n '1p' "$MODEL_PROVIDER_CFG")"
+  else
+    printf '  Model (default): <none>\n'
+  fi
+  printf '  Config dir: %s\n' "$GROQBASH_CONFIG_DIR"
+  printf '  Models dir: %s\n' "$GROQBASH_MODELS_DIR"
+  printf '  Tmp dir: %s\n' "$GROQBASH_TMPDIR"
+  printf '  Quiet: %s\n' "$QUIET"
+  printf '  Debug: %s\n' "$DEBUG"
+  printf '  Dry-run: %s\n' "$DRY_RUN"
+  printf '  Whitelist models: %s\n' "$(printf '%s\n' "$ALLOWED_MODELS" | wc -l)"
+  exit 0
+fi
+
+if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
+  printf 'GroqBash diagnostics:\n'
+
+  printf '\n[Directories]\n'
+  for d in "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR"; do
+    if [ -d "$d" ]; then
+      printf '  OK: %s\n' "$d"
+    else
+      printf '  ERROR: missing directory %s\n' "$d"
+    fi
+  done
+
+  printf '\n[Provider]\n'
+  printf '  Active provider: %s\n' "$PROVIDER"
+  if type "buildpayload_${PROVIDER}" >/dev/null 2>&1; then
+    printf '  Provider functions: OK\n'
+  else
+    printf '  ERROR: provider functions missing\n'
+  fi
+
+  printf '\n[Model]\n'
+  printf '  Active model: %s\n' "$MODEL"
+  if printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$MODEL"; then
+    printf '  Model in whitelist: OK\n'
+  else
+    printf '  WARNING: model not in whitelist\n'
+  fi
+
+  printf '\n[API Key]\n'
+  if [ -n "${GROQ_API_KEY:-}" ]; then
+    printf '  API key: present\n'
+  else
+    printf '  WARNING: API key missing\n'
+  fi
+
+  printf '\n[Tmpdir]\n'
+  if [ -d "$GROQBASH_TMPDIR" ]; then
+    printf '  Tmpdir exists: OK\n'
+  else
+    printf '  ERROR: tmpdir missing\n'
+  fi
+
+  printf '\nDiagnostics complete.\n'
+  exit 0
+fi
+
+# ==== END SHOW-CONFIG / DIAGNOSTICS ====
 
 # Validate batch/json/template inputs and read STDIN if present
 [ -n "$BATCH_FILE" ] && [ ! -r "$BATCH_FILE" ] && { printf 'Error: batch file not readable: %s\n' "$BATCH_FILE" >&2; exit "$GROQBASHERRTMP"; }
@@ -1317,17 +1319,11 @@ fi
 STDIN_CONTENT=""; [ ! -t 0 ] && STDIN_CONTENT="$(cat - 2>/dev/null || true)"
 CONTENT="${CONTENT:-}"
 
-# Assemble CONTENT helper: centralize logic for building CONTENT from files, args, template, stdin
 assemble_content() {
-  # Produces/updates global CONTENT variable
-  local tmpl tmp_tmpl tmp_final extra file_content
   CONTENT="${CONTENT:-}"
+  local tmpl tmp_tmpl tmp_final extra file_content
 
-  if [ -n "$JSON_INPUT" ]; then
-    # JSON input is handled later by provider-specific payload builder
-    CONTENT=""
-    return 0
-  fi
+  if [ -n "$JSON_INPUT" ]; then CONTENT=""; return 0; fi
 
   if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
     CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")"
@@ -1339,26 +1335,19 @@ assemble_content() {
   fi
 
   if [ -n "$TEMPLATE" ]; then
-    # If template specified, prefer file inputs, then stdin, then args
     if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
       CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")"
     elif [ -n "$STDIN_CONTENT" ]; then
       CONTENT="$STDIN_CONTENT"
     else
-      if [ "${#ARGS[@]}" -gt 0 ]; then
-        CONTENT="$(expand_args_to_content)"
-      else
-        CONTENT=""
-      fi
+      if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
     fi
 
     tmpl="$(cat "$GROQBASH_TEMPLATES_DIR/$TEMPLATE" 2>/dev/null || true)"
-
-    # Use run tmpdir for safe temporary processing
     ensure_run_tmpdir
     tmp_tmpl="$(_mktemp_in_dir "$RUN_TMPDIR" 2>/dev/null || true)"
+
     if [ -n "$tmp_tmpl" ]; then
-      # Replace placeholder {{CONTENT}} with CONTENT (preserve newlines)
       printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}' > "$tmp_tmpl"
       tmp_final="${tmp_tmpl}.final"
       mv "$tmp_tmpl" "$tmp_final" 2>/dev/null || true
@@ -1366,8 +1355,7 @@ assemble_content() {
       CONTENT="$file_content"
       rm -f "$tmp_final" 2>/dev/null || true
     else
-      # Fallback: do replacement in-memory
-      CONTENT="$(printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}' )"
+      CONTENT="$(printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}')"
     fi
     return 0
   fi
@@ -1381,84 +1369,65 @@ assemble_content() {
     return 0
   fi
 
-  if [ "${#ARGS[@]}" -gt 0 ]; then
-    CONTENT="$(expand_args_to_content)"
-  else
-    CONTENT=""
-  fi
-
+  if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
   return 0
 }
 
-# Build CONTENT once using the helper
 assemble_content
 
-# Ensure we have a prompt unless JSON_INPUT or chat or batch
-if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "${CHAT_MODE:-0}" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
+if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "$CHAT_MODE" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
   printf 'Error: no prompt provided.\n' >&2
   exit "$GROQBASHERRNO_PROMPT"
 fi
 
-# Validate numeric options
 is_number "$TURE" || { printf 'Error: --ture must be numeric\n' >&2; exit "$GROQBASHERRTMP"; }
 is_number "$MAX_TOKENS" || { printf 'Error: --max must be numeric\n' >&2; exit "$GROQBASHERRTMP"; }
 
-# Enforce model whitelist if present
 if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
   if ! printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$MODEL"; then
     printf 'Error: model '\''%s'\'' not supported or deprecated.\n' "$MODEL" >&2
-    printf 'Available models (local whitelist):\n' >&2
     printf '%s\n' "$ALLOWED_MODELS" >&2
     exit "$GROQBASHERRBAD_MODEL"
   fi
 fi
 
-# Ensure RUN_TMPDIR exists for temporary files
 ensure_run_tmpdir
 
-# Batch mode: iterate lines as prompts
 if [ -n "$BATCH_FILE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
     CONTENT="$line"
     build_payload_from_vars
-    if [ "${STREAM_MODE:-0}" -eq 1 ]; then
-      call_api_streaming || { printf 'Error during streaming call.\n' >&2; continue; }
-    else
-      perform_request_once || true
-    fi
+    if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || printf 'Error during streaming call.\n' >&2
+    else perform_request_once || true; fi
     printf '\n----\n'
   done < "$BATCH_FILE"
   exit 0
 fi
 
-# Interactive chat mode
-if [ "${CHAT_MODE:-0}" -eq 1 ]; then
+if [ "$CHAT_MODE" -eq 1 ]; then
   if [ ! -t 0 ]; then printf 'Error: interactive chat requires a TTY.\n' >&2; exit "$GROQBASHERRTMP"; fi
-  [ -t 1 ] && [ "${QUIET:-0}" -ne 1 ] && { printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2; } || printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2
+  [ -t 1 ] && [ "$QUIET" -ne 1 ] && printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2
   CONVERSATION=""
   while true; do
-    if is_tty_out && [ "${QUIET:-0}" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then printf '\nYou: ' >&2; fi
+    if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then printf '\nYou: ' >&2; fi
     if ! IFS= read -r userline; then printf '\n' >&2; break; fi
     [ -z "$userline" ] && continue
     [ -z "$CONVERSATION" ] && CONVERSATION="$userline" || CONVERSATION="${CONVERSATION}"$'\n\n'"User: ${userline}"
     CONTENT="$userline"
     build_payload_from_vars
-    if [ "${STREAM_MODE:-0}" -eq 1 ]; then
-      call_api_streaming || printf 'Streaming call failed.\n' >&2
-    else
-      perform_request_once || printf 'Call failed.\n' >&2
-    fi
+    if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || printf 'Streaming call failed.\n' >&2
+    else perform_request_once || printf 'Call failed.\n' >&2; fi
   done
   exit 0
 fi
 
-# Single request (streaming or non-streaming)
-if [ "${STREAM_MODE:-0}" -eq 1 ]; then
+if [ "$STREAM_MODE" -eq 1 ]; then
   build_payload_from_vars
-  if call_api_streaming; then dbg "Streaming completed; captured response in $RESP"; printf '\n'; exit 0; else printf 'Error: streaming request failed.\n' >&2; exit "$GROQBASHERRCURL_FAILED"; fi
+  if call_api_streaming; then dbg "Streaming completed; captured response in $RESP"; printf '\n'; exit 0
+  else printf 'Error: streaming request failed.\n' >&2; exit "$GROQBASHERRCURL_FAILED"; fi
 else
-  if is_tty_out && [ "${QUIET:-0}" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
+  if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
     printf '%b\n' "\033[1;36mYou:\033[0m" >&2
     if [ "${#ARGS[@]}" -gt 0 ]; then
       anyfile=0
@@ -1471,5 +1440,6 @@ else
   perform_request_once || exit "$GROQBASHERRAPI"
   exit 0
 fi
+
 # ==== CORE4 END ====
 # End of file
