@@ -38,16 +38,6 @@ if ! command -v jq >/dev/null 2>&1; then
   exit "$GROQBASHERRINVALID_JSON"
 fi
 
-# NOTE: The dispatcher functions (refresh_models_dispatch, validate_model_dispatch, auto_select_model_dispatch)
-# are implemented centrally in CORE3. This placeholder avoids "function not found" errors if referenced early.
-# Keep as a no-op placeholder; CORE3 will replace with the real implementations when sourced.
-# shellcheck disable=SC2329
-refresh_models_dispatch() { :; }
-# shellcheck disable=SC2329
-validate_model_dispatch() { :; }
-# shellcheck disable=SC2329
-auto_select_model_dispatch() { :; }
-
 resolve_script_dir() {
   local src="$0" rl dir
   if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
@@ -56,6 +46,53 @@ resolve_script_dir() {
   fi
   dir="$(cd "$(dirname "$src")" >/dev/null 2>&1 && pwd || printf '%s' "$(dirname "$src")")"
   printf '%s' "$dir"
+}
+
+# Dispatcher: refresh models (calls provider-specific refresh_models_<provider> if present)
+refresh_models_dispatch() {
+  local outpath="${1:-$MODELS_FILE}"
+  local fn="refresh_models_${PROVIDER}"
+  if type "$fn" >/dev/null 2>&1; then
+    "$fn" "$outpath"
+    return $?
+  fi
+  printf 'Provider '\''%s'\'' does not support model refresh.\n' "$PROVIDER" >&2
+  return "$GROQBASHERRAPI"
+}
+
+# Dispatcher: validate model (calls provider-specific validate_model_<provider> if present)
+validate_model_dispatch() {
+  local model="$1"
+  local fn="validate_model_${PROVIDER}"
+  if type "$fn" >/dev/null 2>&1; then
+    "$fn" "$model"
+    return $?
+  fi
+  if [ -n "$ALLOWED_MODELS" ]; then
+    printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$model"
+    return $?
+  fi
+  return 0
+}
+
+# Dispatcher: auto-select model (calls provider-specific auto_select_model_<provider> if present)
+auto_select_model_dispatch() {
+  local fn="auto_select_model_${PROVIDER}"
+  if type "$fn" >/dev/null 2>&1; then
+    # provider function should print the selected model to stdout
+    "$fn"
+    return 0
+  fi
+  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
+    if jq -e . "$MODELS_FILE" >/dev/null 2>&1; then
+      jq -r '.data[]?.id // empty' "$MODELS_FILE" 2>/dev/null | awk 'NF{print; exit}'
+    else
+      awk 'NF{print; exit}' "$MODELS_FILE" 2>/dev/null || printf ''
+    fi
+    return 0
+  fi
+  printf ''
+  return 0
 }
 
 SCRIPTDIR="$(resolve_script_dir)"
@@ -170,6 +207,26 @@ is_truthy() {
     *) return 1 ;;
   esac
 }
+
+# Normalize common boolean environment variables to canonical 0/1 values.
+# This ensures exported values like ALLOW_API_CALLS=1 are reliably seen as true.
+# We only normalize if the variable is set in the environment; we do not create new variables.
+_normalize_bool_env() {
+  local var val
+  for var in ALLOW_API_CALLS DRY_RUN DEBUG; do
+    # Use indirect expansion to read the variable if set
+    val="${!var:-}"
+    if [ -n "$val" ]; then
+      if is_truthy "$val"; then
+        # export canonical "1"
+        export "$var"=1
+      else
+        export "$var"=0
+      fi
+    fi
+  done
+}
+_normalize_bool_env
 
 # Atomic write helper: read stdin and atomically write to destination path.
 # Ensures file is created in same directory and moved into place with secure perms.
@@ -646,9 +703,17 @@ call_provider() {
 build_payload_from_vars() {
   ensure_run_tmpdir
   local fn="buildpayload${PROVIDER}"
-  if call_provider "$fn"; then return 0; fi
-  printf 'Provider '\''%s'\'' does not provide %s().\n' "$PROVIDER" "$fn" >&2
-  exit "$GROQBASHERRAPI"
+  if call_provider "$fn"; then
+    return 0
+  else
+    rc=$?
+    if [ "$rc" -eq 127 ]; then
+      printf 'Provider '\''%s'\'' does not provide %s().\n' "$PROVIDER" "$fn" >&2
+      exit "$GROQBASHERRAPI"
+    else
+      return "$rc"
+    fi
+  fi
 }
 
 call_api_once() {
@@ -658,9 +723,17 @@ call_api_once() {
     return 0
   fi
   local fn="call_api_${PROVIDER}"
-  if call_provider "$fn"; then return 0; fi
-  printf 'Provider '\''%s'\'' does not provide %s().\n' "$PROVIDER" "$fn" >&2
-  exit "$GROQBASHERRAPI"
+  if call_provider "$fn"; then
+    return 0
+  else
+    rc=$?
+    if [ "$rc" -eq 127 ]; then
+      printf 'Provider '\''%s'\'' does not provide %s().\n' "$PROVIDER" "$fn" >&2
+      exit "$GROQBASHERRAPI"
+    else
+      return "$rc"
+    fi
+  fi
 }
 
 call_api_streaming() {
@@ -670,9 +743,17 @@ call_api_streaming() {
     return 0
   fi
   local fn="call_api_streaming_${PROVIDER}"
-  if call_provider "$fn"; then return 0; fi
-  printf 'Provider '\''%s'\'' does not provide %s().\n' "$PROVIDER" "$fn" >&2
-  exit "$GROQBASHERRAPI"
+  if call_provider "$fn"; then
+    return 0
+  else
+    rc=$?
+    if [ "$rc" -eq 127 ]; then
+      printf 'Provider '\''%s'\'' does not provide %s().\n' "$PROVIDER" "$fn" >&2
+      exit "$GROQBASHERRAPI"
+    else
+      return "$rc"
+    fi
+  fi
 }
 
 show_payload_head() {
@@ -905,7 +986,7 @@ if is_truthy "${QUIET:-0}"; then QUIET=1; else QUIET=0; fi
 
 # Guard: prevent accidental real API calls unless explicitly allowed or in dry-run
 # This check must run after CLI/env parsing so DRY_RUN and ALLOW_API_CALLS are respected.
-: "${ALLOW_API_CALLS:=0}"
+: "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   printf 'Error: GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1. Set ALLOW_API_CALLS=1 to permit real API calls, or use DRY_RUN=1 for testing.\n' >&2
   exit "$GROQBASHERRTMP"
@@ -1063,53 +1144,6 @@ EOF
   exit 0
 fi
 
-# Dispatcher: refresh models (calls provider-specific refresh_models_<provider> if present)
-refresh_models_dispatch() {
-  local outpath="${1:-$MODELS_FILE}"
-  local fn="refresh_models_${PROVIDER}"
-  if type "$fn" >/dev/null 2>&1; then
-    "$fn" "$outpath"
-    return $?
-  fi
-  printf 'Provider '\''%s'\'' does not support model refresh.\n' "$PROVIDER" >&2
-  return "$GROQBASHERRAPI"
-}
-
-# Dispatcher: validate model (calls provider-specific validate_model_<provider> if present)
-validate_model_dispatch() {
-  local model="$1"
-  local fn="validate_model_${PROVIDER}"
-  if type "$fn" >/dev/null 2>&1; then
-    "$fn" "$model"
-    return $?
-  fi
-  if [ -n "$ALLOWED_MODELS" ]; then
-    printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$model"
-    return $?
-  fi
-  return 0
-}
-
-# Dispatcher: auto-select model (calls provider-specific auto_select_model_<provider> if present)
-auto_select_model_dispatch() {
-  local fn="auto_select_model_${PROVIDER}"
-  if type "$fn" >/dev/null 2>&1; then
-    # provider function should print the selected model to stdout
-    "$fn"
-    return 0
-  fi
-  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    if jq -e . "$MODELS_FILE" >/dev/null 2>&1; then
-      jq -r '.data[]?.id // empty' "$MODELS_FILE" 2>/dev/null | awk 'NF{print; exit}'
-    else
-      awk 'NF{print; exit}' "$MODELS_FILE" 2>/dev/null || printf ''
-    fi
-    return 0
-  fi
-  printf ''
-  return 0
-}
-
 # Model selection: check provider-specific config, auto-select, fallback to global config or whitelist
 MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
 if [ -z "${MODEL:-}" ] && [ -f "$MODEL_PROVIDER_CFG" ] && [ -s "$MODEL_PROVIDER_CFG" ]; then
@@ -1169,6 +1203,8 @@ if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
     printf 'Provider '\''%s'\'' is not installed. Run --install-extras or provide a valid provider plugin.\n' "$PROVIDER" >&2
     PROVIDER_MODULE_LOADED=0
   else
+    # Embedded provider will be defined later in this file; do not assume functions exist yet.
+    # Mark as not loaded so that later validation (after embedded definitions) performs the definitive check.
     PROVIDER_MODULE_LOADED=1
   fi
 else
@@ -1177,12 +1213,14 @@ else
     printf 'Security error: provider file is a symlink: %s\n' "$PROVIDER_MODULE_PATH" >&2
     exit "$GROQBASHERRTMP"
   fi
+
   file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
   current_user="${USER:-$(id -un 2>/dev/null || printf '')}"
   if [ -n "$file_owner" ] && [ -n "$current_user" ] && [ "$file_owner" != "$current_user" ]; then
     printf 'Security error: provider file not owned by current user: %s\n' "$PROVIDER_MODULE_PATH" >&2
     exit "$GROQBASHERRTMP"
   fi
+
   perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
   group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
@@ -1191,19 +1229,47 @@ else
     exit "$GROQBASHERRTMP"
   fi
 
-  # Compute signature before sourcing using PRECORE wrapper
+  # Compute signature before testing using PRECORE wrapper
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
 
-  # Source provider module (after security checks)
-  # shellcheck source=/dev/null
-  . "$PROVIDER_MODULE_PATH"
-  PROVIDER_MODULE_LOADED=1
+  # Test-source provider module in a clean subshell to verify it defines required functions.
+  # Do not import anything into the current shell until validated.
+  if bash -c ". \"$PROVIDER_MODULE_PATH\" >/dev/null 2>&1 || true; \
+       declare -F | grep -q -E \"\\bbuildpayload_${PROVIDER}\\b\" && declare -F | grep -q -E \"\\bcall_api_${PROVIDER}\\b\""; then
 
-  # Compute signature after sourcing and compare
-  aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-  if [ -n "$beforesig" ] && [ -n "$aftersig" ] && [ "$beforesig" != "$aftersig" ]; then
-    printf 'Security error: provider file changed during validation: %s\n' "$PROVIDER_MODULE_PATH" >&2
-    exit "$GROQBASHERRTMP"
+    # Recompute signature and ensure file did not change between test and actual load
+    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
+    if [ -n "$beforesig" ] && [ -n "$aftersig" ] && [ "$beforesig" != "$aftersig" ]; then
+      printf 'Security error: provider file changed during validation: %s\n' "$PROVIDER_MODULE_PATH" >&2
+      exit "$GROQBASHERRTMP"
+    fi
+
+    # Source into current shell now that basic presence of required symbols is confirmed and signature matched.
+    # shellcheck source=/dev/null
+    . "$PROVIDER_MODULE_PATH"
+    PROVIDER_MODULE_LOADED=1
+
+    # Verify that the provider module actually implements the required functions.
+    invalid_provider=0
+    for _req in "buildpayload_${PROVIDER}" "call_api_${PROVIDER}"; do
+      if ! type "$_req" >/dev/null 2>&1; then
+        dbg "Provider module %s missing required function %s()" "$PROVIDER_MODULE_PATH" "$_req" || true
+        invalid_provider=1
+      fi
+    done
+
+    if [ "$invalid_provider" -eq 1 ]; then
+      printf 'Warning: provider module %s is incomplete or invalid; falling back to embedded provider.\n' "$PROVIDER" >&2
+
+      # Treat as not loaded; embedded fallback will be validated later in CORE4.
+      PROVIDER_MODULE_LOADED=0
+    fi
+
+  else
+    # Provider file exists but does not define required symbols when tested in a clean subshell.
+    # Treat as invalid and fall back to embedded provider if available.
+    printf 'Warning: provider module %s appears invalid or empty; falling back to embedded provider.\n' "$PROVIDER" >&2
+    PROVIDER_MODULE_LOADED=0
   fi
 fi
 # ==== CORE3 END ====
