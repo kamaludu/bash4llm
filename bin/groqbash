@@ -1144,35 +1144,97 @@ if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE"
 fi
 
 if [ "$INSTALL_EXTRAS" -eq 1 ]; then
-  # unchanged block
   dest_base="$GROQBASH_EXTRAS_DIR"
   dest_docs="$dest_base/docs"
   dest_lib="$dest_base/lib"
   dest_prov="$dest_base/providers"
+  dest_security="$dest_base/security"
+  dest_test="$dest_base/test"
   src_base="$SCRIPTDIR/extras"
-  src_docs="$src_base/docs/core-notes.sh"
-  src_utils="$src_base/lib/utils.sh"
-  src_debug="$src_base/lib/debug.sh"
-  src_groq="$src_base/providers/groq.sh"
+  src_docs="$src_base/docs"
+  src_lib="$src_base/lib"
+  src_prov="$src_base/providers"
+  src_security="$src_base/security"
+  src_test="$src_base/test"
 
-  mkdir -p "$dest_docs" "$dest_lib" "$dest_prov" 2>/dev/null || { printf 'Error: cannot create extras dirs.\n' >&2; exit "$GROQBASHERRTMP"; }
-  chmod 700 "$dest_base" "$dest_docs" "$dest_lib" "$dest_prov" 2>/dev/null || true
+  # Create destination directories
+  mkdir -p "$dest_docs" "$dest_lib" "$dest_prov" "$dest_security" "$dest_test" 2>/dev/null \
+    || { printf 'Error: cannot create extras dirs.\n' >&2; exit "$GROQBASHERRTMP"; }
+  chmod 700 "$dest_base" "$dest_docs" "$dest_lib" "$dest_prov" "$dest_security" "$dest_test" 2>/dev/null || true
 
   current_user="$(id -un 2>/dev/null || printf '')"
-  for src in "$src_docs" "$src_utils" "$src_debug" "$src_groq"; do
-    [ -f "$src" ] || { printf 'Error: missing extras file: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
+
+  # Ensure source tree exists
+  [ -d "$src_base" ] || { printf 'Error: missing extras source directory: %s\n' "$src_base" >&2; exit "$GROQBASHERRTMP"; }
+
+  # Collect list of files to copy (regular files only)
+  files_to_copy=()
+  while IFS= read -r -d '' f; do files_to_copy+=("$f"); done < <(find "$src_base" -type f -print0 2>/dev/null || true)
+
+  if [ "${#files_to_copy[@]}" -eq 0 ]; then
+    printf 'No extras files found under %s; nothing to install.\n' "$src_base" >&2
+    exit 0
+  fi
+
+  # Security checks: no symlinks, owned by current user
+  for src in "${files_to_copy[@]}"; do
+    [ -f "$src" ] || { printf 'Error: extras entry not a regular file: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
     [ -L "$src" ] && { printf 'Security error: extras file is symlink: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
     src_owner="$(_get_owner "$src")"
     [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { printf 'Security error: wrong owner: %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
   done
 
-  for pair in "$src_docs:$dest_docs/core-notes.sh" "$src_utils:$dest_lib/utils.sh" "$src_debug:$dest_lib/debug.sh" "$src_groq:$dest_prov/groq.sh"; do
-    srcf="${pair%%:*}"; destf="${pair##*:}"
-    cat "$srcf" | atomic_write "$destf" || { printf 'Error copying %s\n' "$srcf" >&2; exit "$GROQBASHERRTMP"; }
-    chmod 600 "$destf" 2>/dev/null || true
+  # Copy files preserving relative layout under dest_base
+  installed_providers=()
+  installed_libs=()
+  installed_docs=()
+  installed_security=()
+  installed_tests=()
+
+  for src in "${files_to_copy[@]}"; do
+    rel="${src#$src_base/}"
+    dest="$dest_base/$rel"
+    destdir="$(dirname "$dest")"
+    mkdir -p "$destdir" 2>/dev/null || { printf 'Error: cannot create dest dir: %s\n' "$destdir" >&2; exit "$GROQBASHERRTMP"; }
+    # Atomic copy
+    cat "$src" | atomic_write "$dest" || { printf 'Error copying %s\n' "$src" >&2; exit "$GROQBASHERRTMP"; }
+    chmod 600 "$dest" 2>/dev/null || true
+
+    case "$rel" in
+      providers/*.sh) installed_providers+=("$(basename "$rel" .sh)") ;;
+      lib/*.sh) installed_libs+=("$(basename "$rel")") ;;
+      docs/*) installed_docs+=("$(basename "$rel")") ;;
+      security/*) installed_security+=("$(basename "$rel")") ;;
+      test/*) installed_tests+=("$(basename "$rel")") ;;
+    esac
   done
 
   printf 'Extras installed under %s/extras/\n' "$GROQBASH_DIR" >&2
+
+  if [ "${#installed_providers[@]}" -gt 0 ]; then
+    printf 'Installed providers: %s\n' "$(printf '%s ' "${installed_providers[@]}")" >&2
+  fi
+  if [ "${#installed_libs[@]}" -gt 0 ]; then
+    printf 'Installed libs: %s\n' "$(printf '%s ' "${installed_libs[@]}")" >&2
+  fi
+  if [ "${#installed_docs[@]}" -gt 0 ]; then
+    printf 'Installed docs: %s\n' "$(printf '%s ' "${installed_docs[@]}")" >&2
+  fi
+  if [ "${#installed_security[@]}" -gt 0 ]; then
+    printf 'Installed security scripts: %s\n' "$(printf '%s ' "${installed_security[@]}")" >&2
+  fi
+  if [ "${#installed_tests[@]}" -gt 0 ]; then
+    printf 'Installed test scripts: %s\n' "$(printf '%s ' "${installed_tests[@]}")" >&2
+  fi
+
+  # Best-effort syntax check for provider modules (non-executing)
+  for p in "${installed_providers[@]}"; do
+    PROVIDER_MODULE_PATH="$dest_prov/${p}.sh"
+    if ! bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
+      printf 'Warning: provider %s has syntax errors; check %s\n' "$p" "$PROVIDER_MODULE_PATH" >&2
+    fi
+  done
+
   exit 0
 fi
 
