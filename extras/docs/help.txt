@@ -8,7 +8,8 @@
 
 GroqBash is a secure, modular, Bash-focused CLI wrapper for the Groq
 OpenAI-compatible Chat Completions API. It supports streaming, model
-selection, provider modules, safe temporary directories, and optional extras.
+selection, provider modules, safe temporary directories, diagnostics,
+and optional extras.
 
 Quick setup
 -----------
@@ -24,19 +25,22 @@ Basic usage
 
 Main options
 ------------
-  -m, --model <name>         Select model (e.g. llama3-70b-8192)
+  -m, --model <name>         Select model
   -f <file>                  Use file as input
   --system <text>            Set system prompt
-  --ture <value>             Temperature (default: 1.0)
+  --temp, --ture <value>     Temperature (default: 1.0)
   --max <n>                  Max tokens (default: 4096)
 
-  --refresh-models           Update model list for the current provider
+  --refresh-models           Update model list using provider API
   --list-models              Show available models
-  --set-default <model>      Set default model for the current provider
+  --set-default <model>      Set default model (persistent)
 
-  --provider <name>          Set provider (manual-only, terminates)
-  --provider                 Interactive provider selection (terminates)
-  --install-extras           Install extras (docs, providers, tools)
+  --provider <name>          Use external provider module
+  --provider                 Interactive provider selection
+  --install-extras           Install extras (docs, utils, providers)
+
+  --show-config              Display active configuration (provider, model, paths)
+  --diagnostics              Run system diagnostics (permissions, provider, model)
 
   --save                     Force save to file
   --nosave                   Force print to terminal
@@ -55,8 +59,8 @@ Security notes
   • All temporary files are created under a secure directory.
   • Temporary directories require mktemp -d; insecure fallbacks are refused.
   • Provider modules are loaded only from non-world-writable locations.
-  • GROQBASHEXTRASDIR must be an absolute, non-world-writable path.
-  • GROQBASHTMPDIR must be a non-world-writable path.
+  • GROQBASH_EXTRAS_DIR must be an absolute, non-world-writable path.
+  • GROQBASH_TMPDIR must be a non-world-writable path.
   • Never commit your API key.
   • Never execute model output as shell commands.
 
@@ -68,6 +72,10 @@ Requirements
     - coreutils (mktemp, chmod, mv, mkdir, head, sed, awk, grep)
     - jq (JSON parsing)
 
+  Recommended:
+    - python3 (fsync)
+    - sha256sum / shasum — (security extras)
+
 Compatibility
 -------------
   • Works on Linux, macOS, Termux, WSL.
@@ -77,5 +85,7 @@ Compatibility
 Examples
 --------
   TMPDIR="$HOME/.cache/groq_tmp" groqbash "say hi"
-  echo "text" | groqbash -m llama3-70b-8192
+  echo "text" | groqbash -m llama-3.3-70b-versatile
   groqbash --provider gemini "summarize this"
+  groqbash --show-config
+  groqbash --diagnostics
