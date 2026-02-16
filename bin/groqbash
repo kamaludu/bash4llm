@@ -140,6 +140,27 @@ fi
 chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
 export TMPDIR="$GROQBASH_TMPDIR"
 
+# -------------------------
+# Cleanup on signals and exit
+# -------------------------
+# Remove runtime tempdir if it is inside the project tmpdir.
+cleanup_tmp() {
+  # Only remove RUN_TMPDIR if it is set and is inside GROQBASH_TMPDIR
+  if [ -n "${RUN_TMPDIR:-}" ]; then
+    case "$RUN_TMPDIR" in
+      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+        rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
+        ;;
+      *) # do not remove tmpdirs outside project tree
+        ;;
+    esac
+  fi
+}
+
+# Install lightweight traps to ensure cleanup on INT, TERM and normal EXIT.
+# Keep handler minimal to avoid side effects in subshells.
+trap 'cleanup_tmp' INT TERM EXIT
+
 # Runtime globals (respect environment if set)
 CONTENT="${CONTENT:-}"
 RUN_TMPDIR="${RUN_TMPDIR:-}"
@@ -168,7 +189,7 @@ CHAT_MODE="${CHAT_MODE:-0}"
 SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 REFRESH_MODELS="${REFRESH_MODELS:-0}"
 LIST_MODELS="${LIST_MODELS:-0}"
-FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}"
+FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-0}"
 OUT_PATH="${OUT_PATH:-}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-}"
 # Temperature handling: prefer explicit TURE, then TEMPERATURE, then default
@@ -193,6 +214,9 @@ INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}"
 ALLOWED_MODELS="${ALLOWED_MODELS:-}"
 
 CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
+
+# ==== PRECORE END ====
+# ==== PRECORE BEGIN (continued) ====
 
 # Ensure curl is available
 if ! command -v curl >/dev/null 2>&1; then
@@ -228,46 +252,98 @@ _normalize_bool_env() {
 }
 _normalize_bool_env
 
-# Atomic write helper: read stdin and atomically write to destination path.
-# Ensures file is created in same directory and moved into place with secure perms.
+# Atomic write helper: write stdin to a temporary file in the same directory,
+# fsync the file (best-effort) and then atomically move it into place.
 atomic_write() {
-  local dest="$1" tmpdir tmpf rc
+  local dest="$1" destdir tmp tmpfd rc
   [ -n "$dest" ] || return "$GROQBASHERRTMP"
-  tmpdir="$(dirname "$dest")"
-  [ -d "$tmpdir" ] || mkdir -p "$tmpdir" 2>/dev/null || return "$GROQBASHERRTMP"
-  tmpf="$(mktemp -p "$tmpdir" groq-atomic.XXXX 2>/dev/null || true)"
-  [ -n "$tmpf" ] || return "$GROQBASHERRTMP"
-  # Read stdin to tmpf
-  cat - > "$tmpf"
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
-    rm -f "$tmpf" 2>/dev/null || true
+  destdir="$(dirname -- "$dest")"
+  [ -d "$destdir" ] || mkdir -p "$destdir" 2>/dev/null || return "$GROQBASHERRTMP"
+
+  # Create temp file in same directory to ensure atomic rename on same FS
+  if command -v mktemp >/dev/null 2>&1; then
+    tmp="$(mktemp -p "$destdir" .groq-atomic.XXXXXX 2>/dev/null || true)"
+  fi
+  if [ -z "$tmp" ]; then
+    tmp="$destdir/.groq-atomic.$$.$RANDOM"
+    : > "$tmp" 2>/dev/null || return "$GROQBASHERRTMP"
+  fi
+
+  # Write stdin to temp file
+  if ! cat - > "$tmp"; then
+    rm -f -- "$tmp" 2>/dev/null || true
     return "$GROQBASHERRTMP"
   fi
-  chmod 600 "$tmpf" 2>/dev/null || true
-  if mv "$tmpf" "$dest" 2>/dev/null; then
+
+  # Best-effort fsync using python3 if available (improves durability)
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<PY 2>/dev/null || true
+import os,sys
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY)
+    os.fsync(fd)
+    os.close(fd)
+except Exception:
+    pass
+PY
+  fi
+
+  chmod 600 "$tmp" 2>/dev/null || true
+
+  if mv -f -- "$tmp" "$dest" 2>/dev/null; then
     chmod 600 "$dest" 2>/dev/null || true
-    return 0
+    rc=0
   else
-    rm -f "$tmpf" 2>/dev/null || true
-    return "$GROQBASHERRTMP"
+    rc=$?
+    rm -f -- "$tmp" 2>/dev/null || true
   fi
+
+  return $rc
 }
 
-# Debug helper (masks sensitive values)
+# Debug helper (masks sensitive values). Use is_truthy for consistency.
+dbg_mask() {
+  local s="$1"
+  # Mask common API key patterns (best-effort): e.g., gsk_XXXXXXXX...
+  s="$(printf '%s' "$s" | sed -E 's/(gsk_[A-Za-z0-9_-]{8})[A-Za-z0-9_-]*/\1****/g')"
+  # Mask long alnum tokens >20 chars (heuristic)
+  s="$(printf '%s' "$s" | sed -E 's/[A-Za-z0-9_\-]{20,}/***REDACTED***/g')"
+  printf '%s' "$s"
+}
+
 dbg() {
-  [ "${DEBUG:-0}" -eq 1 ] || return 0
+  if ! is_truthy "${DEBUG:-0}"; then return 0; fi
   local msg="$*"
-  # Mask known sensitive environment variables if present
+  # If a known API key env var exists, mask its literal occurrences
   if [ -n "${GROQ_API_KEY:-}" ]; then
-    # Escape for use in sed: replace literal occurrences of the key
     local key_escaped
     key_escaped="$(printf '%s' "${GROQ_API_KEY}" | sed -e 's/[\/&]/\\&/g')"
     msg="$(printf '%s' "$msg" | sed -e "s/${key_escaped}/***REDACTED***/g")"
   fi
-  # Generic mask for common-looking API keys (heuristic): long alnum strings >20 chars
-  msg="$(printf '%s' "$msg" | sed -E 's/[A-Za-z0-9_\-]{20,}/***REDACTED***/g')"
-  printf '%s\n' "$msg" >&2
+  # Apply generic masking heuristics
+  msg="$(dbg_mask "$msg")"
+  printf '[DEBUG] %s\n' "$msg" >&2
+}
+
+# Safe payload dump: prints metadata and a short preview only.
+# To enable full payload dumps set DEBUG_PAYLOAD=1 explicitly in the environment.
+dump_payload_safe() {
+  local payloadfile="$1"
+  local max_preview=200
+  if [ ! -f "$payloadfile" ]; then
+    dbg "dump_payload_safe: file not found: $payloadfile"
+    return 1
+  fi
+  local size preview
+  size="$(wc -c < "$payloadfile" 2>/dev/null || printf '0')"
+  preview="$(head -c "$max_preview" "$payloadfile" 2>/dev/null | tr -d '\0')"
+  printf '[DEBUG] payload size: %s bytes\n' "$size" >&2
+  printf '[DEBUG] payload preview: %s\n' "$(dbg_mask "$preview")" >&2
+  if is_truthy "${DEBUG_PAYLOAD:-0}"; then
+    printf '[DEBUG] full payload follows\n' >&2
+    # Mask API keys in full dump as well (best-effort)
+    sed -E 's/(gsk_[A-Za-z0-9_-]{8})[A-Za-z0-9_-]*/\1****/g; s/("?(?:[A-Z0-9_]*API_KEY)"?:\s*")([^"]+)(")/\1****\3/Ig' "$payloadfile" >&2
+  fi
 }
 
 is_tty_out() { [ -t 1 ]; }
@@ -368,7 +444,8 @@ ensure_run_tmpdir() {
   PAYLOAD="$RUN_TMPDIR/payload.json"
   RESP="$RUN_TMPDIR/resp.json"
   ERRF="$RUN_TMPDIR/err.log"
-  trap 'if [ -n "${RUN_TMPDIR:-}" ] && [ "${DEBUG:-0}" -eq 0 ]; then rm -rf -- "$RUN_TMPDIR"; else dbg "DEBUG mode: preserving RUN_TMPDIR=$RUN_TMPDIR"; fi' EXIT INT TERM
+  # Use the central cleanup handler; preserve RUN_TMPDIR when DEBUG is enabled.
+  trap 'if [ "${DEBUG:-0}" -eq 0 ]; then cleanup_tmp; else dbg "DEBUG mode: preserving RUN_TMPDIR=$RUN_TMPDIR"; fi' EXIT INT TERM
   dbg "Created RUN_TMPDIR: $RUN_TMPDIR"
 }
 
@@ -419,7 +496,7 @@ provider_api_env_var_name() {
 # Returns 0 on success (env var set), non-zero on failure.
 ensure_api_key_for_provider() {
   local prov="$1"
-  local envvar canonical_env current_key input_key custom_var
+  local envvar current_key input_key custom_var
   [ -n "$prov" ] || return 1
 
   # Default canonical env var
@@ -1192,7 +1269,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ]; then
   installed_tests=()
 
   for src in "${files_to_copy[@]}"; do
-    rel="${src#$src_base/}"
+    rel="${src#"$src_base"/}"
     dest="$dest_base/$rel"
     destdir="$(dirname "$dest")"
     mkdir -p "$destdir" 2>/dev/null || { printf 'Error: cannot create dest dir: %s\n' "$destdir" >&2; exit "$GROQBASHERRTMP"; }
