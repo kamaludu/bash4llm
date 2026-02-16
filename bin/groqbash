@@ -401,6 +401,78 @@ load_whitelist() {
     ALLOWED_MODELS="$(cat "$MODELS_FILE" 2>/dev/null || true)"
   fi
 }
+
+# -------------------------
+# Provider API key helpers
+# -------------------------
+
+# Return canonical env var name for a provider (e.g., groq -> GROQ_API_KEY)
+provider_api_env_var_name() {
+  local prov="$1"
+  local prov_upper
+  prov_upper="$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  printf '%s' "${prov_upper}_API_KEY"
+}
+
+# Ensure API key for a provider is present; if missing and interactive, prompt user.
+# Usage: ensure_api_key_for_provider "<provider>"
+# Returns 0 on success (env var set), non-zero on failure.
+ensure_api_key_for_provider() {
+  local prov="$1"
+  local envvar canonical_env current_key input_key custom_var
+  [ -n "$prov" ] || return 1
+
+  # Default canonical env var
+  envvar="$(provider_api_env_var_name "$prov")"
+
+  # Allow provider-specific override variable name: PROVIDER_API_ENV_<provider>
+  custom_var="PROVIDER_API_ENV_${prov}"
+  if [ -n "${!custom_var:-}" ]; then
+    envvar="${!custom_var}"
+  fi
+
+  # If already set, nothing to do
+  current_key="${!envvar:-}"
+  if [ -n "$current_key" ]; then
+    return 0
+  fi
+
+  # Non-interactive: fail with clear message
+  if [ ! -t 0 ]; then
+    printf 'Error: API key for provider %s not set (env %s). Run interactively or export the variable.\n' "$prov" "$envvar" >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  # Prompt interactively (do not persist to disk unless user chooses)
+  printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
+  if ! IFS= read -r input_key; then
+    printf '\nError: no input received. Aborting.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+  input_key="$(printf '%s' "$input_key" | tr -d '\r\n')"
+  if [ -z "$input_key" ]; then
+    printf 'Error: API key required. Aborting.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  # Export into current environment for this run only
+  export "$envvar"="$input_key"
+
+  # If provider expects a specific canonical var (e.g., groq uses GROQ_API_KEY), normalize
+  # For backward compatibility, if prov is groq and envvar differs, also set GROQ_API_KEY
+  if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+    export GROQ_API_KEY="$input_key"
+  fi
+
+  # Print a ready-to-run export command for the user to paste into their shell
+  # This cannot be executed in the parent shell automatically; user must run it there.
+  printf '\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\n' >&2
+  printf '\n export %s="%s"\n' "$envvar" "$input_key" >&2
+  printf '\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\n' >&2
+
+  return 0
+}
+
 # ==== PRECORE END ====
 # ==== PROVIDER BEGIN ====
 ###############################################################################
@@ -408,6 +480,14 @@ load_whitelist() {
 ###############################################################################
 # Provider: groq (embedded)
 GROQ_API_KEY="${GROQ_API_KEY:-}"
+
+# If a provider-specific env var name override is set (PROVIDER_API_ENV_groq),
+# and that env var contains a key, normalize into GROQ_API_KEY for internal use.
+if [ -n "${PROVIDER_API_ENV_groq:-}" ]; then
+  if [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
+    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
+  fi
+fi
 
 # NOTE: This provider implementation uses canonical helpers from PRECORE:
 # - is_truthy
@@ -596,7 +676,16 @@ call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 
 # Refresh models list from groq API (canonical name)
 refresh_models_groq() {
-  if [ -z "${GROQ_API_KEY:-}" ]; then printf 'Error: GROQ_API_KEY is required to refresh models.\n' >&2; return "$GROQBASHERRNOAPIKEY"; fi
+  # Normalize provider-specific env override if present
+  if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
+    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
+  fi
+
+  # Do not prompt here; PRECORE is responsible for ensuring the API key is present.
+  if [ -z "${GROQ_API_KEY:-}" ]; then
+    printf 'Error: GROQ_API_KEY is required to refresh models.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
   local workdir tmpd out errf parsed tmpout api_url jq_ok
@@ -914,7 +1003,7 @@ expand_args_to_content() {
 # ==== CORE2 BEGIN ====
 # CLI parsing
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
-REFRESH_MODELS="${REFRESH_MODELS:-0}" LIST_MODELS="${LIST_MODELS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
+REFRESH_MODELS="${REFRESH_MODELS:-0}" LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}"
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
@@ -924,6 +1013,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;
     --list-models) LIST_MODELS=1; shift ;;
+    --list-providers) LIST_PROVIDERS=1; shift ;;
     --set-default) SET_DEFAULT_MODEL="${2:-}"; shift 2 ;;
     -m|--model) MODEL="${2:-}"; shift 2 ;;
     -f) FILE_INPUTS+=("${2:-}"); shift 2 ;;
@@ -966,7 +1056,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Normalize boolean-like flags
-for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE REFRESH_MODELS LIST_MODELS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
+for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE REFRESH_MODELS LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
   if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
 done
 
@@ -977,7 +1067,58 @@ if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_tru
   exit "$GROQBASHERRTMP"
 fi
 
+# --refresh-models: ensure API key before refreshing
+if [ "$REFRESH_MODELS" -eq 1 ]; then
+  # Ensure API key for current provider before attempting refresh
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    printf 'Error: API key required to refresh models for provider %s.\n' "$PROVIDER" >&2
+    exit "$GROQBASHERRNOAPIKEY"
+  fi
+  refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
+  exit 0
+fi
+
 # Immediate CLI actions
+
+# --list-providers: enumerate built-in and extras providers, show active provider if set
+if [ "$LIST_PROVIDERS" -eq 1 ]; then
+  PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
+  printf 'Available providers:\n' >&2
+  # Always include embedded provider 'groq'
+  printf '  - groq (embedded)\n' >&2
+
+  # List extras/providers/*.sh if present
+  extras_prov_dir="$GROQBASH_EXTRAS_DIR/providers"
+  if [ -d "$extras_prov_dir" ]; then
+    found=0
+    for f in "$extras_prov_dir"/*.sh; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f" .sh)"
+      # Skip if name is 'groq' to avoid duplicate
+      [ "$base" = "groq" ] && continue
+      printf '  - %s\n' "$base" >&2
+      found=1
+    done
+    if [ "$found" -eq 0 ]; then
+      # no extras providers found
+      :
+    fi
+  fi
+
+  # Show active provider (from config file if present)
+  if [ -f "$PROVIDER_FILE" ]; then
+    active="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
+    if [ -n "$active" ]; then
+      printf '\nActive provider: %s\n' "$active" >&2
+    else
+      printf '\nActive provider: groq (default)\n' >&2
+    fi
+  else
+    printf '\nActive provider: groq (default)\n' >&2
+  fi
+  exit 0
+fi
+
 if [ "$REFRESH_MODELS" -eq 1 ]; then
   refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
   exit 0
@@ -1087,6 +1228,21 @@ MODEL="$final_model"
 
 PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
 
+# Discover available providers: always include embedded 'groq', then extras/providers/*.sh
+_supported_providers_arr=()
+_supported_providers_arr+=("groq")
+extras_prov_dir="$GROQBASH_EXTRAS_DIR/providers"
+if [ -d "$extras_prov_dir" ]; then
+  for pf in "$extras_prov_dir"/*.sh; do
+    [ -e "$pf" ] || continue
+    base="$(basename "$pf" .sh)"
+    [ "$base" = "groq" ] && continue
+    _supported_providers_arr+=("$base")
+  done
+fi
+# Export SUPPORTED_PROVIDERS as space-separated list for compatibility with other code
+SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
+
 # Load provider from config file if present and not overridden
 if [ -f "$PROVIDER_FILE" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_INTERACTIVE" -eq 0 ]; then
   prov="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
@@ -1096,19 +1252,36 @@ fi
 # CLI provider override
 if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   case " $SUPPORTED_PROVIDERS " in
-    *" $PROVIDER_CLI "*) PROVIDER="$PROVIDER_CLI" ;;
+    *" $PROVIDER_CLI "*) 
+      prev_provider="$PROVIDER"
+      PROVIDER="$PROVIDER_CLI"
+      ;;
     *) printf 'Error: unknown provider: %s\n' "$PROVIDER_CLI" >&2; exit "$GROQBASHERRTMP" ;;
   esac
 
   mkdir -p "$(dirname "$PROVIDER_FILE")" 2>/dev/null || true
+
+  # If provider changed, reset models to avoid conflicts
+  if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
+    if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
+      rm -f "$MODELS_FILE" 2>/dev/null || true
+    fi
+  fi
+
   printf '%s\n' "$PROVIDER" | atomic_write "$PROVIDER_FILE" \
     || { printf 'Error: cannot persist provider selection.\n' >&2; exit "$GROQBASHERRTMP"; }
   chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
+
+  # Ensure API key for provider before refreshing models
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    printf 'Error: API key required to refresh models for provider %s.\n' "$PROVIDER" >&2
+    exit "$GROQBASHERRNOAPIKEY"
+  fi
   refresh_models_dispatch "$MODELS_FILE" || true
 fi
 
-# Interactive provider selection
-if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "$PROVIDER_CLI" = "list" ]; then
+# Interactive provider selection (validated, numeric input)
+if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
   IFS=' ' read -r -a _prov_arr <<EOF
 $SUPPORTED_PROVIDERS
 EOF
@@ -1132,10 +1305,26 @@ EOF
   chosen="${_prov_arr[$((idx-1))]}"
   [ -z "$chosen" ] && { printf 'Selection out of range.\n' >&2; exit "$GROQBASHERRTMP"; }
 
-  printf '%s\n' "$chosen" | atomic_write "$PROVIDER_FILE" \
-    || { printf 'Error: cannot persist provider selection.\n' >&2; exit "$GROQBASHERRTMP"; }
+  prev_provider="$PROVIDER"
+  if ! printf '%s\n' "$chosen" | atomic_write "$PROVIDER_FILE"; then
+    printf 'Error: cannot persist provider selection.\n' >&2
+    exit "$GROQBASHERRTMP"
+  fi
   chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
   PROVIDER="$chosen"
+
+  # If provider changed, remove previous models to avoid conflicts, then refresh
+  if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
+    if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
+      rm -f "$MODELS_FILE" 2>/dev/null || true
+    fi
+  fi
+
+  # Ensure API key for provider before refreshing models
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    printf 'Error: API key required to refresh models for provider %s.\n' "$PROVIDER" >&2
+    exit "$GROQBASHERRNOAPIKEY"
+  fi
   refresh_models_dispatch "$MODELS_FILE" || true
   exit 0
 fi
@@ -1286,10 +1475,17 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   fi
 
   printf '\n[API Key]\n'
-  if [ -n "${GROQ_API_KEY:-}" ]; then
-    printf '  API key: present\n'
+  # Check canonical env var and any provider-specific override
+  prov_upper="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  check_var="${prov_upper}_API_KEY"
+  custom_env_var_var="PROVIDER_API_ENV_${PROVIDER}"
+  custom_env_var="${!custom_env_var_var:-}"
+  if [ -n "$custom_env_var" ]; then check_var="$custom_env_var"; fi
+
+  if [ -n "${!check_var:-}" ]; then
+    printf '  API key: present (env %s)\n' "$check_var"
   else
-    printf '  WARNING: API key missing\n'
+    printf '  WARNING: API key missing (expected env %s)\n' "$check_var"
   fi
 
   printf '\n[Tmpdir]\n'
@@ -1398,6 +1594,8 @@ if [ -n "$BATCH_FILE" ]; then
     case "$line" in ''|\#*) continue ;; esac
     CONTENT="$line"
     build_payload_from_vars
+    # Ensure API key before making calls
+    if ! ensure_api_key_for_provider "$PROVIDER"; then printf 'Error: missing API key; aborting batch item.\n' >&2; continue; fi
     if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || printf 'Error during streaming call.\n' >&2
     else perform_request_once || true; fi
     printf '\n----\n'
@@ -1416,6 +1614,8 @@ if [ "$CHAT_MODE" -eq 1 ]; then
     [ -z "$CONVERSATION" ] && CONVERSATION="$userline" || CONVERSATION="${CONVERSATION}"$'\n\n'"User: ${userline}"
     CONTENT="$userline"
     build_payload_from_vars
+    # Ensure API key before making calls
+    if ! ensure_api_key_for_provider "$PROVIDER"; then printf 'Error: missing API key; aborting chat turn.\n' >&2; continue; fi
     if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || printf 'Streaming call failed.\n' >&2
     else perform_request_once || printf 'Call failed.\n' >&2; fi
   done
@@ -1424,6 +1624,8 @@ fi
 
 if [ "$STREAM_MODE" -eq 1 ]; then
   build_payload_from_vars
+  # Ensure API key before making calls
+  if ! ensure_api_key_for_provider "$PROVIDER"; then printf 'Error: missing API key; aborting.\n' >&2; exit "$GROQBASHERRTMP"; fi
   if call_api_streaming; then dbg "Streaming completed; captured response in $RESP"; printf '\n'; exit 0
   else printf 'Error: streaming request failed.\n' >&2; exit "$GROQBASHERRCURL_FAILED"; fi
 else
@@ -1437,6 +1639,8 @@ else
     printf '%b\n' "\033[1;32mProvider ($PROVIDER, model: $MODEL):\033[0m" >&2
   fi
   build_payload_from_vars
+  # Ensure API key before making calls
+  if ! ensure_api_key_for_provider "$PROVIDER"; then printf 'Error: missing API key; aborting.\n' >&2; exit "$GROQBASHERRTMP"; fi
   perform_request_once || exit "$GROQBASHERRAPI"
   exit 0
 fi
