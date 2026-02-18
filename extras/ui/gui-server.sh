@@ -6,7 +6,7 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Requisiti: bash, coreutils, curl, jq (usati da GroqBash)
+# Requisiti: bash, coreutils, curl, jq (usati da GroqBash) e un qualsiasi web server che supporta CGI (es. busybox).
 # Vincoli: Bash-only, nessun eval, nessun uso di /tmp di sistema, atomic_write obbligatorio,
 # lock globale per serializzare richieste, sanitizzazione input, limiti dimensione prompt.
 
