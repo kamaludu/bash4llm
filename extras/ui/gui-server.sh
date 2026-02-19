@@ -6,7 +6,7 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Requisiti: bash, coreutils, curl, jq (usati da GroqBash) e un qualsiasi web server che supporta CGI (es. busybox).
+# Requisiti: bash, coreutils, curl, jq (usati da GroqBash).
 # Vincoli: Bash-only, nessun eval, nessun uso di /tmp di sistema, atomic_write obbligatorio,
 # lock globale per serializzare richieste, sanitizzazione input, limiti dimensione prompt.
 
@@ -688,5 +688,299 @@ main() {
   release_lock
 }
 
-# Avvio
-main "$@"
+#######################################
+# WEBSERVER (embedded, zero-deps)
+#######################################
+
+# Default server params (modificabili via CLI)
+DEFAULT_PORT=59123
+MAX_BODY_BYTES=$((1024*1024))   # 1 MiB
+HEADER_TIMEOUT=5                # secondi
+BODY_TIMEOUT=8                  # secondi
+STATIC_PREFIX="/static"
+STATIC_DIR="$UI_ROOT/static"
+
+# Utility: safe close fd if open
+_safe_close_fd() {
+  local fd="$1"
+  if eval "exec {tmpfd}>&$fd" 2>/dev/null; then
+    eval "exec {tmpfd}>&-"
+  fi
+}
+
+# Normalize and sanitize request path
+server_normalize_path() {
+  local p="$1"
+  # URL-decode minimal (handles %20 etc.)
+  p="$(printf '%b' "${p//%/\\x}")" 2>/dev/null || true
+  # remove query part if present
+  p="${p%%\?*}"
+  # collapse // and remove .. and control chars
+  p="$(printf '%s' "$p" | tr -d '\000-\037' | sed -E 's#//+#/#g' | sed -E 's#(/\.\.)+##g')"
+  # prevent traversal
+  if [[ "$p" == *".."* ]]; then
+    printf '/forbidden'
+    return 0
+  fi
+  printf '%s' "$p"
+}
+
+# Read request line and headers from client fd
+server_read_request() {
+  local client_fd=$1
+  # read request line with timeout
+  IFS=$'\r\n' read -r -t "$HEADER_TIMEOUT" REQUEST_LINE <&"$client_fd" || return 1
+  # read headers until blank line or limit
+  HEADERS=""
+  local line
+  while IFS=$'\r\n' read -r -t "$HEADER_TIMEOUT" line <&"$client_fd"; do
+    [[ -z "$line" ]] && break
+    HEADERS+="$line"$'\n'
+    # protect against huge headers
+    if (( ${#HEADERS} > 8192 )); then
+      return 2
+    fi
+  done
+  return 0
+}
+
+# Extract header value (case-insensitive)
+server_get_header() {
+  local name="$1"
+  printf '%s\n' "$HEADERS" | awk -v IGNORECASE=1 -F': ' -v n="$name" '$1==n {print substr($0, index($0,$2))}'
+}
+
+# Read body up to MAX_BODY_BYTES with timeout
+server_read_body_to_file() {
+  local client_fd="$1" out_file="$2"
+  local cl
+  cl="$(server_get_header 'Content-Length' | tr -d '\r\n' || true)"
+  if [[ -z "$cl" ]]; then
+    # no body
+    : >"$out_file"
+    return 0
+  fi
+  if ! [[ "$cl" =~ ^[0-9]+$ ]]; then
+    return 3
+  fi
+  if (( cl > MAX_BODY_BYTES )); then
+    return 4
+  fi
+  # read exactly cl bytes with timeout
+  # Try head if available
+  if command -v head >/dev/null 2>&1; then
+    if head -c "$cl" <&"$client_fd" >"$out_file" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  # portable fallback: read loop
+  : >"$out_file"
+  local remaining=$cl chunk
+  while (( remaining > 0 )); do
+    # read up to remaining bytes; -n may not accept large values on some shells, so cap chunk size
+    local want=$remaining
+    if (( want > 65536 )); then want=65536; fi
+    if ! IFS= read -r -t "$BODY_TIMEOUT" -n "$want" chunk <&"$client_fd"; then
+      return 5
+    fi
+    printf '%s' "$chunk" >>"$out_file"
+    remaining=$((remaining - ${#chunk}))
+  done
+  return 0
+}
+
+# Send a minimal HTTP response (headers + body) to client fd
+server_send_raw_response() {
+  local client_fd="$1" status="$2" content_type="$3" body_file="$4"
+  {
+    printf 'HTTP/1.1 %s\r\n' "$status"
+    printf 'Content-Type: %s\r\n' "$content_type"
+    printf 'Cache-Control: no-store\r\n'
+    printf 'Connection: close\r\n'
+    printf 'Content-Length: %s\r\n' "$(wc -c <"$body_file" 2>/dev/null || echo 0)"
+    printf '\r\n'
+    cat "$body_file"
+  } >&"$client_fd"
+}
+
+# Serve static file under STATIC_DIR
+server_serve_static() {
+  local client_fd="$1" path="$2"
+  local file_path="$STATIC_DIR${path#$STATIC_PREFIX}"
+  if [[ ! -f "$file_path" ]]; then
+    printf '404 Not Found' >"$TMP_DIR/resp_body.$$"
+    server_send_raw_response "$client_fd" "404 Not Found" "text/plain; charset=utf-8" "$TMP_DIR/resp_body.$$"
+    rm -f "$TMP_DIR/resp_body.$$" 2>/dev/null || true
+    return 0
+  fi
+  # minimal mime table
+  local mime="application/octet-stream"
+  case "$file_path" in
+    *.html) mime="text/html; charset=utf-8" ;;
+    *.css)  mime="text/css; charset=utf-8" ;;
+    *.js)   mime="application/javascript; charset=utf-8" ;;
+    *.json) mime="application/json; charset=utf-8" ;;
+    *.png)  mime="image/png" ;;
+    *.jpg|*.jpeg) mime="image/jpeg" ;;
+    *.gif)  mime="image/gif" ;;
+    *.svg)  mime="image/svg+xml" ;;
+    *.txt)  mime="text/plain; charset=utf-8" ;;
+  esac
+  server_send_raw_response "$client_fd" "200 OK" "$mime" "$file_path"
+  return 0
+}
+
+# Dispatch request to CGI core (main)
+server_dispatch_to_cgi() {
+  local client_fd="$1" method="$2" raw_path="$3" body_file="$4"
+  # prepare env
+  export REQUEST_METHOD="$method"
+  # extract query string
+  local qs=""
+  if [[ "$raw_path" == *\?* ]]; then
+    qs="${raw_path#*\?}"
+  fi
+  export QUERY_STRING="$qs"
+  export CONTENT_LENGTH="$(wc -c <"$body_file" 2>/dev/null || echo 0)"
+  export CONTENT_TYPE="$(server_get_header 'Content-Type' | tr -d '\r\n' || echo '')"
+
+  # Provide body on stdin to main by redirecting from file
+  # Capture output of main to a temp file and send it raw
+  local outtmp
+  outtmp="$(mktemp_portable "$TMP_DIR" "resp.XXXXXX")" || outtmp="$TMP_DIR/resp.$$"
+  # Call main in a subshell to avoid polluting server env
+  (
+    # ensure functions and variables are visible; main expects to call acquire_lock etc.
+    # main will print headers (Status/Content-Type) or use print_http_header
+    exec 0<"$body_file"
+    main
+  ) >"$outtmp" 2>>"$ERROR_LOG" || true
+
+  # If main printed a Status header, convert to HTTP status line; otherwise assume 200 OK
+  if grep -q -i '^Status:' "$outtmp" 2>/dev/null; then
+    # extract Status header and remove it from body
+    local status_line
+    status_line="$(grep -i '^Status:' "$outtmp" | head -n1 | sed -E 's/Status:[[:space:]]*//I')"
+    # remove the Status header line from outtmp
+    awk 'BEGIN{first=1} { if(first && tolower($0) ~ /^status:/){first=0; next} print }' "$outtmp" >"${outtmp}.body" || true
+    mv -f "${outtmp}.body" "$outtmp" 2>/dev/null || true
+    server_send_raw_response "$client_fd" "$status_line" "text/html; charset=utf-8" "$outtmp"
+  else
+    server_send_raw_response "$client_fd" "200 OK" "text/html; charset=utf-8" "$outtmp"
+  fi
+
+  rm -f "$outtmp" 2>/dev/null || true
+}
+
+# Handle a single client connection (serial handling)
+server_handle_connection() {
+  local client_fd="$1"
+  # read request
+  if ! server_read_request "$client_fd"; then
+    printf 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 11\r\n\r\nBad Request' >&"$client_fd"
+    return 0
+  fi
+
+  # parse request line: METHOD PATH PROTOCOL
+  local method path proto
+  method="$(printf '%s' "$REQUEST_LINE" | awk '{print $1}')"
+  path="$(printf '%s' "$REQUEST_LINE" | awk '{print $2}')"
+  proto="$(printf '%s' "$REQUEST_LINE" | awk '{print $3}')"
+
+  # normalize path
+  path="$(server_normalize_path "$path")"
+  if [[ "$path" == "/forbidden" ]]; then
+    printf 'HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 9\r\n\r\nForbidden' >&"$client_fd"
+    return 0
+  fi
+
+  # static file handling
+  if [[ "$path" == "$STATIC_PREFIX"* ]]; then
+    server_serve_static "$client_fd" "$path"
+    return 0
+  fi
+
+  # prepare temp file for body
+  local bodyfile
+  bodyfile="$(mktemp_portable "$TMP_DIR" "body.XXXXXX")" || bodyfile="$TMP_DIR/body.$$"
+  if ! server_read_body_to_file "$client_fd" "$bodyfile"; then
+    printf 'HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Length: 16\r\n\r\nPayload Too Large' >&"$client_fd"
+    rm -f "$bodyfile" 2>/dev/null || true
+    return 0
+  fi
+
+  # dispatch to CGI core
+  server_dispatch_to_cgi "$client_fd" "$method" "$path" "$bodyfile"
+
+  rm -f "$bodyfile" 2>/dev/null || true
+  return 0
+}
+
+# Lightweight accept wrapper for systems supporting /dev/tcp
+server_accept_and_handle() {
+  local port="$1"
+  while true; do
+    # Accept connection (this blocks until a client connects)
+    exec {client_fd}<>/dev/tcp/0.0.0.0/"$port" 2>/dev/null || {
+      sleep 0.1
+      continue
+    }
+    # handle connection serially
+    server_handle_connection "$client_fd"
+    # close fd
+    exec {client_fd}>&- || true
+  done
+}
+
+# Dispatcher to start embedded server or fall back to CGI
+server_entrypoint() {
+  local port="${1:-$DEFAULT_PORT}"
+  # ensure environment
+  ensure_dirs
+  ensure_config_defaults
+  ensure_flock_available
+  ensure_groqbash_available
+
+  # ensure static dir exists
+  mkdir -p "$STATIC_DIR" || true
+  chmod 700 "$STATIC_DIR" || true
+
+  log_info "Starting embedded webserver on 127.0.0.1:$port"
+  # run accept loop (serial)
+  server_accept_and_handle "$port"
+}
+
+#######################################
+# Fine sezione WEBSERVER
+#######################################
+
+# Avvio e parsing argomenti
+#######################################
+# Default behavior: embedded server unless --cgi specified
+MODE="server"
+PORT="$DEFAULT_PORT"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cgi) MODE="cgi"; shift ;;
+    --serve) MODE="server"; PORT="${2:-$DEFAULT_PORT}"; shift 2 ;;
+    --port) PORT="${2:-$DEFAULT_PORT}"; shift 2 ;;
+    -p) PORT="${2:-$DEFAULT_PORT}"; shift 2 ;;
+    --help|-h) printf 'Usage: %s [--cgi] [--serve|--port PORT]\n' "$0"; exit 0 ;;
+    *) shift ;;
+  esac
+done
+
+if [[ "$MODE" == "cgi" || -n "${GATEWAY_INTERFACE:-}" ]]; then
+  # run as CGI (existing behavior)
+  main "$@"
+else
+  # run embedded server (default)
+  # bind only to localhost for safety
+  if ! command -v bash >/dev/null 2>&1; then
+    echo "Bash required"
+    exit 1
+  fi
+  # Start server_entrypoint which uses /dev/tcp accept
+  server_entrypoint "$PORT"
+fi
