@@ -597,7 +597,7 @@ draw_header() {
   local text="  GroqBash TUI — Conversazione corrente: $conv_name  "
   if (( conversation_truncated )); then text="$text (ultime $MAX_LINES_IN_MEMORY righe)"; fi
   local len=${#text}
-  local fill_w=$((_safe_width $((TERM_COLS - len - 2))))
+  local fill_w=$(_safe_width $((TERM_COLS - len - 2)))
   printf "\e[1;1H${BORDER}${TL}"
   printf "%${fill_w}s" "" | sed "s/ /${HL}/g"
   printf "${TR}${RESET}"
