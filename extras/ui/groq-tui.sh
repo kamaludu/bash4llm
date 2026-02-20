@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 ###############################################################################
-# GroqBash TUI - Versione 0.8 fixed4 (cleaned & hardened)
-# Pulizia: rimosse ridondanze superflue, niente perl, niente doppia sanitize,
-# get_term_size unico a startup, utility mancanti ripristinate.
+# GroqBash TUI - Versione 0.8
 # File:groq-tui.sh
 # Requisiti minimi:
-# - bash (>=4 consigliato)
-# - coreutils: printf, sed, mktemp, mv, mkdir, head, tail, wc, grep, date
-# - flock
-# - timeout (opzionale)
-# - awk
-# - curl, jq (opzionali)
+# - bash (>=4 consigliato), coreutils (printf, sed, mktemp, mv, mkdir, head, tail, wc, grep, date), flock, timeout (opzionale),  awk, curl, jq
 ###############################################################################
 
 # -------------------- CONFIG / COLORI --------------------------------------
