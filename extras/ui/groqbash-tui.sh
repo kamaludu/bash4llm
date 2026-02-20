@@ -5,10 +5,6 @@
 # Autore: Cristian Evangelisti (modificato)
 # License: GPL-3.0-or-later
 # =============================================================================
-# Note:
-# - Correzioni principali: rimosso eval, fix append (non tronca), stat fallback (GNU/BSD only),
-#   conv_mtime impostato dopo load, debounce reload_if_changed, idle sleep, safe width checks,
-#   mktemp/atomic_write permessi, termux-friendly logs.
 # - Requisiti minimi: bash (>=4 consigliato), coreutils, flock, awk, timeout (opzionale)
 # - Vincoli rispettati: Bash-only, nessun eval, nessun uso di /tmp di sistema (usa TMPDIR/$HOME/tmp), atomic_write obbligatorio.
 # =============================================================================
