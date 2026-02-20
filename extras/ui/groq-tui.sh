@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-###############################################################################
+# =============================================================================
 # GroqBash TUI - Versione 0.8
 # File:groq-tui.sh
 # Copyright (C) 2026 Cristian Evangelisti
@@ -7,7 +7,7 @@
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
 # Requisiti minimi:
-# - bash (>=4 consigliato), coreutils (printf, sed, mktemp, mv, mkdir, head, tail, wc, grep, date), flock, timeout (opzionale),  awk, curl, jq
+# bash (>=4 consigliato), coreutils (printf, sed, mktemp, mv, mkdir, head, tail, wc, grep, date), flock, timeout (opzionale), awk, curl, jq
 # Vincoli: Bash-only, nessun eval, nessun uso di /tmp di sistema, atomic_write obbligatorio.
 
 # -------------------- CONFIG / COLORI --------------------------------------
