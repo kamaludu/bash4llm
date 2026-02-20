@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash TUI - Versione 0.8
-# File:groq-tui.sh
-# Copyright (C) 2026 Cristian Evangelisti
+# groqbash-tui.sh - GroqBash TUI Versione 0.8 fixed6
+# File: groqbash-tui.sh
+# Autore: Cristian Evangelisti (modificato)
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Requisiti minimi:
-# bash (>=4 consigliato), coreutils (printf, sed, mktemp, mv, mkdir, head, tail, wc, grep, date), flock, timeout (opzionale), awk, curl, jq
-# Vincoli: Bash-only, nessun eval, nessun uso di /tmp di sistema, atomic_write obbligatorio.
+# Note:
+# - Correzioni principali: rimosso eval, fix append (non tronca), stat fallback (GNU/BSD only),
+#   conv_mtime impostato dopo load, debounce reload_if_changed, idle sleep, safe width checks,
+#   mktemp/atomic_write permessi, termux-friendly logs.
+# - Requisiti minimi: bash (>=4 consigliato), coreutils, flock, awk, timeout (opzionale)
+# - Vincoli rispettati: Bash-only, nessun eval, nessun uso di /tmp di sistema (usa TMPDIR/$HOME/tmp), atomic_write obbligatorio.
+# =============================================================================
 
 # -------------------- CONFIG / COLORI --------------------------------------
 DEBUG="${DEBUG:-0}"
-LOGFILE="${TMPDIR:-/tmp}/groq-tui.log"
+LOGFILE="${TMPDIR:-$HOME/tmp}/groq-tui.log"
 
 BG="\e[48;2;255;255;240m"
 FG="\e[38;2;51;51;51m"
@@ -77,6 +80,7 @@ conversation_changed=1
 conv_mtime=0
 resize_flag=0
 last_resize_ts=0
+last_reload_check_ms=0
 
 MAX_LINES_IN_MEMORY=5000
 MAX_NAME_LEN=64
@@ -89,11 +93,12 @@ conversation_truncated=0
 # -------------------- UTILITIES / LOGGING -----------------------------------
 log_debug() {
   if [[ "${DEBUG}" -eq 1 ]]; then
+    mkdir -p "$(dirname -- "$LOGFILE")" 2>/dev/null || true
     printf "%s %s\n" "$(date +"%F %T")" "$*" >> "$LOGFILE"
   fi
 }
 
-ensure_dirs() { mkdir -p "$CFG_DIR" "$CONV_DIR"; }
+ensure_dirs() { mkdir -p "$CFG_DIR" "$CONV_DIR" "$(dirname -- "$LOGFILE")"; }
 
 read_config_or_default() {
   local f="$1" d="$2"
@@ -210,15 +215,6 @@ wrap_awk() {
   }'
 }
 
-# -------------------- READ LINES INTO ARRAY (no eval) -----------------------
-read_lines_into_array() {
-  local __outvar="$1"
-  local __tmp=()
-  local line
-  while IFS= read -r line; do __tmp+=("$line"); done
-  eval "$__outvar=(\"\${__tmp[@]}\")"
-}
-
 # -------------------- CONFIG / CONVERSATION IO ------------------------------
 load_config() {
   conv_name="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
@@ -252,7 +248,8 @@ load_conversation() {
   msg_cached_wrapped=()
   for ((i=0;i<${#conversation[@]};i++)); do msg_cached_raw[i]=""; msg_cached_wrapped[i]=""; done
   conversation_changed=1
-  conv_mtime=0
+  # set conv_mtime to current file mtime to avoid immediate reload loops
+  if stat_mtime="$(get_file_mtime "$conv_path")"; then conv_mtime="$stat_mtime"; fi
 }
 
 # -------------------- APPEND with robust flock pattern ----------------------
@@ -262,7 +259,9 @@ append_conversation() {
   ts="$(timestamp_now)"
   local stored="${line}|||${ts}"
 
-  : > "$conv_path" 2>/dev/null || { log_debug "append_conversation: cannot create $conv_path"; return 1; }
+  # ensure file exists but do NOT truncate it
+  mkdir -p "$(dirname -- "$conv_path")" 2>/dev/null || true
+  [[ -f "$conv_path" ]] || : > "$conv_path" || { log_debug "append_conversation: cannot create $conv_path"; return 1; }
 
   exec 9>>"$conv_path" || { log_debug "append_conversation: open fd failed"; return 2; }
   if ! flock -x 9; then log_debug "append_conversation: flock failed"; exec 9>&-; return 3; fi
@@ -284,39 +283,62 @@ append_conversation() {
 get_file_mtime() {
   local f="$1"
   local m
-  if m=$(stat -c %Y "$f" 2>/dev/null); then
-    printf "%s" "$m"
-    return 0
-  elif m=$(stat -f %m "$f" 2>/dev/null); then
+
+  [[ -f "$f" ]] || return 1
+
+  # try GNU stat
+  m=$(stat -c %Y "$f" 2>/dev/null)
+  if [[ $? -eq 0 && -n "$m" ]]; then
     printf "%s" "$m"
     return 0
   fi
+
+  # try BSD stat
+  m=$(stat -f %m "$f" 2>/dev/null)
+  if [[ $? -eq 0 && -n "$m" ]]; then
+    printf "%s" "$m"
+    return 0
+  fi
+
+  # both stat variants failed: return failure (no external deps)
   return 1
 }
 
 reload_if_changed() {
+  # debounce: avoid stat checks too frequently (ms)
+  local now_ms
+  now_ms=$(date +%s%3N 2>/dev/null || printf "%s000" "$(date +%s)")
+  if [[ -z "${last_reload_check_ms:-}" ]]; then last_reload_check_ms=0; fi
+  if (( now_ms - last_reload_check_ms < 200 )); then
+    return 0
+  fi
+  last_reload_check_ms=$now_ms
+
   if [[ ! -f "$conv_path" ]]; then return 0; fi
   local m
   if ! m="$(get_file_mtime "$conv_path")"; then
     m=0
   fi
-  if [[ "$m" != "$conv_mtime" ]]; then
-    if command -v flock >/dev/null 2>&1; then
-      exec 9<"$conv_path"
-      flock -s 9
-      conversation=()
-      while IFS= read -r line <&9; do conversation+=("$line"); done
-      flock -u 9
-      exec 9<&-
-    else
-      load_conversation
-    fi
-    msg_cached_raw=()
-    msg_cached_wrapped=()
-    for ((i=0;i<${#conversation[@]};i++)); do msg_cached_raw[i]=""; msg_cached_wrapped[i]=""; done
-    conv_mtime="$m"
-    conversation_changed=1
+  # if m is empty or equal to conv_mtime, nothing to do
+  if [[ -z "$m" || "$m" == "$conv_mtime" ]]; then
+    return 0
   fi
+
+  if command -v flock >/dev/null 2>&1; then
+    exec 9<"$conv_path"
+    flock -s 9
+    conversation=()
+    while IFS= read -r line <&9; do conversation+=("$line"); done
+    flock -u 9
+    exec 9<&-
+  else
+    load_conversation
+  fi
+  msg_cached_raw=()
+  msg_cached_wrapped=()
+  for ((i=0;i<${#conversation[@]};i++)); do msg_cached_raw[i]=""; msg_cached_wrapped[i]=""; done
+  conv_mtime="$m"
+  conversation_changed=1
 }
 
 # -------------------- GROQBASH CALL (stderr -> log, timeout, sanitize) ------
@@ -330,10 +352,11 @@ run_groqbash() {
     if [[ -n "$model" && "$model" != "default" ]]; then cmd+=("--model" "$model"); fi
   fi
 
-  local logdir="${TMPDIR:-/tmp}/groq-tui-logs"
+  local logdir="${TMPDIR:-$HOME/tmp}/groq-tui-logs"
   mkdir -p "$logdir" 2>/dev/null || true
   local stderr_log
   stderr_log="$(mktemp "${logdir}/groqbash-stderr.XXXX" 2>/dev/null)" || stderr_log="/dev/null"
+  chmod 600 "$stderr_log" 2>/dev/null || true
 
   local output=""
   if command -v timeout >/dev/null 2>&1; then
@@ -463,7 +486,7 @@ build_visual_map() {
     if [[ "${msg_cached_raw[i]}" == "$text" && -n "${msg_cached_wrapped[i]}" ]]; then
       mapfile -t wrapped < <(printf "%s" "${msg_cached_wrapped[i]}")
     else
-      read_lines_into_array wrapped < <(printf "%s" "$text" | strip_ansi | wrap_awk "$panel_inner_w")
+      mapfile -t wrapped < <(printf "%s" "$text" | strip_ansi | wrap_awk "$panel_inner_w")
       msg_cached_raw[i]="$text"
       msg_cached_wrapped[i]="$(printf "%s\n" "${wrapped[@]}")"
     fi
@@ -567,53 +590,20 @@ draw_conversation_region() {
 }
 
 # -------------------- UI: prompt, header, footer ----------------------------
-init_prompt() { prompt_lines=(""); prompt_row=0; prompt_col=0; multiline_mode=0; }
-get_prompt_text() { local IFS=$'\n'; printf "%s" "${prompt_lines[*]}"; }
-insert_char_at_cursor() { local ch="$1"; local line="${prompt_lines[prompt_row]}"; prompt_lines[prompt_row]="${line:0:prompt_col}$ch${line:prompt_col}"; ((prompt_col++)); }
-delete_before_cursor() {
-  if (( prompt_col > 0 )); then
-    local line="${prompt_lines[prompt_row]}"
-    prompt_lines[prompt_row]="${line:0:prompt_col-1}${line:prompt_col}"
-    ((prompt_col--))
-  else
-    if (( prompt_row > 0 )); then
-      local prev="${prompt_lines[prompt_row-1]}"
-      local cur="${prompt_lines[prompt_row]}"
-      prompt_col=${#prev}
-      prompt_lines[prompt_row-1]="${prev}${cur}"
-      unset 'prompt_lines[prompt_row]'
-      prompt_lines=("${prompt_lines[@]}")
-      ((prompt_row--))
-    fi
-  fi
+# safe width helper
+_safe_width() {
+  local w="$1"
+  (( w < 0 )) && w=0
+  printf "%s" "$w"
 }
-insert_newline_at_cursor() {
-  local line="${prompt_lines[prompt_row]}"
-  local left="${line:0:prompt_col}"
-  local right="${line:prompt_col}"
-  prompt_lines[prompt_row]="$left"
-  local new_index=$((prompt_row+1))
-  prompt_lines=( "${prompt_lines[@]:0:new_index}" "$right" "${prompt_lines[@]:new_index}" )
-  prompt_row=$new_index
-  prompt_col=0
-}
-delete_word_before_cursor() {
-  local line="${prompt_lines[prompt_row]}"
-  local left="${line:0:prompt_col}"
-  local right="${line:prompt_col}"
-  while [[ "${left: -1}" == " " ]]; do left="${left:0:-1}"; done
-  if [[ "$left" == *" "* ]]; then left="${left% *}"; else left=""; fi
-  prompt_lines[prompt_row]="${left}${right}"
-  prompt_col=${#left}
-}
-clear_current_line() { prompt_lines[prompt_row]=""; prompt_col=0; }
 
 draw_header() {
   local text="  GroqBash TUI — Conversazione corrente: $conv_name  "
   if (( conversation_truncated )); then text="$text (ultime $MAX_LINES_IN_MEMORY righe)"; fi
   local len=${#text}
+  local fill_w=$((_safe_width $((TERM_COLS - len - 2))))
   printf "\e[1;1H${BORDER}${TL}"
-  printf "%$((TERM_COLS-2))s" "" | sed "s/ /${HL}/g"
+  printf "%${fill_w}s" "" | sed "s/ /${HL}/g"
   printf "${TR}${RESET}"
   printf "\e[2;1H${BORDER}${VL}${RESET}"
   printf "${TITLE}%s${RESET}" "$text"
@@ -636,21 +626,25 @@ draw_footer() {
 
 draw_box() {
   local top=$1 left=$2 height=$3 width=$4 title="$5"
+  local inner_w=$((width-2))
+  (( inner_w < 0 )) && inner_w=0
   printf "\e[%s;%sH${BORDER}${TL}" "$top" "$left"
-  printf "%$((width-2))s" "" | sed "s/ /${HL}/g"
+  printf "%${inner_w}s" "" | sed "s/ /${HL}/g"
   printf "${TR}${RESET}"
   printf "\e[%s;%sH${BORDER}${VL}${RESET}" "$((top+1))" "$left"
   printf "${TITLE} %s ${RESET}" "$title"
   local used=$(( ${#title} + 2 ))
-  printf "%$((width - used - 2))s" ""
+  local pad=$(( width - used - 2 ))
+  (( pad < 0 )) && pad=0
+  printf "%${pad}s" ""
   printf "${BORDER}${VL}${RESET}"
   for ((r=top+2; r<top+height-1; r++)); do
     printf "\e[%s;%sH${BORDER}${VL}${RESET}" "$r" "$left"
-    printf "%$((width-2))s" ""
+    printf "%${inner_w}s" ""
     printf "${BORDER}${VL}${RESET}"
   done
   printf "\e[%s;%sH${BORDER}${BL}" "$((top+height-1))" "$left"
-  printf "%$((width-2))s" "" | sed "s/ /${HL}/g"
+  printf "%${inner_w}s" "" | sed "s/ /${HL}/g"
   printf "${BR}${RESET}"
 }
 
@@ -659,8 +653,10 @@ draw_prompt_block() {
   local label=" Prompt "
   local label_len=${#label}
   local left_margin=2
+  local inner_w=$((TERM_COLS-2))
+  (( inner_w < 0 )) && inner_w=0
   printf "\e[%s;1H${BORDER}${TL}" "$y"
-  printf "%$((TERM_COLS-2))s" "" | sed "s/ /${HL}/g"
+  printf "%${inner_w}s" "" | sed "s/ /${HL}/g"
   printf "${TR}${RESET}"
   printf "\e[%s;1H${BORDER}${VL}${RESET}" "$((y+1))"
   local mode_label="[Single-line]"; (( multiline_mode )) && mode_label="[Multiline]"
@@ -787,7 +783,12 @@ main_loop() {
     key="$(read_key)"
     if [[ -z "$key" ]]; then
       ((idle_cycles++))
-      if (( idle_cycles > 10 )); then sleep 0.05; idle_cycles=0; fi
+      if (( idle_cycles > 5 )); then
+        sleep 0.08
+        idle_cycles=0
+      else
+        sleep 0.02
+      fi
       continue
     fi
     idle_cycles=0
@@ -970,6 +971,48 @@ create_new_conversation() {
   save_config
   load_conversation
 }
+
+# -------------------- UI: prompt helpers (no eval) --------------------------
+init_prompt() { prompt_lines=(""); prompt_row=0; prompt_col=0; multiline_mode=0; }
+get_prompt_text() { local IFS=$'\n'; printf "%s" "${prompt_lines[*]}"; }
+insert_char_at_cursor() { local ch="$1"; local line="${prompt_lines[prompt_row]}"; prompt_lines[prompt_row]="${line:0:prompt_col}$ch${line:prompt_col}"; ((prompt_col++)); }
+delete_before_cursor() {
+  if (( prompt_col > 0 )); then
+    local line="${prompt_lines[prompt_row]}"
+    prompt_lines[prompt_row]="${line:0:prompt_col-1}${line:prompt_col}"
+    ((prompt_col--))
+  else
+    if (( prompt_row > 0 )); then
+      local prev="${prompt_lines[prompt_row-1]}"
+      local cur="${prompt_lines[prompt_row]}"
+      prompt_col=${#prev}
+      prompt_lines[prompt_row-1]="${prev}${cur}"
+      unset 'prompt_lines[prompt_row]'
+      prompt_lines=("${prompt_lines[@]}")
+      ((prompt_row--))
+    fi
+  fi
+}
+insert_newline_at_cursor() {
+  local line="${prompt_lines[prompt_row]}"
+  local left="${line:0:prompt_col}"
+  local right="${line:prompt_col}"
+  prompt_lines[prompt_row]="$left"
+  local new_index=$((prompt_row+1))
+  prompt_lines=( "${prompt_lines[@]:0:new_index}" "$right" "${prompt_lines[@]:new_index}" )
+  prompt_row=$new_index
+  prompt_col=0
+}
+delete_word_before_cursor() {
+  local line="${prompt_lines[prompt_row]}"
+  local left="${line:0:prompt_col}"
+  local right="${line:prompt_col}"
+  while [[ "${left: -1}" == " " ]]; do left="${left:0:-1}"; done
+  if [[ "$left" == *" "* ]]; then left="${left% *}"; else left=""; fi
+  prompt_lines[prompt_row]="${left}${right}"
+  prompt_col=${#left}
+}
+clear_current_line() { prompt_lines[prompt_row]=""; prompt_col=0; }
 
 # -------------------- STARTUP ------------------------------------------------
 ensure_dirs
