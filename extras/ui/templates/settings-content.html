@@ -1,0 +1,30 @@
+<section class="settings-section">
+  <form method="POST" action="?page=settings&theme={{THEME}}&lang={{LANG_CODE}}">
+    <label for="provider">{{TXT_PROVIDER}}</label>
+    <input id="provider" name="provider" type="text" value="{{PROVIDER_CURRENT}}" autocomplete="off">
+
+    <label for="model">{{TXT_MODEL}}</label>
+    <input id="model" name="model" type="text" value="{{MODEL_CURRENT}}" autocomplete="off">
+
+    <label for="lang">{{TXT_LANGUAGE}}</label>
+    <select id="lang" name="lang">
+      {{LANG_OPTIONS_SETTINGS}}
+    </select>
+
+    <label for="api_key">{{TXT_API_KEY}}</label>
+    <input id="api_key" name="api_key" type="password" value="" autocomplete="new-password" placeholder="{{TXT_API_KEY_PLACEHOLDER}}">
+
+    <div class="settings-actions">
+      <button class="btn" type="submit" name="save" value="1">{{TXT_SAVE}}</button>
+      <button class="btn" formaction="?page=main&theme={{THEME}}&lang={{LANG_CODE}}" formmethod="get">{{TXT_BACK}}</button>
+    </div>
+  </form>
+</section>
+
+<section class="files-section">
+  <h3>{{TXT_FILES_INPUT}}</h3>
+  <pre class="files-list">{{FILES_LIST}}</pre>
+
+  <h3>{{TXT_CONVERSATIONS}}</h3>
+  <pre class="conversations-list">{{CONV_LIST}}</pre>
+</section>
