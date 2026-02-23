@@ -89,7 +89,18 @@ cp -r extras/ui/* $PREFIX/groqbash.d/extras/ui/
 cp extras/ui/gui-server.sh $PREFIX/groqbash.d/extras/ui/cgi-bin/
 chmod +x $PREFIX/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 ```
+***Struttura delle directory:***
+```sh
+$PREFIX/groqbash.d/extras/ui/
+    gui-style-light.css
+    gui-style-dark.css
+    gui-lang.conf
+    templates/
+    assets/ (opzionale)
 
+    cgi-bin/
+        gui-server.sh   ← QUI
+```
 
 ### 🟧 3. Avvio del web
 server BusyBox
@@ -347,7 +358,18 @@ cp -r extras/ui/* $PREFIX/groqbash.d/extras/ui/
 cp extras/ui/gui-server.sh $PREFIX/groqbash.d/extras/ui/cgi-bin/
 chmod +x $PREFIX/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 ```
+***Directory structure:***
+```sh
+$PREFIX/groqbash.d/extras/ui/
+    gui-style-light.css
+    gui-style-dark.css
+    gui-lang.conf
+    templates/
+    assets/ (opzionale)
 
+    cgi-bin/
+        gui-server.sh   ← HERE
+```
 
 ### 🟧 3. Start BusyBox webserver
 
