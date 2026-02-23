@@ -124,14 +124,12 @@ http://localhost:8080/cgi-bin/gui-server.sh
 
 ---
 
-## 🟪 5. Note importanti per Termux
+### 🟪 5. Note importanti per Termux
 
 - Non usare `sudo` (non esiste in Termux)
 - Non usare percorsi come `/var/www`
 - Tutto deve vivere sotto `$PREFIX/etc/groqbash.d/extras/ui`
 - Le directory: config/, logs/, tmp/, conversations/, files/ vengono create automaticamente
-
----
 
 ---
 
