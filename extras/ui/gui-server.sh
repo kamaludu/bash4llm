@@ -154,7 +154,7 @@ get_text() {
 
 ensure_config_defaults() {
   local conv_default="conv-001.txt"
-  local lang_default="it"
+  local lang_default="en"
   local model_default="default"
   local provider_default="default"
 
