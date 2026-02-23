@@ -73,7 +73,7 @@ chmod +x ui/gui-server.sh
 4. Apri nel browser:
 http://localhost/cgi-bin/gui-server.sh
 
-Istruzioni dettagliate in **[INSTALL](INSTALL.md)**.
+Istruzioni dettagliate in: **[INSTALL](INSTALL.md)**.
 
 ---
 
