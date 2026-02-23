@@ -121,6 +121,37 @@ read_config_or_default() {
   return 0
 }
 
+# -----------------------------------------------------------------------------
+# Minimal language lookup (KEY.lang -> KEY). No fallback.
+# -----------------------------------------------------------------------------
+lookup() {
+  local key="$1" lang="$2" conf="$UI_ROOT/gui-lang.conf" val=""
+  [ -r "$conf" ] || return 1
+
+  # 1) KEY.LANG
+  val="$(sed -n "s/^${key}\.${lang}=//p" "$conf" 2>/dev/null || true)"
+  if [ -n "$val" ]; then
+    printf '%s' "$val"
+    return 0
+  fi
+
+  # 2) KEY (global)
+  val="$(sed -n "s/^${key}=//p" "$conf" 2>/dev/null || true)"
+  if [ -n "$val" ]; then
+    printf '%s' "$val"
+    return 0
+  fi
+
+  return 1
+}
+
+# HTML-escaped text for templates
+get_text() {
+  local key="$1" lang="$2" raw
+  raw="$(lookup "$key" "$lang")" || raw=""
+  printf '%s' "$raw" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
 ensure_config_defaults() {
   local conv_default="conv-001.txt"
   local lang_default="it"
