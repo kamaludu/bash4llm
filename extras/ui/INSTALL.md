@@ -51,7 +51,7 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 http://localhost:8080/cgi-bin/gui-server.sh
 ```
 ---
-## 🇮🇹 Installazione su Termux (Android)
+## 🤖📟 Installazione su Termux (Android)
 
 Questa sezione descrive come installare e avviare la GUI di GroqBash ***su Android utilizzando Termux e BusyBox***.  
 L’installazione è semplice e non richiede permessi di root.
@@ -316,7 +316,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 ```
 ---
 
-## 🇬🇧 Installation on Termux (Android)
+## 🤖📟 Installation on Termux (Android)
 
 This section explains how to install and run the GroqBash GUI ***on Android using Termux and BusyBox***.  
 No root access is required.
