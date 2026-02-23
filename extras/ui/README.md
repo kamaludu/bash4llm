@@ -19,6 +19,7 @@ La GUI fornisce:
 
 ## 📁 Struttura delle directory
 
+```text
 ui/
   gui-server.sh
   gui-lang.conf
@@ -55,6 +56,7 @@ ui/
       (file temporanei, lock, atomic_write)
 
   assets/               ← creato automaticamente (vuoto)
+```
 
 ---
 
@@ -153,6 +155,7 @@ The GUI provides:
 
 ## 📁 Directory Structure
 
+```text
 ui/
   gui-server.sh
   gui-lang.conf
@@ -173,6 +176,7 @@ ui/
   logs/                 ← auto-created
   tmp/                  ← auto-created
   assets/               ← auto-created
+```
 
 ---
 
