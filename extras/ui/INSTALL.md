@@ -50,6 +50,88 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 ```
 http://localhost:8080/cgi-bin/gui-server.sh
 ```
+---
+## 🇮🇹 Installazione su Termux (Android)
+
+Questa sezione descrive come installare e avviare la GUI di GroqBash ***su Android utilizzando Termux e BusyBox***.  
+L’installazione è semplice e non richiede permessi di root.
+
+---
+
+### 🟦 1. Requisiti
+
+- Termux installato da F-Droid
+- BusyBox disponibile in Termux
+- GroqBash installato correttamente (che crea la directory: `$PREFIX/etc/groqbash.d`)
+
+Installa BusyBox se necessario:
+```sh
+pkg install busybox
+```
+
+---
+
+### 🟩 2. Posizionamento corretto della GUI
+
+La GUI deve essere installata **dentro l’albero degli extras di GroqBash**, cioè:
+
+```
+$PREFIX/etc/groqbash.d/extras/ui/
+```
+
+Crea la struttura:
+```sh
+mkdir -p $PREFIX/etc/groqbash.d/extras/ui/cgi-bin
+```
+
+Copia i file della GUI:
+```sh
+cp -r extras/ui/* $PREFIX/etc/groqbash.d/extras/ui/
+cp extras/ui/gui-server.sh $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/
+chmod +x $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/gui-server.sh
+```
+
+---
+
+### 🟧 3. Avvio del web
+server BusyBox
+
+Avvia BusyBox httpd puntando alla directory della GUI:
+
+```sh
+busybox httpd -f -p 8080 -h $PREFIX/etc/groqbash.d/extras/ui
+```
+
+- `-f` = foreground (utile per debug)
+- `-p 8080` = porta
+- `-h` = document root
+
+---
+
+### 🟨 4. Apertura della GUI nel browser Android
+
+Apri Chrome/Firefox e visita:
+
+```
+http://127.0.0.1:8080/cgi-bin/gui-server.sh
+```
+
+Funziona anche:
+
+```
+http://localhost:8080/cgi-bin/gui-server.sh
+```
+
+---
+
+## 🟪 5. Note importanti per Termux
+
+- Non usare `sudo` (non esiste in Termux)
+- Non usare percorsi come `/var/www`
+- Tutto deve vivere sotto `$PREFIX/etc/groqbash.d/extras/ui`
+- Le directory: config/, logs/, tmp/, conversations/, files/ vengono create automaticamente
+
+---
 
 ---
 
@@ -232,6 +314,82 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 ```
 http://localhost:8080/cgi-bin/gui-server.sh
 ```
+---
+
+## 🇬🇧 Installation on Termux (Android)
+
+This section explains how to install and run the GroqBash GUI ***on Android using Termux and BusyBox***.  
+No root access is required.
+
+---
+
+### 🟦 1. Requirements
+
+- Termux installed from F-Droid
+- BusyBox available in Termux
+- GroqBash installed (which creates: `$PREFIX/etc/groqbash.d`)
+
+Install BusyBox if needed:
+```sh
+pkg install busybox
+```
+
+---
+
+### 🟩 2. Correct GUI placement
+
+The GUI must be installed **inside GroqBash’s extras tree**, here:
+
+```
+$PREFIX/etc/groqbash.d/extras/ui/
+```
+
+Create the structure:
+```sh
+mkdir -p $PREFIX/etc/groqbash.d/extras/ui/cgi-bin
+```
+
+Copy GUI files:
+```sh
+cp -r extras/ui/* $PREFIX/etc/groqbash.d/extras/ui/
+cp extras/ui/gui-server.sh $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/
+chmod +x $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/gui-server.sh
+```
+
+---
+
+### 🟧 3. Start BusyBox webserver
+
+Run BusyBox httpd pointing to the GUI directory:
+
+```sh
+busybox httpd -f -p 8080 -h $PREFIX/etc/groqbash.d/extras/ui
+```
+
+---
+
+### 🟨 4. Open the GUI in Android browser
+
+Open Chrome/Firefox and visit:
+
+```
+http://127.0.0.1:8080/cgi-bin/gui-server.sh
+```
+
+Alternatively:
+
+```
+http://localhost:8080/cgi-bin/gui-server.sh
+```
+
+---
+
+### 🟪 5. Important notes for Termux
+
+- Do not use `sudo`
+- Do not use `/var/www`
+- Everything must live under `$PREFIX/etc/groqbash.d/extras/ui`
+- Directories like config/, logs/, tmp/, conversations/, files/ are auto‑created by the GUI
 
 ---
 
