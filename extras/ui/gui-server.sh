@@ -679,6 +679,20 @@ main() {
   QUERY_STRING="${QUERY_STRING:-}"
   QUERY_STRING="$(printf '%s' "$QUERY_STRING" | tr -d '\000-\037')"
 
+# Determine language (default=en, user selection persists)
+lang_code="$(get_query_param "lang" 2>/dev/null || printf '')"
+
+if [[ -n "$lang_code" ]]; then
+  lang_code="$(sanitize_param "$lang_code")"
+  if validate_name "$lang_code"; then
+    atomic_write "$LANG_CURRENT_FILE" "$lang_code"
+  else
+    lang_code="en"
+  fi
+else
+  lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
+fi
+
   local page
   page="$(get_query_param "page" 2>/dev/null || printf 'main')"
   page="$(sanitize_param "$page")"
