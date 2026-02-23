@@ -1,4 +1,5 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
+[![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md)
 # 🇮🇹 GroqBash GUI — Interfaccia Web Minimalista
 
 ## 🧩 Panoramica
