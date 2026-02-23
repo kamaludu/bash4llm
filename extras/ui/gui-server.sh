@@ -33,6 +33,7 @@ ERROR_LOG="$LOG_DIR/errors.log"
 
 CURRENT_CONV_FILE="$CFG_DIR/current-conversation"
 LANG_CURRENT_FILE="$CFG_DIR/lang-current"
+THEME_CURRENT_FILE="$CFG_DIR/gui-theme"
 DEFAULT_MODEL_FILE="$CFG_DIR/default-model"
 DEFAULT_PROVIDER_FILE="$CFG_DIR/default-provider"
 
@@ -63,12 +64,14 @@ log_rotate_if_needed() {
 
 log_info() {
   local msg="$1"
+  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
   printf '[%s] INFO  %s\n' "$(date -Is)" "$msg" >>"$SERVER_LOG"
   log_rotate_if_needed "$SERVER_LOG"
 }
 
 log_error() {
   local msg="$1"
+  mkdir -p "$(dirname "$ERROR_LOG")" 2>/dev/null || true
   printf '[%s] ERROR %s\n' "$(date -Is)" "$msg" >>"$ERROR_LOG"
   log_rotate_if_needed "$ERROR_LOG"
 }
@@ -122,26 +125,15 @@ read_config_or_default() {
 }
 
 # -----------------------------------------------------------------------------
-# Minimal language lookup (KEY.lang -> KEY). No fallback.
+# Robust lookup using awk (KEY.lang -> KEY). No fallback to en.
 # -----------------------------------------------------------------------------
 lookup() {
   local key="$1" lang="$2" conf="$UI_ROOT/gui-lang.conf" val=""
   [ -r "$conf" ] || return 1
-
-  # 1) KEY.LANG
-  val="$(sed -n "s/^${key}\.${lang}=//p" "$conf" 2>/dev/null || true)"
-  if [ -n "$val" ]; then
-    printf '%s' "$val"
-    return 0
-  fi
-
-  # 2) KEY (global)
-  val="$(sed -n "s/^${key}=//p" "$conf" 2>/dev/null || true)"
-  if [ -n "$val" ]; then
-    printf '%s' "$val"
-    return 0
-  fi
-
+  val="$(awk -F= -v k="${key}.${lang}" '$1==k { $1=""; sub(/^=/,""); print substr($0,2); exit }' "$conf" 2>/dev/null || true)"
+  if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
+  val="$(awk -F= -v k="${key}" '$1==k { $1=""; sub(/^=/,""); print substr($0,2); exit }' "$conf" 2>/dev/null || true)"
+  if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
   return 1
 }
 
@@ -150,6 +142,98 @@ get_text() {
   local key="$1" lang="$2" raw
   raw="$(lookup "$key" "$lang")" || raw=""
   printf '%s' "$raw" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# -----------------------------------------------------------------------------
+# Minimal template renderer: replaces a limited set of placeholders.
+# Usage: render_template FILE LANG THEME MODEL PROVIDER CONV_FILE
+# -----------------------------------------------------------------------------
+render_template() {
+  local tpl="$1" lang="$2" theme="$3" model_cur="$4" prov_cur="$5" conv_file="$6"
+  [ -r "$tpl" ] || return 1
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # simple replacements
+    line="${line//\{\{THEME\}\}/$theme}"
+    line="${line//\{\{LANG_CODE\}\}/$lang}"
+    line="${line//\{\{MODEL_CURRENT\}\}/$(html_escape "$model_cur")}"
+    line="${line//\{\{PROVIDER_CURRENT\}\}/$(html_escape "$prov_cur")}"
+
+    # TXT_* placeholders
+    while [[ "$line" =~ \{\{TXT_[A-Za-z0-9_]+\}\} ]]; do
+      local token="${BASH_REMATCH[0]}"
+      local key="${token#\{\{}"
+      key="${key%\}\}}"
+      local val
+      val="$(get_text "$key" "$lang")"
+      line="${line//$token/$val}"
+    done
+
+    # LANG_OPTIONS
+    if [[ "$line" == *"{{LANG_OPTIONS}}"* ]]; then
+      local opts=""
+      for code in en it es fr de; do
+        local name
+        name="$(lookup "LANG_NAME" "$code" || printf '%s' "$code")"
+        if [[ "$code" == "$lang" ]]; then
+          opts+="<option value=\"$code\" selected>$(html_escape "$name")</option>"
+        else
+          opts+="<option value=\"$code\">$(html_escape "$name")</option>"
+        fi
+      done
+      line="${line//\{\{LANG_OPTIONS\}\}/$opts}"
+    fi
+
+    # THEME_IS_light / THEME_IS_dark
+    line="${line//\{\{THEME_IS_light\}\}/$( [ "$theme" = "light" ] && printf 'selected' || printf '' )}"
+    line="${line//\{\{THEME_IS_dark\}\}/$( [ "$theme" = "dark" ] && printf 'selected' || printf '' )}"
+
+    # FILES_LIST
+    if [[ "$line" == *"{{FILES_LIST}}"* ]]; then
+      local flist=""
+      if [[ -d "$FILES_DIR/input" ]]; then
+        for f in "$FILES_DIR/input"/*; do
+          [ -e "$f" ] || continue
+          local bn; bn="$(basename -- "$f")"
+          if validate_name "$bn"; then flist+="$(html_escape "$bn")"$'\n'; fi
+        done
+      fi
+      line="${line//\{\{FILES_LIST\}\}/$(printf '%s' "$flist")}"
+    fi
+
+    # CONV_LIST
+    if [[ "$line" == *"{{CONV_LIST}}"* ]]; then
+      local clist=""
+      if [[ -d "$CONV_DIR" ]]; then
+        for f in "$CONV_DIR"/*; do
+          [ -e "$f" ] || continue
+          local bn; bn="$(basename -- "$f")"
+          if validate_name "$bn"; then clist+="$(html_escape "$bn")"$'\n'; fi
+        done
+      fi
+      line="${line//\{\{CONV_LIST\}\}/$(printf '%s' "$clist")}"
+    fi
+
+    # CURRENT_CONV and CONVERSATION rendering
+    if [[ "$line" == *"{{CURRENT_CONV}}"* || "$line" == *"{{CONVERSATION}}"* ]]; then
+      local conv_html=""
+      if [[ -f "$conv_file" ]]; then
+        while IFS= read -r cl || [[ -n "$cl" ]]; do
+          if [[ "$cl" == USER:* ]]; then
+            conv_html+="<pre class=\"user\">$(html_escape "${cl#USER: }")</pre>"$'\n'
+          elif [[ "$cl" == AI:* ]]; then
+            conv_html+="<pre class=\"ai\">$(html_escape "${cl#AI: }")</pre>"$'\n'
+          else
+            conv_html+="<pre>$(html_escape "$cl")</pre>"$'\n'
+          fi
+        done <"$conv_file"
+      fi
+      line="${line//\{\{CURRENT_CONV\}\}/$conv_html}"
+      line="${line//\{\{CONVERSATION\}\}/$conv_html}"
+    fi
+
+    printf '%s\n' "$line"
+  done <"$tpl"
 }
 
 ensure_config_defaults() {
@@ -163,6 +247,9 @@ ensure_config_defaults() {
   fi
   if [[ ! -f "$LANG_CURRENT_FILE" ]]; then
     atomic_write "$LANG_CURRENT_FILE" "$lang_default"
+  fi
+  if [[ ! -f "$THEME_CURRENT_FILE" ]]; then
+    atomic_write "$THEME_CURRENT_FILE" "light"
   fi
   if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then
     atomic_write "$DEFAULT_MODEL_FILE" "$model_default"
@@ -363,7 +450,7 @@ print_http_error() {
   printf 'Cache-Control: no-store\r\n'
   printf 'X-Content-Type-Options: nosniff\r\n'
   printf '\r\n'
-  printf '<h1>%s</h1>\n' "$msg"
+  printf '<h1>%s</h1>\n' "$(html_escape "$msg")"
 }
 
 # Centralized HTML escape
@@ -481,70 +568,74 @@ get_default_provider() {
 
 #######################################
 # --- Template rendering (streaming safe) ---
+# render_template is used in render_page_* below
 #######################################
 render_page_main() {
-  [[ -f "$TEMPLATES_DIR/header.html" ]] && cat "$TEMPLATES_DIR/header.html"
-  render_content_main
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && cat "$TEMPLATES_DIR/footer.html"
+  local lang="$1"
+  local theme model_cur prov_cur conv_file
+  model_cur="$(get_default_model)"
+  prov_cur="$(get_default_provider)"
+  conv_file="$(get_current_conversation_file)"
+  theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
+
+  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
 }
 
 render_page_settings() {
-  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && cat "$TEMPLATES_DIR/settings-header.html"
-  render_content_settings
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && cat "$TEMPLATES_DIR/footer.html"
+  local lang="$1"
+  local theme model_cur prov_cur conv_file
+  model_cur="$(get_default_model)"
+  prov_cur="$(get_default_provider)"
+  conv_file="$(get_current_conversation_file)"
+  theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
+
+  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
 }
 
+# Legacy content renderers (kept for compatibility; not used for header/content/footer)
 render_content_main() {
+  local lang="$1"
   local conv_file
   conv_file="$(get_current_conversation_file)"
-  if [[ -f "$TEMPLATES_DIR/content.html" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      if [[ "$line" == *"{{CONVERSATION}}"* ]]; then
-        if [[ -f "$conv_file" ]]; then
-          while IFS= read -r cl || [[ -n "$cl" ]]; do
-            printf '%s<br>\n' "$(printf '%s' "$cl" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
-          done <"$conv_file"
-        fi
+  if [[ -f "$conv_file" ]]; then
+    while IFS= read -r cl || [[ -n "$cl" ]]; do
+      if [[ "$cl" == USER:* ]]; then
+        printf '<pre class="user">%s</pre>\n' "$(html_escape "${cl#USER: }")"
+      elif [[ "$cl" == AI:* ]]; then
+        printf '<pre class="ai">%s</pre>\n' "$(html_escape "${cl#AI: }")"
       else
-        printf '%s\n' "$line"
+        printf '<pre>%s</pre>\n' "$(html_escape "$cl")"
       fi
-    done <"$TEMPLATES_DIR/content.html"
+    done <"$conv_file"
   else
-    printf '<pre>'
-    html_escape_stream <"$conv_file"
-    printf '</pre>\n'
+    printf '<pre></pre>\n'
   fi
 }
 
 render_content_settings() {
-  local model provider lang conv
+  local lang="$1"
+  local model provider conv
   model="$(get_default_model)"
   provider="$(get_default_provider)"
-  lang="$(read_config_or_default "$LANG_CURRENT_FILE" "it")"
+  if [[ -z "$lang" ]]; then
+    lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
+  fi
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
 
-  local esc_model esc_provider esc_lang
-  esc_model="$(html_escape "$model")"
-  esc_provider="$(html_escape "$provider")"
-  esc_lang="$(html_escape "$lang")"
-
-  if [[ -f "$TEMPLATES_DIR/settings-content.html" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      if [[ "$line" == *"{{CURRENT_CONV}}"* ]]; then
-        if [[ -f "$CONV_DIR/$conv" ]]; then
-          while IFS= read -r cl || [[ -n "$cl" ]]; do
-            printf '%s<br>\n' "$(printf '%s' "$cl" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
-          done <"$CONV_DIR/$conv"
-        fi
+  if [[ -f "$CONV_DIR/$conv" ]]; then
+    while IFS= read -r cl || [[ -n "$cl" ]]; do
+      if [[ "$cl" == USER:* ]]; then
+        printf '<pre class="user">%s</pre>\n' "$(html_escape "${cl#USER: }")"
+      elif [[ "$cl" == AI:* ]]; then
+        printf '<pre class="ai">%s</pre>\n' "$(html_escape "${cl#AI: }")"
       else
-        line="${line//\{\{MODEL\}\}/$esc_model}"
-        line="${line//\{\{PROVIDER\}\}/$esc_provider}"
-        line="${line//\{\{LANG\}\}/$esc_lang}"
-        printf '%s\n' "$line"
+        printf '<pre>%s</pre>\n' "$(html_escape "$cl")"
       fi
-    done <"$TEMPLATES_DIR/settings-content.html"
-  else
-    printf '<pre>Settings page template missing.</pre>\n'
+    done <"$CONV_DIR/$conv"
   fi
 }
 
@@ -633,7 +724,7 @@ handle_post_settings() {
 
   model="$(printf '%s' "$body" | parse_form_field "model" || get_default_model)"
   provider="$(printf '%s' "$body" | parse_form_field "provider" || get_default_provider)"
-  lang="$(printf '%s' "$body" | parse_form_field "lang" || read_config_or_default "$LANG_CURRENT_FILE" "it")"
+  lang="$(printf '%s' "$body" | parse_form_field "lang" || read_config_or_default "$LANG_CURRENT_FILE" "en")"
 
   model="$(sanitize_param "$model")"
   provider="$(sanitize_param "$provider")"
@@ -648,7 +739,7 @@ handle_post_settings() {
     provider="$(get_default_provider)"
   fi
   if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
-    lang="$(read_config_or_default "$LANG_CURRENT_FILE" "it")"
+    lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
 
   atomic_write "$DEFAULT_MODEL_FILE" "$model"
@@ -664,7 +755,6 @@ main() {
   ensure_config_defaults
 
   ensure_flock_available
-
   ensure_groqbash_available
 
   acquire_lock
@@ -679,19 +769,33 @@ main() {
   QUERY_STRING="${QUERY_STRING:-}"
   QUERY_STRING="$(printf '%s' "$QUERY_STRING" | tr -d '\000-\037')"
 
-# Determine language (default=en, user selection persists)
-lang_code="$(get_query_param "lang" 2>/dev/null || printf '')"
-
-if [[ -n "$lang_code" ]]; then
-  lang_code="$(sanitize_param "$lang_code")"
-  if validate_name "$lang_code"; then
-    atomic_write "$LANG_CURRENT_FILE" "$lang_code"
+  # Determine language (default=en, user selection persists)
+  local lang_code
+  lang_code="$(get_query_param "lang" 2>/dev/null || printf '')"
+  if [[ -n "$lang_code" ]]; then
+    lang_code="$(sanitize_param "$lang_code")"
+    if validate_name "$lang_code"; then
+      atomic_write "$LANG_CURRENT_FILE" "$lang_code"
+    else
+      lang_code="en"
+    fi
   else
-    lang_code="en"
+    lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
-else
-  lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
-fi
+
+  # Determine theme (default=light, user selection persists)
+  local theme_code
+  theme_code="$(get_query_param "theme" 2>/dev/null || printf '')"
+  if [[ -n "$theme_code" ]]; then
+    theme_code="$(sanitize_param "$theme_code")"
+    if [[ "$theme_code" == "light" || "$theme_code" == "dark" ]]; then
+      atomic_write "$THEME_CURRENT_FILE" "$theme_code"
+    else
+      theme_code="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
+    fi
+  else
+    theme_code="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
+  fi
 
   local page
   page="$(get_query_param "page" 2>/dev/null || printf 'main')"
@@ -700,27 +804,53 @@ fi
     page="main"
   fi
 
-  log_info "Request method=$method page=$page"
+  log_info "Request method=$method page=$page lang=$lang_code theme=$theme_code"
 
   case "$method" in
     GET)
       print_http_header
       case "$page" in
-        settings) render_page_settings ;;
-        *) render_page_main ;;
+        settings)
+          render_page_settings "$lang_code"
+          ;;
+        *)
+          render_page_main "$lang_code"
+          ;;
       esac
       ;;
     POST)
       case "$page" in
         settings)
           handle_post_settings
+          # reload persisted lang to reflect changes made by settings
+          lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
           print_http_header
-          render_page_settings
+          render_page_settings "$lang_code"
+          ;;
+        newconv)
+          # create a new conversation file with next index
+          local next convname
+          next=1
+          for f in "$CONV_DIR"/conv-*.txt; do
+            [ -e "$f" ] || continue
+            local bn
+            bn="$(basename -- "$f")"
+            bn="${bn#conv-}"
+            bn="${bn%.txt}"
+            if [[ "$bn" =~ ^[0-9]+$ ]]; then
+              if (( bn+0 >= next )); then next=$((bn+1)); fi
+            fi
+          done
+          convname="$(printf 'conv-%03d.txt' "$next")"
+          atomic_write "$CONV_DIR/$convname" ""
+          atomic_write "$CURRENT_CONV_FILE" "$convname"
+          print_http_header
+          render_page_main "$lang_code"
           ;;
         *)
           handle_post_main
           print_http_header
-          render_page_main
+          render_page_main "$lang_code"
           ;;
       esac
       ;;
