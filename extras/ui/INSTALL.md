@@ -1,6 +1,6 @@
 [![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md)
 
-# 🇮🇹 INSTALLAZIONE DELLA GUI DI GROQBASH
+## 🇮🇹 INSTALLAZIONE DELLA GUI DI GROQBASH
 
 ## 🧩 Panoramica
 Questo documento descrive come installare e configurare la GUI HTML di GroqBash su diversi web server:
@@ -13,7 +13,7 @@ Include inoltre note di sicurezza, test e suggerimenti per la produzione.
 
 ---
 
-# 🟦 A) Installazione con BusyBox (consigliata)
+## 🟦 A) Installazione con BusyBox (consigliata)
 
 BusyBox include un webserver CGI integrato: `httpd`. È la soluzione più semplice, portabile e leggera.
 
@@ -53,7 +53,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 
 ---
 
-# 🟩 B) Configurazione Apache
+## 🟩 B) Configurazione Apache
 
 ### 1. Abilitare CGI
 ```sh
@@ -87,7 +87,7 @@ sudo systemctl reload apache2
 
 ---
 
-# 🟧 C) Configurazione Nginx (con fcgiwrap)
+## 🟧 C) Configurazione Nginx (con fcgiwrap)
 
 Nginx non supporta CGI nativamente: serve `fcgiwrap`.
 
@@ -125,7 +125,7 @@ sudo systemctl reload nginx
 
 ---
 
-# 🟨 D) Configurazione Lighttpd
+## 🟨 D) Configurazione Lighttpd
 
 ### 1. Abilitare mod_cgi
 ```sh
@@ -149,7 +149,7 @@ alias.url += (
 
 ---
 
-# 🟪 E) Note di sicurezza
+## 🟪 E) Note di sicurezza
 
 - Nessun uso di `/tmp` di sistema (la GUI usa `tmp/` locale con permessi restrittivi)
 - Tutte le scritture sono atomiche (atomic_write)
@@ -162,7 +162,7 @@ alias.url += (
 
 ---
 
-# 🟫 F) Test dell’installazione
+## 🟫 F) Test dell’installazione
 
 ### 1. Verifica CGI
 ```sh
@@ -182,9 +182,9 @@ ls /var/www/groqbash-ui/conversations/
 
 ---
 
-# 🇬🇧 INSTALLATION GUIDE FOR GROQBASH GUI
+## 🇬🇧 INSTALLATION GUIDE FOR GROQBASH GUI
 
-## 🧩 Overview
+### 🧩 Overview
 This document explains how to install and configure the GroqBash HTML GUI on:
 - BusyBox httpd
 - Apache
@@ -195,7 +195,7 @@ It also includes security notes and testing instructions.
 
 ---
 
-# 🟦 A) BusyBox Installation (recommended)
+## 🟦 A) BusyBox Installation (recommended)
 
 BusyBox httpd is the simplest and most portable CGI server.
 
@@ -235,7 +235,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 
 ---
 
-# 🟩 B) Apache Configuration
+## 🟩 B) Apache Configuration
 
 ### 1. Enable CGI
 ```sh
@@ -269,7 +269,7 @@ sudo systemctl reload apache2
 
 ---
 
-# 🟧 C) Nginx Configuration (requires fcgiwrap)
+## 🟧 C) Nginx Configuration (requires fcgiwrap)
 
 ### 1. Install fcgiwrap
 ```sh
@@ -305,7 +305,7 @@ sudo systemctl reload nginx
 
 ---
 
-# 🟨 D) Lighttpd Configuration
+## 🟨 D) Lighttpd Configuration
 
 ### 1. Enable CGI
 ```sh
@@ -329,7 +329,7 @@ alias.url += (
 
 ---
 
-# 🟪 E) Security Notes
+## 🟪 E) Security Notes
 
 - No system `/tmp` usage (local `tmp/` directory with strict permissions)
 - All writes are atomic (atomic_write)
@@ -342,7 +342,7 @@ alias.url += (
 
 ---
 
-# 🟫 F) Testing
+## 🟫 F) Testing
 
 ### 1. CGI test
 ```sh
