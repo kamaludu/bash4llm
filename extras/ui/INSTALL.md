@@ -58,7 +58,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 Questa sezione descrive come installare e avviare la GUI di GroqBash ***su Android utilizzando Termux e BusyBox***.  
 L’installazione è semplice e non richiede permessi di root.
 
-### 🟦 1. Requisiti
+### 1. Requisiti
 
 - Termux installato da F-Droid
 - BusyBox disponibile in Termux
@@ -70,7 +70,7 @@ pkg install busybox
 ```
 
 
-### 🟩 2. Posizionamento corretto della GUI
+### 2. Posizionamento corretto della GUI
 
 La GUI deve essere installata **dentro l’albero degli extras di GroqBash**, cioè:
 
@@ -102,7 +102,7 @@ $PREFIX/groqbash.d/extras/ui/
         gui-server.sh   ← QUI
 ```
 
-### 🟧 3. Avvio del web server BusyBox
+### 3. Avvio del web server BusyBox
 
 Avvia BusyBox httpd puntando alla directory della GUI:
 
@@ -115,7 +115,7 @@ busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 - `-h` = document root
 
 
-### 🟨 4. Apertura della GUI nel browser Android
+### 4. Apertura della GUI nel browser Android
 
 Apri Chrome/Firefox e visita:
 
@@ -130,7 +130,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 ```
 
 
-### 🟪 5. Note importanti per Termux
+### 5. Note importanti per Termux
 
 - Non usare `sudo` (non esiste in Termux)
 - Non usare percorsi come `/var/www`
@@ -326,7 +326,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 This section explains how to install and run the GroqBash GUI ***on Android using Termux and BusyBox***.  
 No root access is required.
 
-### 🟦 1. Requirements
+### 1. Requirements
 
 - Termux installed from F-Droid
 - BusyBox available in Termux
@@ -338,7 +338,7 @@ pkg install busybox
 ```
 
 
-### 🟩 2. Correct GUI placement
+### 2. Correct GUI placement
 
 The GUI must be installed **inside GroqBash’s extras tree**, here:
 
@@ -370,7 +370,7 @@ $PREFIX/groqbash.d/extras/ui/
         gui-server.sh   ← HERE
 ```
 
-### 🟧 3. Start BusyBox webserver
+### 3. Start BusyBox webserver
 
 Run BusyBox httpd pointing to the GUI directory:
 
@@ -379,7 +379,7 @@ busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 ```
 
 
-### 🟨 4. Open the GUI in Android browser
+### 4. Open the GUI in Android browser
 
 Open Chrome/Firefox and visit:
 
@@ -394,7 +394,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 ```
 
 
-### 🟪 5. Important notes for Termux
+### 5. Important notes for Termux
 
 - Do not use `sudo`
 - Do not use `/var/www`
