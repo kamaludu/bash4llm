@@ -62,7 +62,7 @@ L’installazione è semplice e non richiede permessi di root.
 
 - Termux installato da F-Droid
 - BusyBox disponibile in Termux
-- GroqBash installato correttamente (che crea la directory: `$PREFIX/etc/groqbash.d`)
+- GroqBash installato correttamente (che crea la directory: `$PREFIX/groqbash.d`)
 
 Installa BusyBox se necessario:
 ```sh
@@ -75,19 +75,19 @@ pkg install busybox
 La GUI deve essere installata **dentro l’albero degli extras di GroqBash**, cioè:
 
 ```
-$PREFIX/etc/groqbash.d/extras/ui/
+$PREFIX/groqbash.d/extras/ui/
 ```
 
 Crea la struttura:
 ```sh
-mkdir -p $PREFIX/etc/groqbash.d/extras/ui/cgi-bin
+mkdir -p $PREFIX/groqbash.d/extras/ui/cgi-bin
 ```
 
 Copia i file della GUI:
 ```sh
-cp -r extras/ui/* $PREFIX/etc/groqbash.d/extras/ui/
-cp extras/ui/gui-server.sh $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/
-chmod +x $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/gui-server.sh
+cp -r extras/ui/* $PREFIX/groqbash.d/extras/ui/
+cp extras/ui/gui-server.sh $PREFIX/groqbash.d/extras/ui/cgi-bin/
+chmod +x $PREFIX/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 ```
 
 
@@ -97,7 +97,7 @@ server BusyBox
 Avvia BusyBox httpd puntando alla directory della GUI:
 
 ```sh
-busybox httpd -f -p 8080 -h $PREFIX/etc/groqbash.d/extras/ui
+busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 ```
 
 - `-f` = foreground (utile per debug)
@@ -124,7 +124,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 
 - Non usare `sudo` (non esiste in Termux)
 - Non usare percorsi come `/var/www`
-- Tutto deve vivere sotto `$PREFIX/etc/groqbash.d/extras/ui`
+- Tutto deve vivere sotto `$PREFIX/groqbash.d/extras/ui`
 - Le directory: config/, logs/, tmp/, conversations/, files/ vengono create automaticamente
 
 ---
@@ -320,7 +320,7 @@ No root access is required.
 
 - Termux installed from F-Droid
 - BusyBox available in Termux
-- GroqBash installed (which creates: `$PREFIX/etc/groqbash.d`)
+- GroqBash installed (which creates: `$PREFIX/groqbash.d`)
 
 Install BusyBox if needed:
 ```sh
@@ -333,19 +333,19 @@ pkg install busybox
 The GUI must be installed **inside GroqBash’s extras tree**, here:
 
 ```
-$PREFIX/etc/groqbash.d/extras/ui/
+$PREFIX/groqbash.d/extras/ui/
 ```
 
 Create the structure:
 ```sh
-mkdir -p $PREFIX/etc/groqbash.d/extras/ui/cgi-bin
+mkdir -p $PREFIX/groqbash.d/extras/ui/cgi-bin
 ```
 
 Copy GUI files:
 ```sh
-cp -r extras/ui/* $PREFIX/etc/groqbash.d/extras/ui/
-cp extras/ui/gui-server.sh $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/
-chmod +x $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/gui-server.sh
+cp -r extras/ui/* $PREFIX/groqbash.d/extras/ui/
+cp extras/ui/gui-server.sh $PREFIX/groqbash.d/extras/ui/cgi-bin/
+chmod +x $PREFIX/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 ```
 
 
@@ -354,7 +354,7 @@ chmod +x $PREFIX/etc/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 Run BusyBox httpd pointing to the GUI directory:
 
 ```sh
-busybox httpd -f -p 8080 -h $PREFIX/etc/groqbash.d/extras/ui
+busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 ```
 
 
@@ -377,7 +377,7 @@ http://localhost:8080/cgi-bin/gui-server.sh
 
 - Do not use `sudo`
 - Do not use `/var/www`
-- Everything must live under `$PREFIX/etc/groqbash.d/extras/ui`
+- Everything must live under `$PREFIX/groqbash.d/extras/ui`
 - Directories like config/, logs/, tmp/, conversations/, files/ are auto‑created by the GUI
 
 ---
