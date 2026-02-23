@@ -102,8 +102,7 @@ $PREFIX/groqbash.d/extras/ui/
         gui-server.sh   ← QUI
 ```
 
-### 🟧 3. Avvio del web
-server BusyBox
+### 🟧 3. Avvio del web server BusyBox
 
 Avvia BusyBox httpd puntando alla directory della GUI:
 
