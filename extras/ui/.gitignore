@@ -1,0 +1,26 @@
+# === GroqBash GUI: file generati automaticamente ===
+
+# Configurazioni locali
+config/
+!config/README.md
+
+# Conversazioni generate
+conversations/
+
+# File caricati e generati
+files/input/
+files/output/
+
+# Log runtime
+logs/
+
+# File temporanei, lock, atomic_write
+tmp/
+
+# Cache o asset generati
+assets/
+
+# Backup editor
+*~
+*.swp
+*.bak
