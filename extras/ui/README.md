@@ -72,6 +72,8 @@ chmod +x ui/gui-server.sh
 4. Apri nel browser:
 http://localhost/cgi-bin/gui-server.sh
 
+Istruzioni dettagliate in **[INSTALL](INSTALL.md)**.
+
 ---
 
 ## 🌐 Localizzazione
@@ -207,6 +209,8 @@ chmod +x ui/gui-server.sh
 3. Configure your web server to run gui-server.sh as a CGI script.
 4. Open in your browser:
 http://localhost/cgi-bin/gui-server.sh
+
+Full instruction: **[INSTALL](INSTALL.md)**.
 
 ---
 
