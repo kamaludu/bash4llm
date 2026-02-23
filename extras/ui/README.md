@@ -170,11 +170,27 @@ ui/
     settings-content.html
 
   conversations/        ← auto-created
-  files/input/          ← auto-created
-  files/output/         ← auto-created
+      conv-001.txt
+      conv-002.txt
+
+  files/
+      input/            ← auto-created
+      output/           ← auto-created
+
   config/               ← auto-created
+      current-conversation
+      lang-current
+      default-model
+      default-provider
+      gui-theme
+
   logs/                 ← auto-created
+      server.log
+      errors.log
+
   tmp/                  ← auto-created
+      (file temporanei, lock, atomic_write)
+
   assets/               ← auto-created
 ```
 
