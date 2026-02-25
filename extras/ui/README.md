@@ -109,10 +109,10 @@ chmod +x ui/gui-server.sh
 
 3. Configura il web server per eseguire gui-server.sh come CGI.  
 4. Apri nel browser:
-
+```sh
 http://localhost/cgi-bin/gui-server.sh
-
-Istruzioni dettagliate in: INSTALL.md
+```
+Istruzioni dettagliate in: [INSTALL.md](INSTALL.md)
 
 ---
 
@@ -257,10 +257,10 @@ chmod +x ui/gui-server.sh
 
 3. Configure your web server to run gui-server.sh as a CGI script.  
 4. Open in your browser:
-
+```sh
 http://localhost/cgi-bin/gui-server.sh
-
-Full instructions: INSTALL.md
+``|
+Full instructions: [INSTALL.md](INSTALL.md)
 
 ---
 
