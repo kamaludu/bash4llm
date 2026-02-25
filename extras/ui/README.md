@@ -259,7 +259,7 @@ chmod +x ui/gui-server.sh
 4. Open in your browser:
 ```sh
 http://localhost/cgi-bin/gui-server.sh
-``|
+```
 Full instructions: [INSTALL.md](INSTALL.md)
 
 ---
