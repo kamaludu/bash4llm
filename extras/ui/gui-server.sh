@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Mini server Bash per GUI HTML di GroqBash (finale, portabile e sicura)
+# Mini server Bash per GUI HTML di GroqBash (server, logica applicativa)
 # File: gui-server.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
@@ -13,168 +13,55 @@
 set -euo pipefail
 umask 077
 
-#######################################
-# Percorsi (relativi allo script)
-#######################################
+# Resolve script dir and source bootstrap
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-UI_ROOT="$SCRIPT_DIR"
-TMP_DIR="$UI_ROOT/tmp"
-LOG_DIR="$UI_ROOT/logs"
-CFG_DIR="$UI_ROOT/config"
-CONV_DIR="$UI_ROOT/conversations"
-FILES_DIR="$UI_ROOT/files"
-TEMPLATES_DIR="$UI_ROOT/templates"
+BOOTSTRAP="$SCRIPT_DIR/gui-bootstrap.sh"
+if [[ ! -f "$BOOTSTRAP" ]]; then
+  printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nBootstrap missing: %s\n' "$BOOTSTRAP"
+  exit 1
+fi
+# Allow environment overrides before sourcing (optional)
+: "${GROQBASH_CMD:=groqbash}"
+source "$BOOTSTRAP"
 
-GROQBASH_CMD="groqbash"   # Deve essere nel PATH o sostituito con percorso assoluto
-
-LOCK_FILE="$TMP_DIR/gui.lock"
-SERVER_LOG="$LOG_DIR/server.log"
-ERROR_LOG="$LOG_DIR/errors.log"
-
-CURRENT_CONV_FILE="$CFG_DIR/current-conversation"
-LANG_CURRENT_FILE="$CFG_DIR/lang-current"
-THEME_CURRENT_FILE="$CFG_DIR/gui-theme"
-DEFAULT_MODEL_FILE="$CFG_DIR/default-model"
-DEFAULT_PROVIDER_FILE="$CFG_DIR/default-provider"
-
-# Limiti e regole
-MAX_PROMPT_CHARS=5000
-MAX_MODEL_OUTPUT_CHARS=20000
-VALID_NAME_RE='^[A-Za-z0-9_-]+$'
-MAX_NAME_LEN=255
-
-# Stato lock
-LOCK_HELD=0
+# Now bootstrap exported variables and functions are available:
+# UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR
+# LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE
+# DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE GROQBASH_CMD
+# Functions: log_info, log_error, ensure_dirs, ensure_config_defaults, atomic_write, atomic_append_conv,
+# ensure_flock_available, acquire_lock, release_lock, print_http_header, print_http_error,
+# html_escape, validate_name, sanitize_param, get_query_param, read_post_body, parse_form_field,
+# get_current_conversation_file, get_default_model, get_default_provider, sanitize_model_output, mktemp_portable
 
 #######################################
-# --- Utilities: logging and rotation (portabile) ---
+# Application-specific helpers (remain here)
 #######################################
-log_rotate_if_needed() {
-  local file="$1"
-  local max_bytes="${2:-1048576}"
-  if [[ -f "$file" ]]; then
-    local size
-    size="$(wc -c <"$file" 2>/dev/null || echo 0)"
-    if (( size > max_bytes )); then
-      mv -f "$file" "${file}.old" 2>/dev/null || true
-      : >"$file"
-    fi
-  fi
-}
 
-log_info() {
-  local msg="$1"
-  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
-  printf '[%s] INFO  %s\n' "$(date -Is)" "$msg" >>"$SERVER_LOG"
-  log_rotate_if_needed "$SERVER_LOG"
-}
-
-log_error() {
-  local msg="$1"
-  mkdir -p "$(dirname "$ERROR_LOG")" 2>/dev/null || true
-  printf '[%s] ERROR %s\n' "$(date -Is)" "$msg" >>"$ERROR_LOG"
-  log_rotate_if_needed "$ERROR_LOG"
-}
-
-#######################################
-# --- Ensure TMP_DIR exists and is secure/writable (atomic creation) ---
-#######################################
-ensure_tmpdir() {
-  if [[ -e "$TMP_DIR" && ! -d "$TMP_DIR" ]]; then
-    log_error "TMP_DIR exists and is not a directory: $TMP_DIR"
-    print_http_error "500 Internal Server Error" "Server configuration error: tmpdir invalid"
-    exit 1
-  fi
-  if [[ ! -d "$TMP_DIR" ]]; then
-    mkdir -p "$TMP_DIR" || {
-      log_error "Failed to create TMP_DIR $TMP_DIR"
-      print_http_error "500 Internal Server Error" "Server configuration error: cannot create tmpdir"
-      exit 1
-    }
-    chmod 700 "$TMP_DIR" || true
-  fi
-  if [[ ! -w "$TMP_DIR" ]]; then
-    log_error "TMP_DIR $TMP_DIR not writable"
-    print_http_error "500 Internal Server Error" "Server configuration error: tmpdir not writable"
-    exit 1
-  fi
-}
-
-#######################################
-# --- Initialization of directories and config defaults ---
-#######################################
-ensure_dirs() {
-  mkdir -p "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR/input" "$FILES_DIR/output" "$TEMPLATES_DIR"
-  chmod 700 "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR" "$FILES_DIR/input" "$FILES_DIR/output" || true
-  ensure_tmpdir
-}
-
-# Centralized fallback reads for config files
-read_config_or_default() {
-  local file="$1" default="$2"
-  if [[ -r "$file" ]]; then
-    local v
-    v="$(sed -n '1p' "$file" 2>/dev/null || echo "")"
-    if [[ -n "$v" ]]; then
-      printf '%s' "$v"
-      return 0
-    fi
-  fi
-  printf '%s' "$default"
-  return 0
-}
-
-# -----------------------------------------------------------------------------
-# Robust lookup using awk (KEY.lang -> KEY). No fallback to en.
-# -----------------------------------------------------------------------------
-lookup() {
-  local key="$1" lang="$2" conf="$UI_ROOT/gui-lang.conf" val=""
-  [ -r "$conf" ] || return 1
-  val="$(awk -F= -v k="${key}.${lang}" '$1==k { $1=""; sub(/^=/,""); print substr($0,2); exit }' "$conf" 2>/dev/null || true)"
-  if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
-  val="$(awk -F= -v k="${key}" '$1==k { $1=""; sub(/^=/,""); print substr($0,2); exit }' "$conf" 2>/dev/null || true)"
-  if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
-  return 1
-}
-
-# HTML-escaped text for templates
-get_text() {
-  local key="$1" lang="$2" raw
-  raw="$(lookup "$key" "$lang")" || raw=""
-  printf '%s' "$raw" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-# -----------------------------------------------------------------------------
-# Minimal template renderer: replaces a limited set of placeholders.
-# Usage: render_template FILE LANG THEME MODEL PROVIDER CONV_FILE
-# -----------------------------------------------------------------------------
+# Minimal template renderer (keeps original behavior)
 render_template() {
   local tpl="$1" lang="$2" theme="$3" model_cur="$4" prov_cur="$5" conv_file="$6"
   [ -r "$tpl" ] || return 1
 
   while IFS= read -r line || [[ -n "$line" ]]; do
-    # simple replacements
     line="${line//\{\{THEME\}\}/$theme}"
     line="${line//\{\{LANG_CODE\}\}/$lang}"
     line="${line//\{\{MODEL_CURRENT\}\}/$(html_escape "$model_cur")}"
     line="${line//\{\{PROVIDER_CURRENT\}\}/$(html_escape "$prov_cur")}"
 
-    # TXT_* placeholders
     while [[ "$line" =~ \{\{TXT_[A-Za-z0-9_]+\}\} ]]; do
       local token="${BASH_REMATCH[0]}"
       local key="${token#\{\{}"
       key="${key%\}\}}"
       local val
-      val="$(get_text "$key" "$lang")"
+      val="$(lookup "$key" "$lang" 2>/dev/null || printf '')"
       line="${line//$token/$val}"
     done
 
-    # LANG_OPTIONS
     if [[ "$line" == *"{{LANG_OPTIONS}}"* ]]; then
       local opts=""
       for code in en it es fr de; do
         local name
-        name="$(lookup "LANG_NAME" "$code" || printf '%s' "$code")"
+        name="$(lookup "LANG_NAME" "$code" 2>/dev/null || printf '%s' "$code")"
         if [[ "$code" == "$lang" ]]; then
           opts+="<option value=\"$code\" selected>$(html_escape "$name")</option>"
         else
@@ -184,11 +71,9 @@ render_template() {
       line="${line//\{\{LANG_OPTIONS\}\}/$opts}"
     fi
 
-    # THEME_IS_light / THEME_IS_dark
     line="${line//\{\{THEME_IS_light\}\}/$( [ "$theme" = "light" ] && printf 'selected' || printf '' )}"
     line="${line//\{\{THEME_IS_dark\}\}/$( [ "$theme" = "dark" ] && printf 'selected' || printf '' )}"
 
-    # FILES_LIST
     if [[ "$line" == *"{{FILES_LIST}}"* ]]; then
       local flist=""
       if [[ -d "$FILES_DIR/input" ]]; then
@@ -201,7 +86,6 @@ render_template() {
       line="${line//\{\{FILES_LIST\}\}/$(printf '%s' "$flist")}"
     fi
 
-    # CONV_LIST
     if [[ "$line" == *"{{CONV_LIST}}"* ]]; then
       local clist=""
       if [[ -d "$CONV_DIR" ]]; then
@@ -214,7 +98,6 @@ render_template() {
       line="${line//\{\{CONV_LIST\}\}/$(printf '%s' "$clist")}"
     fi
 
-    # CURRENT_CONV and CONVERSATION rendering
     if [[ "$line" == *"{{CURRENT_CONV}}"* || "$line" == *"{{CONVERSATION}}"* ]]; then
       local conv_html=""
       if [[ -f "$conv_file" ]]; then
@@ -236,412 +119,23 @@ render_template() {
   done <"$tpl"
 }
 
-ensure_config_defaults() {
-  local conv_default="conv-001.txt"
-  local lang_default="en"
-  local model_default="default"
-  local provider_default="default"
-
-  if [[ ! -f "$CURRENT_CONV_FILE" ]]; then
-    atomic_write "$CURRENT_CONV_FILE" "$conv_default"
-  fi
-  if [[ ! -f "$LANG_CURRENT_FILE" ]]; then
-    atomic_write "$LANG_CURRENT_FILE" "$lang_default"
-  fi
-  if [[ ! -f "$THEME_CURRENT_FILE" ]]; then
-    atomic_write "$THEME_CURRENT_FILE" "light"
-  fi
-  if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then
-    atomic_write "$DEFAULT_MODEL_FILE" "$model_default"
-  fi
-  if [[ ! -f "$DEFAULT_PROVIDER_FILE" ]]; then
-    atomic_write "$DEFAULT_PROVIDER_FILE" "$provider_default"
-  fi
-
-  local conv
-  conv="$(read_config_or_default "$CURRENT_CONV_FILE" "$conv_default")"
-  conv="$(sanitize_param "$conv")"
-  if ! validate_name "$conv"; then
-    conv="$conv_default"
-    atomic_write "$CURRENT_CONV_FILE" "$conv"
-  fi
-  if [[ ! -f "$CONV_DIR/$conv" ]]; then
-    atomic_write "$CONV_DIR/$conv" ""
-  fi
-}
-
-#######################################
-# --- Portable mktemp wrapper (returns tmp path or fails) ---
-#######################################
-mktemp_portable() {
-  local dir="$1"
-  local template="$2"
-  if [[ ! -d "$dir" || ! -w "$dir" ]]; then
-    return 1
-  fi
-  if mktemp --help >/dev/null 2>&1; then
-    mktemp --tmpdir="$dir" "$template"
-  else
-    mktemp "$dir/$template"
-  fi
-}
-
-#######################################
-# --- same_filesystem: robust check ---
-# returns 0 if same FS, 1 otherwise
-#######################################
-same_filesystem() {
-  local a="$1" b="$2"
-  local da db
-  da="$a"
-  while [[ ! -e "$da" && "$da" != "/" ]]; do da="$(dirname -- "$da")"; done
-  db="$b"
-  while [[ ! -e "$db" && "$db" != "/" ]]; do db="$(dirname -- "$db")"; done
-  if [[ ! -e "$da" || ! -e "$db" ]]; then
-    return 1
-  fi
-  if ! command -v df >/dev/null 2>&1; then
-    return 1
-  fi
-  local fa fb
-  fa="$(df -P "$da" 2>/dev/null | awk 'END{print $1}')"
-  fb="$(df -P "$db" 2>/dev/null | awk 'END{print $1}')"
-  [[ -n "$fa" && -n "$fb" && "$fa" == "$fb" ]]
-}
-
-#######################################
-# --- Atomic write (tmp on same FS when possible) ---
-#######################################
-atomic_write() {
-  local dest="$1"
-  local content="${2:-}"
-  local dest_dir tmp
-
-  dest_dir="$(dirname -- "$dest")"
-
-  ensure_tmpdir
-
-  if same_filesystem "$TMP_DIR" "$dest_dir" && mktemp_portable "$TMP_DIR" "atomic.XXXXXX" >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")" || {
-      log_error "mktemp failed in atomic_write (tmpdir)"
-      return 1
-    }
-  else
-    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")" || {
-      log_error "mktemp failed in atomic_write (destdir)"
-      return 1
-    }
-  fi
-
-  umask 077
-  printf '%s' "$content" >"$tmp" || {
-    log_error "Failed to write to temp file $tmp"
-    rm -f "$tmp" 2>/dev/null || true
-    return 1
-  }
-
-  if command -v sync >/dev/null 2>&1; then
-    sync || true
-  fi
-
-  mv -f "$tmp" "$dest" || {
-    log_error "mv failed in atomic_write from $tmp to $dest"
-    rm -f "$tmp" 2>/dev/null || true
-    return 1
-  }
-  chmod 600 "$dest" || true
-  return 0
-}
-
-#######################################
-# --- Atomic append to conversation (requires lock) ---
-#######################################
-atomic_append_conv() {
-  local conv_file="$1"
-  local append_text="$2"
-
-  if [[ "$LOCK_HELD" -ne 1 ]]; then
-    log_error "atomic_append_conv called without lock held"
-    return 1
-  fi
-
-  local tmp dest_dir
-  dest_dir="$(dirname -- "$conv_file")"
-
-  if same_filesystem "$TMP_DIR" "$dest_dir" && mktemp_portable "$TMP_DIR" "conv.XXXXXX" >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")" || {
-      log_error "mktemp failed in atomic_append_conv (tmpdir)"
-      return 1
-    }
-  else
-    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")" || {
-      log_error "mktemp failed in atomic_append_conv (destdir)"
-      return 1
-    }
-  fi
-
-  if [[ -f "$conv_file" ]]; then
-    cat "$conv_file" >"$tmp" || {
-      log_error "Failed to copy existing conversation to tmp in atomic_append_conv"
-      rm -f "$tmp" 2>/dev/null || true
-      return 1
-    }
-  fi
-
-  printf '%s\n' "$append_text" >>"$tmp" || {
-    log_error "Failed to append text to tmp in atomic_append_conv"
-    rm -f "$tmp" 2>/dev/null || true
-    return 1
-  }
-
-  mv -f "$tmp" "$conv_file" || {
-    log_error "mv failed in atomic_append_conv from $tmp to $conv_file"
-    rm -f "$tmp" 2>/dev/null || true
-    return 1
-  }
-  chmod 600 "$conv_file" || true
-  return 0
-}
-
-#######################################
-# --- flock availability check (deterministic) ---
-#######################################
-ensure_flock_available() {
-  if ! command -v flock >/dev/null 2>&1; then
-    log_error "flock not available on this system; cannot guarantee safe concurrency"
-    print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"
-    exit 1
-  fi
-}
-
-#######################################
-# --- Lock management (fd 9) ---
-#######################################
-acquire_lock() {
-  exec 9>"$LOCK_FILE"
-  flock -x 9
-  LOCK_HELD=1
-  trap 'release_lock' EXIT INT TERM
-}
-
-release_lock() {
-  if [[ "$LOCK_HELD" -eq 1 ]]; then
-    exec 9>&- || true
-    LOCK_HELD=0
-    trap - EXIT INT TERM
-  fi
-}
-
-#######################################
-# --- HTTP helpers ---
-#######################################
-print_http_header() {
-  printf 'Content-Type: text/html; charset=utf-8\r\n'
-  printf 'Cache-Control: no-store\r\n'
-  printf 'X-Content-Type-Options: nosniff\r\n'
-  printf '\r\n'
-}
-
-print_http_error() {
-  local status="$1"
-  local msg="$2"
-  printf 'Status: %s\r\n' "$status"
-  printf 'Content-Type: text/html; charset=utf-8\r\n'
-  printf 'Cache-Control: no-store\r\n'
-  printf 'X-Content-Type-Options: nosniff\r\n'
-  printf '\r\n'
-  printf '<h1>%s</h1>\n' "$(html_escape "$msg")"
-}
-
-# Centralized HTML escape
-html_escape() {
-  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-html_escape_stream() {
-  sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-#######################################
-# --- Validation and sanitization ---
-#######################################
-validate_name() {
-  local name="$1"
-  if [[ -z "$name" ]]; then
-    return 1
-  fi
-  if [[ "$name" == *"/"* || "$name" == *".."* || "$name" == *$'\x00'* ]]; then
-    return 1
-  fi
-  # POSIX-safe check for control characters using awk (portable)
-  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
-    return 1
-  fi
-  if (( ${#name} > MAX_NAME_LEN )); then
-    return 1
-  fi
-  if [[ "$name" =~ $VALID_NAME_RE ]]; then
-    return 0
-  fi
+# lookup and get_text (use gui-lang.conf in UI_ROOT)
+lookup() {
+  local key="$1" lang="$2" conf="$UI_ROOT/gui-lang.conf" val=""
+  [ -r "$conf" ] || return 1
+  val="$(awk -F= -v k="${key}.${lang}" '$1==k { $1=""; sub(/^=/,""); print substr($0,2); exit }' "$conf" 2>/dev/null || true)"
+  if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
+  val="$(awk -F= -v k="${key}" '$1==k { $1=""; sub(/^=/,""); print substr($0,2); exit }' "$conf" 2>/dev/null || true)"
+  if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
   return 1
 }
 
-# Normalize tabs to single space and collapse multiple spaces; remove control chars
-sanitize_param() {
-  local v="$1"
-  # Remove control chars (except newline), convert tabs to space, collapse multiple spaces
-  v="$(printf '%s' "$v" | tr -d '\000-\011\013\014\016-\037' | tr '\t' ' ' | sed -E 's/  +/ /g')"
-  printf '%s' "$v"
+get_text() {
+  local key="$1" lang="$2" raw
+  raw="$(lookup "$key" "$lang")" || raw=""
+  printf '%s' "$raw" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
-url_decode() {
-  local data="${1//+/ }"
-  printf '%b' "${data//%/\\x}"
-}
-
-get_query_param() {
-  local name="$1"
-  local qs="${QUERY_STRING:-}"
-  local IFS='&' pair key value
-  for pair in $qs; do
-    key="${pair%%=*}"
-    value="${pair#*=}"
-    if [[ "$key" == "$name" ]]; then
-      url_decode "$value"
-      return 0
-    fi
-  done
-  return 1
-}
-
-read_post_body() {
-  local len="${CONTENT_LENGTH:-0}"
-  if ! [[ "$len" =~ ^[0-9]+$ ]]; then
-    len=0
-  fi
-  if (( len > 0 )); then
-    if command -v head >/dev/null 2>&1; then
-      head -c "$len"
-    else
-      dd bs=1 count="$len" 2>/dev/null || true
-    fi
-  fi
-}
-
-parse_form_field() {
-  local name="$1"
-  local body
-  body="$(cat)"
-  local IFS='&' pair key value
-  for pair in $body; do
-    key="${pair%%=*}"
-    value="${pair#*=}"
-    if [[ "$key" == "$name" ]]; then
-      url_decode "$value"
-      return 0
-    fi
-  done
-  return 1
-}
-
-#######################################
-# --- Config helpers with robust fallback ---
-#######################################
-get_current_conversation_file() {
-  local conv
-  conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
-  conv="$(sanitize_param "$conv")"
-  if ! validate_name "$conv"; then
-    log_error "Invalid current conversation name: '$conv' - falling back to conv-001.txt"
-    conv="conv-001.txt"
-    atomic_write "$CURRENT_CONV_FILE" "$conv"
-  fi
-  printf '%s/%s\n' "$CONV_DIR" "$conv"
-}
-
-get_default_model() {
-  read_config_or_default "$DEFAULT_MODEL_FILE" "default"
-}
-
-get_default_provider() {
-  read_config_or_default "$DEFAULT_PROVIDER_FILE" "default"
-}
-
-#######################################
-# --- Template rendering (streaming safe) ---
-# render_template is used in render_page_* below
-#######################################
-render_page_main() {
-  local lang="$1"
-  local theme model_cur prov_cur conv_file
-  model_cur="$(get_default_model)"
-  prov_cur="$(get_default_provider)"
-  conv_file="$(get_current_conversation_file)"
-  theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
-
-  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-}
-
-render_page_settings() {
-  local lang="$1"
-  local theme model_cur prov_cur conv_file
-  model_cur="$(get_default_model)"
-  prov_cur="$(get_default_provider)"
-  conv_file="$(get_current_conversation_file)"
-  theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
-
-  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-}
-
-# Legacy content renderers (kept for compatibility; not used for header/content/footer)
-render_content_main() {
-  local lang="$1"
-  local conv_file
-  conv_file="$(get_current_conversation_file)"
-  if [[ -f "$conv_file" ]]; then
-    while IFS= read -r cl || [[ -n "$cl" ]]; do
-      if [[ "$cl" == USER:* ]]; then
-        printf '<pre class="user">%s</pre>\n' "$(html_escape "${cl#USER: }")"
-      elif [[ "$cl" == AI:* ]]; then
-        printf '<pre class="ai">%s</pre>\n' "$(html_escape "${cl#AI: }")"
-      else
-        printf '<pre>%s</pre>\n' "$(html_escape "$cl")"
-      fi
-    done <"$conv_file"
-  else
-    printf '<pre></pre>\n'
-  fi
-}
-
-render_content_settings() {
-  local lang="$1"
-  local model provider conv
-  model="$(get_default_model)"
-  provider="$(get_default_provider)"
-  if [[ -z "$lang" ]]; then
-    lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
-  fi
-  conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
-
-  if [[ -f "$CONV_DIR/$conv" ]]; then
-    while IFS= read -r cl || [[ -n "$cl" ]]; do
-      if [[ "$cl" == USER:* ]]; then
-        printf '<pre class="user">%s</pre>\n' "$(html_escape "${cl#USER: }")"
-      elif [[ "$cl" == AI:* ]]; then
-        printf '<pre class="ai">%s</pre>\n' "$(html_escape "${cl#AI: }")"
-      else
-        printf '<pre>%s</pre>\n' "$(html_escape "$cl")"
-      fi
-    done <"$CONV_DIR/$conv"
-  fi
-}
-
-#######################################
-# --- Model output sanitization ---
-#######################################
 sanitize_model_output() {
   local out="$1"
   out="$(printf '%s' "$out" | tr -d '\000-\011\013\014\016-\037')"
@@ -652,20 +146,7 @@ sanitize_model_output() {
   printf '%s' "$out"
 }
 
-#######################################
-# --- Ensure groqbash available (single check) ---
-#######################################
-ensure_groqbash_available() {
-  if ! command -v "$GROQBASH_CMD" >/dev/null 2>&1; then
-    log_error "groqbash not found in PATH: $GROQBASH_CMD"
-    print_http_error "500 Internal Server Error" "groqbash not found on server. Contact administrator."
-    exit 1
-  fi
-}
-
-#######################################
-# --- POST handlers ---
-#######################################
+# --- POST handlers (unchanged logic) ---
 handle_post_main() {
   local body prompt model provider conv_file output sanitized_output
   body="$(read_post_body)"
@@ -747,15 +228,44 @@ handle_post_settings() {
   atomic_write "$LANG_CURRENT_FILE" "$lang"
 }
 
-#######################################
-# --- Main router ---
-#######################################
+# --- Page renderers (use templates) ---
+render_page_main() {
+  local lang="$1"
+  local theme model_cur prov_cur conv_file
+  model_cur="$(get_default_model)"
+  prov_cur="$(get_default_provider)"
+  conv_file="$(get_current_conversation_file)"
+  theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
+
+  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+}
+
+render_page_settings() {
+  local lang="$1"
+  local theme model_cur prov_cur conv_file
+  model_cur="$(get_default_model)"
+  prov_cur="$(get_default_provider)"
+  conv_file="$(get_current_conversation_file)"
+  theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
+
+  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+}
+
+# --- Main router (keeps original flow) ---
 main() {
   ensure_dirs
   ensure_config_defaults
 
-  ensure_flock_available
-  ensure_groqbash_available
+  ensure_flock_available || { log_error "flock missing"; print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"; exit 1; }
+  if ! ensure_groqbash_available; then
+    log_error "groqbash not found: $GROQBASH_CMD"
+    print_http_error "500 Internal Server Error" "groqbash not found on server. Contact administrator."
+    exit 1
+  fi
 
   acquire_lock
 
@@ -769,7 +279,6 @@ main() {
   QUERY_STRING="${QUERY_STRING:-}"
   QUERY_STRING="$(printf '%s' "$QUERY_STRING" | tr -d '\000-\037')"
 
-  # Determine language (default=en, user selection persists)
   local lang_code
   lang_code="$(get_query_param "lang" 2>/dev/null || printf '')"
   if [[ -n "$lang_code" ]]; then
@@ -783,7 +292,6 @@ main() {
     lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
 
-  # Determine theme (default=light, user selection persists)
   local theme_code
   theme_code="$(get_query_param "theme" 2>/dev/null || printf '')"
   if [[ -n "$theme_code" ]]; then
@@ -810,30 +318,23 @@ main() {
     GET)
       print_http_header
       case "$page" in
-        settings)
-          render_page_settings "$lang_code"
-          ;;
-        *)
-          render_page_main "$lang_code"
-          ;;
+        settings) render_page_settings "$lang_code" ;;
+        *) render_page_main "$lang_code" ;;
       esac
       ;;
     POST)
       case "$page" in
         settings)
           handle_post_settings
-          # reload persisted lang to reflect changes made by settings
           lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
           print_http_header
           render_page_settings "$lang_code"
           ;;
         newconv)
-          # create a new conversation file with next index
-          local next convname
+          local next convname bn
           next=1
           for f in "$CONV_DIR"/conv-*.txt; do
             [ -e "$f" ] || continue
-            local bn
             bn="$(basename -- "$f")"
             bn="${bn#conv-}"
             bn="${bn%.txt}"
@@ -863,5 +364,5 @@ main() {
   release_lock
 }
 
-# Avvio
+# Start
 main "$@"
