@@ -47,9 +47,8 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 ```
 
 ### 5. Aprire nel browser
-```
 http://localhost:8080/cgi-bin/gui-server.sh
-```
+
 ---
 
 ## 🤖📱 Installazione su Termux (Android)
@@ -69,14 +68,11 @@ Installa BusyBox se necessario:
 pkg install busybox
 ```
 
-
 ### 2. Posizionamento corretto della GUI
 
 La GUI deve essere installata **dentro l’albero degli extras di GroqBash**, cioè:
 
-```
 $PREFIX/groqbash.d/extras/ui/
-```
 
 Crea la struttura:
 ```sh
@@ -89,6 +85,7 @@ cp -r extras/ui/* $PREFIX/groqbash.d/extras/ui/
 cp extras/ui/gui-server.sh $PREFIX/groqbash.d/extras/ui/cgi-bin/
 chmod +x $PREFIX/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 ```
+
 ***Struttura delle directory:***
 ```sh
 $PREFIX/groqbash.d/extras/ui/
@@ -114,21 +111,15 @@ busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 - `-p 8080` = porta
 - `-h` = document root
 
-
 ### 4. Apertura della GUI nel browser Android
 
 Apri Chrome/Firefox e visita:
 
-```
 http://127.0.0.1:8080/cgi-bin/gui-server.sh
-```
 
 Funziona anche:
 
-```
 http://localhost:8080/cgi-bin/gui-server.sh
-```
-
 
 ### 5. Note importanti per Termux
 
@@ -242,9 +233,9 @@ alias.url += (
 - Lock globale tramite `flock` per evitare race condition
 - Sanitizzazione completa dei parametri in ingresso
 - Permessi consigliati:
-  ```sh
-  chmod 700 config conversations files logs tmp
-  ```
+```sh
+chmod 700 config conversations files logs tmp
+```
 
 ---
 
@@ -315,9 +306,8 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 ```
 
 ### 5. Open in browser
-```
 http://localhost:8080/cgi-bin/gui-server.sh
-```
+
 ---
 
 ## 🤖📱 Installation on Termux (Android)
@@ -337,14 +327,11 @@ Install BusyBox if needed:
 pkg install busybox
 ```
 
-
 ### 2. Correct GUI placement
 
 The GUI must be installed **inside GroqBash’s extras tree**, here:
 
-```
 $PREFIX/groqbash.d/extras/ui/
-```
 
 Create the structure:
 ```sh
@@ -357,6 +344,7 @@ cp -r extras/ui/* $PREFIX/groqbash.d/extras/ui/
 cp extras/ui/gui-server.sh $PREFIX/groqbash.d/extras/ui/cgi-bin/
 chmod +x $PREFIX/groqbash.d/extras/ui/cgi-bin/gui-server.sh
 ```
+
 ***Directory structure:***
 ```sh
 $PREFIX/groqbash.d/extras/ui/
@@ -364,7 +352,7 @@ $PREFIX/groqbash.d/extras/ui/
     gui-style-dark.css
     gui-lang.conf
     templates/
-    assets/ (opzionale)
+    assets/ (optional)
 
     cgi-bin/
         gui-server.sh   ← HERE
@@ -378,21 +366,13 @@ Run BusyBox httpd pointing to the GUI directory:
 busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 ```
 
-
 ### 4. Open the GUI in Android browser
 
-Open Chrome/Firefox and visit:
-
-```
 http://127.0.0.1:8080/cgi-bin/gui-server.sh
-```
 
 Alternatively:
 
-```
 http://localhost:8080/cgi-bin/gui-server.sh
-```
-
 
 ### 5. Important notes for Termux
 
@@ -438,6 +418,8 @@ sudo systemctl reload apache2
 ---
 
 ## 🟧 C) Nginx Configuration (requires fcgiwrap)
+
+Nginx does not support CGI natively: `fcgiwrap` is required.
 
 ### 1. Install fcgiwrap
 ```sh
@@ -499,14 +481,14 @@ alias.url += (
 
 ## 🟪 E) Security Notes
 
-- No system `/tmp` usage (local `tmp/` directory with strict permissions)
+- No system `/tmp` usage (the GUI uses a local `tmp/` directory with strict permissions)
 - All writes are atomic (atomic_write)
 - Global lock via `flock` to prevent race conditions
 - Full input sanitization
 - Recommended permissions:
-  ```sh
-  chmod 700 config conversations files logs tmp
-  ```
+```sh
+chmod 700 config conversations files logs tmp
+```
 
 ---
 
