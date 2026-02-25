@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# gui-bootstrap.sh
+# =============================================================================
 # Portable environment bootstrap for GroqBash GUI CGI
+# File: gui-bootstrap.sh
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Source: https://github.com/kamaludu/groqbash
+# =============================================================================
 # Responsibilities:
 # - resolve UI_ROOT and runtime dirs
 # - create and secure runtime dirs (tmp, logs, config, conversations, files)
