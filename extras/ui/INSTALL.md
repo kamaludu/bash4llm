@@ -47,8 +47,9 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 ```
 
 ### 5. Aprire nel browser
+```sh
 http://localhost:8080/cgi-bin/gui-server.sh
-
+```
 ---
 
 ## 🤖📱 Installazione su Termux (Android)
@@ -114,12 +115,13 @@ busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 ### 4. Apertura della GUI nel browser Android
 
 Apri Chrome/Firefox e visita:
-
+```sh
 http://127.0.0.1:8080/cgi-bin/gui-server.sh
-
+```
 Funziona anche:
-
+```sh
 http://localhost:8080/cgi-bin/gui-server.sh
+```
 
 ### 5. Note importanti per Termux
 
@@ -306,8 +308,9 @@ sudo busybox httpd -f -p 8080 -h /var/www/groqbash-ui
 ```
 
 ### 5. Open in browser
+```sh
 http://localhost:8080/cgi-bin/gui-server.sh
-
+```
 ---
 
 ## 🤖📱 Installation on Termux (Android)
@@ -367,12 +370,13 @@ busybox httpd -f -p 8080 -h $PREFIX/groqbash.d/extras/ui
 ```
 
 ### 4. Open the GUI in Android browser
-
+```sh
 http://127.0.0.1:8080/cgi-bin/gui-server.sh
-
+```
 Alternatively:
-
+```sh
 http://localhost:8080/cgi-bin/gui-server.sh
+```
 
 ### 5. Important notes for Termux
 
