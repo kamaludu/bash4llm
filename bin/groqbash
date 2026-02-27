@@ -34,7 +34,10 @@ GROQBASHERRAPI=$GROQBASH_ERR_API
 # ---------------------------------------------------------------------------
 # Verify mandatory commands (no fallback)
 # ---------------------------------------------------------------------------
-for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs sync; do
+# Extended to include all external commands actually used in the script.
+# Builtins (bash internal) are intentionally NOT listed here.
+for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs sync \
+           readlink date mv cp chmod rm cat head sort tee stdbuf wc; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
     exit 1
@@ -133,6 +136,10 @@ log_error() {
 # ---------------------------------------------------------------------------
 # Helper: check colocation of lockfile and resource (device id)
 # - Only emits a debug warning if devices differ (useful for NFS detection)
+# - Note: flock can be unreliable on network filesystems (NFS). This function
+#   only emits a diagnostic when GROQBASH_DEBUG=1; it does not change behavior.
+#   Operational recommendation: place lockfiles and resources on the same
+#   local filesystem when possible to avoid flock/NFS issues.
 # ---------------------------------------------------------------------------
 _check_colocation() {
   local lockfile="$1" resource="$2"
@@ -271,6 +278,11 @@ atomic_write() {
     return "$GROQBASHERRTMP"
   fi
   # Best-effort flush using sync (coreutils). No python dependency.
+  # Note: sync is a global flush and is not equivalent to fsync(fd) on a single
+  # file descriptor. We use sync as a portable, dependency-free best-effort
+  # flush. Atomicity of the operation is still provided by the lock + mv
+  # (rename) which is atomic on the same filesystem. However, immediate
+  # persistence guarantees on crash depend on the filesystem and kernel.
   sync || true
   chmod 600 "$tmp" 2>/dev/null || true
   lock_exec "$lockfile" "$timeout" -- sh -c '
@@ -797,6 +809,9 @@ call_api_streaming_groq() {
   b64_atomic_read "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
 
   local CURL_CMD
+  # stdbuf is optional: if present we use it to reduce buffering for streaming.
+  # If stdbuf is not available the code falls back to plain curl; behavior is
+  # correct in both cases, stdbuf only improves streaming latency when present.
   if command -v stdbuf >/dev/null 2>&1; then
     CURL_CMD=(stdbuf -oL curl --http1.1 "${CURL_BASE_OPTS[@]}")
   else
