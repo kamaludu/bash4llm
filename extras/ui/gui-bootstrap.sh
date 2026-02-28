@@ -44,7 +44,7 @@ __GUI_BOOTSTRAP_LOADED=1
 # - ensure all external commands used by the GUI scripts are present
 # - builtins (bash) are intentionally NOT listed
 # ---------------------------------------------------------------------------
-for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock; do
+for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
     # Fail fast: GUI bootstrap cannot guarantee safe operation without these tools
