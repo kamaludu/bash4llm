@@ -39,14 +39,37 @@ __GUI_BOOTSTRAP_LOADED=1
 : "${VALID_NAME_RE:='^[A-Za-z0-9_-]+$'}"
 : "${MAX_NAME_LEN:=255}"
 
-# Resolve this script's directory reliably (works when sourced)
+# ---------------------------------------------------------------------------
+# Explicit dependency check (no implicit deps)
+# - ensure all external commands used by the GUI scripts are present
+# - builtins (bash) are intentionally NOT listed
+# ---------------------------------------------------------------------------
+for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
+    # Fail fast: GUI bootstrap cannot guarantee safe operation without these tools
+    return 1 2>/dev/null || exit 1
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Resolve this script's directory reliably (portable, avoids readlink -f portability issues)
+# - This routine resolves a symlink target when possible and falls back to
+#   deriving the directory from the source path. It avoids relying on
+#   readlink -f which is not portable on all platforms (macOS/BSD).
+# ---------------------------------------------------------------------------
 _bootstrap_source="${BASH_SOURCE[0]:-}"
-if command -v readlink >/dev/null 2>&1; then
-  _bootstrap_path="$(readlink -f "$_bootstrap_source" 2>/dev/null || printf '%s' "$_bootstrap_source")"
-else
-  _bootstrap_path="$_bootstrap_source"
+# If the source is a symlink, try to resolve the link target (portable)
+if command -v readlink >/dev/null 2>&1 && [ -L "$_bootstrap_source" ]; then
+  _rl="$(readlink "$_bootstrap_source" 2>/dev/null || true)"
+  if [ -n "$_rl" ]; then
+    case "$_rl" in
+      /*) _bootstrap_source="$_rl" ;;
+      *) _bootstrap_source="$(dirname "$_bootstrap_source")/$_rl" ;;
+    esac
+  fi
 fi
-BOOTSTRAP_DIR="$(cd "$(dirname -- "$_bootstrap_path")" && pwd -P)"
+BOOTSTRAP_DIR="$(cd "$(dirname -- "$_bootstrap_source")" >/dev/null 2>&1 && pwd -P || printf '%s' "$(dirname "$_bootstrap_source")")"
 
 # If UI_ROOT not provided, assume parent of bootstrap dir (cgi-bin -> ui)
 if [[ -z "$UI_ROOT" ]]; then
@@ -77,9 +100,53 @@ DEFAULT_PROVIDER_FILE="$CFG_DIR/default-provider"
 
 LOCK_HELD=0
 
+# Default GUI lock timeout (seconds) - configurable via env
+: "${GROQBASHGUILOCKTIMEOUT:=10}"
+
 # -------------------------
-# Logging and rotation
+# Logging and rotation (uniform prefixes to match GroqBash)
 # -------------------------
+log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; } 2>/dev/null || true
+
+log_info() {
+  # Usage: log_info [CODE] MESSAGE
+  local code msg
+  if [ "$#" -eq 1 ]; then
+    code="INFO"
+    msg="$1"
+  else
+    code="${1:-INFO}"
+    msg="${2:-}"
+  fi
+  printf 'groqbash: INFO: %s: %s\n' "$code" "$msg" >>"$SERVER_LOG" 2>/dev/null || true
+}
+
+log_warn() {
+  local code msg
+  if [ "$#" -eq 1 ]; then
+    code="WARN"
+    msg="$1"
+  else
+    code="${1:-WARN}"
+    msg="${2:-}"
+  fi
+  printf 'groqbash: WARN: %s: %s\n' "$code" "$msg" >>"$SERVER_LOG" 2>/dev/null || true
+}
+
+log_error() {
+  # Usage: log_error [CODE] MESSAGE
+  local code msg
+  if [ "$#" -eq 1 ]; then
+    code="ERROR"
+    msg="$1"
+  else
+    code="${1:-ERROR}"
+    msg="${2:-}"
+  fi
+  mkdir -p "$(dirname "$ERROR_LOG")" 2>/dev/null || true
+  printf 'groqbash: ERROR: %s: %s\n' "$code" "$msg" >>"$ERROR_LOG" 2>/dev/null || true
+}
+
 log_rotate_if_needed() {
   local file="$1" max_bytes="${2:-1048576}"
   if [[ -f "$file" ]]; then
@@ -90,20 +157,6 @@ log_rotate_if_needed() {
       : >"$file"
     fi
   fi
-}
-
-log_info() {
-  local msg="$1"
-  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
-  printf '[%s] INFO  %s\n' "$(date -Is)" "$msg" >>"$SERVER_LOG"
-  log_rotate_if_needed "$SERVER_LOG"
-}
-
-log_error() {
-  local msg="$1"
-  mkdir -p "$(dirname "$ERROR_LOG")" 2>/dev/null || true
-  printf '[%s] ERROR %s\n' "$(date -Is)" "$msg" >>"$ERROR_LOG"
-  log_rotate_if_needed "$ERROR_LOG"
 }
 
 # -------------------------
@@ -120,6 +173,8 @@ mktemp_portable() {
     mktemp "$dir/$template"
   fi
 }
+# NOTE: mktemp_portable should be tested on macOS and BusyBox to ensure the
+# fallback behavior works as expected in those environments.
 
 # -------------------------
 # same_filesystem
@@ -140,16 +195,16 @@ same_filesystem() {
 # -------------------------
 ensure_tmpdir() {
   if [[ -e "$TMP_DIR" && ! -d "$TMP_DIR" ]]; then
-    log_error "TMP_DIR exists and is not a directory: $TMP_DIR"
+    log_error "GUIIO" "TMP_DIR exists and is not a directory: $TMP_DIR"
     print_http_error "500 Internal Server Error" "Server configuration error: tmpdir invalid"
     return 1
   fi
   if [[ ! -d "$TMP_DIR" ]]; then
-    mkdir -p "$TMP_DIR" || { log_error "Failed to create TMP_DIR $TMP_DIR"; print_http_error "500 Internal Server Error" "Server configuration error: cannot create tmpdir"; return 1; }
+    mkdir -p "$TMP_DIR" || { log_error "GUIIO" "Failed to create TMP_DIR $TMP_DIR"; print_http_error "500 Internal Server Error" "Server configuration error: cannot create tmpdir"; return 1; }
     chmod 700 "$TMP_DIR" || true
   fi
   if [[ ! -w "$TMP_DIR" ]]; then
-    log_error "TMP_DIR $TMP_DIR not writable"
+    log_error "GUIIO" "TMP_DIR $TMP_DIR not writable"
     print_http_error "500 Internal Server Error" "Server configuration error: tmpdir not writable"
     return 1
   fi
@@ -164,40 +219,44 @@ atomic_write() {
   dest_dir="$(dirname -- "$dest")"
   ensure_tmpdir || return 1
   if same_filesystem "$TMP_DIR" "$dest_dir" && mktemp_portable "$TMP_DIR" "atomic.XXXXXX" >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")" || { log_error "mktemp failed in atomic_write (tmpdir)"; return 1; }
+    tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_write (tmpdir)"; return 1; }
   else
-    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")" || { log_error "mktemp failed in atomic_write (destdir)"; return 1; }
+    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_write (destdir)"; return 1; }
   fi
   umask 077
-  printf '%s' "$content" >"$tmp" || { log_error "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
+  printf '%s' "$content" >"$tmp" || { log_error "GUIIO" "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
   if command -v sync >/dev/null 2>&1; then sync || true; fi
-  mv -f "$tmp" "$dest" || { log_error "mv failed in atomic_write from $tmp to $dest"; rm -f "$tmp" 2>/dev/null || true; return 1; }
+  mv -f "$tmp" "$dest" || { log_error "GUIIO" "mv failed in atomic_write from $tmp to $dest"; rm -f "$tmp" 2>/dev/null || true; return 1; }
   chmod 600 "$dest" || true
   return 0
 }
 
+# atomic_append_conv must be called only when a lock is held (documented)
+# It performs an atomic append by writing a tmp file and renaming it into place.
 atomic_append_conv() {
   local conv_file="$1" append_text="$2" tmp dest_dir
-  if [[ "$LOCK_HELD" -ne 1 ]]; then log_error "atomic_append_conv called without lock held"; return 1; fi
+  if [[ "$LOCK_HELD" -ne 1 ]]; then log_error "GUILOCK" "atomic_append_conv called without lock held"; return 1; fi
   dest_dir="$(dirname -- "$conv_file")"
   if same_filesystem "$TMP_DIR" "$dest_dir" && mktemp_portable "$TMP_DIR" "conv.XXXXXX" >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")" || { log_error "mktemp failed in atomic_append_conv (tmpdir)"; return 1; }
+    tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_append_conv (tmpdir)"; return 1; }
   else
-    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")" || { log_error "mktemp failed in atomic_append_conv (destdir)"; return 1; }
+    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_append_conv (destdir)"; return 1; }
   fi
-  if [[ -f "$conv_file" ]]; then cat "$conv_file" >"$tmp" || { log_error "Failed to copy existing conversation to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }; fi
-  printf '%s\n' "$append_text" >>"$tmp" || { log_error "Failed to append text to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  mv -f "$tmp" "$conv_file" || { log_error "mv failed in atomic_append_conv"; rm -f "$tmp" 2>/dev/null || true; return 1; }
+  if [[ -f "$conv_file" ]]; then cat "$conv_file" >"$tmp" || { log_error "GUIIO" "Failed to copy existing conversation to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }; fi
+  printf '%s\n' "$append_text" >>"$tmp" || { log_error "GUIIO" "Failed to append text to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
+  mv -f "$tmp" "$conv_file" || { log_error "GUIIO" "mv failed in atomic_append_conv"; rm -f "$tmp" 2>/dev/null || true; return 1; }
   chmod 600 "$conv_file" || true
   return 0
 }
 
 # -------------------------
 # flock availability and lock management (fd 9)
+# - acquire_lock now uses a configurable timeout to avoid indefinite blocking
+# - on timeout we log a LOCKTIMEOUT event and return non-zero
 # -------------------------
 ensure_flock_available() {
   if ! command -v flock >/dev/null 2>&1; then
-    log_error "flock not available on this system; cannot guarantee safe concurrency"
+    log_error "GUILOCK" "flock not available on this system; cannot guarantee safe concurrency"
     print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"
     return 1
   fi
@@ -207,9 +266,19 @@ ensure_flock_available() {
 acquire_lock() {
   mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
   exec 9>"$LOCK_FILE"
-  flock -x 9
+  # Use timeout to avoid indefinite blocking; log LOCKTIMEOUT on failure
+  if ! flock -x -w "$GROQBASHGUILOCKTIMEOUT" 9; then
+    log_error "LOCKTIMEOUT" "could not acquire GUI lock on $LOCK_FILE within ${GROQBASHGUILOCKTIMEOUT}s"
+    # Inform client that server is busy/unavailable
+    print_http_error "503 Service Unavailable" "Server busy; please retry"
+    # Close fd and mark not held
+    exec 9>&- || true
+    LOCK_HELD=0
+    return 1
+  fi
   LOCK_HELD=1
   trap 'release_lock' EXIT INT TERM
+  return 0
 }
 
 release_lock() {
@@ -289,6 +358,7 @@ get_query_param() {
 read_post_body() {
   local len="${CONTENT_LENGTH:-0}"
   if ! [[ "$len" =~ ^[0-9]+$ ]]; then len=0; fi
+  # Documented: CONTENT_LENGTH must be validated; we cap and handle missing values.
   if (( len > 0 )); then
     if command -v head >/dev/null 2>&1; then
       head -c "$len"
@@ -336,7 +406,7 @@ get_current_conversation_file() {
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
   conv="$(sanitize_param "$conv")"
   if ! validate_name "$conv"; then
-    log_error "Invalid current conversation name: '$conv' - falling back to conv-001.txt"
+    log_error "GUIIO" "Invalid current conversation name: '$conv' - falling back to conv-001.txt"
     conv="conv-001.txt"
     atomic_write "$CURRENT_CONV_FILE" "$conv" || true
   fi
