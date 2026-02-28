@@ -204,9 +204,9 @@ groqbash --provider gemini "traduci questo"
 - Per la sicurezza vedi `SECURITY.md`.
 
 ---
-🇬🇧
+
 # English Installation  
-*(Jump here from top: English version)*
+*🇬🇧 (Jump here from top: English version)*
 
 GroqBash is a **portable, self‑contained Bash executable**.  
 You can place it **anywhere**, even alone, and it works immediately.  
