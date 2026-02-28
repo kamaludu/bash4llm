@@ -204,7 +204,7 @@ groqbash --provider gemini "traduci questo"
 - Per la sicurezza vedi `SECURITY.md`.
 
 ---
-
+🇬🇧
 # English Installation  
 *(Jump here from top: English version)*
 
