@@ -140,7 +140,7 @@ sanitize_model_output() {
   local out="$1"
   out="$(printf '%s' "$out" | tr -d '\000-\011\013\014\016-\037')"
   if (( ${#out} > MAX_MODEL_OUTPUT_CHARS )); then
-    log_error "Model output truncated (length ${#out})"
+    log_error "GUIIO" "Model output truncated (length ${#out})"
     out="${out:0:MAX_MODEL_OUTPUT_CHARS}"
   fi
   printf '%s' "$out"
@@ -160,23 +160,23 @@ handle_post_main() {
   provider="$(sanitize_param "$provider")"
 
   if (( ${#prompt} > MAX_PROMPT_CHARS )); then
-    log_error "Prompt truncated from ${#prompt} to $MAX_PROMPT_CHARS chars"
+    log_error "GUIIO" "Prompt truncated from ${#prompt} to $MAX_PROMPT_CHARS chars"
     prompt="${prompt:0:MAX_PROMPT_CHARS}"
   fi
 
   if ! validate_name "$model"; then
-    log_error "Invalid model name attempted: $model"
+    log_error "GUIIO" "Invalid model name attempted: $model"
     model="$(get_default_model)"
   fi
   if ! validate_name "$provider"; then
-    log_error "Invalid provider name attempted: $provider"
+    log_error "GUIIO" "Invalid provider name attempted: $provider"
     provider="$(get_default_provider)"
   fi
 
   conv_file="$(get_current_conversation_file)"
 
   atomic_append_conv "$conv_file" "USER: $prompt" || {
-    log_error "Failed to append USER to conversation"
+    log_error "GUIIO" "Failed to append USER to conversation"
   }
 
   if [[ -n "$provider" && "$provider" != "default" ]]; then
@@ -195,7 +195,7 @@ handle_post_main() {
 
   sanitized_output="$(sanitize_model_output "$output")"
   atomic_append_conv "$conv_file" "AI: $sanitized_output" || {
-    log_error "Failed to append AI to conversation"
+    log_error "GUIIO" "Failed to append AI to conversation"
   }
 }
 
@@ -212,11 +212,11 @@ handle_post_settings() {
   lang="$(sanitize_param "$lang")"
 
   if ! validate_name "$model"; then
-    log_error "Invalid model name attempted: $model"
+    log_error "GUIIO" "Invalid model name attempted: $model"
     model="$(get_default_model)"
   fi
   if ! validate_name "$provider"; then
-    log_error "Invalid provider name attempted: $provider"
+    log_error "GUIIO" "Invalid provider name attempted: $provider"
     provider="$(get_default_provider)"
   fi
   if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
@@ -260,14 +260,17 @@ main() {
   ensure_dirs
   ensure_config_defaults
 
-  ensure_flock_available || { log_error "flock missing"; print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"; exit 1; }
+  ensure_flock_available || { log_error "GUILOCK" "flock missing"; print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"; exit 1; }
   if ! ensure_groqbash_available; then
-    log_error "groqbash not found: $GROQBASH_CMD"
+    log_error "GUIIO" "groqbash not found: $GROQBASH_CMD"
     print_http_error "500 Internal Server Error" "groqbash not found on server. Contact administrator."
     exit 1
   fi
 
-  acquire_lock
+  if ! acquire_lock; then
+    # acquire_lock logs and prints HTTP error on timeout; ensure we exit to avoid proceeding without lock
+    exit 1
+  fi
 
   local method="${REQUEST_METHOD:-}"
   method="$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')"
@@ -312,7 +315,7 @@ main() {
     page="main"
   fi
 
-  log_info "Request method=$method page=$page lang=$lang_code theme=$theme_code"
+  log_info "GUILOCK" "Request method=$method page=$page lang=$lang_code theme=$theme_code"
 
   case "$method" in
     GET)
