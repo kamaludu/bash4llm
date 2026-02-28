@@ -1,167 +1,135 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
-# File: extras/lib/utils.sh
-# Copyright (C) 2026 Cristian Evangelisti
-# License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# GroqBash — Bash-first utilities (extras/lib/utils.sh)
+# Purpose: small, portable helper functions for groqbash extras
+# Location at runtime: groqbash.d/extras/lib/utils.sh
 # =============================================================================
-# Optional utilities for groqbash (extras).
-# - This file is safe to source; it has no side effects on load.
-# - All functions are namespaced with the gb_ prefix to avoid collisions
-#   with core functions (e.g., trim, is_number).
-# - Sourcing this file does NOT change groqbash behavior unless you call
-#   these functions explicitly.
-#
-# Usage (optional):
-#   . /path/to/groqbash.d/extras/lib/utils.sh
-#
-# Load guard
-[-n "$ {
-  GROQBASH_UTILS_LOADED:-
-}"] && return 0
-GROQBASH_UTILS_LOADED = 1
+# Load guard (exact, valid POSIX/Bash form)
+if [ -n "${GROQBASHUTILSLOADED:-}" ]; then
+  return 0
+fi
+GROQBASHUTILSLOADED=1
 
-# gb_trim: remove leading/trailing whitespace
-# Usage: gb_trim "  some text  "
+# No side effects on source: only function definitions and the load guard above.
+
+# gb_trim: trim leading and trailing whitespace
+# Usage: gb_trim "  text  "    OR    printf '  text  ' | gb_trim
 gb_trim() {
-  # POSIX-safe: use awk to normalize whitespace
-  # Preserves internal spacing, removes leading/trailing whitespace
-  printf '%s' "$ {
-    1:-
-  }" | awk '{$1=$1; print}'
+  local input
+  if [ $# -gt 0 ]; then
+    input="$1"
+  else
+    # read from stdin
+    IFS= read -r input || input=''
+  fi
+  # Use awk for portability and correctness
+  printf '%s' "$input" | awk '{ sub(/^[ \t\r\n]+/, ""); sub(/[ \t\r\n]+$/, ""); print }'
 }
 
-# gb_is_number: return 0 if argument is numeric (integer or float), non-zero otherwise
+# gb_is_number: return 0 if argument is a valid integer or decimal, else 1
+# Accepts optional leading + or - and decimal point. No output on success.
 # Usage: gb_is_number "3.14" && echo ok || echo not
 gb_is_number() {
-  # Use awk numeric test; empty string is not numeric
-  ["$ {
-    1:-
-  }" = ""] && return 1
-  printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'
+  local v="$1"
+  # Empty string is not a number
+  [ -z "$v" ] && return 1
+  # Use grep -E with a strict numeric regex (portable)
+  # Regex: optional sign, digits with optional fractional part OR fractional starting with dot
+  printf '%s' "$v" | grep -E -q '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)$'
+  return $?
 }
 
-# gb_join: join remaining args with the first arg as separator
+# gb_join: join arguments with separator (first arg is separator)
 # Usage: gb_join "," "a" "b" "c"  -> outputs: a,b,c
 gb_join() {
-  sep = "$ {
-    1:-
-  }"
+  local sep="$1"
   shift || true
-  out = ""
-  first = 1
+  local out=""
+  local first=1
+  local v
   for v in "$@"; do
-  if ["$first" -eq 1]; then
-  out = "$v"
-  first = 0
-  else
-    out = "$ {
-    out
-  }$ {
-    sep
-  }$ {
-    v
-  }"
-  fi
+    if [ "$first" -eq 1 ]; then
+      out="$v"
+      first=0
+    else
+      out="${out}${sep}${v}"
+    fi
   done
   printf '%s' "$out"
 }
 
-# gb_json_escape: minimal JSON string escaper (matches core's minimal behavior)
-# Usage: gb_json_escape 'He said "hi" and \ backslash'
-gb_json_escape() {
-  # Only escape backslash and double quote to match core semantics
-  printf '%s' "$ {
-    1:-
-  }" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
-}
-
-# gb_read_first_line: read first non-empty line from a file (prints it)
-# Returns non-zero if file not readable or no non-empty lines
-# Usage: gb_read_first_line /path/to/file
-gb_read_first_line() {
-  f = "$ {
-    1:-
-  }"
-  [-r "$f"] || return 1
-  awk 'NF{print; exit}' "$f" 2>/dev/null || return 1
-}
-
-# gb_safe_mkdir: mkdir -p with basic checks; returns 0 on success
-# Usage: gb_safe_mkdir /path/to/dir
-gb_safe_mkdir() {
-  dir = "$ {
-    1:-
-  }"
-  [-z "$dir"] && return 1
-  mkdir -p "$dir" 2>/dev/null || return 1
-  return 0
-}
-
-# gb_mktemp_file: create a temp file under $GROQBASH_TMPDIR if available, else system tmp
-# Prints the filename or empty string on failure
-# Usage: tmpf="$(gb_mktemp_file "prefix")"
-gb_mktemp_file() {
-  prefix = "$ {
-    1:-tmp
-  }"
-  # Prefer GROQBASH_TMPDIR if set and exists
-  if [-n "$ {
-    GROQBASH_TMPDIR:-
-  }"] && [-d "$ {
-    GROQBASH_TMPDIR
-  }"]; then
-  # Try mktemp -p (POSIX mktemp may not support -p everywhere; try both)
-  if mktemp -p "$ {
-    GROQBASH_TMPDIR
-  }" "$ {
-    prefix
-  }.XXXX" >/dev/null 2 > &1; then
-  mktemp -p "$ {
-    GROQBASH_TMPDIR
-  }" "$ {
-    prefix
-  }.XXXX" 2>/dev/null || printf ''
-  return 0
+# gb_mktempfile: create a secure temp file
+# Usage: tmpf="$(gb_mktempfile "prefix")"
+# Prints the filename to stdout or empty string on failure.
+gb_mktempfile() {
+  local prefix="${1:-tmp}"
+  local tmpf=""
+  # Prefer GROQBASH_TMPDIR if set and writable
+  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR}" ] && [ -w "${GROQBASH_TMPDIR}" ]; then
+    # Try mktemp -p (GNU, BusyBox). If not supported, fall back to mktemp -t (macOS).
+    if mktemp -p "${GROQBASH_TMPDIR}" "${prefix}.XXXX" >/dev/null 2>/dev/null; then
+      tmpf="$(mktemp -p "${GROQBASH_TMPDIR}" "${prefix}.XXXX" 2>/dev/null || true)"
+    else
+      # macOS style: mktemp -t prefix
+      if mktemp -t "${prefix}" >/dev/null 2>/dev/null; then
+        tmpf="$(mktemp -t "${prefix}" 2>/dev/null || true)"
+        # Attempt to move into GROQBASH_TMPDIR if possible
+        if [ -n "$tmpf" ] && [ -w "${GROQBASH_TMPDIR}" ]; then
+          local base
+          base="$(basename "$tmpf")"
+          mv -f -- "$tmpf" "${GROQBASH_TMPDIR}/${base}" 2>/dev/null || true
+          tmpf="${GROQBASH_TMPDIR}/${base}"
+        fi
+      fi
+    fi
   fi
+
+  # Fallback to system mktemp without -p
+  if [ -z "$tmpf" ]; then
+    if mktemp "${prefix}.XXXX" >/dev/null 2>/dev/null; then
+      tmpf="$(mktemp "${prefix}.XXXX" 2>/dev/null || true)"
+    fi
   fi
-  # Fallback to mktemp without -p
-  if mktemp "$ {
-    prefix
-  }.XXXX" >/dev/null 2 > &1; then
-  mktemp "$ {
-    prefix
-  }.XXXX" 2>/dev/null || printf ''
-  return 0
+
+  # Ensure file exists and has safe perms
+  if [ -n "$tmpf" ]; then
+    chmod 600 "$tmpf" 2>/dev/null || true
+    printf '%s' "$tmpf"
+    return 0
   fi
-  # If mktemp not available or failed, print empty string
+
+  # Failure: print empty string and return non-zero
   printf ''
-}
-
-# gb_safe_read: print file contents if readable, else print nothing and return non-zero
-# Usage: gb_safe_read /path/to/file
-gb_safe_read() {
-  f = "$ {
-    1:-
-  }"
-  if [-r "$f"] && [-f "$f"]; then
-  cat "$f"
-  return 0
-  fi
   return 1
 }
 
-# gb_debug_print: controlled debug printing
-# Prints to stderr only if DEBUG=1 or GROQBASH_DEBUG=1
-# Usage: gb_debug_print "some debug info"
-gb_debug_print() {
-  ["$ {
-    DEBUG:-0
-  }" -eq 1] || ["$ {
-    GROQBASH_DEBUG:-0
-  }" -eq 1] || return 0
-  printf '[gb-debug] %s\n' "$*" > &2
+# gb_debug: controlled debug printing to stderr
+# Usage: gb_debug "message" or gb_debug "fmt %s" "arg"
+gb_debug() {
+  # Print only if DEBUG is set and non-empty
+  if [ -z "${DEBUG:-}" ]; then
+    return 0
+  fi
+  if [ $# -eq 0 ]; then
+    return 0
+  fi
+  # Print to stderr with prefix
+  printf '[gb-debug] %s\n' "$(printf "$@")" >&2
+}
+
+# gb_ensure_tmpdir: ensure GROQBASH_TMPDIR exists and is writable (optional helper)
+# Usage: gb_ensure_tmpdir && echo ok || echo fail
+gb_ensure_tmpdir() {
+  if [ -z "${GROQBASH_TMPDIR:-}" ]; then
+    return 1
+  fi
+  if [ -d "${GROQBASH_TMPDIR}" ]; then
+    [ -w "${GROQBASH_TMPDIR}" ] || return 1
+    return 0
+  fi
+  mkdir -p "${GROQBASH_TMPDIR}" 2>/dev/null || return 1
+  chmod 700 "${GROQBASH_TMPDIR}" 2>/dev/null || true
+  return 0
 }
 
 # End of extras/lib/utils.sh
