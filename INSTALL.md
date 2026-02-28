@@ -1,29 +1,41 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
-# INSTALLAZIONE &nbsp; [![English](https://img.shields.io/badge/EN-English_version-orange?style=flat)](INSTALL-en.md) 
+# INSTALLAZIONE  
+**Lingue:**  
+🇮🇹 Italiano (questa sezione)  
+🇬🇧 [English version](#english-installation)
 
-Questo documento spiega come installare GroqBash, configurare l’ambiente, verificare la corretta installazione e comprendere il comportamento dei file temporanei, dell’output e dei codici di uscita.
+GroqBash è un eseguibile Bash **portabile e auto‑contenuto**.  
+Puoi metterlo **ovunque**, anche da solo, e funziona immediatamente.  
+Alla prima esecuzione crea automaticamente la directory:
 
-GroqBash è uno **script Bash singolo**, sicuro e auto‑contenuto, progettato per ambienti **single‑user** (Linux, macOS, WSL, Termux).
+`
+groqbash.d/
+`
+
+accanto al binario, con tutta la struttura runtime necessaria.
+
+Gli **extras** (UI, provider esterni, sicurezza, test) sono **opzionali**: GroqBash funziona anche senza.
 
 ---
 
-# 1. Prerequisiti e dipendenze
+# 1. Requisiti
 
-## Richiesti
-- **bash**
-- **curl**
-- **coreutils** (mktemp, chmod, mv, mkdir, head, sed, awk, grep)
-- **jq**
+## Necessari
+- bash  
+- curl  
+- coreutils (mkdir, mv, chmod, mktemp, sed, awk, grep…)  
+- jq  
 
-## Consigliati
-- **python3** — fallback per fsync e serializzazione (opzionale)
-- **sha256sum / shasum** — per gli extras di sicurezza
+## Ambienti supportati
+- Linux  
+- macOS  
+- BusyBox / Alpine  
+- Windows WSL  
+- Windows Cygwin / MSYS2  
 
-## Locale e encoding
-GroqBash richiede un ambiente UTF‑8.
-
-Se necessario:
+## Locale
+GroqBash richiede UTF‑8:
 
 `sh
 export LC_ALL=C.UTF-8
@@ -32,123 +44,131 @@ export LANG=C.UTF-8
 
 ---
 
-# 2. Installazione
+# 2. Installazione minima (file singolo)
 
-## Scarica lo script
+## 1) Scarica il binario
 
 `sh
 curl -O https://raw.githubusercontent.com/kamaludu/groqbash/main/bin/groqbash
 `
 
-## Rendi eseguibile
+## 2) Rendi eseguibile
 
 `sh
 chmod +x groqbash
 `
 
-## (Opzionale ma consigliato) Installa nel PATH
+## 3) (Opzionale) Mettilo nel PATH
 
 `sh
 mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
+mv groqbash "$HOME/.local/bin/"
 export PATH="$HOME/.local/bin:$PATH"
 `
 
-## Imposta la chiave API
-
-`sh
-export GROQ_API_KEY="gsk_XXXXXXXXXXXXXXXX"
-`
-
-## Verifica installazione
+## 4) Prima esecuzione
 
 `sh
 groqbash --version
 `
 
+Alla prima esecuzione GroqBash crea automaticamente:
+
+`
+groqbash.d/
+  config/
+  models/
+  history/
+  tmp/
+  logs/
+`
+
+con permessi sicuri (700/600).
+
 ---
 
-# 3. Installazione degli extras (opzionale)
+# 3. Provider embedded
+
+GroqBash include un **provider interno** che funziona senza extras.  
+Per usare provider esterni (Gemini, Mistral, HuggingFace) devi installare gli extras.
+
+---
+
+# 4. API key (per provider esterni)
+
+`sh
+export GROQ_API_KEY="gsk_XXXXXXXXXXXXXXXX"
+`
+
+---
+
+# 5. Installazione degli extras (opzionale)
 
 Gli extras includono:
 
-- documentazione aggiuntiva  
 - provider esterni  
+- UI web (CGI)  
 - strumenti di sicurezza  
-- test suite JSON/SSE  
+- test suite  
+- documentazione aggiuntiva  
 
-Installa tutto con:
+Installa gli extras copiando la directory `extras/` del repository dentro:
 
-`sh
-groqbash --install-extras
+`
+groqbash.d/extras/
 `
 
-Gli extras **non modificano il comportamento del core**.
+Esempio:
+
+`sh
+cp -r path/al/repo/extras/* groqbash.d/extras/
+`
+
+Gli extras **non sono obbligatori**: GroqBash funziona anche senza.
 
 ---
 
-# 4. Comportamento dei file temporanei
+# 6. File temporanei
 
-- GroqBash **non usa mai `/tmp`** per i temporanei interni.  
-- I temporanei vengono creati con:
+- GroqBash **non usa mai /tmp** del sistema.  
+- I temporanei vivono in:
 
-  - `mktemp -d`  
-  - permessi `700`  
-  - sotto `$GROQBASHTMPDIR` o un fallback sicuro nella home  
+`
+groqbash.d/tmp/
+`
 
-- In modalità `--debug`, i temporanei **non vengono rimossi** per facilitare l’ispezione.
-
----
-
-# 5. Percorso di output (`--out`)
-
-- Se passi `--out /percorso/file`, GroqBash:
-  - tenta di creare la directory  
-  - verifica permessi e sicurezza  
-  - salva il file con permessi restrittivi (`600`)
-
-- Se la directory non è sicura o non è scrivibile:
-  - **non** usa `/tmp`
-  - stampa l’output su terminale
-  - mostra un messaggio esplicito
-
-**Consiglio:** usa percorsi sotto la tua home o `$GROQBASHTMPDIR`.
+- Permessi: 700  
+- Con `--debug`, i temporanei non vengono rimossi.
 
 ---
 
-# 6. Uso base ed esempi
+# 7. Output (`--out`)
 
-Prompt semplice:
+Se passi `--out file.txt`:
+
+- GroqBash crea la directory se sicura  
+- salva con permessi 600  
+- se la directory non è sicura → stampa su terminale
+
+---
+
+# 8. Esempi rapidi
 
 `sh
 groqbash "scrivi una funzione bash che..."
 `
 
-Input da pipe:
-
 `sh
 echo "Spiegami questo codice" | groqbash
 `
-
-Input da file:
 
 `sh
 groqbash -f input.txt
 `
 
-Forzare salvataggio:
-
-`sh
-groqbash --save --out output.txt "testo lungo..."
-`
-
-Dry run (mostra payload JSON):
-
 `sh
 groqbash --dry-run "ciao"
 `
-
-Provider (se extras installati):
 
 `sh
 groqbash --provider gemini "traduci questo"
@@ -156,86 +176,229 @@ groqbash --provider gemini "traduci questo"
 
 ---
 
-# 7. Codici di uscita
+# 9. Codici di uscita
 
-| Codice | Significato                                                                 |
-|-------:|------------------------------------------------------------------------------|
-| **0**  | Successo                                                                      |
-| **1**  | Errore generico (argomenti, file, configurazione)                            |
-| **2**  | Errore di rete / curl                                                         |
-| **3**  | Errore HTTP/API (4xx/5xx)                                                     |
-| **4**  | Nessun contenuto testuale estratto (errore parsing)                           |
-
-**Note operative**
-- Codice 2 → retry automatici (timeout, DNS, connessione rifiutata)  
-- Codice 3 → nessun retry (errori API, autorizzazione, limiti)  
-- Con `--debug`, i log completi sono nel tmpdir runtime
+| Codice | Significato |
+|-------:|-------------|
+| 0 | Successo |
+| 1 | Errore generico |
+| 2 | Errore di rete / curl |
+| 3 | Errore HTTP/API |
+| 4 | Nessun contenuto testuale estratto |
 
 ---
 
-# 8. Troubleshooting e test consigliati
+# 10. Troubleshooting
 
-## Verifica JSON inviato
-
-`sh
-groqbash --dry-run "Test payload with \"quotes\" and newlines\nand unicode: € ✓"
-`
-
-## Pipe input
-
-`sh
-echo "Spiegami questo codice" | groqbash
-`
-
-## API key non valida
-
-`sh
-GROQ_API_KEY="invalid" groqbash "ciao" || echo "exit:$?"
-`
-
-## Test senza jq
-
-Rinomina temporaneamente jq:
-
-`sh
-mv /usr/bin/jq /usr/bin/jq.bak
-groqbash --dry-run "test"
-mv /usr/bin/jq.bak /usr/bin/jq
-`
-
----
-
-# 9. Problemi comuni
-
-- **cannot create destination directory**  
-  → percorso passato a `--out` non sicuro o non scrivibile
-
-- **Output non salvato ma presente nel tmp**  
-  → `mv` fallito; controlla il tmpdir mostrato
-
-- **Caratteri strani / JSON invalido**  
-  → assicurati di avere locale UTF‑8 e jq/python3 disponibili
-
----
-
-# 10. Installazione su Termux
-
-`sh
-pkg update
-pkg install -y bash curl jq python
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-chmod +x "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-export GROQ_API_KEY="gsk_..."
-groqbash --version
-`
+- **cannot create destination directory** → percorso non sicuro  
+- **output non salvato** → `mv` fallito, controlla `groqbash.d/tmp/`  
+- **JSON invalido** → controlla UTF‑8 e jq  
 
 ---
 
 # 11. Note finali
 
 - GroqBash è progettato per ambienti **single‑user**.  
-- Provider e extras sono **opzionali** e devono risiedere in directory sicure.  
-- Nessun output del modello viene mai eseguito come comando.  
-- Per dettagli sulla sicurezza, vedi **SECURITY.md**.
+- Gli extras sono **opzionali**.  
+- Nessun output viene mai eseguito come comando.  
+- Per la sicurezza vedi `SECURITY.md`.
+
+---
+
+# English Installation  
+*(Jump here from top: English version)*
+
+GroqBash is a **portable, self‑contained Bash executable**.  
+You can place it **anywhere**, even alone, and it works immediately.  
+On first run it automatically creates:
+
+`
+groqbash.d/
+`
+
+next to the binary, with all required runtime directories.
+
+Extras (UI, external providers, security tools, tests) are **optional**.
+
+---
+
+## 1. Requirements
+
+### Required
+- bash  
+- curl  
+- coreutils  
+- jq  
+
+### Supported environments
+- Linux  
+- macOS  
+- BusyBox / Alpine  
+- Windows WSL  
+- Windows Cygwin / MSYS2  
+
+### Locale
+GroqBash requires UTF‑8:
+
+`sh
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+`
+
+---
+
+## 2. Minimal installation (single file)
+
+### 1) Download
+
+`sh
+curl -O https://raw.githubusercontent.com/kamaludu/groqbash/main/bin/groqbash
+`
+
+### 2) Make executable
+
+`sh
+chmod +x groqbash
+`
+
+### 3) (Optional) Add to PATH
+
+`sh
+mkdir -p "$HOME/.local/bin"
+mv groqbash "$HOME/.local/bin/"
+export PATH="$HOME/.local/bin:$PATH"
+`
+
+### 4) First run
+
+`sh
+groqbash --version
+`
+
+GroqBash will automatically create:
+
+`
+groqbash.d/
+  config/
+  models/
+  history/
+  tmp/
+  logs/
+`
+
+---
+
+## 3. Embedded provider
+
+GroqBash includes an **embedded provider** so it works even without extras.
+
+---
+
+## 4. API key (for external providers)
+
+`sh
+export GROQ_API_KEY="gsk_XXXXXXXXXXXXXXXX"
+`
+
+---
+
+## 5. Optional extras
+
+Extras include:
+
+- external providers  
+- web UI (CGI)  
+- security tools  
+- test suite  
+- additional docs  
+
+Install them by copying the repository’s `extras/` directory into:
+
+`
+groqbash.d/extras/
+`
+
+Example:
+
+`sh
+cp -r path/to/repo/extras/* groqbash.d/extras/
+`
+
+Extras are **not required**.
+
+---
+
+## 6. Temporary files
+
+- GroqBash **never uses /tmp**.  
+- Temporary files live in:
+
+`
+groqbash.d/tmp/
+`
+
+- Permissions: 700  
+- With `--debug`, temporary files are preserved.
+
+---
+
+## 7. Output (`--out`)
+
+If you pass `--out file.txt`:
+
+- GroqBash creates the directory if safe  
+- saves with permissions 600  
+- if unsafe → prints to terminal instead
+
+---
+
+## 8. Quick examples
+
+`sh
+groqbash "write a bash function that..."
+`
+
+`sh
+echo "Explain this code" | groqbash
+`
+
+`sh
+groqbash -f input.txt
+`
+
+`sh
+groqbash --dry-run "hello"
+`
+
+`sh
+groqbash --provider gemini "translate this"
+`
+
+---
+
+## 9. Exit codes
+
+| Code | Meaning |
+|------:|---------|
+| 0 | Success |
+| 1 | Generic error |
+| 2 | Network / curl error |
+| 3 | HTTP/API error |
+| 4 | No textual content extracted |
+
+---
+
+## 10. Troubleshooting
+
+- **cannot create destination directory** → unsafe path  
+- **output not saved** → `mv` failed, check `groqbash.d/tmp/`  
+- **invalid JSON** → check UTF‑8 locale and jq  
+
+---
+
+## 11. Final notes
+
+- GroqBash is designed for **single‑user** environments.  
+- Extras are **optional**.  
+- Model output is never executed as code.  
+- See `SECURITY.md` for details.
