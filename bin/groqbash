@@ -24,6 +24,7 @@ GROQBASH_ERR_INVALID_JSON=13
 GROQBASH_ERR_NO_PROMPT=14
 GROQBASH_ERR_TMP=15
 GROQBASH_ERR_API=16
+GROQBASH_ERR_INSTALL_EXTRAS=20
 
 GROQBASHERRNOAPIKEY=$GROQBASH_ERR_NO_API_KEY
 GROQBASHERRBAD_MODEL=$GROQBASH_ERR_BAD_MODEL
@@ -32,6 +33,7 @@ GROQBASHERRINVALID_JSON=$GROQBASH_ERR_INVALID_JSON
 GROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT
 GROQBASHERRTMP=$GROQBASH_ERR_TMP
 GROQBASHERRAPI=$GROQBASH_ERR_API
+GROQBASHERRINSTALL=$GROQBASH_ERR_INSTALL_EXTRAS
 
 # ---------------------------------------------------------------------------
 # Verify mandatory commands (no fallback)
@@ -501,6 +503,408 @@ manifest_read() {
 }
 # === MANIFEST END ===
 
+# === INSTALL-EXTRAS START ===
+# Minimal, portable implementation following the user's reduced plan.
+# Provides: --install-extras [components...] --source <path> --force --dry-run
+# Uses GROQBASH_EXTRAS_SOURCE as optional env var for source path.
+
+# Configuration for installer
+GROQBASH_EXTRAS_SOURCE="${GROQBASH_EXTRAS_SOURCE:-}"
+INSTALL_LOCK="$GROQBASH_EXTRAS_DIR/.install.lock"
+INSTALL_RECORD="$GROQBASH_EXTRAS_DIR/INSTALLATION-RECORD"
+
+# Helper: compute sha256 if available, else empty
+_compute_sha256() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" 2>/dev/null | awk '{print $1}'
+    return 0
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" 2>/dev/null | awk '{print $1}'
+    return 0
+  fi
+  # no checksum tool available
+  printf ''
+  return 0
+}
+
+# Helper: normalize path to absolute without using readlink -f
+_normalize_path() {
+  local path="$1"
+  if [ -z "$path" ]; then
+    printf '%s' ""
+    return 0
+  fi
+  # If already absolute, use subshell to resolve . and ..
+  if [ "${path:0:1}" = "/" ]; then
+    ( cd "$(dirname "$path")" >/dev/null 2>&1 && printf '%s/%s' "$(pwd)" "$(basename "$path")" ) || printf '%s' "$path"
+    return 0
+  fi
+  # relative path: resolve relative to current working dir
+  ( cd "$(pwd)" >/dev/null 2>&1 && printf '%s/%s' "$(pwd)" "$path" ) || printf '%s' "$path"
+  return 0
+}
+
+# Helper: safe join path and ensure dest is under GROQBASH_EXTRAS_DIR
+_is_under_extras() {
+  local dest="$1"
+  # Normalize both paths
+  local norm_dest norm_base
+  norm_dest="$(_normalize_path "$dest")"
+  norm_base="$(_normalize_path "$GROQBASH_EXTRAS_DIR")"
+  case "$norm_dest" in
+    "$norm_base"/*|"$norm_base") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Helper: resolve symlink target without readlink -f; limit depth to avoid loops
+_resolve_symlink_safe() {
+  local src="$1"
+  local depth=0
+  local cur="$src"
+  while [ -L "$cur" ] && [ "$depth" -lt 8 ]; do
+    local link
+    link="$(readlink "$cur" 2>/dev/null || true)"
+    if [ -z "$link" ]; then
+      break
+    fi
+    # If relative, make it relative to the symlink's directory
+    if [ "${link:0:1}" != "/" ]; then
+      local base_dir
+      base_dir="$(cd "$(dirname "$cur")" >/dev/null 2>&1 && pwd || true)"
+      if [ -n "$base_dir" ]; then
+        cur="$base_dir/$link"
+      else
+        cur="$(dirname "$cur")/$link"
+      fi
+    else
+      cur="$link"
+    fi
+    depth=$((depth + 1))
+  done
+  # Normalize final path
+  _normalize_path "$cur"
+  return 0
+}
+
+# Helper: compare identity using sha256 if available, else mtime+size
+_is_same_file() {
+  local a="$1" b="$2"
+  if [ ! -f "$a" ] || [ ! -f "$b" ]; then return 1; fi
+  local ha hb
+  ha="$(_compute_sha256 "$a")"
+  hb="$(_compute_sha256 "$b")"
+  if [ -n "$ha" ] && [ -n "$hb" ]; then
+    [ "$ha" = "$hb" ] && return 0 || return 1
+  fi
+  # fallback to size+mtime
+  local sa sb ma mb
+  sa="$(file_size "$a")" || sa=0
+  sb="$(file_size "$b")" || sb=0
+  case "$(uname 2>/dev/null || echo Linux)" in
+    Darwin) ma="$(stat -f %m "$a" 2>/dev/null || echo 0)"; mb="$(stat -f %m "$b" 2>/dev/null || echo 0)";;
+    *) ma="$(stat -c %Y "$a" 2>/dev/null || echo 0)"; mb="$(stat -c %Y "$b" 2>/dev/null || echo 0)";;
+  esac
+  [ "$sa" -eq "$sb" ] && [ "$ma" -eq "$mb" ] && return 0 || return 1
+}
+
+# Helper: atomic copy of a single file from src to dest (dest path must be under extras)
+_copy_file_atomic() {
+  local src="$1" dest="$2" force="$3" dryrun="$4"
+  # Validate dest under extras
+  if ! _is_under_extras "$dest"; then
+    log_error "INSTALL" "destination outside extras: $dest"
+    return 2
+  fi
+  mkdir -p "$(dirname "$dest")" 2>/dev/null || { log_error "INSTALL" "cannot create dest dir: $(dirname "$dest")"; return 2; }
+  if [ -e "$dest" ] && [ "$force" != "1" ]; then
+    if _is_same_file "$src" "$dest"; then
+      # identical, nothing to do
+      return 0
+    else
+      # conflict
+      return 3
+    fi
+  fi
+  if [ "$dryrun" = "1" ]; then
+    return 0
+  fi
+  # create temp file in same dir with mktemp fallback
+  local tmp
+  tmp="$(mktemp -p "$(dirname "$dest")" .groq-extras.tmp.XXXXXX 2>/dev/null || true)"
+  if [ -z "$tmp" ]; then
+    tmp="$(dirname "$dest")/.groq-extras.$$.$RANDOM"
+  fi
+  # Prefer portable copy: use cat to avoid cp option incompatibilities
+  if ! cat -- "$src" > "$tmp" 2>/dev/null; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    log_error "INSTALL" "copy failed (cat): $src -> $tmp"
+    return 2
+  fi
+  # set permissions: base 600, if src executable then 700
+  if [ -x "$src" ]; then
+    if ! chmod 700 "$tmp" 2>/dev/null; then
+      # chmod failure is non-blocking; warn user (common on NTFS/WSL)
+      log_warn "INSTALL" "chmod failed on $dest (filesystem may be non-POSIX, e.g. NTFS/WSL)"
+    fi
+  else
+    if ! chmod 600 "$tmp" 2>/dev/null; then
+      # chmod failure is non-blocking; warn user (common on NTFS/WSL)
+      log_warn "INSTALL" "chmod failed on $dest (filesystem may be non-POSIX, e.g. NTFS/WSL)"
+    fi
+  fi
+  # atomic move
+  if ! mv -f -- "$tmp" "$dest" 2>/dev/null; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    log_error "INSTALL" "mv failed: $tmp -> $dest"
+    return 2
+  fi
+  return 0
+}
+
+# Helper: record installation entries (atomic)
+_record_installation() {
+  local source="$1"
+  shift
+  local files=("$@")
+  local record_tmp
+  record_tmp="$(mktemp -p "$GROQBASH_EXTRAS_DIR" .install-record.XXXXXX 2>/dev/null || true)"
+  [ -n "$record_tmp" ] || record_tmp="$GROQBASH_EXTRAS_DIR/.install-record.$$.$RANDOM"
+  {
+    printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'source=%s\n' "$source"
+    printf 'files=\n'
+    for f in "${files[@]}"; do
+      printf '%s\n' "$f"
+    done
+  } > "$record_tmp"
+  chmod 600 "$record_tmp" 2>/dev/null || true
+  mv -f -- "$record_tmp" "$INSTALL_RECORD" 2>/dev/null || true
+  return 0
+}
+
+# Main installer orchestrator
+install_extras() {
+  # args: components... (empty => all)
+  local components=("$@")
+  local source_path=""
+  local force_flag="${INSTALL_EXTRAS_FORCE:-0}"
+  local dryrun_flag="${INSTALL_EXTRAS_DRYRUN:-0}"
+  # Determine source: precedence --source (via INSTALL_EXTRAS_SOURCE var), env GROQBASH_EXTRAS_SOURCE, default locations
+  if [ -n "${INSTALL_EXTRAS_SOURCE:-}" ]; then
+    source_path="${INSTALL_EXTRAS_SOURCE}"
+  elif [ -n "${GROQBASH_EXTRAS_SOURCE:-}" ]; then
+    source_path="${GROQBASH_EXTRAS_SOURCE}"
+  else
+    # default search order
+    if [ -d "$SCRIPTDIR/extras" ] && [ ! -L "$SCRIPTDIR/extras" ]; then
+      source_path="$SCRIPTDIR/extras"
+    elif [ -d "$SCRIPTDIR/../extras" ] && [ ! -L "$SCRIPTDIR/../extras" ]; then
+      source_path="$SCRIPTDIR/../extras"
+    else
+      source_path=""
+    fi
+  fi
+
+  if [ -z "$source_path" ] || [ ! -d "$source_path" ]; then
+    log_error "INSTALL" "extras source not found or not a directory"
+    return "$GROQBASHERRINSTALL"
+  fi
+
+  # Ensure source is not a symlink
+  if [ -L "$source_path" ]; then
+    log_error "INSTALL" "extras source is a symlink; refusing to use symlinked source: $source_path"
+    return "$GROQBASHERRINSTALL"
+  fi
+
+  # Normalize source_path for robust comparisons
+  source_path="$(_normalize_path "$source_path")"
+
+  # Ensure destination exists
+  mkdir -p "$GROQBASH_EXTRAS_DIR" 2>/dev/null || { log_error "INSTALL" "cannot create extras destination: $GROQBASH_EXTRAS_DIR"; return "$GROQBASHERRINSTALL"; }
+  chmod 700 "$GROQBASH_EXTRAS_DIR" 2>/dev/null || true
+
+  # Acquire install lock using flock (blocking with timeout loop)
+  exec 9>"$INSTALL_LOCK" 2>/dev/null || { log_error "INSTALL" "cannot open install lock: $INSTALL_LOCK"; return "$GROQBASHERRINSTALL"; }
+  # Ensure lock FD is always closed on function exit or exit of shell
+  trap 'exec 9>&- || true' RETURN EXIT
+
+  local waited=0
+  # Timeout (seconds) for acquiring the install lock.
+  # Default is 10 seconds; can be overridden by exporting GROQBASH_LOCK_TIMEOUT_MODELS.
+  local timeout="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
+  while ! flock -x -w 1 9 2>/dev/null; do
+    waited=$((waited + 1))
+    if [ "$waited" -ge "$timeout" ]; then
+      log_error "INSTALL" "could not acquire install lock within timeout"
+      exec 9>&- || true
+      return "$GROQBASHERRINSTALL"
+    fi
+    sleep 1
+  done
+  # At this point lock held on fd 9
+
+  log_info "INSTALL" "using source: $source_path"
+  log_info "INSTALL" "destination: $GROQBASH_EXTRAS_DIR"
+  log_info "INSTALL" "components: ${components[*]:-<all>}"
+  log_info "INSTALL" "force: $force_flag dry-run: $dryrun_flag"
+
+  # Build list of files to process
+  local -a to_copy
+  local -a copied_files
+  local -a skipped_files
+  local -a conflict_files
+  local -a symlink_rejected
+
+  if [ "${#components[@]}" -eq 0 ]; then
+    # all files under source
+    while IFS= read -r -d '' f; do
+      to_copy+=("$f")
+    done < <(find "$source_path" -mindepth 1 -print0 2>/dev/null)
+  else
+    # only specified components: treat each as immediate child under source
+    local comp
+    for comp in "${components[@]}"; do
+      # sanitize comp: no slashes allowed
+      case "$comp" in
+        */*|*\\*) log_warn "INSTALL" "invalid component name (skipping): $comp"; continue ;;
+      esac
+      if [ -d "$source_path/$comp" ]; then
+        while IFS= read -r -d '' f; do
+          to_copy+=("$f")
+        done < <(find "$source_path/$comp" -mindepth 1 -print0 2>/dev/null)
+      elif [ -f "$source_path/$comp" ]; then
+        to_copy+=("$source_path/$comp")
+      else
+        log_warn "INSTALL" "component not found in source: $comp"
+      fi
+    done
+  fi
+
+  # Iterate and copy
+  local src dest rel resolved src_norm
+  for src in "${to_copy[@]}"; do
+    # normalize src path for robust rel computation
+    src_norm="$(_normalize_path "$src")"
+    # compute relative path from source_path
+    rel="${src_norm#$source_path/}"
+    dest="$GROQBASH_EXTRAS_DIR/$rel"
+
+    # If src is symlink, resolve safely
+    if [ -L "$src" ]; then
+      resolved="$(_resolve_symlink_safe "$src")"
+      resolved="$(_normalize_path "$resolved")"
+      if [ -z "$resolved" ]; then
+        symlink_rejected+=("$rel")
+        log_warn "INSTALL" "symlink resolution failed or empty: $src"
+        continue
+      fi
+      # If resolved path is not under source_path, reject
+      case "$resolved" in
+        "$source_path"/*|"$source_path")
+          # treat resolved as the real source
+          src="$resolved"
+          src_norm="$resolved"
+          ;;
+        *)
+          symlink_rejected+=("$rel")
+          log_warn "INSTALL" "symlink points outside source; rejecting: $rel -> $resolved"
+          continue
+          ;;
+      esac
+    fi
+
+    # If src is directory, ensure dest dir exists and continue
+    if [ -d "$src" ]; then
+      if [ "$dryrun_flag" = "1" ]; then
+        skipped_files+=("$rel (dir)")
+        continue
+      fi
+      mkdir -p "$dest" 2>/dev/null || { log_warn "INSTALL" "cannot create dir: $dest"; continue; }
+      chmod 700 "$dest" 2>/dev/null || true
+      skipped_files+=("$rel (dir)")
+      continue
+    fi
+
+    # Only process regular files
+    if [ ! -f "$src" ]; then
+      log_warn "INSTALL" "skipping non-regular file: $rel"
+      skipped_files+=("$rel (non-regular)")
+      continue
+    fi
+
+    # Validate destination under extras
+    if ! _is_under_extras "$dest"; then
+      log_error "INSTALL" "computed destination outside extras: $dest"
+      exec 9>&- || true
+      return "$GROQBASHERRINSTALL"
+    fi
+
+    # Decide copy vs skip vs conflict
+    # Conflict handling: by design, conflicts (existing differing files) are treated as warnings.
+    # The installer will skip these files and exit with code 0; use --force to overwrite.
+    if [ -e "$dest" ] && [ "$force_flag" != "1" ]; then
+      if _is_same_file "$src" "$dest"; then
+        skipped_files+=("$rel (identical)")
+        continue
+      else
+        conflict_files+=("$rel")
+        log_warn "INSTALL" "conflict (not overwriting): $rel"
+        continue
+      fi
+    fi
+
+    # Perform copy (atomic)
+    if [ "$dryrun_flag" = "1" ]; then
+      copied_files+=("$rel (dry-run)")
+      continue
+    fi
+
+    if _copy_file_atomic "$src" "$dest" "$force_flag" "$dryrun_flag"; then
+      copied_files+=("$rel")
+    else
+      local rc=$?
+      # Conflict code returned by _copy_file_atomic is 3
+      # Conflicts are warnings per design (not blocking errors)
+      if [ "$rc" -eq 3 ]; then
+        # Conflict handling: record and warn; installer continues.
+        conflict_files+=("$rel")
+        log_warn "INSTALL" "conflict detected for $rel"
+      else
+        log_error "INSTALL" "failed to copy $rel (rc $rc)"
+        exec 9>&- || true
+        return "$GROQBASHERRINSTALL"
+      fi
+    fi
+  done
+
+  # Write INSTALLATION-RECORD if any files copied (and not dry-run)
+  if [ "${#copied_files[@]}" -gt 0 ] && [ "$dryrun_flag" != "1" ]; then
+    _record_installation "$source_path" "${copied_files[@]}"
+  fi
+
+  # Release lock (trap RETURN/EXIT will close fd 9)
+  exec 9>&- || true
+
+  # Print summary
+  log_info "INSTALL_SUMMARY" "source=$source_path"
+  log_info "INSTALL_SUMMARY" "copied=${#copied_files[@]} skipped=${#skipped_files[@]} conflicts=${#conflict_files[@]} symlink_rejected=${#symlink_rejected[@]}"
+
+  # Detailed logs if debug
+  if [ "${GROQBASH_DEBUG:-0}" -eq 1 ]; then
+    [ "${#copied_files[@]}" -gt 0 ] && printf 'Copied files:\n' && printf '%s\n' "${copied_files[@]}" >&2 || true
+    [ "${#skipped_files[@]}" -gt 0 ] && printf 'Skipped:\n' && printf '%s\n' "${skipped_files[@]}" >&2 || true
+    [ "${#conflict_files[@]}" -gt 0 ] && printf 'Conflicts:\n' && printf '%s\n' "${conflict_files[@]}" >&2 || true
+    [ "${#symlink_rejected[@]}" -gt 0 ] && printf 'Symlink rejected:\n' && printf '%s\n' "${symlink_rejected[@]}" >&2 || true
+  fi
+
+  # Exit code: 0 if no blocking errors; conflicts are warnings per design
+  return 0
+}
+# === INSTALL-EXTRAS END ===
+
 # === PROVIDER (GROQ) START ===
 # Provider embedded: groq (full implementations)
 # All base64 usage uses b64encode/b64decode and b64_atomic_write/read.
@@ -819,6 +1223,11 @@ PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}"
 ALLOWED_MODELS="${ALLOWED_MODELS:-}"
 
+# Installer-specific flags (populated by CLI parsing)
+INSTALL_EXTRAS_SOURCE="${INSTALL_EXTRAS_SOURCE:-}"
+INSTALL_EXTRAS_FORCE="${INSTALL_EXTRAS_FORCE:-0}"
+INSTALL_EXTRAS_DRYRUN="${INSTALL_EXTRAS_DRYRUN:-0}"
+
 CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
 
 # Helpers: truthy and normalization
@@ -1042,6 +1451,10 @@ PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
 
+# Note: we accept --install-extras [components...] --source <path> --force --dry-run
+# We'll parse positional args after --install-extras into INSTALL_EXTRAS_COMPONENTS array.
+INSTALL_EXTRAS_COMPONENTS=()
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;
@@ -1076,7 +1489,23 @@ while [ $# -gt 0 ]; do
     --provider)
       if [ "${2:-}" ] && [ "${2:0:1}" != "-" ]; then PROVIDER_CLI="${2:-}"; shift 2; else PROVIDER_INTERACTIVE=1; shift; fi
       ;;
-    --install-extras) INSTALL_EXTRAS=1; shift ;;
+    --install-extras)
+      INSTALL_EXTRAS=1
+      shift
+      # collect following args until next option or end as components
+      while [ $# -gt 0 ] && [ "${1:0:1}" != "-" ]; do
+        INSTALL_EXTRAS_COMPONENTS+=("$1")
+        shift
+      done
+      ;;
+    --source)
+      INSTALL_EXTRAS_SOURCE="${2:-}"
+      shift 2
+      ;;
+    --force)
+      INSTALL_EXTRAS_FORCE=1
+      shift
+      ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
       help_file="$GROQBASH_EXTRAS_DIR/docs/help.txt"
@@ -1093,6 +1522,11 @@ for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE REFRESH_MODE
   if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
 done
 
+# Map global --dry-run to installer-specific flag
+if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  INSTALL_EXTRAS_DRYRUN=1
+fi
+
 # Guard: prevent accidental real API calls
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
@@ -1100,9 +1534,19 @@ if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_tru
   exit "$GROQBASHERRTMP"
 fi
 
-# Immediate actions (refresh/list/install etc.) preserved as before
-# ... (identical logic to previous version; omitted here for brevity in this listing)
-# For full compatibility the immediate-action blocks are present in the actual file.
+# Immediate actions: implement install-extras immediate action
+if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
+  # Export installer flags for use by function
+  INSTALL_EXTRAS_SOURCE="${INSTALL_EXTRAS_SOURCE:-}"
+  INSTALL_EXTRAS_FORCE="${INSTALL_EXTRAS_FORCE:-0}"
+  INSTALL_EXTRAS_DRYRUN="${INSTALL_EXTRAS_DRYRUN:-0}"
+  # Call installer with components (if any)
+  if install_extras "${INSTALL_EXTRAS_COMPONENTS[@]}"; then
+    exit 0
+  else
+    exit "$GROQBASHERRINSTALL"
+  fi
+fi
 
 # Configuration loaders
 load_local_config() {
