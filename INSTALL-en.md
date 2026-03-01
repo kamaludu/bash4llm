@@ -1,241 +1,273 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+### INSTALL.md — GroqBash
+# INSTALLATION 
 
-# INSTALLATION &nbsp; [![Italian](https://img.shields.io/badge/IT-Versione_italiana-00aa55?style=flat)](INSTALL.md) 
-
-
-This document explains how to install GroqBash, configure your environment, verify the installation, and understand how temporary files, output paths, and exit codes work.
-
-GroqBash is a **single Bash script**, secure and self‑contained, designed for **single‑user environments** (Linux, macOS, WSL, Termux).
+GroqBash is a portable and secure Bash wrapper for the Groq API.  
+It does not require Python or external dependencies beyond POSIX/coreutils commands.
 
 ---
 
-# 1. Requirements and Dependencies
+## 1. Requirements
 
-## Required
-- **bash**
-- **curl**
-- **coreutils** (mktemp, chmod, mv, mkdir, head, sed, awk, grep)
-- **jq**
+GroqBash requires only:
 
-## Recommended
-- **python3** — fallback for fsync and serialization (optional)
-- **sha256sum / shasum** — for optional security extras
+- bash  
+- coreutils (*mv, cp, chmod, stat, find, sort, head, wc, tee, date …*) 
+- curl  
+- jq  
+- stat  
+- flock  
+- base64  
+- find, mktemp, readlink, awk, sed, grep, xargs, sync (*standard Posix*)
 
-## Locale and encoding
-GroqBash requires a UTF‑8 environment.
+All must be available in the PATH.  
+No fallbacks are provided: if a command is missing, GroqBash exits with an error.
 
-If needed:
+### Optional
 
-`sh
-export LC_ALL=C.UTF-8
-export LANG=C.UTF-8
-`
+Recommended, but GroqBash still works if missing:
 
----
+- sha256sum / shasum
+- stdbuf
 
-# 2. Installation
+### Compatibility
 
-## Download the script
+GroqBash works on:
 
-`sh
-curl -O https://raw.githubusercontent.com/kamaludu/groqbash/main/bin/groqbash
-`
-
-## Make it executable
-
-`sh
-chmod +x groqbash
-`
-
-## (Optional but recommended) Install into your PATH
-
-`sh
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-`
-
-## Set your API key
-
-`sh
-export GROQ_API_KEY="gsk_XXXXXXXXXXXXXXXX"
-`
-
-## Verify installation
-
-`sh
-groqbash --version
-`
+- Linux (GNU coreutils)  
+- macOS  
+- BusyBox/Alpine  
+- WSL (with permission limitations, handled with warnings)  
+- Non‑POSIX filesystems (NTFS, FAT) → permissions may not be applicable
 
 ---
 
-# 3. Installing Extras (optional)
+## 2. Basic installation
 
-Extras include:
+### 2.1 Clone or download GroqBash
 
-- additional documentation  
-- external providers  
-- security tools  
-- JSON/SSE test suite  
+`git clone https://github.com/<your-repo>/groqbash.git`  
+`cd groqbash`
 
-Install everything with:
+Or download the `groqbash` file and make it executable:
 
-`sh
-groqbash --install-extras
-`
+`chmod +x groqbash`
 
-Extras **do not modify core behavior**.
+### 2.2 Set the API key
 
----
+GroqBash uses the variable:
 
-# 4. Temporary File Behavior
+`export GROQ_API_KEY="your_key"`
 
-- GroqBash **never uses `/tmp`** for internal temporary files.  
-- Temporary directories are created using:
-  - `mktemp -d`
-  - permissions `700`
-  - inside `$GROQBASHTMPDIR` or a safe fallback under the user’s home
-
-- With `--debug`, temporary files are **not removed** to help inspection.
+You can add it to your `.bashrc` or `.zshrc`.
 
 ---
 
-# 5. Output Path (`--out`)
+## 3. Directory structure
 
-- When using `--out /path/to/file`, GroqBash:
-  - attempts to create the directory  
-  - checks safety and permissions  
-  - saves the file with restrictive permissions (`600`)
-
-- If the directory is unsafe or unwritable:
-  - GroqBash **does not** fall back to `/tmp`
-  - prints the output to the terminal
-  - shows a clear warning
-
-**Recommendation:** use paths under your home directory or `$GROQBASHTMPDIR`.
+On first run, GroqBash automatically creates:
+`
+groqbash.d/
+    config/
+    models/
+    templates/
+    history/
+    tmp/
+    extras/
+        providers/
+`
+All directories are created with 700 permissions (best‑effort on non‑POSIX filesystems).
 
 ---
 
-# 6. Basic Usage and Examples
+## 4. Quick usage
 
-Simple prompt:
+### Single prompt
 
-`sh
-groqbash "write a bash function that..."
-`
+`./groqbash -m mixtral-8x7b -- "Write a haiku about the wind."`
 
-Pipe input:
+### Streaming mode
 
-`sh
-echo "Explain this code" | groqbash
-`
+`./groqbash --stream -- "Generate streaming text."`
 
-Input from file:
+### Input from file
 
-`sh
-groqbash -f input.txt
-`
+`./groqbash -f input.txt`
 
-Force saving:
+### JSON output
 
-`sh
-groqbash --save --out output.txt "long text..."
-`
-
-Dry run (show JSON payload):
-
-`sh
-groqbash --dry-run "hello"
-`
-
-Provider (if extras installed):
-
-`sh
-groqbash --provider gemini "translate this"
-`
+`./groqbash --json -- "What do you know about Bash?"`
 
 ---
 
-# 7. Exit Codes
+## 5. Models
 
-| Code | Meaning                                                                   |
-|------|---------------------------------------------------------------------------|
-| **0** | Success                                                                   |
-| **1** | Generic error (arguments, file, configuration)                            |
-| **2** | Network / curl error                                                      |
-| **3** | HTTP/API error (4xx/5xx)                                                  |
-| **4** | No textual content extracted (parsing error)                              |
+### Update the model list
 
-**Operational notes**
-- Code 2 → automatic retries (DNS, timeout, connection refused)  
-- Code 3 → no retries (API errors, authorization, rate limits)  
-- With `--debug`, full logs are kept in the runtime tmpdir
+`./groqbash --refresh-models`
 
----
+The list is saved in:
 
-# 8. Troubleshooting and Recommended Tests
+`groqbash.d/models/models.txt`
 
-## Verify JSON payload
+### List models
 
-`sh
-groqbash --dry-run "Test payload with \"quotes\" and newlines\nand unicode: € ✓"
-`
-
-## Pipe input
-
-`sh
-echo "Explain this code" | groqbash
-`
-
-## Invalid API key
-
-`sh
-GROQ_API_KEY="invalid" groqbash "hello" || echo "exit:$?"
-`
-
-## Test without jq
-
-Temporarily hide jq:
-
-`sh
-mv /usr/bin/jq /usr/bin/jq.bak
-groqbash --dry-run "test"
-mv /usr/bin/jq.bak /usr/bin/jq
-`
+`./groqbash --list-models`
 
 ---
 
-# 9. Common Issues
+## 6. History and autosave
 
-- **cannot create destination directory**  
-  → the path passed to `--out` is unsafe or unwritable
+GroqBash automatically saves output when:
 
-- **Output not saved but present in tmp**  
-  → `mv` failed; check the tmpdir shown in the logs
+- it exceeds a certain size (THRESHOLD, default 1000 bytes), or  
+- `--save` is active.
 
-- **Strange characters / invalid JSON**  
-  → ensure UTF‑8 locale and jq/python3 availability
+Files are saved in:
 
----
+`groqbash.d/history/`
 
-# 10. Termux Installation Example
+Rotation is configurable via:
 
-`sh
-pkg update
-pkg install -y bash curl jq python
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-chmod +x "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-export GROQ_API_KEY="gsk_..."
-groqbash --version
-`
+- GROQBASH_ROTATE_HISTORY  
+- GROQBASH_HISTORY_MAX_FILES  
+- GROQBASH_HISTORY_MAX_BYTES  
+- GROQBASH_HISTORY_KEEP_DAYS  
 
 ---
 
-# 11. Final Notes
+## 7. Installing extras (option `--install-extras`)
 
-- GroqBash is designed for **single‑user environments**.  
-- Providers and extras are **optional** and must live in safe directories.  
-- Model output is **never executed** as shell commands.  
-- For full security details, see **SECURITY.md**.
+GroqBash includes a secure and portable installer to copy additional components (scripts, providers, templates, documentation) into the directory:
+
+`groqbash.d/extras/`
+
+### 7.1 Basic usage
+
+`./groqbash --install-extras`
+
+If you don’t specify components, **all** files in the extras source directory are installed.
+
+### 7.2 Install specific components
+
+`./groqbash --install-extras provider1 templateA`
+
+### 7.3 Custom source
+
+`./groqbash --install-extras --source /path/to/extras`
+
+### 7.4 Overwrite conflicting files
+
+`./groqbash --install-extras --force`
+
+### 7.5 Dry‑run mode
+
+`./groqbash --install-extras --dry-run`
+
+No files are modified.
+
+---
+
+## 8. Installer behavior (technical details)
+
+### 8.1 Security and atomicity
+
+- Each file is copied using:
+  - mktemp  
+  - cat (portable)  
+  - atomic mv -f  
+- Each operation is protected by a lock (flock) on:
+  `groqbash.d/extras/.install.lock`
+
+### 8.2 Permissions
+
+- Regular files → chmod 600  
+- Executable files → chmod 700  
+- If the filesystem does not support permissions (NTFS/WSL), GroqBash shows a **warning**, not an error.
+
+### 8.3 Symlinks
+
+- Symlinks in the source are resolved safely.  
+- If they point outside the source directory → **they are rejected**.
+
+### 8.4 Conflicts
+
+- If a file already exists and **is different**, GroqBash:
+  - shows a **warning**,  
+  - **does not overwrite**,  
+  - **does not fail** (exit code 0),  
+  - unless `--force` is used.
+
+### 8.5 Lock timeout
+
+The lock timeout is configurable:
+
+`export GROQBASH_LOCK_TIMEOUT_MODELS=10`
+
+Default: **10 seconds**.
+
+---
+
+## 9. Useful environment variables
+
+- GROQ_API_KEY — Groq API key  
+- MODEL — default model  
+- TURE / TEMPERATURE — temperature  
+- MAX_TOKENS  
+- OUTPUT_MODE — text, raw, json, pretty  
+- GROQBASH_DEBUG=1 — enable detailed logs  
+- ALLOW_API_CALLS=0 — block real API calls (useful for testing)
+
+---
+
+## 10. Portability and filesystem notes
+
+### 10.1 NTFS / WSL
+
+- chmod may fail → GroqBash shows a warning.  
+- Operations remain atomic.
+
+### 10.2 NFS
+
+- flock may be unreliable → GroqBash shows a warning in debug mode.
+
+### 10.3 BusyBox
+
+- All functions are compatible.
+
+---
+
+## 11. Uninstallation
+
+To remove GroqBash:
+
+`rm -rf groqbash.d`  
+`rm groqbash`
+
+---
+
+## 12. Troubleshooting
+
+### No response from the model
+
+- Check GROQ_API_KEY  
+- Check network connection  
+- Enable debug:  
+  `GROQBASH_DEBUG=1 ./groqbash -- "test"`
+
+### Permission error
+
+Likely a non‑POSIX filesystem (NTFS).  
+GroqBash continues installation anyway.
+
+### Lock timeout
+
+Increase:
+
+`export GROQBASH_LOCK_TIMEOUT_MODELS=30`
+
+---
+
+## 13. License
+
+GroqBash is distributed under the [**GNU GPL v3**](LICENSE)
