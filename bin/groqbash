@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 # =============================================================================
 # GroqBash — Bash-first wrapper for the Groq API
@@ -7,7 +8,7 @@
 # =============================================================================
 set -euo pipefail
 
-# === BOOTSTRAP & DEPENDENCIES START ===
+# === BOOTSTRAP START ===
 # Bootstrapping: metadata, error codes, path resolution, directory creation,
 # and verification of required external commands (explicit, no implicit deps).
 SCRIPT_NAME="groqbash"
@@ -91,17 +92,6 @@ if [ -L "$GROQBASH_TMPDIR" ]; then
 fi
 chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
 export TMPDIR="$GROQBASH_TMPDIR"
-# === BOOTSTRAP & DEPENDENCIES END ===
-
-# === LOCKING & ATOMIC OPERATIONS START ===
-# Lock names (co-located with resources) and timeouts (configurable)
-MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
-HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
-TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
-
-GROQBASH_LOCK_TIMEOUT_TMP="${GROQBASH_LOCK_TIMEOUT_TMP:-10}"
-GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
-GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 
 # ---------------------------------------------------------------------------
 # Logging helpers (structured)
@@ -264,9 +254,9 @@ cleanup_tmp() {
     esac
   fi
 }
-# === LOCKING & ATOMIC OPERATIONS END ===
+# === BOOTSTRAP END ===
 
-# === BASE64 HELPERS START ===
+# === HISTORY_MANIFEST START ===
 # Portable base64 wrappers (Linux, macOS, BusyBox)
 # - b64encode: reads stdin, writes base64 without newlines
 # - b64decode: reads base64 stdin, writes decoded bytes
@@ -323,10 +313,8 @@ b64_atomic_read() {
   b64decode < "$src"
   return $?
 }
-# === BASE64 HELPERS END ===
 
-# === HISTORY START ===
-# Portable helpers for rotate_history
+# Portable helpers for rotate_history and save_to_history
 file_size() {
   local f="$1"
   if [ -z "$f" ] || [ ! -f "$f" ]; then
@@ -414,9 +402,7 @@ save_to_history() {
   log_info "HISTORY_SAVE" "$dest"
   return 0
 }
-# === HISTORY END ===
 
-# === MANIFEST START ===
 # Manifest multimodale helpers (atomic, jq --arg usage)
 # All base64 operations use b64encode/b64decode and b64_atomic_write/read.
 manifest_create() {
@@ -501,9 +487,9 @@ manifest_read() {
   fi
   return 1
 }
-# === MANIFEST END ===
+# === HISTORY_MANIFEST END ===
 
-# === INSTALL-EXTRAS START ===
+# === INSTALL_EXTRAS START ===
 # Minimal, portable implementation following the user's reduced plan.
 # Provides: --install-extras [components...] --source <path> --force --dry-run
 # Uses GROQBASH_EXTRAS_SOURCE as optional env var for source path.
@@ -903,9 +889,9 @@ install_extras() {
   # Exit code: 0 if no blocking errors; conflicts are warnings per design
   return 0
 }
-# === INSTALL-EXTRAS END ===
+# === INSTALL_EXTRAS END ===
 
-# === PROVIDER (GROQ) START ===
+# === PROVIDER START ===
 # Provider embedded: groq (full implementations)
 # All base64 usage uses b64encode/b64decode and b64_atomic_write/read.
 GROQ_API_KEY="${GROQ_API_KEY:-}"
@@ -1171,9 +1157,11 @@ auto_select_model_groq() {
 }
 
 autoselectmodelgroq() { auto_select_model_groq "$@"; }
-# === PROVIDER (GROQ) END ===
+# === PROVIDER END ===
 
-# === CLI & MAIN START ===
+# === CLI_MAIN START ===
+# Runtime globals, CLI parsing, and main execution flow.
+
 # Runtime globals and normalization
 CONTENT="${CONTENT:-}"
 RUN_TMPDIR="${RUN_TMPDIR:-}"
@@ -1572,8 +1560,4 @@ load_whitelist() {
     ALLOWED_MODELS="$(cat "$MODELS_FILE" 2>/dev/null || true)"
   fi
 }
-
-# The rest of the main flow (model resolution, assemble_content, chat/batch handling)
-# remains functionally identical to the prior version and uses the hardened helpers above.
-# End of file
-# === CLI & MAIN END ===
+# === CLI_MAIN END ===
