@@ -261,7 +261,7 @@ ls /var/www/groqbash-ui/conversations/
 
 ---
 
-# INSTALLATION GUIDE FOR GROQBASH GUI
+## INSTALLATION GUIDE FOR GROQBASH GUI
 ##  🇬🇧
 ### 🧩 Overview
 This document explains how to install and configure the GroqBash HTML GUI on:
