@@ -1,4 +1,4 @@
-[![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 🇮🇹 [🇬🇧](#🇬🇧-installation-guide-for-groqbash-gui)
+[![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 🇮🇹 [🇬🇧](#installation-guide-for-groqbash-gui)
 
 ## 🇮🇹 INSTALLAZIONE DELLA GUI DI GROQBASH
 
@@ -261,8 +261,8 @@ ls /var/www/groqbash-ui/conversations/
 
 ---
 
-## 🇬🇧 INSTALLATION GUIDE FOR GROQBASH GUI
-
+# INSTALLATION GUIDE FOR GROQBASH GUI
+##  🇬🇧
 ### 🧩 Overview
 This document explains how to install and configure the GroqBash HTML GUI on:
 - BusyBox httpd
