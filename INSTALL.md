@@ -271,4 +271,4 @@ Aumenta:
 
 ## 13. Licenza
 
-GNU GPL v.3 [**LICENSE**](LICENSE)
+GroqBash è distribuito sotto licenza [**GNU GPL v3**](LICENSE)
