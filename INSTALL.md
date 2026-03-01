@@ -10,19 +10,24 @@ Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
 GroqBash richiede esclusivamente:
 
 - bash  
-- coreutils (mv, cp, chmod, stat, find, sort, head, wc, tee, date…)  
+- coreutils (*mv, cp, chmod, stat, find, sort, head, wc, tee, date …*) 
 - curl  
 - jq  
-- mktemp  
 - stat  
 - flock  
 - base64  
-- readlink  
-- awk, sed, grep, xargs  
-- sync (per flush best‑effort)
+- find, mktemp, readlink, awk, sed, grep, xargs, sync (*standard Posix*)
 
 Tutti devono essere disponibili nel PATH.  
 Non sono previsti fallback: se un comando manca, GroqBash termina con errore.
+
+### Opzionali
+
+Raccomandati, ma se assenti GroqBash funziona comunque:
+
+- sha256sum / shasum
+- stdbuf
+
 
 ### Compatibilità
 
