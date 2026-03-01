@@ -116,7 +116,7 @@ Grazie per la comprensione e per l’interesse verso GroqBash.
 
 ---
 
-# 🇬🇧 English Section — Contributing to GroqBash
+## 🇬🇧 English Section — Contributing to GroqBash
 
 GroqBash is a personal project, developed and maintained in free time.  
 For this reason:
