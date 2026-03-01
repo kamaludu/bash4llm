@@ -178,7 +178,7 @@ logs/errors.log
 
 ---
 
-# 🇬🇧 GroqBash GUI Minimalist Web Interface
+# GroqBash GUI Minimalist Web Interface
 
 ## 🇬🇧 🧩 Overview
 This is the official HTML GUI for GroqBash, designed to be:
