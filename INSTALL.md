@@ -1,4 +1,6 @@
-# INSTALL.md — GroqBash
+[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+### INSTALL.md — GroqBash
+# INSTALLAZIONE 
 
 GroqBash è un wrapper Bash portabile e sicuro per l’API Groq.  
 Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
