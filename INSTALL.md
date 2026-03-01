@@ -270,3 +270,5 @@ Aumenta:
 ---
 
 ## 13. Licenza
+
+GNU GPL v.3 [**LICENSE**](LICENSE)
