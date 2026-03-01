@@ -1,175 +1,265 @@
-# INSTALL.md
+# INSTALL.md — GroqBash
 
-### Introduzione
-GroqBash è un singolo file eseguibile che, alla prima esecuzione, crea la directory runtime `groqbash.d/` accanto al binario. Gli **extras** (provider opzionali, UI, librerie, strumenti di sicurezza, test, documentazione) sono **opzionali** e devono essere forniti localmente. Questo documento descrive lo stato attuale dell’installazione degli extras, la procedura manuale da seguire oggi e la specifica progettuale del comportamento che la flag `--install-extras` dovrebbe rispettare quando implementata.
-
----
-
-### Requisiti hard del core
-- **bash**  
-- **coreutils** (comandi POSIX di base: `mkdir`, `cp`, `mv`, `rm`, `chmod`, `printf`, `test`/`[ ]`)  
-- **curl**  
-- **jq**  
-- **mktemp**  
-- **stat**  
-- **flock**  
-- **base64**
-
-> Nota: lo script verifica la presenza esplicita di questi comandi all’avvio; alcune funzionalità degradano se strumenti opzionali (es. `sha256sum`, `shasum`, `stdbuf`) non sono disponibili.
+GroqBash è un wrapper Bash portabile e sicuro per l’API Groq.  
+Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
 
 ---
 
-### Destinazione canonica degli extras
-La destinazione obbligatoria e canonica è:
+## 1. Requisiti
+
+GroqBash richiede esclusivamente:
+
+- bash  
+- coreutils (mv, cp, chmod, stat, find, sort, head, wc, tee, date…)  
+- curl  
+- jq  
+- mktemp  
+- stat  
+- flock  
+- base64  
+- readlink  
+- awk, sed, grep, xargs  
+- sync (per flush best‑effort)
+
+Tutti devono essere disponibili nel PATH.  
+Non sono previsti fallback: se un comando manca, GroqBash termina con errore.
+
+### Compatibilità
+
+GroqBash funziona su:
+
+- Linux (GNU coreutils)  
+- macOS  
+- BusyBox/Alpine  
+- WSL (con limitazioni sui permessi, gestite con warning)  
+- Filesystem non‑POSIX (NTFS, FAT) → i permessi potrebbero non essere applicabili
+
+---
+
+## 2. Installazione di base
+
+### 2.1 Clonare o scaricare GroqBash
+
+`git clone https://github.com/<tuo-repo>/groqbash.git`  
+`cd groqbash`
+
+Oppure scarica il file `groqbash` e rendilo eseguibile:
+
+`chmod +x groqbash`
+
+### 2.2 Impostare la chiave API
+
+GroqBash usa la variabile:
+
+`export GROQ_API_KEY="la_tua_chiave"`
+
+Puoi inserirla nel tuo `.bashrc` o `.zshrc`.
+
+---
+
+## 3. Struttura delle directory
+
+Alla prima esecuzione, GroqBash crea automaticamente:
 `
-<SCRIPTDIR>/groqbash.d/extras/
+groqbash.d/
+    config/
+    models/
+    templates/
+    history/
+    tmp/
+    extras/
+        providers/
 `
-dove **`<SCRIPTDIR>`** è la directory che contiene il file `groqbash` (il binario). Il bootstrap del core crea `groqbash.d/` e `groqbash.d/extras/` con permessi restrittivi, ma **non** popola la directory con contenuti.
+Tutte le directory sono create con permessi 700 (best‑effort su filesystem non‑POSIX).
 
 ---
 
-### Origine degli extras (sorgente)
-Gli extras devono essere forniti dall’operatore come una directory `extras/` locale. L’ordine di ricerca robusto per la sorgente è:
+## 4. Uso rapido
 
-1. `<SCRIPTDIR>/extras/`  
-2. `<SCRIPTDIR>/../extras/` (utile se il binario è in `bin/` e il repo è nella directory padre)  
-3. percorso esplicito fornito dall’utente (se l’interfaccia CLI lo permette)  
-4. percorso configurato tramite variabile `GROQBASH_EXTRAS_SOURCE` **solo se** documentato e valido
+### Prompt singolo
 
-Regole di robustezza:
-- la sorgente deve essere una **directory esistente** e **non** un symlink; se è symlink, va rifiutata.
-- se più sorgenti sono presenti, si usa la prima valida nell’ordine sopra e si segnala quale sorgente è stata scelta.
-- se nessuna sorgente valida è trovata → errore bloccante per l’operazione `--install-extras`.
+`./groqbash -m mixtral-8x7b -- "Scrivi un haiku sul vento."`
 
----
+### Modalità streaming
 
-### Struttura attesa sotto `extras/`
-Sottodirectory previste (opzionali; possono mancare):
+`./groqbash --stream -- "Genera testo in streaming."`
 
-- `providers/` — provider opzionali (script, wrapper)  
-- `lib/` — librerie di supporto opzionali  
-- `security/` — script o risorse di verifica/validazione opzionali  
-- `ui/`  
-  - `cgi-bin/`  
-  - `templates/`  
-  - `static/`  
-  - `gui-lang.conf`  
-- `docs/` — documentazione e help aggiuntivo  
-- `test/` — test helper opzionali
+### Input da file
 
-Se una sottodirectory manca nella sorgente, **non** è un errore bloccante: la componente viene saltata con warning informativo.
+`./groqbash -f input.txt`
+
+### Output in JSON
+
+`./groqbash --json -- "Cosa sai di Bash?"`
 
 ---
 
-### Stato attuale di `--install-extras`
-La flag `--install-extras` è presente nell’interfaccia CLI del progetto ma, nella versione del codice analizzata, **non è implementata**. La sezione seguente definisce il comportamento progettuale che l’implementazione dovrà rispettare; fino a quando la flag non è effettivamente implementata, usare la procedura manuale descritta più avanti.
+## 5. Modelli
+
+### Aggiornare la lista dei modelli
+
+`./groqbash --refresh-models`
+
+La lista viene salvata in:
+
+`groqbash.d/models/models.txt`
+
+### Elencare i modelli
+
+`./groqbash --list-models`
 
 ---
 
-### Comportamento progettuale di `groqbash --install-extras`
+## 6. History e salvataggio automatico
 
-#### A. `groqbash --install-extras` (senza argomenti)
-- Individua la sorgente `extras/` secondo l’ordine di ricerca definito. Se nessuna sorgente valida → abort (errore bloccante).
-- Crea le directory di destinazione mancanti sotto `<SCRIPTDIR>/groqbash.d/extras/` con permessi restrittivi (directory `700`).
-- Acquisisce un lock di installazione locale (es. `groqbash.d/extras/.install.lock`) per evitare race tra istanze concorrenti.
-- Itera ricorsivamente sulla sorgente:
-  - Per ogni directory: crea la directory corrispondente in destinazione se mancante.
-  - Per ogni file regolare: copia il contenuto (mai symlink) in modo atomico — scrittura in file temporaneo nella stessa directory di destinazione, impostazione permessi sicuri, rename atomico.
-  - Per ogni symlink nella sorgente:
-    - se punta **all’interno** della sorgente: risolvere e copiare il contenuto reale (file o directory) nella destinazione;
-    - se punta **fuori** dalla sorgente: rifiutare quella voce e registrare warning/errore (non seguire).
-- Rilascia il lock e stampa un sommario operativo (copiati, saltati, conflitti, warnings).
-- Risultato: tutte le componenti presenti nella sorgente sono presenti in `groqbash.d/extras/` senza sovrascrivere file utente esistenti, salvo diversa politica esplicita.
+GroqBash salva automaticamente l’output quando:
 
-#### B. `groqbash --install-extras providers ui security ...` (con argomenti)
-- Valida ogni nome componente: deve corrispondere a una sottodirectory immediata nella sorgente.
-- Per ogni componente valida, esegue la stessa procedura di copia limitata a quella sottodirectory.
-- Se una componente richiesta non esiste nella sorgente → warning e continua con le altre.
+- supera una certa dimensione (THRESHOLD, default 1000 byte), oppure  
+- è attivo `--save`.
+
+I file vengono salvati in:
+
+`groqbash.d/history/`
+
+La rotazione è configurabile tramite:
+
+- GROQBASH_ROTATE_HISTORY  
+- GROQBASH_HISTORY_MAX_FILES  
+- GROQBASH_HISTORY_MAX_BYTES  
+- GROQBASH_HISTORY_KEEP_DAYS  
 
 ---
 
-### Politica di sovrascrittura e idempotenza
-Principio guida: **proteggere i file modificati dall’utente**; rendere l’operazione ripetibile.
+## 7. Installazione degli extras (opzione `--install-extras`)
 
-Predefinito:
-- **Non sovrascrivere mai** un file esistente in `groqbash.d/extras/` per default.
-- Se il file di destinazione non esiste → copiarlo.
-- Se il file di destinazione esiste:
-  - se identico (stesso checksum quando disponibile; altrimenti confronto `mtime`+`size`) → considerato già installato (nessuna azione);
-  - se differente → **non sovrascrivere**; registrare un conflitto e segnalarlo con istruzioni chiare (es. usare `--force-extras` o rimuovere manualmente).
-- Flag opzionali (da implementare separatamente):
-  - `--force-extras` → sovrascrive incondizionatamente i file esistenti.
-  - `--update-extras` → sovrascrive solo se il file sorgente è diverso e il file di destinazione non è stato modificato dall’utente (determinato da checksum o confronto `mtime`+`size`); se il file di destinazione è stato modificato → lasciare e segnalare conflitto.
-- Se un file in destinazione ha `mtime` più recente o checksum diverso rispetto alla precedente installazione → considerarlo “file utente” e non sovrascriverlo senza `--force-extras`.
-- Idempotenza: con la politica “non sovrascrivere per default” e confronto identità, eseguire `--install-extras` più volte non cambia lo stato dopo la prima esecuzione riuscita (salvo interventi manuali).
+GroqBash include un installer sicuro e portabile per copiare componenti aggiuntivi (script, provider, template, documentazione) nella directory:
 
----
+`groqbash.d/extras/`
 
-### Errori, warning e messaggi all’utente
-**Errori bloccanti (abort):**
-- sorgente `extras/` non trovata → abort;
-- destinazione non scrivibile → abort;
-- lock non acquisibile dopo timeout → abort;
-- spazio su disco insufficiente durante copia → abort e rollback parziale;
-- richiesta di seguire symlink che puntano fuori dalla sorgente → rifiuto per quella voce (warning o abort a seconda della policy).
+### 7.1 Uso base
 
-**Warning (non bloccanti):**
-- componente richiesta non trovata → skip con warning;
-- file di destinazione esistente e differente → skip e segnalazione di conflitto;
-- `chmod` non applicabile (es. su NTFS) → warning;
-- checksum non disponibile → fallback a `mtime`+`size` con warning.
+`./groqbash --install-extras`
 
-**Messaggi concettuali da mostrare:**
-- sorgente scelta (path);
-- sommario: numero file copiati, saltati, conflitti, warnings;
-- per ogni conflitto: percorso sorgente, percorso destinazione, motivo;
-- azioni consigliate: `--force-extras`, rimuovere manualmente, esaminare differenze.
+Se non specifichi componenti, vengono installati **tutti** i file presenti nella directory sorgente degli extras.
 
-Regole di uscita:
-- errori bloccanti → codice di uscita non‑zero;
-- solo warnings → uscita con codice zero ma con messaggio che indica componenti non installate.
+### 7.2 Installare componenti specifici
+
+`./groqbash --install-extras provider1 templateA`
+
+### 7.3 Sorgente personalizzata
+
+`./groqbash --install-extras --source /path/to/extras`
+
+### 7.4 Sovrascrivere file in conflitto
+
+`./groqbash --install-extras --force`
+
+### 7.5 Modalità dry‑run
+
+`./groqbash --install-extras --dry-run`
+
+Nessun file viene modificato.
 
 ---
 
-### Portabilità e strumenti ammessi
-Il comportamento progettuale è implementabile usando solo strumenti portabili e POSIX‑compatibili:
+## 8. Comportamento dell’installer (dettagli tecnici)
 
-- **bash** e comandi POSIX: `mkdir`, `test`/`[ ]`, `cp` (senza opzioni GNU‑specifiche), `mv`, `chmod`, `stat` (con fallback), `mktemp`, `flock` (o fallback con `mkdir` atomico), `printf`, `rm`.
-- Checksum: usare `sha256sum` se disponibile; fallback a `shasum` o confronto `mtime`+`size`.
-- **Evitare**: `readlink -f`, `rsync`, opzioni GNU‑only non portabili.
+### 8.1 Sicurezza e atomicità
 
-Attenzioni:
-- **BusyBox**: alcune opzioni di `cp`/`mktemp` possono mancare; la copia deve essere eseguita con scrittura in file temporaneo e rename atomico.
-- **NTFS (WSL/Cygwin/MSYS2)**: `chmod` può essere no‑op; emettere warning se i permessi POSIX non possono essere applicati.
-- **Locking**: preferire `flock`; se non disponibile usare `mkdir` atomico con timeout e warning.
+- Ogni file è copiato tramite:
+  - mktemp  
+  - cat (portabile)  
+  - mv -f atomico  
+- Ogni operazione è protetta da lock (flock) su:
+  `groqbash.d/extras/.install.lock`
+
+### 8.2 Permessi
+
+- File normali → chmod 600  
+- File eseguibili → chmod 700  
+- Se il filesystem non supporta i permessi (NTFS/WSL), GroqBash mostra un **warning**, non un errore.
+
+### 8.3 Symlink
+
+- I symlink nella sorgente vengono risolti in modo sicuro.  
+- Se puntano fuori dalla directory sorgente → **vengono rifiutati**.
+
+### 8.4 Conflitti
+
+- Se un file esiste già e **è diverso**, GroqBash:
+  - mostra un **warning**,  
+  - **non sovrascrive**,  
+  - **non fallisce** (exit code 0),  
+  - a meno che non sia usato `--force`.
+
+### 8.5 Timeout lock
+
+Il timeout del lock è configurabile:
+
+`export GROQBASH_LOCK_TIMEOUT_MODELS=10`
+
+Default: **10 secondi**.
 
 ---
 
-### Symlink policy
-- **Mai** creare symlink nella destinazione. Copiare sempre il contenuto reale.
-- Se nella sorgente esistono symlink che puntano **dentro** la sorgente → risolvere e copiare il contenuto reale.
-- Se puntano **fuori** dalla sorgente → rifiutare quella voce e registrare warning/errore (non seguire).
+## 9. Variabili d’ambiente utili
+
+- GROQ_API_KEY — chiave API Groq  
+- MODEL — modello predefinito  
+- TURE / TEMPERATURE — temperatura  
+- MAX_TOKENS  
+- OUTPUT_MODE — text, raw, json, pretty  
+- GROQBASH_DEBUG=1 — abilita log dettagliati  
+- ALLOW_API_CALLS=0 — blocca chiamate reali (utile per test)
 
 ---
 
-### Registro di installazione
-Si raccomanda la scrittura di un file `INSTALLATION-RECORD` in `groqbash.d/extras/` contenente elenco file copiati, timestamp e checksum (quando disponibili) per audit e rollback manuale. Questo file deve essere creato solo se l’installazione ha copiato effettivamente nuovi file.
+## 10. Portabilità e note sui filesystem
+
+### 10.1 NTFS / WSL
+
+- chmod può fallire → GroqBash mostra un warning.  
+- Le operazioni restano atomiche.
+
+### 10.2 NFS
+
+- flock può essere inaffidabile → GroqBash mostra un warning in modalità debug.
+
+### 10.3 BusyBox
+
+- Tutte le funzioni sono compatibili.
 
 ---
 
-### Procedura manuale (uso pratico oggi)
-Finché `--install-extras` non è implementato nella versione in uso, installa manualmente gli extras copiando la directory `extras/` del repository nella destinazione runtime.
+## 11. Disinstallazione
 
-Esempi pratici (concetto, non comandi obbligatori):
-- Se il repository e il binario sono nella stessa directory: copiare il contenuto di `extras/` in `./groqbash.d/extras/`.
-- Se il binario è in una directory diversa dal repository: creare `SCRIPTDIR/groqbash.d/extras` e copiare i contenuti della sorgente `extras/` nella destinazione.
+Per rimuovere GroqBash:
 
-Dopo la copia, i provider opzionali, la UI e la documentazione aggiuntiva saranno disponibili dove il core si aspetta di trovarli.
+`rm -rf groqbash.d`  
+`rm groqbash`
 
 ---
 
-### Note finali
-- La flag `--install-extras` è descritta qui come comportamento progettuale; se la versione in uso non la implementa ancora, usare la procedura manuale.
-- Il core include un provider embedded che permette il funzionamento minimo anche senza extras.
-- Non usare symlink per popolare `groqbash.d/extras/`.
-- Documentare eventuali limitazioni di permessi su filesystem non POSIX (NTFS) e le implicazioni per `chmod` e per la sicurezza dei file.
+## 12. Troubleshooting
+
+### Nessuna risposta dal modello
+
+- Verifica GROQ_API_KEY  
+- Verifica connessione  
+- Attiva debug:  
+  `GROQBASH_DEBUG=1 ./groqbash -- "test"`
+
+### Errore su permessi
+
+Probabile filesystem non‑POSIX (NTFS).  
+GroqBash continua comunque l’installazione.
+
+### Lock timeout
+
+Aumenta:
+
+`export GROQBASH_LOCK_TIMEOUT_MODELS=30`
+
+---
+
+## 13. Licenza
