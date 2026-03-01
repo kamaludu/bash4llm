@@ -1,4 +1,4 @@
-[![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 🇮🇹🇬🇧
+[![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 🇮🇹 [🇬🇧](#🇬🇧-installation-guide-for-groqbash-gui)
 
 ## 🇮🇹 INSTALLAZIONE DELLA GUI DI GROQBASH
 
