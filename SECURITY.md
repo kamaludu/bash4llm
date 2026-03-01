@@ -1,7 +1,7 @@
 
 [![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
-# SECURITY POLICY &nbsp; [![English](https://img.shields.io/badge/EN-English_version-orange?style=flat)](SECURITY-en.md)
+# SECURITY POLICY  🇮🇹 [🇬🇧](SECURITY-en.md)
 
 # GroqBash — Politica di Sicurezza
 
