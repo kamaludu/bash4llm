@@ -52,7 +52,10 @@ Sottodirectory previste (opzionali, possono mancare):
 - `lib/`  
 - `security/`  
 - `ui/`  
-  - `cgi-bin/`, `templates/`, `static/`, `gui-lang.conf`  
+  - `cgi-bin/`
+  - `templates/`
+  - `static/`
+  - `gui-lang.conf`  
 - `docs/`  
 - `test/`
 
@@ -232,7 +235,11 @@ Optional subdirectories:
 - `providers/`  
 - `lib/`  
 - `security/`  
-- `ui/` (`cgi-bin/`, `templates/`, `static/`, `gui-lang.conf`)  
+- `ui/`  
+  - `cgi-bin/`
+  - `templates/`
+  - `static/`
+  - `gui-lang.conf`  
 - `docs/`  
 - `test/`
 
