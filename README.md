@@ -4,7 +4,7 @@
 [![ShellCheck](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml)
 [![Smoke Tests](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml)
 
-# GroqBash &nbsp; [![English](https://img.shields.io/badge/EN-English_version-orange?style=flat)](README-en.md)
+# GroqBash 🇮🇹 [🇬🇧](README-en.md)
 
 **GroqBash** — *wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq.*
 
