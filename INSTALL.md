@@ -55,7 +55,6 @@ Sottodirectory previste (opzionali, possono mancare):
   - `cgi-bin/`
   - `templates/`
   - `static/`
-  - `gui-lang.conf`  
 - `docs/`  
 - `test/`
 
@@ -239,7 +238,6 @@ Optional subdirectories:
   - `cgi-bin/`
   - `templates/`
   - `static/`
-  - `gui-lang.conf`  
 - `docs/`  
 - `test/`
 
