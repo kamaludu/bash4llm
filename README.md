@@ -247,7 +247,7 @@ Per dettagli completi: **SECURITY.md**.
 ## Licenza
 
 GroqBash è distribuito sotto licenza **GNU GPL v3**.  
-Vedi **LICENSE** per il testo completo.
+Vedi [**LICENSE**](LICENSE) per il testo completo.
 
 ---
 
