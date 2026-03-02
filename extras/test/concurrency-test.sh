@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# extras/test/concurrency_test.sh
+# extras/test/concurrency-test.sh
 # Concurrency test for GroqBash
-# Usage: extras/test/concurrency_test.sh [path-to-groqbash] [N_WRITERS] [N_REFRESHERS] [SLEEP_BETWEEN]
+# Usage: extras/test/concurrency-test.sh [path-to-groqbash] [N_WRITERS] [N_REFRESHERS] [SLEEP_BETWEEN]
 # Default: ./groqbash 10 5 0.05
 set -euo pipefail
 
