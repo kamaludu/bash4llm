@@ -1,263 +1,245 @@
-
 [![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![ShellCheck](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml)
 [![Smoke Tests](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml)
 
-# GroqBash  [🇮🇹](README.md) 🇬🇧
+# GroqBash 🇬🇧
 
-**GroqBash** — *secure, Bash‑first CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API.*
+**GroqBash** — secure, Bash‑first and fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API.
 
-GroqBash is a **single Bash script**, self‑contained, auditable, and easy to verify.  
-Download it, make it executable, export your API key, and start using it immediately.
+GroqBash is a single Bash script, self‑contained, readable and verifiable.  
+Download it, make it executable, export your API key and start using it.
 
-It targets Unix‑like environments: **Linux**, **macOS**, **WSL**, **Termux**.
-
-> [![English](https://img.shields.io/badge/EN-English-orange?style=flat)](#)
-> English is not my first language.  
-> Simple English is welcome — I will always try to respond clearly.
+Compatible with Unix‑like environments: Linux, macOS, WSL, Termux.
 
 ---
 
 ## Key features
 
-- **Dynamic model list** via `GET https://api.groq.com/openai/v1/models`  
-  – no hardcoded models, no hidden fallbacks.  
-- **Safe by design**  
-  – no `/tmp` usage for internal temporaries, no `eval`, strict permissions on sensitive files.  
-- **Bash‑first**  
-  – explicit dependency on Bash, with clear, auditable logic.  
-- **Streaming and non‑streaming** output modes.  
-- **Automatic saving** of long outputs beyond a configurable threshold.  
-- **Model management**  
-  – refresh, list, set default, and policy‑based auto‑selection.  
+- **Dynamic model list**  
+  via `GET https://api.groq.com/openai/v1/models`  
+  → no hardcoded models.
+
+- **Security by design**  
+  → no use of `/tmp`, no `eval`, restrictive permissions, advanced provider validation.
+
+- **Modular sectioned structure**  
+  → BOOTSTRAP, HISTORY_MANIFEST, INSTALL_EXTRAS, PROVIDER, CLI_MAIN.
+
+- **Streaming and non‑streaming**  
+  → real‑time output or full response at the end.
+
+- **Automatic saving**  
+  → for long outputs above a configurable threshold.
+
+- **Advanced model management**  
+  → refresh, list, persistent default, dynamic whitelist, auto‑selection.
+
 - **Optional extras**  
-  – provider modules, utilities, docs, and advanced security/test helpers.
+  → additional providers, templates, documentation, security tools.
 
 ---
 
-## Threat model (short version)
+## Threat model (short)
 
-GroqBash is designed for **single‑user environments** (your laptop, your Termux, your shell account), not for hostile multi‑tenant servers.
+GroqBash is designed for single‑user environments (laptop, Termux, personal shell).
 
-- Provider modules are **code executed in your shell**. They must live in directories owned by you and not writable by others.  
-- Environment variables like `GROQBASHEXTRASDIR` and `GROQBASHTMPDIR` are treated as **trusted configuration**, not untrusted input.  
-- The script does **not** execute model output as shell commands.  
-- Residual TOCTOU risks and JSON/SSE parsing limitations are documented and acceptable for a hardened Bash script.
+- Providers are code executed in your shell: they must reside in secure directories.  
+- Variables such as `GROQBASH_EXTRAS_DIR` and `GROQBASH_TMPDIR` are considered trusted configuration.  
+- The script never executes model output.  
+- TOCTOU risks and JSON/SSE parsing limits are mitigated and documented.
 
-For full details, see **[SECURITY](SECURITY-en.md)**.
+See `SECURITY.md` for full details.
 
 ---
 
 ## Requirements
 
-**Minimum**
+### Mandatory
 
-- `bash`
-- `curl`
-- standard coreutils (`mktemp`, `chmod`, `mv`, `mkdir`, `head`, `sed`, `awk`, `grep`)
+- bash  
+- curl  
+- jq  
+- coreutils: `mktemp`, `chmod`, `mv`, `mkdir`, `head`, `sed`, `awk`, `grep`, `stat`  
+- flock  
+- base64 (or equivalent: `base64`, `b64decode`)
 
-**Recommended**
+### Optional
 
-- `jq` (JSON parsing)
-- `python3` (optional fsync helper)
-- `sha256sum` or `shasum` (for optional security extras)
+- sha256sum or shasum (for extras file comparison)  
+- stdbuf (for smoother streaming)  
+- sync (best‑effort flush)
 
 ---
 
 ## Installation
 
-Full instructions are available in **[INSTALL](INSTALL-en.md)**.
+Detailed instructions in `INSTALL.md`.
 
-Quick start:
+In short:
 
-```sh
-chmod +x groqbash
-export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
-./groqbash --help
-```
+`chmod +x groqbash`  
+`export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`  
+`./groqbash --help`
 
-Install optional extras (docs, providers, security, tests):
+Optional extras:
 
-```sh
-./groqbash --install-extras
-```
+`./groqbash --install-extras`
+
+With options:
+
+- `--source <dir>`  
+- `--force`  
+- `--dry-run`  
+- selective install: `./groqbash --install-extras provider1 templateA`
 
 ---
 
-## Quick usage
+## Quick start
 
-Prompt from CLI:
+Direct prompt:
 
-```sh
-./groqbash "write a short poem in Italian"
-```
+`./groqbash "write a short poem in Italian"`
 
 Input from file:
 
-```sh
-./groqbash -f prompt.txt
-```
+`./groqbash -f prompt.txt`
 
 Pipe:
 
-```sh
-echo "explain relativity" | ./groqbash
-```
+`echo "explain relativity" | ./groqbash`
 
 Specific model:
 
-```sh
-./groqbash -m llama-3.3-70b-versatile "write a short essay"
-```
+`./groqbash -m llama-3.3-70b-versatile "write a short essay"`
 
-Dry run (show JSON payload without sending):
+Dry run:
 
-```sh
-./groqbash --dry-run "hello"
-```
+`./groqbash --dry-run "hello"`
 
-Provider example (if extras installed):
+External provider (if installed):
 
-```sh
-./groqbash --provider gemini "translate this"
-```
+`./groqbash --provider gemini "translate this"`
 
 ---
 
 ## Main options
 
-| Option                         | Description                                              |
-|--------------------------------|----------------------------------------------------------|
-| `-m, --model <name>`           | Select model                                             |
-| `-f <file>`                    | Read prompt from file                                   |
-| `--system <text>`              | Set system prompt                                       |
-| `--temp <value>`               | Temperature (default: `1.0`)                            |
-| `--max <n>`                    | Max tokens (default: `4096`)                            |
-| `--refresh-models`             | Refresh model list from Groq                            |
-| `--list-models`                | Show available models                                   |
-| `--set-default <model>`        | Set persistent default model                            |
-| `--auto-default-policy <p>`    | `preferred` \| `alpha`                                  |
-| `--provider <name>`            | Use external provider module                            |
-| `--provider`                   | Interactive provider selection                          |
-| `--install-extras`             | Install extras (docs, utils, providers, security, test) |
-| `--save` / `--nosave`          | Force save or force print                               |
-| `--out <path>`                 | Output file or directory                                |
-| `--threshold <n>`              | Auto‑save threshold (default: `1000`)                   |
-| `--dry-run`                    | Print payload and exit                                  |
-| `--quiet`                      | Minimal output                                          |
-| `--debug`                      | Verbose debug + keep temp files                         |
-| `--version`                    | Print version                                           |
-| `-h, --help`                   | Show help (from extras/docs/help.txt if available)      |
+| Option | Description |
+|--------|-------------|
+| `-m, --model <name>` | Select model |
+| `-f <file>` | Read prompt from file |
+| `--system <text>` | Set system prompt |
+| `--ture <value>` / `--temperature <value>` | Temperature |
+| `--max <n>` | Max tokens |
+| `--refresh-models` | Refresh model list |
+| `--list-models` | Show available models |
+| `--set-default <model>` | Set persistent default model |
+| `--provider <name>` | Use external provider |
+| `--provider` | Interactive provider selection |
+| `--install-extras` | Install extras |
+| `--json-input <file>` | Direct JSON input |
+| `--template <name>` | Use template |
+| `--batch <file>` | Run batch of prompts |
+| `--stream` / `--no-stream` | Streaming on/off |
+| `--json` / `--pretty` / `--raw` / `--text` | Output formats |
+| `--save` / `--nosave` | Force save or no save |
+| `--out <path>` | Output path |
+| `--threshold <n>` | Autosave threshold |
+| `--quiet` | Minimal output |
+| `--debug` | Extended debug |
+| `--diagnostics` | Full diagnostics |
+| `--show-config` | Show configuration |
+| `--version` | Version |
+| `-h, --help` | Help |
 
 ---
 
-## Configuration and model behavior
+## Configuration and models
 
-### Config files
+### Configuration files
 
-- `~/.config/groq/models.txt`  
-  – dynamic model list (rebuilt on each refresh).  
-- `~/.config/groq/default_model`  
-  – persistent default model.
+- `$GROQBASH_CONFIG_DIR/config`  
+  → local parameters (MODEL, TURE, MAX_TOKENS, FORMAT, THRESHOLD)
+
+- `$GROQBASH_CONFIG_DIR/model.$PROVIDER`  
+  → default model per provider
+
+- `$MODELS_FILE`  
+  → whitelist updated by `--refresh-models`
 
 ### Model selection precedence
 
 1. `-m/--model`  
-2. `default_model`  
-3. `GROQ_MODEL`  
-4. Auto‑selection based on policy  
-
-If the model list is empty, GroqBash fails and asks you to run `--refresh-models`.
-
-### Refreshing models
-
-```sh
-./groqbash --refresh-models
-```
-
-- Fetches the official model list  
-- Rebuilds `models.txt`  
-- Shows diagnostics (more with `--debug`)
+2. `model.$PROVIDER`  
+3. `config`  
+4. provider auto‑selection  
+5. first entry in whitelist
 
 ---
 
-## Temporary files and output paths
+## Temp files and output paths
 
-- GroqBash **never uses `/tmp`** for internal temporaries.  
-- Runtime temp directories use `mktemp -d` with `chmod 700`.  
-- Saved outputs use restrictive permissions (e.g. `600`).  
-- With `--out`, GroqBash creates the directory if possible; otherwise it prints to the terminal.
-
----
-
-## Advanced extras (optional)
-
-Extras do **not** modify core behavior.
-
-### Security helpers
-
-- `extras/security/verify.sh`  
-  – checks provider directory, permissions, symlinks, owner, optional checksums.  
-- `extras/security/validate-env.sh`  
-  – validates environment and required tools.
-
-Run manually:
-
-```sh
-extras/security/verify.sh
-extras/security/validate-env.sh
-```
-
-### Test helpers
-
-- `extras/test/json-sse-suite.sh`  
-  – tests JSON escaping and SSE parsing (no real API calls).
+- No use of `/tmp`.  
+- Runtime temporaries in a dedicated directory with 700 permissions.  
+- Saved files with 600 permissions.  
+- With `--out` GroqBash creates the directory if possible.
 
 ---
 
-## Security notes and limitations
+## Advanced extras
 
-- **No eval**  
-- **No execution of model output**  
-- **Provider modules are code** — keep `extras/providers` secure  
-- **Environment variables are trusted configuration**  
-- **JSON/SSE parsing** is robust but not a full parser  
-- **TOCTOU** risks are mitigated but cannot be fully eliminated in Bash
+Extras do not change core behavior.
 
-See **SECURITY.md** for full details.
+### Security
+
+- additional providers  
+- tools to verify permissions, symlinks, owner, checksum  
+- templates and documentation
+
+### Tests
+
+- JSON/SSE suite  
+- provider tests
+
+---
+
+## Security notes
+
+- No `eval`.  
+- No execution of model output.  
+- Provider = code: keep `extras/providers` secure.  
+- Environment variables = trusted configuration.  
+- JSON/SSE parsing robust but not a full parser.  
+- TOCTOU mitigated.
 
 ---
 
 ## Exit codes
 
-| Code | Meaning                                                                 |
-|------|-------------------------------------------------------------------------|
-| 0    | Success                                                                 |
-| 1    | Generic error (arguments, file, configuration)                           |
-| 2    | Network / curl error                                                     |
-| 3    | HTTP/API error (4xx/5xx)                                                 |
-| 4    | No textual content extracted (parsing error)                             |
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| `GROQBASHERRTMP` | Generic / temporary error |
+| `GROQBASHERRCURL_FAILED` | Network / curl error |
+| `GROQBASHERRAPI` | HTTP/API error |
+| `GROQBASHERRBAD_MODEL` | Invalid model |
+| `GROQBASHERRNO_PROMPT` | No prompt provided |
+| `GROQBASHERRNOAPIKEY` | API key missing |
+| `GROQBASHERRINSTALL` | Extras installer error |
 
 ---
 
 ## License
 
-GroqBash is released under the **GNU GPL v3**.  
-See **LICENSE** for the full text.
+GroqBash is distributed under the GPL v3 license.  
+See `LICENSE`.
 
 ---
 
-## Notes
+## Contacts
 
-Parts of the code and documentation were drafted with the assistance of AI tools.  
-Architecture and final decisions remain manually curated.
-
----
-
-## Contact
-
-- Author: Cristian Evangelisti  
-- Email: opensource​@​cevangel.​anonaddy.​me  
-- Repository: https://github.com/kamaludu/groqbash
+Author: Cristian Evangelisti  
+Email: opensource@cevangel.anonaddy.me  
+Repository: https://github.com/kamaludu/groqbash
