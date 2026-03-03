@@ -6,12 +6,12 @@
 
 # GroqBash 🇮🇹 [🇬🇧](README-en.md)
 
-**GroqBash** — *wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq.*
+**GroqBash** — wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq.
 
-GroqBash è un **singolo script Bash**, auto‑contenuto, leggibile e verificabile.  
+GroqBash è un singolo script Bash, auto‑contenuto, leggibile e verificabile.  
 Scaricalo, rendilo eseguibile, esporta la tua API key e inizia subito a usarlo.
 
-Compatibile con ambienti Unix‑like: **Linux**, **macOS**, **WSL**, **Termux**.
+Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Termux.
 
 ---
 
@@ -19,13 +19,13 @@ Compatibile con ambienti Unix‑like: **Linux**, **macOS**, **WSL**, **Termux**.
 
 - **Lista modelli dinamica**  
   tramite `GET https://api.groq.com/openai/v1/models`  
-  → nessun modello hardcoded, nessun fallback nascosto.
+  → nessun modello hardcoded.
 
 - **Sicurezza by design**  
-  → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, controlli provider robusti.
+  → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, validazione provider avanzata.
 
-- **Bash‑first**  
-  → logica chiara, nessuna dipendenza non necessaria.
+- **Struttura modulare a sezioni**  
+  → BOOTSTRAP, HISTORY_MANIFEST, INSTALL_EXTRAS, PROVIDER, CLI_MAIN.
 
 - **Streaming e non‑streaming**  
   → output in tempo reale o completo a fine risposta.
@@ -34,59 +34,65 @@ Compatibile con ambienti Unix‑like: **Linux**, **macOS**, **WSL**, **Termux**.
   → per output lunghi oltre una soglia configurabile.
 
 - **Gestione modelli avanzata**  
-  → refresh, lista, default persistente, auto‑selezione basata su policy.
+  → refresh, lista, default persistente, whitelist dinamica, auto‑selezione.
 
 - **Extras opzionali**  
-  → provider, documentazione estesa, strumenti di sicurezza, test.
+  → provider aggiuntivi, template, documentazione, strumenti di sicurezza.
 
 ---
 
 ## Modello di minaccia (versione breve)
 
-GroqBash è progettato per **ambienti single‑user** (laptop, Termux, shell personale).
+GroqBash è progettato per ambienti single‑user (laptop, Termux, shell personale).
 
-- I provider sono **codice eseguito nella tua shell**: devono risiedere in directory sicure e non scrivibili da altri.  
-- Variabili come `GROQBASHEXTRASDIR` e `GROQBASHTMPDIR` sono considerate **configurazione fidata**.  
-- Lo script **non esegue mai** l’output del modello.  
+- I provider sono codice eseguito nella tua shell: devono risiedere in directory sicure.  
+- Variabili come `GROQBASH_EXTRAS_DIR` e `GROQBASH_TMPDIR` sono considerate configurazione fidata.  
+- Lo script non esegue mai l’output del modello.  
 - I rischi TOCTOU e i limiti del parsing JSON/SSE sono mitigati e documentati.
 
-Per dettagli completi: **[SECURITY](SECURITY.md)**.
+Dettagli completi in `SECURITY.md`.
 
 ---
 
 ## Requisiti
 
-**Minimi**
+### Obbligatori
 
-- `bash`
-- `curl`
-- coreutils (`mktemp`, `chmod`, `mv`, `mkdir`, `head`, `sed`, `awk`, `grep`)
+- bash  
+- curl  
+- jq  
+- coreutils: `mktemp`, `chmod`, `mv`, `mkdir`, `head`, `sed`, `awk`, `grep`, `stat`  
+- flock  
+- base64 (o equivalente: `base64`, `b64decode`)
 
-**Consigliati**
+### Opzionali
 
-- `jq` (parsing JSON)
-- `python3` (fsync opzionale)
-- `sha256sum` o `shasum` (per extras di sicurezza)
+- sha256sum o shasum (per confronto file extras)  
+- stdbuf (per streaming più fluido)  
+- sync (flush best‑effort)
 
 ---
 
 ## Installazione
 
-Istruzioni dettagliate in **[INSTALL](INSTALL.md)**.
+Istruzioni dettagliate in `INSTALL.md`.
 
 In breve:
 
-```sh
-chmod +x groqbash
-export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
-./groqbash --help
-```
+`chmod +x groqbash`  
+`export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`  
+`./groqbash --help`
 
-Extras opzionali (docs, provider, sicurezza, test):
+Extras opzionali:
 
-```sh
-./groqbash --install-extras
-```
+`./groqbash --install-extras`
+
+Con opzioni:
+
+- `--source <dir>`  
+- `--force`  
+- `--dry-run`  
+- installazione selettiva: `./groqbash --install-extras provider1 templateA`
 
 ---
 
@@ -94,172 +100,146 @@ Extras opzionali (docs, provider, sicurezza, test):
 
 Prompt diretto:
 
-```sh
-./groqbash "scrivi una breve poesia in italiano"
-```
+`./groqbash "scrivi una breve poesia in italiano"`
 
 Input da file:
 
-```sh
-./groqbash -f prompt.txt
-```
+`./groqbash -f prompt.txt`
 
 Pipe:
 
-```sh
-echo "spiegami la relatività" | ./groqbash
-```
+`echo "spiegami la relatività" | ./groqbash`
 
 Modello specifico:
 
-```sh
-./groqbash -m llama-3.3-70b-versatile "scrivi un saggio breve"
-```
+`./groqbash -m llama-3.3-70b-versatile "scrivi un saggio breve"`
 
-Dry run (mostra il payload JSON):
+Dry run:
 
-```sh
-./groqbash --dry-run "ciao"
-```
+`./groqbash --dry-run "ciao"`
 
-Provider (se extras installati):
+Provider esterno (se installato):
 
-```sh
-./groqbash --provider gemini "traduci questo"
-```
+`./groqbash --provider gemini "traduci questo"`
 
 ---
 
 ## Opzioni principali
 
-| Opzione                        | Descrizione                                              |
-|--------------------------------|----------------------------------------------------------|
-| `-m, --model <name>`           | Seleziona il modello                                     |
-| `-f <file>`                    | Legge il prompt da file                                  |
-| `--system <text>`              | Imposta il system prompt                                 |
-| `--temp <value>`               | Temperature (default: `1.0`)                             |
-| `--max <n>`                    | Max tokens (default: `4096`)                             |
-| `--refresh-models`             | Aggiorna la lista modelli da Groq                        |
-| `--list-models`                | Mostra i modelli disponibili                             |
-| `--set-default <model>`        | Imposta il modello predefinito persistente               |
-| `--auto-default-policy <p>`    | `preferred` \| `alpha`                                   |
-| `--provider <name>`            | Usa un provider esterno                                  |
-| `--provider`                   | Selezione provider interattiva                           |
-| `--install-extras`             | Installa extras (docs, utils, provider, sicurezza, test) |
-| `--save` / `--nosave`          | Forza salvataggio o stampa                               |
-| `--out <path>`                 | Percorso file o directory                                |
-| `--threshold <n>`              | Soglia auto‑salvataggio (default: `1000`)                |
-| `--dry-run`                    | Mostra payload e termina                                 |
-| `--quiet`                      | Output minimale                                           |
-| `--debug`                      | Debug esteso + conserva temporanei                       |
-| `--version`                    | Mostra versione                                           |
-| `-h, --help`                   | Mostra l’help (da extras/docs/help.txt se presente)      |
+| Opzione | Descrizione |
+|--------|-------------|
+| `-m, --model <name>` | Seleziona il modello |
+| `-f <file>` | Legge il prompt da file |
+| `--system <text>` | Imposta il system prompt |
+| `--ture <value>` / `--temperature <value>` | Temperature |
+| `--max <n>` | Max tokens |
+| `--refresh-models` | Aggiorna la lista modelli |
+| `--list-models` | Mostra i modelli disponibili |
+| `--set-default <model>` | Imposta modello predefinito |
+| `--provider <name>` | Usa provider esterno |
+| `--provider` | Selezione provider interattiva |
+| `--install-extras` | Installa extras |
+| `--json-input <file>` | Input JSON diretto |
+| `--template <name>` | Usa template |
+| `--batch <file>` | Esegue batch di prompt |
+| `--stream` / `--no-stream` | Streaming on/off |
+| `--json` / `--pretty` / `--raw` / `--text` | Formati output |
+| `--save` / `--nosave` | Forza salvataggio o no |
+| `--out <path>` | Percorso output |
+| `--threshold <n>` | Soglia autosave |
+| `--quiet` | Output minimale |
+| `--debug` | Debug esteso |
+| `--diagnostics` | Diagnostica completa |
+| `--show-config` | Mostra configurazione |
+| `--version` | Versione |
+| `-h, --help` | Help |
 
 ---
 
-## Configurazione e comportamento modelli
+## Configurazione e modelli
 
 ### File di configurazione
 
-- `~/.config/groq/models.txt`  
-  → lista modelli dinamica (ricreata a ogni refresh).  
-- `~/.config/groq/default_model`  
-  → modello predefinito persistente.
+- `$GROQBASH_CONFIG_DIR/config`  
+  → parametri locali (MODEL, TURE, MAX_TOKENS, FORMAT, THRESHOLD)
+
+- `$GROQBASH_CONFIG_DIR/model.$PROVIDER`  
+  → modello predefinito per provider
+
+- `$MODELS_FILE`  
+  → whitelist modelli aggiornata da `--refresh-models`
 
 ### Precedenza selezione modello
 
 1. `-m/--model`  
-2. `default_model`  
-3. `GROQ_MODEL`  
-4. Auto‑selezione basata su policy  
-
-Se la lista modelli è vuota: errore → richiede `--refresh-models`.
-
-### Refresh modelli
-
-```sh
-./groqbash --refresh-models
-```
-
-Scarica la lista ufficiale, ricostruisce `models.txt`, mostra diagnostica (più dettagli con `--debug`).
+2. `model.$PROVIDER`  
+3. `config`  
+4. auto‑selezione provider  
+5. prima voce della whitelist
 
 ---
 
-## File temporanei e percorsi output
+## File temporanei e output
 
-- GroqBash **non usa mai `/tmp`**.  
-- I temporanei runtime sono creati con `mktemp -d` e permessi `700`.  
-- I file salvati hanno permessi restrittivi (`600`).  
-- Con `--out`, GroqBash crea la directory se possibile; altrimenti stampa su terminale.
+- Nessun uso di `/tmp`.  
+- Temporanei in directory dedicata con permessi 700.  
+- File salvati con permessi 600.  
+- Con `--out` GroqBash crea la directory se possibile.
 
 ---
 
-## Extras avanzati (opzionali)
+## Extras avanzati
 
-Gli extras non modificano il comportamento del core.
+Gli extras non modificano il core.
 
 ### Sicurezza
 
-- `extras/security/verify.sh`  
-  → verifica provider, permessi, symlink, owner, checksum.  
-- `extras/security/validate-env.sh`  
-  → controlla `GROQBASHEXTRASDIR`, `GROQBASHTMPDIR`, strumenti richiesti.
-
-Esecuzione:
-
-```sh
-extras/security/verify.sh
-extras/security/validate-env.sh
-```
+- provider aggiuntivi  
+- strumenti di verifica permessi, symlink, owner  
+- template e documentazione
 
 ### Test
 
-- `extras/test/json-sse-suite.sh`  
-  → test per escaping JSON e parsing SSE (senza chiamate API reali).
+- suite JSON/SSE  
+- test provider
 
 ---
 
-## Note di sicurezza e limitazioni
+## Note di sicurezza
 
-- **Nessun eval**.  
-- **Nessuna esecuzione dell’output del modello**.  
-- **Provider = codice**: mantieni `extras/providers` sicuro.  
-- **Variabili d’ambiente = configurazione fidata**.  
-- **Parsing JSON/SSE**: robusto ma non un parser completo.  
-- **TOCTOU**: mitigato ma non eliminabile in Bash.
-
-Per dettagli completi: **SECURITY.md**.
+- Nessun `eval`.  
+- Nessuna esecuzione dell’output del modello.  
+- Provider = codice: mantieni `extras/providers` sicuro.  
+- Variabili d’ambiente = configurazione fidata.  
+- Parsing JSON/SSE robusto ma non completo.  
+- TOCTOU mitigato.
 
 ---
 
 ## Codici di uscita
 
-| Codice | Significato                                                                 |
-|--------|------------------------------------------------------------------------------|
-| 0      | Successo                                                                      |
-| 1      | Errore generico (argomenti, file, configurazione)                             |
-| 2      | Errore di rete / curl                                                         |
-| 3      | Errore HTTP/API (4xx/5xx)                                                     |
-| 4      | Nessun contenuto testuale estratto (errore parsing)                           |
+| Codice | Significato |
+|--------|-------------|
+| 0 | Successo |
+| `GROQBASHERRTMP` | Errore generico / temporanei |
+| `GROQBASHERRCURL_FAILED` | Errore rete/curl |
+| `GROQBASHERRAPI` | Errore HTTP/API |
+| `GROQBASHERRBAD_MODEL` | Modello non valido |
+| `GROQBASHERRNO_PROMPT` | Nessun prompt fornito |
+| `GROQBASHERRNOAPIKEY` | API key mancante |
+| `GROQBASHERRINSTALL` | Errore installer extras |
 
 ---
 
 ## Licenza
 
-GroqBash è distribuito sotto licenza **GNU GPL v3**.  
-Vedi [**LICENSE**](LICENSE) per il testo completo.
-
----
-
-## Note
-
-Parte del codice e della documentazione è stata redatta con l’assistenza di strumenti di IA.  
-L’architettura e le decisioni tecniche restano curate manualmente.
+GroqBash è distribuito sotto licenza GPL v3.  
+Vedi `LICENSE`.
 
 ---
 
 ## Contatti
 
-- Autore: Cristian Evangelisti  
-- Email: opensource​@​cevangel.​anonaddy.​me  
-- Repository: https://github.com/kamaludu/groqbash
+Autore: Cristian Evangelisti  
+Email: opensource​@​cevangel.​anonaddy.​me  
+Repository: https://github.com/kamaludu/groqbash
