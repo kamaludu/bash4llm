@@ -75,7 +75,7 @@ See `SECURITY.md` for full details.
 
 ## Installation
 
-Detailed instructions in `INSTALL.md`.
+Detailed instructions in:  **[INSTALL](INSTALL-en.md)**
 
 In short:
 
