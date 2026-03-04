@@ -8,37 +8,28 @@ Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
 
 ## 1. Requisiti
 
-GroqBash richiede esclusivamente:
+GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 
-- bash  
-- coreutils (*mv, cp, chmod, stat, find, sort, head, wc, tee, date …*) 
-- curl  
-- jq  
-- stat  
-- flock  
-- base64  
-- find, mktemp, readlink, awk, sed, grep, xargs, sync (*standard Posix*)
+- bash
+- coreutils
+- findutils
+- util-linux
+- gawk
+- curl
+- jq
 
-Tutti devono essere disponibili nel PATH.  
-Non sono previsti fallback: se un comando manca, GroqBash termina con errore.
-
-### Opzionali
-
-Raccomandati, ma se assenti GroqBash funziona comunque:
-
-- sha256sum / shasum
-- stdbuf
-
+Questi pacchetti forniscono tutti i comandi necessari:
+` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
 
 ### Compatibilità
 
 GroqBash funziona su:
 
-- Linux (GNU coreutils)  
-- macOS  
-- BusyBox/Alpine  
-- WSL (con limitazioni sui permessi, gestite con warning)  
-- Filesystem non‑POSIX (NTFS, FAT) → i permessi potrebbero non essere applicabili
+- GNU/Linux
+- macOS (con pacchetti GNU installabili via Homebrew)
+- BusyBox/Alpine
+- WSL e Cygwin (Windows)
+- Termux (Android)
 
 ---
 
