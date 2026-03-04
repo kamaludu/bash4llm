@@ -10,7 +10,7 @@ It does not require Python or external dependencies beyond POSIX/coreutils comma
 
 GroqBash requires the following packages (or equivalent) to be available in the PATH:
 
-- bash
+- ***bash***
 - coreutils
 - findutils
 - util-linux
@@ -19,7 +19,7 @@ GroqBash requires the following packages (or equivalent) to be available in the 
 - jq
 
 These packages provide all the necessary commands:
-` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
+*bash* ` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
 
 ### Compatibility
 
