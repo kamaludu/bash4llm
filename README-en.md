@@ -56,20 +56,18 @@ See `SECURITY.md` for full details.
 
 ## Requirements
 
-### Mandatory
+GroqBash requires the following packages (or equivalent) to be available in the PATH:
 
-- bash  
-- curl  
-- jq  
-- coreutils: `mktemp`, `chmod`, `mv`, `mkdir`, `head`, `sed`, `awk`, `grep`, `stat`  
-- flock  
-- base64 (or equivalent: `base64`, `b64decode`)
+- bash
+- coreutils
+- findutils
+- util-linux
+- gawk
+- curl
+- jq
 
-### Optional
-
-- sha256sum or shasum (for extras file comparison)  
-- stdbuf (for smoother streaming)  
-- sync (best‑effort flush)
+These packages provide all the necessary commands:
+` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
 
 ---
 
