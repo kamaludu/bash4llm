@@ -1,0 +1,24 @@
+
+Pacchetti disponibili:
+
+vdir
+install
+unlink
+realpath
+tac
+ptx
+csplit
+shuf
+who
+users
+arch
+uptime
+timeout
+factor
+numfmt
+md5sum
+sha1sum
+sha224sum
+sha384sum
+sha512sum
+sum
