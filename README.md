@@ -58,7 +58,7 @@ Dettagli completi in `SECURITY.md`.
 
 GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 
-- bash
+- ***bash***
 - coreutils
 - findutils
 - util-linux
@@ -67,7 +67,7 @@ GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 - jq
 
 Questi pacchetti forniscono tutti i comandi necessari:
-` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
+*bash* ` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
 
 ---
 
