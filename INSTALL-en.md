@@ -10,7 +10,7 @@ It does not require Python or external dependencies beyond POSIX/coreutils comma
 
 GroqBash requires the following packages (or equivalent) to be available in the PATH:
 
--;bash
+- bash
 - coreutils
 - findutils
 - util-linux
