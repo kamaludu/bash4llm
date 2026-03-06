@@ -156,27 +156,27 @@ lock_exec() {
 # Sets B64_ENCODE_CMD and B64_DECODE_CMD arrays used by wrappers
 # ---------------------------------------------------------------------------
 _detect_base64_opts() {
-  # Default conservative commands
-  B64_ENCODE_CMD=(base64)
-  B64_DECODE_CMD=(base64 -d)
+  # Default conservative options
+  B64_WRAP_OPT=""
+  B64_DECODE_OPT="-d"
 
   # Detect encode option that prevents line wrapping (GNU coreutils)
   if printf '' | base64 -w0 >/dev/null 2>&1; then
-    B64_ENCODE_CMD=(base64 -w0)
+    B64_WRAP_OPT="-w0"
   else
-    # fallback: plain base64 and strip newlines later
-    B64_ENCODE_CMD=(base64)
+    B64_WRAP_OPT=""
   fi
 
   # Detect decode option -d vs -D
   if printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then
-    B64_DECODE_CMD=(base64 -d)
+    B64_DECODE_OPT="-d"
   elif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then
-    B64_DECODE_CMD=(base64 -D)
+    B64_DECODE_OPT="-D"
   else
-    # BusyBox typically supports -d; keep that as default
-    B64_DECODE_CMD=(base64 -d)
+    B64_DECODE_OPT="-d"
   fi
+
+  export B64_WRAP_OPT B64_DECODE_OPT
 }
 _detect_base64_opts
 
@@ -369,15 +369,20 @@ manifest_create() {
   local timeout="${2:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
   mkdir -p "$(dirname "$manifest")" 2>/dev/null || { log_error "MANIFESTFAIL" "manifest_create: cannot create dir"; return 1; }
   lock_exec "${manifest}.lock" "$timeout" -- sh -c '
-    set -e
-    manifest="$1"
-    tmp="$(mktemp -p "$(dirname "$manifest")" manifest.tmp.XXXX)"
-    printf "%s" "{\"parts\":[]}" > "$tmp"
-    # write base64 staging using wrapper
-    b64encode < "$tmp" > "${manifest}.b64"
-    mv -f "$tmp" "$manifest"
-    chmod 600 "$manifest" 2>/dev/null || true
-  ' _ "$manifest"
+   set -e
+   manifest="$1"
+   tmp="$(mktemp -p "$(dirname "$manifest")" manifest.tmp.XXXX)"
+   printf "%s" "{\"parts\":[]}" > "$tmp"
+   # write base64 staging using base64 binary and exported opts
+   if [ -n "${B64_WRAP_OPT:-}" ]; then
+     base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
+   else
+     base64 "$tmp" | tr -d "\n" > "${manifest}.b64"
+   fi
+   mv -f "$tmp" "$manifest"
+   chmod 600 "$manifest" 2>/dev/null || true
+ ' _ "$manifest"
+
   return $?
 }
 
@@ -385,17 +390,35 @@ manifest_add_part() {
   local manifest="$1" name="$2" file_path="$3" mime="$4" timeout="${5:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
   [ -f "$file_path" ] || { log_error "MANIFESTFAIL" "manifest_add_part: file not found: $file_path"; return 1; }
   mkdir -p "$(dirname "$manifest")" 2>/dev/null || true
-  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
-    set -e
-    manifest="$1"
-    if [ ! -f "$manifest" ] && [ ! -f "${manifest}.b64" ]; then
-      tmpinit="$(mktemp -p "$(dirname "$manifest")" manifest.init.XXXX)"
-      printf "%s" "{\"parts\":[]}" > "$tmpinit"
-      b64encode < "$tmpinit" > "${manifest}.b64"
-      mv -f "$tmpinit" "$manifest"
-      chmod 600 "$manifest" 2>/dev/null || true
-    fi
-  ' _ "$manifest"
+  lock_exec "$lockfile" "$timeout" -- sh -c '
+   set -e
+   manifest="$1"
+   part_b64="$2"
+   name="$3"
+   mime="$4"
+   tmp="$(mktemp -p "$(dirname "$manifest")" manifest.edit.XXXX)"
+   if [ -f "${manifest}.b64" ]; then
+     # decode base64 staging to tmp using exported decode opt
+     base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
+   elif [ -f "$manifest" ]; then
+     cp -f "$manifest" "$tmp"
+   else
+     printf "%s" "{\"parts\":[]}" > "$tmp"
+   fi
+   jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
+      '.parts += [{name:$name, path:$path, encoding:$enc, type:$type}]' "$tmp" > "${tmp}.new"
+   mv -f "${tmp}.new" "$tmp"
+   # write back both manifest and base64 staging atomically
+   if [ -n "${B64_WRAP_OPT:-}" ]; then
+     base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
+   else
+     base64 "$tmp" | tr -d "\n" > "${manifest}.b64"
+   fi
+   cp -f "$tmp" "$manifest"
+   chmod 600 "$manifest" 2>/dev/null || true
+   rm -f "$tmp" 2>/dev/null || true
+ ' _ "$manifest" "$part_b64" "$name" "$mime"
+
   local destdir part_b64 tmpstamp
   destdir="$(dirname "$manifest")"
   tmpstamp="$(date +%s)-$$"
@@ -910,10 +933,10 @@ refresh_models_groq() {
       set -e
       manifest_b64="$1"
       dest="$2"
-      # decode staging using wrapper
-      b64decode < "$manifest_b64" > "$dest"
+      # decode staging using exported decode opt
+      base64 ${B64_DECODE_OPT} < "$manifest_b64" > "$dest"
       chmod 600 "$dest" 2>/dev/null || true
-    ' _ "${MODELS_FILE}.b64" "$MODELS_FILE" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+    ' _ "${MODELS_FILE}.b64" "$MODELS_FILE"
     chmod 600 "$MODELS_FILE" 2>/dev/null || true
     log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE"
     rm -rf "$tmpd"
