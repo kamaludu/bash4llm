@@ -55,6 +55,67 @@ resolve_script_dir() {
   printf '%s' "$dir"
 }
 
+# ---------------------------------------------------------------------------
+# Provider API key helpers (available early)
+# - provider_api_env_var_name <prov> -> prints canonical env var name (e.g., GROQ_API_KEY)
+# - ensure_api_key_for_provider <prov> -> ensures API key is set (may prompt interactively)
+# ---------------------------------------------------------------------------
+provider_api_env_var_name() {
+  local prov="$1"
+  local prov_upper
+  prov_upper="$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  printf '%s' "${prov_upper}_API_KEY"
+}
+
+ensure_api_key_for_provider() {
+  local prov="$1"
+  local envvar current_key input_key custom_var custom_env
+  [ -n "$prov" ] || return 1
+  envvar="$(provider_api_env_var_name "$prov")"
+  custom_var="PROVIDER_API_ENV_${prov}"
+  custom_env="${!custom_var:-}"
+  if [ -n "$custom_env" ]; then
+    envvar="$custom_env"
+  fi
+  current_key="${!envvar:-}"
+  if [ -n "$current_key" ]; then
+    # Backwards compatibility: if provider is groq, sync GROQ_API_KEY
+    if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+      export GROQ_API_KEY="$current_key"
+    fi
+    return 0
+  fi
+
+  # Non-interactive: fail with error code
+  if [ ! -t 0 ]; then
+    printf 'groqbash: ERROR: API key for provider %s not set (env %s). Run interactively or export the variable.\n' "$prov" "$envvar" >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  # Prompt for key interactively
+  printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
+  if ! IFS= read -r input_key; then
+    printf '\ngroqbash: ERROR: no input received. Aborting.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+  input_key="$(printf '%s' "$input_key" | tr -d '\r\n')"
+  if [ -z "$input_key" ]; then
+    printf 'groqbash: ERROR: API key required. Aborting.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  export "$envvar"="$input_key"
+  if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+    export GROQ_API_KEY="$input_key"
+  fi
+
+  printf '\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\n' >&2
+  printf '\n export %s="%s"\n' "$envvar" "$input_key" >&2
+  printf '\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\n' >&2
+
+  return 0
+}
+
 SCRIPTDIR="$(resolve_script_dir)"
 GROQBASH_DIR="${GROQBASH_DIR:-$SCRIPTDIR/groqbash.d}"
 GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
@@ -187,13 +248,17 @@ _detect_base64_opts
 # These functions replace all direct base64 calls.
 # ---------------------------------------------------------------------------
 b64encode() {
-  # Use detected command and ensure single-line output
-  "${B64_ENCODE_CMD[@]}" | tr -d '\n'
+  # Use base64 with wrap option if available; ensure single-line output
+  if [ -n "${B64_WRAP_OPT:-}" ]; then
+    base64 ${B64_WRAP_OPT}
+  else
+    base64 | tr -d '\n'
+  fi
 }
 
 b64decode() {
-  # Use detected decode command
-  "${B64_DECODE_CMD[@]}"
+  # Use base64 with decode option
+  base64 ${B64_DECODE_OPT}
 }
 
 # ---------------------------------------------------------------------------
