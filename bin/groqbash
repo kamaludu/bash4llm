@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
 # GroqBash — Bash-first wrapper for the Groq API
-# Final hardened release (python removed)
-# Version: 2.0.0+flock-b64-hardened
-# Requirements (no fallbacks): bash, coreutils, curl, jq, mktemp, stat, flock, base64.
-# =============================================================================
+# File: groqbash
+# Version: 2.0.0
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
+# ==== PRECORE BEGIN ====
 set -euo pipefail
 
-# === BOOTSTRAP START ===
-# Bootstrapping: metadata, error codes, path resolution, directory creation,
-# and verification of required external commands (explicit, no implicit deps).
 SCRIPT_NAME="groqbash"
-SCRIPT_VERSION="2.0.0+flock-b64-hardened"
-SCRIPT_DATE="2026-02-27"
+SCRIPT_VERSION="2.0.0"
+SCRIPT_DATE="2026-03-06"
 
 # ---------------------------------------------------------------------------
-# Error codes
+# Canonical error codes
 # ---------------------------------------------------------------------------
 GROQBASH_ERR_NO_API_KEY=10
 GROQBASH_ERR_BAD_MODEL=11
@@ -24,7 +23,6 @@ GROQBASH_ERR_INVALID_JSON=13
 GROQBASH_ERR_NO_PROMPT=14
 GROQBASH_ERR_TMP=15
 GROQBASH_ERR_API=16
-GROQBASH_ERR_INSTALL_EXTRAS=20
 
 GROQBASHERRNOAPIKEY=$GROQBASH_ERR_NO_API_KEY
 GROQBASHERRBAD_MODEL=$GROQBASH_ERR_BAD_MODEL
@@ -33,15 +31,11 @@ GROQBASHERRINVALID_JSON=$GROQBASH_ERR_INVALID_JSON
 GROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT
 GROQBASHERRTMP=$GROQBASH_ERR_TMP
 GROQBASHERRAPI=$GROQBASH_ERR_API
-GROQBASHERRINSTALL=$GROQBASH_ERR_INSTALL_EXTRAS
 
 # ---------------------------------------------------------------------------
 # Verify mandatory commands (no fallback)
 # ---------------------------------------------------------------------------
-# Extended to include all external commands actually used in the script.
-# Builtins (bash internal) are intentionally NOT listed here.
-for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs sync \
-           readlink date mv cp chmod rm cat head sort tee stdbuf wc; do
+for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
     exit 1
@@ -49,7 +43,7 @@ for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs sync \
 done
 
 # ---------------------------------------------------------------------------
-# Paths and directories
+# Resolve script directory (portable)
 # ---------------------------------------------------------------------------
 resolve_script_dir() {
   local src="$0" rl dir
@@ -93,7 +87,19 @@ chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
 export TMPDIR="$GROQBASH_TMPDIR"
 
 # ---------------------------------------------------------------------------
-# Logging helpers (structured)
+# Centralized lock names (co-located with resources)
+# ---------------------------------------------------------------------------
+MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
+HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
+TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
+
+# Lock timeouts (configurable via env)
+GROQBASH_LOCK_TIMEOUT_TMP="${GROQBASH_LOCK_TIMEOUT_TMP:-10}"
+GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
+GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
+
+# ---------------------------------------------------------------------------
+# Logging structured (activabile via GROQBASH_DEBUG or GROQBASH_LOG)
 # ---------------------------------------------------------------------------
 GROQBASH_DEBUG="${GROQBASH_DEBUG:-0}"
 GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
@@ -121,37 +127,9 @@ log_error() {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: check colocation of lockfile and resource (device id)
-# - Only emits a debug warning if devices differ (useful for NFS detection)
-# - Note: flock can be unreliable on network filesystems (NFS). This function
-#   only emits a diagnostic when GROQBASH_DEBUG=1; it does not change behavior.
-#   Operational recommendation: place lockfiles and resources on the same
-#   local filesystem when possible to avoid flock/NFS issues.
-# ---------------------------------------------------------------------------
-_check_colocation() {
-  local lockfile="$1" resource="$2"
-  [ "${GROQBASH_DEBUG:-0}" -eq 1 ] || return 0
-  if [ ! -e "$lockfile" ] || [ ! -e "$resource" ]; then return 0; fi
-  local dev_lock dev_res
-  case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin)
-      dev_lock="$(stat -f %d "$lockfile" 2>/dev/null || true)"
-      dev_res="$(stat -f %d "$resource" 2>/dev/null || true)"
-      ;;
-    *)
-      dev_lock="$(stat -c %d "$lockfile" 2>/dev/null || true)"
-      dev_res="$(stat -c %d "$resource" 2>/dev/null || true)"
-      ;;
-  esac
-  if [ -n "$dev_lock" ] && [ -n "$dev_res" ] && [ "$dev_lock" != "$dev_res" ]; then
-    log_warn "NFS" "lockfile $lockfile and resource $resource are on different devices (dev $dev_lock vs $dev_res). flock on network FS may be unreliable."
-  fi
-}
-
-# ---------------------------------------------------------------------------
 # lock_exec: acquire exclusive flock on a lockfile with timeout
 # Usage: lock_exec <lockfile> <timeout> -- <command> [args...]
-# On timeout prints structured diagnostic with code LOCKTIMEOUT and returns 124.
+# On timeout prints structured diagnostic with code LOCKTIMEOUT and exits 124.
 # ---------------------------------------------------------------------------
 lock_exec() {
   local lockfile="$1"
@@ -163,8 +141,6 @@ lock_exec() {
   fi
   shift
   mkdir -p "$(dirname "$lockfile")" 2>/dev/null || { log_error "LOCKFAIL" "cannot create lockfile dir: $(dirname "$lockfile")"; return 2; }
-  # Optional colocation check (debug only)
-  _check_colocation "$lockfile" "$(dirname "$lockfile")"
   (
     if ! flock -x -w "$timeout" 200; then
       printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
@@ -176,9 +152,90 @@ lock_exec() {
 }
 
 # ---------------------------------------------------------------------------
+# Detect portable base64 encode/decode commands (avoid parsing --help)
+# Sets B64_ENCODE_CMD and B64_DECODE_CMD arrays used by wrappers
+# ---------------------------------------------------------------------------
+_detect_base64_opts() {
+  # Default conservative commands
+  B64_ENCODE_CMD=(base64)
+  B64_DECODE_CMD=(base64 -d)
+
+  # Detect encode option that prevents line wrapping (GNU coreutils)
+  if printf '' | base64 -w0 >/dev/null 2>&1; then
+    B64_ENCODE_CMD=(base64 -w0)
+  else
+    # fallback: plain base64 and strip newlines later
+    B64_ENCODE_CMD=(base64)
+  fi
+
+  # Detect decode option -d vs -D
+  if printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then
+    B64_DECODE_CMD=(base64 -d)
+  elif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then
+    B64_DECODE_CMD=(base64 -D)
+  else
+    # BusyBox typically supports -d; keep that as default
+    B64_DECODE_CMD=(base64 -d)
+  fi
+}
+_detect_base64_opts
+
+# ---------------------------------------------------------------------------
+# Portable base64 wrappers (Linux, macOS, BusyBox)
+# - b64encode: reads stdin, writes base64 without newlines
+# - b64decode: reads base64 stdin, writes decoded bytes
+# These functions replace all direct base64 calls.
+# ---------------------------------------------------------------------------
+b64encode() {
+  # Use detected command and ensure single-line output
+  "${B64_ENCODE_CMD[@]}" | tr -d '\n'
+}
+
+b64decode() {
+  # Use detected decode command
+  "${B64_DECODE_CMD[@]}"
+}
+
+# ---------------------------------------------------------------------------
+# Atomic base64 write/read helpers (use for payloads, manifests, staging)
+# - b64_atomic_write <dest.b64> <timeout> -- (reads stdin)
+# - b64_atomic_read <src.b64> (writes decoded to stdout)
+# ---------------------------------------------------------------------------
+b64_atomic_write() {
+  local dest="$1"
+  local timeout="${2:-10}"
+  shift 2 || true
+  [ -n "$dest" ] || { log_error "B64FAIL" "b64_atomic_write: dest required"; return "$GROQBASHERRTMP"; }
+  local destdir tmp lockfile
+  destdir="$(dirname -- "$dest")"
+  mkdir -p "$destdir" 2>/dev/null || { log_error "B64FAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
+  lockfile="$MODELS_LOCK"
+  tmp="$(mktemp -p "$destdir" .groq-b64.XXXXXX 2>/dev/null || true)"
+  [ -n "$tmp" ] || tmp="$destdir/.groq-b64.$$.$RANDOM"
+  if ! b64encode > "$tmp"; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    log_error "B64FAIL" "base64 encoding failed"
+    return "$GROQBASHERRTMP"
+  fi
+  chmod 600 "$tmp" 2>/dev/null || true
+  lock_exec "$lockfile" "$timeout" -- sh -c '
+    set -e
+    mv -f -- "$1" "$2"
+    chmod 600 "$2" 2>/dev/null || true
+  ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+  return 0
+}
+
+b64_atomic_read() {
+  local src="$1"
+  [ -f "$src" ] || return 1
+  b64decode < "$src"
+  return $?
+}
+
+# ---------------------------------------------------------------------------
 # Atomic raw write helper
 # - atomic_write <dest> <timeout> -- (reads stdin)
-# Note: sync is used as a portable best-effort flush (documented).
 # ---------------------------------------------------------------------------
 atomic_write() {
   local dest="$1"
@@ -196,13 +253,6 @@ atomic_write() {
     log_error "ATOMICFAIL" "writing to temp failed"
     return "$GROQBASHERRTMP"
   fi
-  # Best-effort flush using sync (coreutils). No python dependency.
-  # Note: sync is a global flush and is not equivalent to fsync(fd) on a single
-  # file descriptor. We use sync as a portable, dependency-free best-effort
-  # flush. Atomicity of the operation is still provided by the lock + mv
-  # (rename) which is atomic on the same filesystem. However, immediate
-  # persistence guarantees on crash depend on the filesystem and kernel.
-  sync || true
   chmod 600 "$tmp" 2>/dev/null || true
   lock_exec "$lockfile" "$timeout" -- sh -c '
     set -e
@@ -212,7 +262,237 @@ atomic_write() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# Portable file size and listing helpers for rotate_history
+# - file_size returns bytes (portable)
+# - list_files_sorted_by_mtime lists files with mtime and path (portable)
+# ---------------------------------------------------------------------------
+file_size() {
+  local f="$1"
+  if [ -z "$f" ] || [ ! -f "$f" ]; then
+    printf '0'
+    return 0
+  fi
+  case "$(uname 2>/dev/null || echo Linux)" in
+    Darwin) stat -f %z "$f" 2>/dev/null || printf '0' ;;
+    *) stat -c %s "$f" 2>/dev/null || printf '0' ;;
+  esac
+}
+
+# list_files_sorted_by_mtime <dir> -> prints "mtime_seconds|path" lines sorted ascending
+list_files_sorted_by_mtime() {
+  local dir="$1"
+  find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
+    case "$(uname 2>/dev/null || echo Linux)" in
+      Darwin) mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)" ;;
+      *) mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)" ;;
+    esac
+    printf '%s|%s\n' "$mtime" "$f"
+  done | sort -n
+}
+
+# ---------------------------------------------------------------------------
+# History rotation and compaction (portable)
+# - rotate_history [timeout]
+# Controlled by GROQBASH_ROTATE_HISTORY env var (0/1)
+# ---------------------------------------------------------------------------
+GROQBASH_ROTATE_HISTORY="${GROQBASH_ROTATE_HISTORY:-0}"
+GROQBASH_HISTORY_MAX_FILES="${GROQBASH_HISTORY_MAX_FILES:-100}"
+GROQBASH_HISTORY_MAX_BYTES="${GROQBASH_HISTORY_MAX_BYTES:-104857600}" # 100MB
+GROQBASH_HISTORY_KEEP_DAYS="${GROQBASH_HISTORY_KEEP_DAYS:-90}"
+
+rotate_history() {
+  local timeout="${1:-$GROQBASH_LOCK_TIMEOUT_HISTORY}"
+  lock_exec "$HISTORY_LOCK" "$timeout" -- sh -c '
+    set -e
+    dir="$1"
+    max_files="$2"
+    max_bytes="$3"
+    keep_days="$4"
+    find "$dir" -type f -mtime +"$keep_days" -print0 | xargs -0 -r rm -f --
+    while :; do
+      total=0
+      while IFS= read -r -d "" f; do
+        if [ -f "$f" ]; then
+          size=$( (case "$(uname 2>/dev/null || echo Linux)" in Darwin) stat -f %z "$f" ;; *) stat -c %s "$f" ;; esac 2>/dev/null || echo 0)
+          total=$((total + size))
+        fi
+      done < <(find "$dir" -type f -print0)
+      [ "$total" -le "$max_bytes" ] && break
+      oldest="$(list_files_sorted_by_mtime "$dir" | head -n1 | awk -F"|" '\''{print $2}'\'')"
+      [ -z "$oldest" ] && break
+      rm -f -- "$oldest"
+    done
+    while :; do
+      count=$(find "$dir" -type f | wc -l)
+      [ "$count" -le "$max_files" ] && break
+      oldest="$(list_files_sorted_by_mtime "$dir" | head -n1 | awk -F"|" '\''{print $2}'\'')"
+      [ -z "$oldest" ] && break
+      rm -f -- "$oldest"
+    done
+  ' _ "$GROQBASH_HISTORY_DIR" "$GROQBASH_HISTORY_MAX_FILES" "$GROQBASH_HISTORY_MAX_BYTES" "$GROQBASH_HISTORY_KEEP_DAYS"
+  return $?
+}
+
+save_to_history() {
+  local content="$1"
+  local filename
+  filename="$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
+  mkdir -p "$GROQBASH_HISTORY_DIR" 2>/dev/null || true
+  local tmpf dest lockfile
+  tmpf="$(mktemp -p "$GROQBASH_TMPDIR" groq-out.XXXX 2>/dev/null || true)"
+  [ -n "$tmpf" ] || { log_error "HISTORYFAIL" "save_to_history: cannot create tmp file"; return "$GROQBASHERRTMP"; }
+  printf '%s\n' "$content" > "$tmpf"
+  dest="$GROQBASH_HISTORY_DIR/$filename"
+  lockfile="$HISTORY_LOCK"
+  lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_HISTORY" -- sh -c '
+    set -e
+    mv -f -- "$1" "$2"
+    chmod 600 "$2" 2>/dev/null || true
+  ' _ "$tmpf" "$dest" || { rc=$?; rm -f -- "$tmpf" 2>/dev/null || true; return "$rc"; }
+  if [ "${GROQBASH_ROTATE_HISTORY:-0}" -eq 1 ]; then
+    rotate_history "$GROQBASH_LOCK_TIMEOUT_HISTORY" || true
+  fi
+  log_info "HISTORY_SAVE" "$dest"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Manifest multimodale helpers (atomic, jq --arg usage)
+# - manifest_create <manifest_path> [timeout]
+# - manifest_add_part <manifest_path> <name> <file_path> <mime> [timeout]
+# - manifest_read <manifest_path>
+# Manifest stored as both JSON file and base64 staging file manifest.b64
+# ---------------------------------------------------------------------------
+manifest_create() {
+  local manifest="$1"
+  local timeout="${2:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
+  mkdir -p "$(dirname "$manifest")" 2>/dev/null || { log_error "MANIFESTFAIL" "manifest_create: cannot create dir"; return 1; }
+  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
+    set -e
+    manifest="$1"
+    tmp="$(mktemp -p "$(dirname "$manifest")" manifest.tmp.XXXX)"
+    printf "%s" "{\"parts\":[]}" > "$tmp"
+    # write base64 staging using wrapper
+    b64encode < "$tmp" > "${manifest}.b64"
+    mv -f "$tmp" "$manifest"
+    chmod 600 "$manifest" 2>/dev/null || true
+  ' _ "$manifest"
+  return $?
+}
+
+manifest_add_part() {
+  local manifest="$1" name="$2" file_path="$3" mime="$4" timeout="${5:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
+  [ -f "$file_path" ] || { log_error "MANIFESTFAIL" "manifest_add_part: file not found: $file_path"; return 1; }
+  mkdir -p "$(dirname "$manifest")" 2>/dev/null || true
+  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
+    set -e
+    manifest="$1"
+    if [ ! -f "$manifest" ] && [ ! -f "${manifest}.b64" ]; then
+      tmpinit="$(mktemp -p "$(dirname "$manifest")" manifest.init.XXXX)"
+      printf "%s" "{\"parts\":[]}" > "$tmpinit"
+      b64encode < "$tmpinit" > "${manifest}.b64"
+      mv -f "$tmpinit" "$manifest"
+      chmod 600 "$manifest" 2>/dev/null || true
+    fi
+  ' _ "$manifest"
+  local destdir part_b64 tmpstamp
+  destdir="$(dirname "$manifest")"
+  tmpstamp="$(date +%s)-$$"
+  part_b64="$destdir/parts-$(basename "$file_path").${tmpstamp}.b64"
+  # write base64 staging atomically
+  if ! b64encode < "$file_path" > "$GROQBASH_TMPDIR/part.tmp.$$"; then
+    rm -f "$GROQBASH_TMPDIR/part.tmp.$$" 2>/dev/null || true
+    log_error "B64FAIL" "manifest_add_part: b64 encode failed"
+    return 1
+  fi
+  mv -f "$GROQBASH_TMPDIR/part.tmp.$$" "$part_b64"
+  chmod 600 "$part_b64" 2>/dev/null || true
+  # Now update manifest atomically under lock using jq --arg
+  lockfile="${manifest}.lock"
+  lock_exec "$lockfile" "$timeout" -- sh -c '
+    set -e
+    manifest="$1"
+    part_b64="$2"
+    name="$3"
+    mime="$4"
+    tmp="$(mktemp -p "$(dirname "$manifest")" manifest.edit.XXXX)"
+    if [ -f "${manifest}.b64" ]; then
+      b64decode < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
+    elif [ -f "$manifest" ]; then
+      cp -f "$manifest" "$tmp"
+    else
+      printf "%s" "{\"parts\":[]}" > "$tmp"
+    fi
+    jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
+       '.parts += [{name:$name, path:$path, encoding:$enc, type:$type}]' "$tmp" > "${tmp}.new"
+    mv -f "${tmp}.new" "$tmp"
+    # write back both manifest and base64 staging atomically
+    b64encode < "$tmp" > "${manifest}.b64"
+    cp -f "$tmp" "$manifest"
+    chmod 600 "$manifest" 2>/dev/null || true
+    rm -f "$tmp" 2>/dev/null || true
+  ' _ "$manifest" "$part_b64" "$name" "$mime" || { log_error "MANIFESTFAIL" "manifest_add_part: update failed"; return 1; }
+  log_info "MANIFEST_ADD" "added part $name -> $part_b64"
+  return 0
+}
+
+manifest_read() {
+  local manifest="$1"
+  if [ -f "$manifest" ]; then
+    cat "$manifest"
+    return 0
+  fi
+  if [ -f "${manifest}.b64" ]; then
+    b64decode < "${manifest}.b64"
+    return $?
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
+_get_perm_string() {
+  local path="$1" perm=""
+  case "$(uname 2>/dev/null || echo Linux)" in
+    Darwin) perm="$(stat -f %Sp "$path" 2>/dev/null || true)" ;;
+    *) if command -v stat >/dev/null 2>&1; then perm="$(stat -c %A "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then perm="$(find "$path" -maxdepth 0 -printf '%M' 2>/dev/null || true)"; fi ;;
+  esac
+  printf '%s' "$perm"
+}
+
+_get_owner() {
+  local path="$1" owner=""
+  case "$(uname 2>/dev/null || echo Linux)" in
+    Darwin) owner="$(stat -f %Su "$path" 2>/dev/null || true)" ;;
+    *) if command -v stat >/dev/null 2>&1; then owner="$(stat -c %U "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then owner="$(find "$path" -maxdepth 0 -printf '%u' 2>/dev/null || true)"; fi ;;
+  esac
+  printf '%s' "$owner"
+}
+
+_get_file_signature() {
+  local path="$1" sig=""
+  case "$(uname 2>/dev/null || echo Linux)" in
+    Darwin) sig="$(stat -f '%Sp|%Su|%Sg|%z|%m' "$path" 2>/dev/null || true)" ;;
+    *) if command -v stat >/dev/null 2>&1; then sig="$(stat -c '%A|%U|%G|%s|%Y' "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then sig="$(find "$path" -maxdepth 0 -printf '%M|%u|%g|%s|%T@' 2>/dev/null || true)"; fi ;;
+  esac
+  printf '%s' "$sig"
+}
+getfile_signature() { _get_file_signature "$1"; }
+
+_is_world_writable() {
+  local d="$1" perms others_write
+  [ -d "$d" ] || return "$GROQBASHERRTMP"
+  perms="$(_get_perm_string "$d")"
+  [ -z "$perms" ] && return "$GROQBASHERRTMP"
+  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
+  [ "$others_write" = "w" ]
+}
+
+# ---------------------------------------------------------------------------
 # Tmpdir creation under TMP_LOCK to avoid races
+# ---------------------------------------------------------------------------
 make_tmpdir() {
   umask 077
   local tmpd lockfile
@@ -253,915 +533,10 @@ cleanup_tmp() {
     esac
   fi
 }
-# === BOOTSTRAP END ===
 
-# === HISTORY_MANIFEST START ===
-# Portable base64 wrappers (Linux, macOS, BusyBox)
-# - b64encode: reads stdin, writes base64 without newlines
-# - b64decode: reads base64 stdin, writes decoded bytes
-# All code must use these wrappers exclusively.
-b64encode() {
-  # Prefer option that prevents wrapping; otherwise strip newlines
-  if base64 --help >/dev/null 2>&1 && base64 --help 2>&1 | grep -q -- '-w'; then
-    base64 -w0
-  else
-    base64 | tr -d '\n'
-  fi
-}
-
-b64decode() {
-  # Use -d or -D depending on implementation
-  if base64 --help >/dev/null 2>&1 && base64 --help 2>&1 | grep -q -- '-d'; then
-    base64 -d
-  else
-    base64 -D
-  fi
-}
-
-# Atomic base64 write/read helpers (use for payloads, manifests, staging)
-# - b64_atomic_write <dest.b64> <timeout> -- (reads stdin)
-# - b64_atomic_read <src.b64> (writes decoded to stdout)
-b64_atomic_write() {
-  local dest="$1"
-  local timeout="${2:-10}"
-  shift 2 || true
-  [ -n "$dest" ] || { log_error "B64FAIL" "b64_atomic_write: dest required"; return "$GROQBASHERRTMP"; }
-  local destdir tmp lockfile
-  destdir="$(dirname -- "$dest")"
-  mkdir -p "$destdir" 2>/dev/null || { log_error "B64FAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
-  lockfile="$MODELS_LOCK"
-  tmp="$(mktemp -p "$destdir" .groq-b64.XXXXXX 2>/dev/null || true)"
-  [ -n "$tmp" ] || tmp="$destdir/.groq-b64.$$.$RANDOM"
-  if ! b64encode > "$tmp"; then
-    rm -f -- "$tmp" 2>/dev/null || true
-    log_error "B64FAIL" "base64 encoding failed"
-    return "$GROQBASHERRTMP"
-  fi
-  chmod 600 "$tmp" 2>/dev/null || true
-  lock_exec "$lockfile" "$timeout" -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
-  return 0
-}
-
-b64_atomic_read() {
-  local src="$1"
-  [ -f "$src" ] || return 1
-  b64decode < "$src"
-  return $?
-}
-
-# Portable helpers for rotate_history and save_to_history
-file_size() {
-  local f="$1"
-  if [ -z "$f" ] || [ ! -f "$f" ]; then
-    printf '0'
-    return 0
-  fi
-  case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin) stat -f %z "$f" 2>/dev/null || printf '0' ;;
-    *) stat -c %s "$f" 2>/dev/null || printf '0' ;;
-  esac
-}
-
-list_files_sorted_by_mtime() {
-  local dir="$1"
-  find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
-    case "$(uname 2>/dev/null || echo Linux)" in
-      Darwin) mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)" ;;
-      *) mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)" ;;
-    esac
-    printf '%s|%s\n' "$mtime" "$f"
-  done | sort -n
-}
-
-# History rotation and compaction (portable)
-GROQBASH_ROTATE_HISTORY="${GROQBASH_ROTATE_HISTORY:-0}"
-GROQBASH_HISTORY_MAX_FILES="${GROQBASH_HISTORY_MAX_FILES:-100}"
-GROQBASH_HISTORY_MAX_BYTES="${GROQBASH_HISTORY_MAX_BYTES:-104857600}" # 100MB
-GROQBASH_HISTORY_KEEP_DAYS="${GROQBASH_HISTORY_KEEP_DAYS:-90}"
-
-rotate_history() {
-  local timeout="${1:-$GROQBASH_LOCK_TIMEOUT_HISTORY}"
-  lock_exec "$HISTORY_LOCK" "$timeout" -- sh -c '
-    set -e
-    dir="$1"
-    max_files="$2"
-    max_bytes="$3"
-    keep_days="$4"
-    # Remove files older than keep_days
-    find "$dir" -type f -mtime +"$keep_days" -print0 | xargs -0 -r rm -f --
-    # Remove oldest files until total bytes <= max_bytes
-    while :; do
-      total=0
-      while IFS= read -r -d "" f; do
-        if [ -f "$f" ]; then
-          size=$( (case "$(uname 2>/dev/null || echo Linux)" in Darwin) stat -f %z "$f" ;; *) stat -c %s "$f" ;; esac 2>/dev/null || echo 0)
-          total=$((total + size))
-        fi
-      done < <(find "$dir" -type f -print0)
-      [ "$total" -le "$max_bytes" ] && break
-      oldest="$(list_files_sorted_by_mtime "$dir" | head -n1 | awk -F"|" '{print $2}')"
-      [ -z "$oldest" ] && break
-      rm -f -- "$oldest"
-    done
-    # Ensure number of files <= max_files
-    while :; do
-      count=$(find "$dir" -type f | wc -l)
-      [ "$count" -le "$max_files" ] && break
-      oldest="$(list_files_sorted_by_mtime "$dir" | head -n1 | awk -F"|" '{print $2}')"
-      [ -z "$oldest" ] && break
-      rm -f -- "$oldest"
-    done
-  ' _ "$GROQBASH_HISTORY_DIR" "$GROQBASH_HISTORY_MAX_FILES" "$GROQBASH_HISTORY_MAX_BYTES" "$GROQBASH_HISTORY_KEEP_DAYS"
-  return $?
-}
-
-save_to_history() {
-  local content="$1"
-  local filename
-  filename="$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
-  mkdir -p "$GROQBASH_HISTORY_DIR" 2>/dev/null || true
-  local tmpf dest lockfile
-  tmpf="$(mktemp -p "$GROQBASH_TMPDIR" groq-out.XXXX 2>/dev/null || true)"
-  [ -n "$tmpf" ] || { log_error "HISTORYFAIL" "save_to_history: cannot create tmp file"; return "$GROQBASHERRTMP"; }
-  printf '%s\n' "$content" > "$tmpf"
-  dest="$GROQBASH_HISTORY_DIR/$filename"
-  lockfile="$HISTORY_LOCK"
-  lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_HISTORY" -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$tmpf" "$dest" || { rc=$?; rm -f -- "$tmpf" 2>/dev/null || true; return "$rc"; }
-  if [ "${GROQBASH_ROTATE_HISTORY:-0}" -eq 1 ]; then
-    rotate_history "$GROQBASH_LOCK_TIMEOUT_HISTORY" || true
-  fi
-  log_info "HISTORY_SAVE" "$dest"
-  return 0
-}
-
-# Manifest multimodale helpers (atomic, jq --arg usage)
-# All base64 operations use b64encode/b64decode and b64_atomic_write/read.
-manifest_create() {
-  local manifest="$1"
-  local timeout="${2:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
-  mkdir -p "$(dirname "$manifest")" 2>/dev/null || { log_error "MANIFESTFAIL" "manifest_create: cannot create dir"; return 1; }
-  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
-    set -e
-    manifest="$1"
-    tmp="$(mktemp -p "$(dirname "$manifest")" manifest.tmp.XXXX)"
-    printf "%s" "{\"parts\":[]}" > "$tmp"
-    # write base64 staging using b64encode
-    b64encode < "$tmp" > "${manifest}.b64"
-    mv -f "$tmp" "$manifest"
-    chmod 600 "$manifest" 2>/dev/null || true
-  ' _ "$manifest"
-  return $?
-}
-
-manifest_add_part() {
-  local manifest="$1" name="$2" file_path="$3" mime="$4" timeout="${5:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
-  [ -f "$file_path" ] || { log_error "MANIFESTFAIL" "manifest_add_part: file not found: $file_path"; return 1; }
-  mkdir -p "$(dirname "$manifest")" 2>/dev/null || true
-  # Ensure manifest exists under lock
-  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
-    set -e
-    manifest="$1"
-    if [ ! -f "$manifest" ] && [ ! -f "${manifest}.b64" ]; then
-      tmpinit="$(mktemp -p "$(dirname "$manifest")" manifest.init.XXXX)"
-      printf "%s" "{\"parts\":[]}" > "$tmpinit"
-      mv -f "$tmpinit" "$manifest"
-      b64encode < "$manifest" > "${manifest}.b64"
-      chmod 600 "$manifest" 2>/dev/null || true
-    fi
-  ' _ "$manifest"
-  # Stage the part as base64 (unique name)
-  local destdir part_b64 tmpstamp part_tmp
-  destdir="$(dirname "$manifest")"
-  tmpstamp="$(date +%s)-$$"
-  part_b64="$destdir/parts-$(basename "$file_path").${tmpstamp}.b64"
-  part_tmp="$GROQBASH_TMPDIR/part.${tmpstamp}.tmp"
-  b64encode < "$file_path" > "$part_tmp" || { rm -f "$part_tmp" 2>/dev/null || true; log_error "B64FAIL" "manifest_add_part: b64 encode failed"; return 1; }
-  mv -f "$part_tmp" "$part_b64"
-  chmod 600 "$part_b64" 2>/dev/null || true
-  # Now update manifest atomically under lock using jq --arg
-  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
-    set -e
-    manifest="$1"
-    part_b64="$2"
-    name="$3"
-    mime="$4"
-    tmp="$(mktemp -p "$(dirname "$manifest")" manifest.edit.XXXX)"
-    # decode manifest.b64 if present, else use manifest file
-    if [ -f "${manifest}.b64" ]; then
-      b64decode < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
-    elif [ -f "$manifest" ]; then
-      cp -f "$manifest" "$tmp"
-    else
-      printf "%s" "{\"parts\":[]}" > "$tmp"
-    fi
-    jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
-       '.parts += [{name:$name, path:$path, encoding:$enc, type:$type}]' "$tmp" > "${tmp}.new"
-    mv -f "${tmp}.new" "$tmp"
-    b64encode < "$tmp" > "${manifest}.b64"
-    mv -f "$tmp" "$manifest"
-    chmod 600 "$manifest" 2>/dev/null || true
-    rm -f "$tmp" 2>/dev/null || true
-  ' _ "$manifest" "$part_b64" "$name" "$mime" || { log_error "MANIFESTFAIL" "manifest_add_part: update failed"; return 1; }
-  log_info "MANIFEST_ADD" "added part $name -> $part_b64"
-  return 0
-}
-
-manifest_read() {
-  local manifest="$1"
-  if [ -f "$manifest" ]; then
-    cat "$manifest"
-    return 0
-  fi
-  if [ -f "${manifest}.b64" ]; then
-    b64decode < "${manifest}.b64"
-    return $?
-  fi
-  return 1
-}
-# === HISTORY_MANIFEST END ===
-
-# === INSTALL_EXTRAS START ===
-# Minimal, portable implementation following the user's reduced plan.
-# Provides: --install-extras [components...] --source <path> --force --dry-run
-# Uses GROQBASH_EXTRAS_SOURCE as optional env var for source path.
-
-# Configuration for installer
-GROQBASH_EXTRAS_SOURCE="${GROQBASH_EXTRAS_SOURCE:-}"
-INSTALL_LOCK="$GROQBASH_EXTRAS_DIR/.install.lock"
-INSTALL_RECORD="$GROQBASH_EXTRAS_DIR/INSTALLATION-RECORD"
-
-# Helper: compute sha256 if available, else empty
-_compute_sha256() {
-  local file="$1"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$file" 2>/dev/null | awk '{print $1}'
-    return 0
-  fi
-  if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$file" 2>/dev/null | awk '{print $1}'
-    return 0
-  fi
-  # no checksum tool available
-  printf ''
-  return 0
-}
-
-# Helper: normalize path to absolute without using readlink -f
-_normalize_path() {
-  local path="$1"
-  if [ -z "$path" ]; then
-    printf '%s' ""
-    return 0
-  fi
-  # If already absolute, use subshell to resolve . and ..
-  if [ "${path:0:1}" = "/" ]; then
-    ( cd "$(dirname "$path")" >/dev/null 2>&1 && printf '%s/%s' "$(pwd)" "$(basename "$path")" ) || printf '%s' "$path"
-    return 0
-  fi
-  # relative path: resolve relative to current working dir
-  ( cd "$(pwd)" >/dev/null 2>&1 && printf '%s/%s' "$(pwd)" "$path" ) || printf '%s' "$path"
-  return 0
-}
-
-# Helper: safe join path and ensure dest is under GROQBASH_EXTRAS_DIR
-_is_under_extras() {
-  local dest="$1"
-  # Normalize both paths
-  local norm_dest norm_base
-  norm_dest="$(_normalize_path "$dest")"
-  norm_base="$(_normalize_path "$GROQBASH_EXTRAS_DIR")"
-  case "$norm_dest" in
-    "$norm_base"/*|"$norm_base") return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-# Helper: resolve symlink target without readlink -f; limit depth to avoid loops
-_resolve_symlink_safe() {
-  local src="$1"
-  local depth=0
-  local cur="$src"
-  while [ -L "$cur" ] && [ "$depth" -lt 8 ]; do
-    local link
-    link="$(readlink "$cur" 2>/dev/null || true)"
-    if [ -z "$link" ]; then
-      break
-    fi
-    # If relative, make it relative to the symlink's directory
-    if [ "${link:0:1}" != "/" ]; then
-      local base_dir
-      base_dir="$(cd "$(dirname "$cur")" >/dev/null 2>&1 && pwd || true)"
-      if [ -n "$base_dir" ]; then
-        cur="$base_dir/$link"
-      else
-        cur="$(dirname "$cur")/$link"
-      fi
-    else
-      cur="$link"
-    fi
-    depth=$((depth + 1))
-  done
-  # Normalize final path
-  _normalize_path "$cur"
-  return 0
-}
-
-# Helper: compare identity using sha256 if available, else mtime+size
-_is_same_file() {
-  local a="$1" b="$2"
-  if [ ! -f "$a" ] || [ ! -f "$b" ]; then return 1; fi
-  local ha hb
-  ha="$(_compute_sha256 "$a")"
-  hb="$(_compute_sha256 "$b")"
-  if [ -n "$ha" ] && [ -n "$hb" ]; then
-    [ "$ha" = "$hb" ] && return 0 || return 1
-  fi
-  # fallback to size+mtime
-  local sa sb ma mb
-  sa="$(file_size "$a")" || sa=0
-  sb="$(file_size "$b")" || sb=0
-  case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin) ma="$(stat -f %m "$a" 2>/dev/null || echo 0)"; mb="$(stat -f %m "$b" 2>/dev/null || echo 0)";;
-    *) ma="$(stat -c %Y "$a" 2>/dev/null || echo 0)"; mb="$(stat -c %Y "$b" 2>/dev/null || echo 0)";;
-  esac
-  [ "$sa" -eq "$sb" ] && [ "$ma" -eq "$mb" ] && return 0 || return 1
-}
-
-# Helper: atomic copy of a single file from src to dest (dest path must be under extras)
-_copy_file_atomic() {
-  local src="$1" dest="$2" force="$3" dryrun="$4"
-  # Validate dest under extras
-  if ! _is_under_extras "$dest"; then
-    log_error "INSTALL" "destination outside extras: $dest"
-    return 2
-  fi
-  mkdir -p "$(dirname "$dest")" 2>/dev/null || { log_error "INSTALL" "cannot create dest dir: $(dirname "$dest")"; return 2; }
-  if [ -e "$dest" ] && [ "$force" != "1" ]; then
-    if _is_same_file "$src" "$dest"; then
-      # identical, nothing to do
-      return 0
-    else
-      # conflict
-      return 3
-    fi
-  fi
-  if [ "$dryrun" = "1" ]; then
-    return 0
-  fi
-  # create temp file in same dir with mktemp fallback
-  local tmp
-  tmp="$(mktemp -p "$(dirname "$dest")" .groq-extras.tmp.XXXXXX 2>/dev/null || true)"
-  if [ -z "$tmp" ]; then
-    tmp="$(dirname "$dest")/.groq-extras.$$.$RANDOM"
-  fi
-  # Prefer portable copy: use cat to avoid cp option incompatibilities
-  if ! cat -- "$src" > "$tmp" 2>/dev/null; then
-    rm -f -- "$tmp" 2>/dev/null || true
-    log_error "INSTALL" "copy failed (cat): $src -> $tmp"
-    return 2
-  fi
-  # set permissions: base 600, if src executable then 700
-  if [ -x "$src" ]; then
-    if ! chmod 700 "$tmp" 2>/dev/null; then
-      # chmod failure is non-blocking; warn user (common on NTFS/WSL)
-      log_warn "INSTALL" "chmod failed on $dest (filesystem may be non-POSIX, e.g. NTFS/WSL)"
-    fi
-  else
-    if ! chmod 600 "$tmp" 2>/dev/null; then
-      # chmod failure is non-blocking; warn user (common on NTFS/WSL)
-      log_warn "INSTALL" "chmod failed on $dest (filesystem may be non-POSIX, e.g. NTFS/WSL)"
-    fi
-  fi
-  # atomic move
-  if ! mv -f -- "$tmp" "$dest" 2>/dev/null; then
-    rm -f -- "$tmp" 2>/dev/null || true
-    log_error "INSTALL" "mv failed: $tmp -> $dest"
-    return 2
-  fi
-  return 0
-}
-
-# Helper: record installation entries (atomic)
-_record_installation() {
-  local source="$1"
-  shift
-  local files=("$@")
-  local record_tmp
-  record_tmp="$(mktemp -p "$GROQBASH_EXTRAS_DIR" .install-record.XXXXXX 2>/dev/null || true)"
-  [ -n "$record_tmp" ] || record_tmp="$GROQBASH_EXTRAS_DIR/.install-record.$$.$RANDOM"
-  {
-    printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf 'source=%s\n' "$source"
-    printf 'files=\n'
-    for f in "${files[@]}"; do
-      printf '%s\n' "$f"
-    done
-  } > "$record_tmp"
-  chmod 600 "$record_tmp" 2>/dev/null || true
-  mv -f -- "$record_tmp" "$INSTALL_RECORD" 2>/dev/null || true
-  return 0
-}
-
-# Main installer orchestrator
-install_extras() {
-  # args: components... (empty => all)
-  local components=("$@")
-  local source_path=""
-  local force_flag="${INSTALL_EXTRAS_FORCE:-0}"
-  local dryrun_flag="${INSTALL_EXTRAS_DRYRUN:-0}"
-  # Determine source: precedence --source (via INSTALL_EXTRAS_SOURCE var), env GROQBASH_EXTRAS_SOURCE, default locations
-  if [ -n "${INSTALL_EXTRAS_SOURCE:-}" ]; then
-    source_path="${INSTALL_EXTRAS_SOURCE}"
-  elif [ -n "${GROQBASH_EXTRAS_SOURCE:-}" ]; then
-    source_path="${GROQBASH_EXTRAS_SOURCE}"
-  else
-    # default search order
-    if [ -d "$SCRIPTDIR/extras" ] && [ ! -L "$SCRIPTDIR/extras" ]; then
-      source_path="$SCRIPTDIR/extras"
-    elif [ -d "$SCRIPTDIR/../extras" ] && [ ! -L "$SCRIPTDIR/../extras" ]; then
-      source_path="$SCRIPTDIR/../extras"
-    else
-      source_path=""
-    fi
-  fi
-
-  if [ -z "$source_path" ] || [ ! -d "$source_path" ]; then
-    log_error "INSTALL" "extras source not found or not a directory"
-    return "$GROQBASHERRINSTALL"
-  fi
-
-  # Ensure source is not a symlink
-  if [ -L "$source_path" ]; then
-    log_error "INSTALL" "extras source is a symlink; refusing to use symlinked source: $source_path"
-    return "$GROQBASHERRINSTALL"
-  fi
-
-  # Normalize source_path for robust comparisons
-  source_path="$(_normalize_path "$source_path")"
-
-  # Ensure destination exists
-  mkdir -p "$GROQBASH_EXTRAS_DIR" 2>/dev/null || { log_error "INSTALL" "cannot create extras destination: $GROQBASH_EXTRAS_DIR"; return "$GROQBASHERRINSTALL"; }
-  chmod 700 "$GROQBASH_EXTRAS_DIR" 2>/dev/null || true
-
-  # Acquire install lock using flock (blocking with timeout loop)
-  exec 9>"$INSTALL_LOCK" 2>/dev/null || { log_error "INSTALL" "cannot open install lock: $INSTALL_LOCK"; return "$GROQBASHERRINSTALL"; }
-  # Ensure lock FD is always closed on function exit or exit of shell
-  trap 'exec 9>&- || true' RETURN EXIT
-
-  local waited=0
-  # Timeout (seconds) for acquiring the install lock.
-  # Default is 10 seconds; can be overridden by exporting GROQBASH_LOCK_TIMEOUT_MODELS.
-  local timeout="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
-  while ! flock -x -w 1 9 2>/dev/null; do
-    waited=$((waited + 1))
-    if [ "$waited" -ge "$timeout" ]; then
-      log_error "INSTALL" "could not acquire install lock within timeout"
-      exec 9>&- || true
-      return "$GROQBASHERRINSTALL"
-    fi
-    sleep 1
-  done
-  # At this point lock held on fd 9
-
-  log_info "INSTALL" "using source: $source_path"
-  log_info "INSTALL" "destination: $GROQBASH_EXTRAS_DIR"
-  log_info "INSTALL" "components: ${components[*]:-<all>}"
-  log_info "INSTALL" "force: $force_flag dry-run: $dryrun_flag"
-
-  # Build list of files to process
-  local -a to_copy
-  local -a copied_files
-  local -a skipped_files
-  local -a conflict_files
-  local -a symlink_rejected
-
-  if [ "${#components[@]}" -eq 0 ]; then
-    # all files under source
-    while IFS= read -r -d '' f; do
-      to_copy+=("$f")
-    done < <(find "$source_path" -mindepth 1 -print0 2>/dev/null)
-  else
-    # only specified components: treat each as immediate child under source
-    local comp
-    for comp in "${components[@]}"; do
-      # sanitize comp: no slashes allowed
-      case "$comp" in
-        */*|*\\*) log_warn "INSTALL" "invalid component name (skipping): $comp"; continue ;;
-      esac
-      if [ -d "$source_path/$comp" ]; then
-        while IFS= read -r -d '' f; do
-          to_copy+=("$f")
-        done < <(find "$source_path/$comp" -mindepth 1 -print0 2>/dev/null)
-      elif [ -f "$source_path/$comp" ]; then
-        to_copy+=("$source_path/$comp")
-      else
-        log_warn "INSTALL" "component not found in source: $comp"
-      fi
-    done
-  fi
-
-  # Iterate and copy
-  local src dest rel resolved src_norm
-  for src in "${to_copy[@]}"; do
-    # normalize src path for robust rel computation
-    src_norm="$(_normalize_path "$src")"
-    # compute relative path from source_path
-    rel="${src_norm#$source_path/}"
-    dest="$GROQBASH_EXTRAS_DIR/$rel"
-
-    # If src is symlink, resolve safely
-    if [ -L "$src" ]; then
-      resolved="$(_resolve_symlink_safe "$src")"
-      resolved="$(_normalize_path "$resolved")"
-      if [ -z "$resolved" ]; then
-        symlink_rejected+=("$rel")
-        log_warn "INSTALL" "symlink resolution failed or empty: $src"
-        continue
-      fi
-      # If resolved path is not under source_path, reject
-      case "$resolved" in
-        "$source_path"/*|"$source_path")
-          # treat resolved as the real source
-          src="$resolved"
-          src_norm="$resolved"
-          ;;
-        *)
-          symlink_rejected+=("$rel")
-          log_warn "INSTALL" "symlink points outside source; rejecting: $rel -> $resolved"
-          continue
-          ;;
-      esac
-    fi
-
-    # If src is directory, ensure dest dir exists and continue
-    if [ -d "$src" ]; then
-      if [ "$dryrun_flag" = "1" ]; then
-        skipped_files+=("$rel (dir)")
-        continue
-      fi
-      mkdir -p "$dest" 2>/dev/null || { log_warn "INSTALL" "cannot create dir: $dest"; continue; }
-      chmod 700 "$dest" 2>/dev/null || true
-      skipped_files+=("$rel (dir)")
-      continue
-    fi
-
-    # Only process regular files
-    if [ ! -f "$src" ]; then
-      log_warn "INSTALL" "skipping non-regular file: $rel"
-      skipped_files+=("$rel (non-regular)")
-      continue
-    fi
-
-    # Validate destination under extras
-    if ! _is_under_extras "$dest"; then
-      log_error "INSTALL" "computed destination outside extras: $dest"
-      exec 9>&- || true
-      return "$GROQBASHERRINSTALL"
-    fi
-
-    # Decide copy vs skip vs conflict
-    # Conflict handling: by design, conflicts (existing differing files) are treated as warnings.
-    # The installer will skip these files and exit with code 0; use --force to overwrite.
-    if [ -e "$dest" ] && [ "$force_flag" != "1" ]; then
-      if _is_same_file "$src" "$dest"; then
-        skipped_files+=("$rel (identical)")
-        continue
-      else
-        conflict_files+=("$rel")
-        log_warn "INSTALL" "conflict (not overwriting): $rel"
-        continue
-      fi
-    fi
-
-    # Perform copy (atomic)
-    if [ "$dryrun_flag" = "1" ]; then
-      copied_files+=("$rel (dry-run)")
-      continue
-    fi
-
-    if _copy_file_atomic "$src" "$dest" "$force_flag" "$dryrun_flag"; then
-      copied_files+=("$rel")
-    else
-      local rc=$?
-      # Conflict code returned by _copy_file_atomic is 3
-      # Conflicts are warnings per design (not blocking errors)
-      if [ "$rc" -eq 3 ]; then
-        # Conflict handling: record and warn; installer continues.
-        conflict_files+=("$rel")
-        log_warn "INSTALL" "conflict detected for $rel"
-      else
-        log_error "INSTALL" "failed to copy $rel (rc $rc)"
-        exec 9>&- || true
-        return "$GROQBASHERRINSTALL"
-      fi
-    fi
-  done
-
-  # Write INSTALLATION-RECORD if any files copied (and not dry-run)
-  if [ "${#copied_files[@]}" -gt 0 ] && [ "$dryrun_flag" != "1" ]; then
-    _record_installation "$source_path" "${copied_files[@]}"
-  fi
-
-  # Release lock (trap RETURN/EXIT will close fd 9)
-  exec 9>&- || true
-
-  # Print summary
-  log_info "INSTALL_SUMMARY" "source=$source_path"
-  log_info "INSTALL_SUMMARY" "copied=${#copied_files[@]} skipped=${#skipped_files[@]} conflicts=${#conflict_files[@]} symlink_rejected=${#symlink_rejected[@]}"
-
-  # Detailed logs if debug
-  if [ "${GROQBASH_DEBUG:-0}" -eq 1 ]; then
-    [ "${#copied_files[@]}" -gt 0 ] && printf 'Copied files:\n' && printf '%s\n' "${copied_files[@]}" >&2 || true
-    [ "${#skipped_files[@]}" -gt 0 ] && printf 'Skipped:\n' && printf '%s\n' "${skipped_files[@]}" >&2 || true
-    [ "${#conflict_files[@]}" -gt 0 ] && printf 'Conflicts:\n' && printf '%s\n' "${conflict_files[@]}" >&2 || true
-    [ "${#symlink_rejected[@]}" -gt 0 ] && printf 'Symlink rejected:\n' && printf '%s\n' "${symlink_rejected[@]}" >&2 || true
-  fi
-
-  # Exit code: 0 if no blocking errors; conflicts are warnings per design
-  return 0
-}
-# === INSTALL_EXTRAS END ===
-
-# === PROVIDER START ===
-# Provider embedded: groq (full implementations)
-# All base64 usage uses b64encode/b64decode and b64_atomic_write/read.
-GROQ_API_KEY="${GROQ_API_KEY:-}"
-if [ -n "${PROVIDER_API_ENV_groq:-}" ]; then
-  if [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
-    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
-  fi
-fi
-
-_mktemp_in_dir() {
-  local dir="$1" tmpf
-  [ -n "$dir" ] || return "$GROQBASHERRTMP"
-  [ -d "$dir" ] || return "$GROQBASHERRTMP"
-  tmpf="$(mktemp -p "$dir" groq-XXXX 2>/dev/null || true)"
-  [ -z "$tmpf" ] && return "$GROQBASHERRTMP"
-  printf '%s' "$tmpf"
-  return 0
-}
-
-buildpayload_groq() {
-  local workdir tmp_payload model_in_file model_to_use user_prompt stream_json
-  workdir="${RUN_TMPDIR:-}"
-  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
-    workdir="$(make_tmpdir 2>/dev/null || true)"
-  fi
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmp_payload="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
-  umask 077
-  if is_truthy "${STREAM_MODE:-0}"; then stream_json=true; else stream_json=false; fi
-
-  if [ -n "${JSON_INPUT:-}" ]; then
-    if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      b64_atomic_write "$PAYLOAD" 10 < "$JSON_INPUT" || return "$GROQBASHERRTMP"
-      return 0
-    fi
-    if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
-      user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
-      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
-      model_to_use="${model_in_file:-$MODEL}"
-      jq -n --arg model "$model_to_use" \
-            --argjson stream "$stream_json" \
-            --arg ture "$TURE" \
-            --arg max_tokens "$MAX_TOKENS" \
-            --arg user "$user_prompt" \
-            '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
-      b64_atomic_write "$PAYLOAD" 10 < "$tmp_payload" || return "$GROQBASHERRTMP"
-      return 0
-    fi
-    b64_atomic_write "$PAYLOAD" 10 < "$JSON_INPUT" || return "$GROQBASHERRTMP"
-    return 0
-  fi
-
-  if [ -n "${SYSTEM_PROMPT:-}" ]; then
-    jq -n --arg model "$MODEL" \
-          --argjson stream "$stream_json" \
-          --arg ture "$TURE" \
-          --arg max_tokens "$MAX_TOKENS" \
-          --arg system "$SYSTEM_PROMPT" \
-          --arg user "$CONTENT" \
-          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"system",content:$system},{role:"user",content:$user}] }' >"$tmp_payload"
-  else
-    jq -n --arg model "$MODEL" \
-          --argjson stream "$stream_json" \
-          --arg ture "$TURE" \
-          --arg max_tokens "$MAX_TOKENS" \
-          --arg user "$CONTENT" \
-          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
-  fi
-
-  b64_atomic_write "$PAYLOAD" 10 < "$tmp_payload" || return "$GROQBASHERRTMP"
-  return 0
-}
-
-buildpayloadgroq() { buildpayload_groq "$@"; }
-
-call_api_groq() {
-  if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
-  if [ -z "${PAYLOAD:-}" ] || [ ! -s "${PAYLOAD:-}" ]; then log_error "PAYLOAD" "payload file missing or empty: ${PAYLOAD:-<unset>}"; return "$GROQBASHERRTMP"; fi
-  if is_truthy "${DRY_RUN:-0}"; then log_info "DRYRUN" "DRY-RUN: skipping HTTP call"; return 0; fi
-
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
-  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
-
-  local workdir tmpout http_code _time_total api_url rc decoded_payload
-  workdir="${RUN_TMPDIR:-}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmpout="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
-  api_url="https://api.groq.com/openai/v1/chat/completions"
-
-  decoded_payload="$workdir/payload.dec.$$"
-  b64_atomic_read "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-
-  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-    rc=$?
-  else
-    rc=0
-  fi
-
-  rm -f "$decoded_payload" 2>/dev/null || true
-  read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
-  rm -f "$tmpout" 2>/dev/null || true
-
-  case "$http_code" in
-    2*) return 0 ;;
-    *) log_error "HTTP" "HTTP error code: $http_code"; log_info "RESPHEAD" "Response (head):"; head -n 200 "$RESP" >&2 || true; log_info "CURLERR" "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true; return "$GROQBASHERRAPI" ;;
-  esac
-}
-
-call_api_groq_legacy() { call_api_groq "$@"; }
-
-call_api_streaming_groq() {
-  if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
-  if is_truthy "${DRY_RUN:-0}"; then log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"; return 0; fi
-
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
-  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
-  RESP_RAW="$RUN_TMPDIR/resp.raw"
-  : > "$RESP_RAW" 2>/dev/null || true
-  chmod 600 "$RESP_RAW" 2>/dev/null || true
-
-  local api_url rc decoded_payload
-  api_url="https://api.groq.com/openai/v1/chat/completions"
-
-  decoded_payload="$RUN_TMPDIR/payload.dec.$$"
-  b64_atomic_read "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-
-  local CURL_CMD
-  # stdbuf is optional: if present we use it to reduce buffering for streaming.
-  # If stdbuf is not available the code falls back to plain curl; behavior is
-  # correct in both cases, stdbuf only improves streaming latency when present.
-  if command -v stdbuf >/dev/null 2>&1; then
-    CURL_CMD=(stdbuf -oL curl --http1.1 "${CURL_BASE_OPTS[@]}")
-  else
-    CURL_CMD=(curl --http1.1 "${CURL_BASE_OPTS[@]}")
-  fi
-
-  "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
-  while IFS= read -r line; do
-    case "$line" in
-      'data: [DONE]'|'data:[DONE]') break ;;
-      data:\ * )
-        json="${line#data: }"
-        content="$(printf '%s' "$json" | jq -r 'fromjson? | (.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$ERRF" || true)"
-        if [ -n "$content" ]; then
-          printf '%s' "$content"
-        fi
-        ;;
-      *) ;;
-    esac
-  done
-
-  rc=${PIPESTATUS[0]:-0}
-  rm -f "$decoded_payload" 2>/dev/null || true
-  if [ "$rc" -ne 0 ]; then
-    log_error "CURLSTREAM" "curl streaming failed (rc $rc)"; head -n 50 "$ERRF" >&2 || true
-    return "$GROQBASHERRCURL_FAILED"
-  fi
-
-  if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
-    cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
-  fi
-
-  return 0
-}
-
-call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
-
-refresh_models_groq() {
-  if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
-    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
-  fi
-  if [ -z "${GROQ_API_KEY:-}" ]; then
-    log_error "APIKEY" "GROQ_API_KEY is required to refresh models."
-    return "$GROQBASHERRNOAPIKEY"
-  fi
-
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  local workdir tmpd out errf parsed tmpout api_url jq_ok lockfile
-  workdir="${RUN_TMPDIR:-}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX 2>/dev/null || true)"
-  [ -z "$tmpd" ] && return "$GROQBASHERRTMP"
-  out="$tmpd/models.json"; errf="$tmpd/curl.err"
-  api_url="https://api.groq.com/openai/v1/models"
-
-  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
-    log_error "CURL" "curl failed while refreshing models"; head -n 50 "$errf" >&2 || true
-    rm -rf "$tmpd"
-    return "$GROQBASHERRCURL_FAILED"
-  fi
-
-  parsed="$tmpd/parsed_models.txt"
-  if jq -e . "$out" >/dev/null 2>&1; then
-    jq_ok=1
-    jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u > "$parsed" || true
-  else
-    jq_ok=0
-    log_warn "MODELREFRESH" "models response not valid JSON; using heuristic parse"
-    grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u > "$parsed" || true
-  fi
-
-  if [ -s "$parsed" ]; then
-    if [ "$jq_ok" -eq 0 ]; then
-      if ! awk 'NF{exit 0} END{exit 1}' "$parsed"; then
-        log_error "MODELREFRESH" "Heuristic parse produced no models; aborting refresh."
-        rm -rf "$tmpd"
-        return "$GROQBASHERRAPI"
-      fi
-      if ! awk '/^[[:alnum:]._:-]+$/{print; ok=1} END{exit !ok}' "$parsed"; then
-        log_error "MODELREFRESH" "Heuristic parse produced invalid model ids; aborting refresh"
-        rm -rf "$tmpd"
-        return "$GROQBASHERRAPI"
-      fi
-    fi
-
-    mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
-    tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" )" || tmpout="$MODELS_FILE.tmp"
-    cat "$parsed" > "$tmpout"
-    # write base64 staging and then atomically decode under models lock
-    b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
-    lockfile="$MODELS_LOCK"
-    lock_exec "$lockfile" 10 -- sh -c '
-      set -e
-      src_b64="$1"
-      dest="$2"
-      b64decode < "$src_b64" > "$dest"
-      chmod 600 "$dest" 2>/dev/null || true
-    ' _ "${MODELS_FILE}.b64" "$MODELS_FILE" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
-    chmod 600 "$MODELS_FILE" 2>/dev/null || true
-    log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE"
-    rm -rf "$tmpd"
-    return 0
-  else
-    log_error "MODELREFRESH" "models refresh: parsed list empty"
-    rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
-  fi
-}
-
-refreshmodelsgroq() { refresh_models_groq "$@"; }
-
-validate_model_groq() {
-  local model="$1"
-  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null
-    return $?
-  fi
-  return 0
-}
-
-validatemodelgroq() { validate_model_groq "$@"; }
-
-auto_select_model_groq() {
-  local file="$MODELS_FILE" result=""
-  if [ -f "$file" ] && [ -s "$file" ]; then
-    result="$(awk 'NF{print; exit}' "$file" 2>/dev/null || true)"
-  fi
-  result="$(printf '%s' "$result" | awk '{$1=$1;print}')"
-  printf '%s' "$result"
-  return 0
-}
-
-autoselectmodelgroq() { auto_select_model_groq "$@"; }
-# === PROVIDER END ===
-
-# === CLI_MAIN START ===
-# Runtime globals, CLI parsing, and main execution flow.
-
+# ---------------------------------------------------------------------------
 # Runtime globals and normalization
+# ---------------------------------------------------------------------------
 CONTENT="${CONTENT:-}"
 RUN_TMPDIR="${RUN_TMPDIR:-}"
 PAYLOAD="${PAYLOAD:-}"
@@ -1210,14 +585,11 @@ PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}"
 ALLOWED_MODELS="${ALLOWED_MODELS:-}"
 
-# Installer-specific flags (populated by CLI parsing)
-INSTALL_EXTRAS_SOURCE="${INSTALL_EXTRAS_SOURCE:-}"
-INSTALL_EXTRAS_FORCE="${INSTALL_EXTRAS_FORCE:-0}"
-INSTALL_EXTRAS_DRYRUN="${INSTALL_EXTRAS_DRYRUN:-0}"
-
 CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
 
+# ---------------------------------------------------------------------------
 # Helpers: truthy and normalization
+# ---------------------------------------------------------------------------
 is_truthy() {
   case "${1:-}" in
     1|true|TRUE|True|yes|YES|Yes) return 0 ;;
@@ -1240,7 +612,9 @@ _normalize_bool_env() {
 }
 _normalize_bool_env
 
+# ---------------------------------------------------------------------------
 # Debug-safe payload preview (decodes b64 payloads)
+# ---------------------------------------------------------------------------
 show_payload_head() {
   local path="${1:-$PAYLOAD}" lines="${2:-200}"
   if [ -z "${path:-}" ]; then
@@ -1264,17 +638,382 @@ show_payload_head() {
   fi
   return 0
 }
+# ==== PRECORE END ====
+# ==== PROVIDER BEGIN ====
+# ---------------------------------------------------------------------------
+# Provider embedded: groq (full implementations)
+# Functions: buildpayload_groq, call_api_groq, call_api_streaming_groq,
+# refresh_models_groq, validate_model_groq, auto_select_model_groq
+# ---------------------------------------------------------------------------
 
+# Provider-specific API key (can be overridden via PROVIDER_API_ENV_groq)
+GROQ_API_KEY="${GROQ_API_KEY:-}"
+if [ -n "${PROVIDER_API_ENV_groq:-}" ]; then
+  if [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
+    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
+  fi
+fi
+
+# Small helper: create a temp file inside a directory (returns path)
+_mktemp_in_dir() {
+  local dir="$1" tmpf
+  [ -n "$dir" ] || return "$GROQBASHERRTMP"
+  [ -d "$dir" ] || return "$GROQBASHERRTMP"
+  tmpf="$(mktemp -p "$dir" groq-XXXX 2>/dev/null || true)"
+  [ -n "$tmpf" ] || return "$GROQBASHERRTMP"
+  printf '%s' "$tmpf"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# buildpayload_groq
+# - Produces a base64-staged payload at $PAYLOAD (uses b64_atomic_write)
+# - Supports: JSON_INPUT (messages or prompt), SYSTEM_PROMPT + CONTENT,
+#   or CONTENT alone.
+# - Honors STREAM_MODE via stream boolean in payload.
+# ---------------------------------------------------------------------------
+buildpayload_groq() {
+  local workdir tmp_payload model_in_file model_to_use user_prompt stream_json
+  workdir="${RUN_TMPDIR:-}"
+  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
+    workdir="$(make_tmpdir 2>/dev/null || true)"
+  fi
+  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+  tmp_payload="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
+  umask 077
+
+  if is_truthy "${STREAM_MODE:-0}"; then stream_json=true; else stream_json=false; fi
+
+  # If JSON_INPUT provided, prefer it (supports both messages and prompt shapes)
+  if [ -n "${JSON_INPUT:-}" ]; then
+    if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
+      # stage the provided JSON as base64
+      b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      return 0
+    fi
+    if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
+      user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
+      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
+      model_to_use="${model_in_file:-$MODEL}"
+      jq -n --arg model "$model_to_use" \
+            --argjson stream "$stream_json" \
+            --arg ture "$TURE" \
+            --arg max_tokens "$MAX_TOKENS" \
+            --arg user "$user_prompt" \
+            '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
+      b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      return 0
+    fi
+    # Otherwise stage the raw JSON_INPUT
+    b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    return 0
+  fi
+
+  # Build payload from CONTENT / SYSTEM_PROMPT
+  if [ -n "${SYSTEM_PROMPT:-}" ]; then
+    jq -n --arg model "$MODEL" \
+          --argjson stream "$stream_json" \
+          --arg ture "$TURE" \
+          --arg max_tokens "$MAX_TOKENS" \
+          --arg system "$SYSTEM_PROMPT" \
+          --arg user "$CONTENT" \
+          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"system",content:$system},{role:"user",content:$user}] }' >"$tmp_payload"
+  else
+    jq -n --arg model "$MODEL" \
+          --argjson stream "$stream_json" \
+          --arg ture "$TURE" \
+          --arg max_tokens "$MAX_TOKENS" \
+          --arg user "$CONTENT" \
+          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
+  fi
+
+  b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+  mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+  return 0
+}
+
+buildpayloadgroq() { buildpayload_groq "$@"; }
+
+# ---------------------------------------------------------------------------
+# call_api_groq (non-streaming)
+# - Expects $PAYLOAD to be a base64-staged file or raw JSON file.
+# - Writes response to $RESP and returns 0 on HTTP 2xx.
+# ---------------------------------------------------------------------------
+call_api_groq() {
+  if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
+  if [ -z "${PAYLOAD:-}" ] || [ ! -s "${PAYLOAD:-}" ]; then log_error "PAYLOAD" "payload file missing or empty: ${PAYLOAD:-<unset>}"; return "$GROQBASHERRTMP"; fi
+  if is_truthy "${DRY_RUN:-0}"; then log_info "DRYRUN" "DRY-RUN: skipping HTTP call"; return 0; fi
+
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
+  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
+
+  local workdir tmpout http_code _time_total api_url rc decoded_payload
+  workdir="${RUN_TMPDIR:-}"
+  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+  tmpout="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
+  api_url="https://api.groq.com/openai/v1/chat/completions"
+
+  decoded_payload="$workdir/payload.dec.$$"
+  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
+    b64decode < "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+  else
+    cp -f "$PAYLOAD" "$decoded_payload" 2>/dev/null || true
+  fi
+
+  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    rc=$?
+  else
+    rc=0
+  fi
+
+  rm -f "$decoded_payload" 2>/dev/null || true
+  read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
+  rm -f "$tmpout" 2>/dev/null || true
+
+  case "$http_code" in
+    2*) return 0 ;;
+    *) log_error "HTTP" "HTTP error code: $http_code"; log_info "RESPHEAD" "Response (head):"; head -n 200 "$RESP" >&2 || true; log_info "CURLERR" "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true; return "$GROQBASHERRAPI" ;;
+  esac
+}
+
+call_api_groq_legacy() { call_api_groq "$@"; }
+
+# ---------------------------------------------------------------------------
+# call_api_streaming_groq
+# - Performs an HTTP/1.1 request and parses SSE lines of the form "data: <json>"
+# - Writes raw stream to RESP_RAW and, if valid JSON, copies to RESP at end.
+# - Emits content fragments to stdout as they arrive.
+# ---------------------------------------------------------------------------
+call_api_streaming_groq() {
+  if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
+  if is_truthy "${DRY_RUN:-0}"; then log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"; return 0; fi
+
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
+  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
+  RESP_RAW="$RUN_TMPDIR/resp.raw"
+  : > "$RESP_RAW" 2>/dev/null || true
+  chmod 600 "$RESP_RAW" 2>/dev/null || true
+
+  local api_url rc decoded_payload
+  api_url="https://api.groq.com/openai/v1/chat/completions"
+
+  decoded_payload="$RUN_TMPDIR/payload.dec.$$"
+  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
+    b64decode < "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+  else
+    cp -f "$PAYLOAD" "$decoded_payload" 2>/dev/null || true
+  fi
+
+  local CURL_CMD
+  if command -v stdbuf >/dev/null 2>&1; then
+    CURL_CMD=(stdbuf -oL curl --http1.1 "${CURL_BASE_OPTS[@]}")
+  else
+    CURL_CMD=(curl --http1.1 "${CURL_BASE_OPTS[@]}")
+  fi
+
+  "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
+  while IFS= read -r line; do
+    case "$line" in
+      'data: [DONE]'|'data:[DONE]') break ;;
+      data:\ * )
+        json="${line#data: }"
+        # Attempt to parse JSON and extract content fragments; be tolerant of missing fields
+        content="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true)"
+        if [ -n "$content" ]; then
+          printf '%s' "$content"
+        fi
+        ;;
+      *) ;;
+    esac
+  done
+
+  rc=${PIPESTATUS[0]:-0}
+  rm -f "$decoded_payload" 2>/dev/null || true
+  if [ "$rc" -ne 0 ]; then
+    log_error "CURLSTREAM" "curl streaming failed (rc $rc)"; head -n 50 "$ERRF" >&2 || true
+    return "$GROQBASHERRCURL_FAILED"
+  fi
+
+  # If the raw response is valid JSON, copy it to RESP for downstream processing
+  if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
+    cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
+  fi
+
+  return 0
+}
+
+call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
+
+# ---------------------------------------------------------------------------
+# refresh_models_groq
+# - Fetches /openai/v1/models and writes a newline-separated list to MODELS_FILE
+# - Uses jq when possible; if response is not valid JSON, attempts a heuristic parse.
+# - Writes via b64_atomic_write + lock_exec to ensure atomic update.
+# ---------------------------------------------------------------------------
+refresh_models_groq() {
+  if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
+    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
+  fi
+  if [ -z "${GROQ_API_KEY:-}" ]; then
+    log_error "APIKEY" "GROQ_API_KEY is required to refresh models."
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  local workdir tmpd out errf parsed tmpout api_url jq_ok
+  workdir="${RUN_TMPDIR:-}"
+  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+  tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX 2>/dev/null || true)"
+  [ -n "$tmpd" ] || return "$GROQBASHERRTMP"
+  out="$tmpd/models.json"; errf="$tmpd/curl.err"
+  api_url="https://api.groq.com/openai/v1/models"
+
+  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
+    log_error "CURL" "curl failed while refreshing models"; head -n 50 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRCURL_FAILED"
+  fi
+
+  parsed="$tmpd/parsed_models.txt"
+  if jq -e . "$out" >/dev/null 2>&1; then
+    jq_ok=1
+    jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u > "$parsed" || true
+  else
+    jq_ok=0
+    log_warn "MODELREFRESH" "models response not valid JSON; using heuristic parse"
+    # Heuristic: extract "id":"..." occurrences
+    grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u > "$parsed" || true
+  fi
+
+  if [ -s "$parsed" ]; then
+    if [ "$jq_ok" -eq 0 ]; then
+      # Validate heuristic output contains plausible ids (alnum, ., _, :, -)
+      if ! awk '/^[[:alnum:]._:-]+$/{print; ok=1} END{exit !ok}' "$parsed"; then
+        log_error "MODELREFRESH" "Heuristic parse produced invalid model ids; aborting refresh"
+        rm -rf "$tmpd"
+        return "$GROQBASHERRAPI"
+      fi
+    fi
+
+    mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
+    tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" )" || tmpout="$MODELS_FILE.tmp"
+    cat "$parsed" > "$tmpout"
+    # write base64 staging and then atomically decode under models lock
+    b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+    lockfile="$MODELS_LOCK"
+    lock_exec "$lockfile" 10 -- sh -c '
+      set -e
+      manifest_b64="$1"
+      dest="$2"
+      # decode staging using wrapper
+      b64decode < "$manifest_b64" > "$dest"
+      chmod 600 "$dest" 2>/dev/null || true
+    ' _ "${MODELS_FILE}.b64" "$MODELS_FILE" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+    chmod 600 "$MODELS_FILE" 2>/dev/null || true
+    log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE"
+    rm -rf "$tmpd"
+    return 0
+  else
+    log_error "MODELREFRESH" "models refresh: parsed list empty"
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+}
+
+refreshmodelsgroq() { refresh_models_groq "$@"; }
+
+# ---------------------------------------------------------------------------
+# validate_model_groq
+# - If MODELS_FILE exists and is non-empty, require the model to be present.
+# - If MODELS_FILE does not exist or is empty, allow (backwards compatible).
+# ---------------------------------------------------------------------------
+validate_model_groq() {
+  local model="$1"
+  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
+    if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
+      return 0
+    else
+      return 1
+    fi
+  fi
+  # No local whitelist available: accept (compat)
+  return 0
+}
+
+validatemodelgroq() { validate_model_groq "$@"; }
+
+# ---------------------------------------------------------------------------
+# auto_select_model_groq
+# - Returns the first non-empty model from MODELS_FILE if present.
+# ---------------------------------------------------------------------------
+auto_select_model_groq() {
+  local file="$MODELS_FILE" result=""
+  if [ -f "$file" ] && [ -s "$file" ]; then
+    result="$(awk 'NF{print; exit}' "$file" 2>/dev/null || true)"
+  fi
+  result="$(printf '%s' "$result" | awk '{$1=$1;print}')"
+  printf '%s' "$result"
+  return 0
+}
+
+autoselectmodelgroq() { auto_select_model_groq "$@"; }
+# ==== PROVIDER END ====
+# ==== CORE BEGIN ====
+# ---------------------------------------------------------------------------
 # Core helpers and CLI wiring (public interfaces preserved)
+# ---------------------------------------------------------------------------
+
+# Dispatch helper: call provider-specific function by name if available
 call_provider() {
   local fn="$1" shift_args=("${@:2}")
-  if type "$fn" >/dev/null 2>&1; then "$fn" "${shift_args[@]}"; return $?; fi
+  if type "$fn" >/dev/null 2>&1; then
+    "$fn" "${shift_args[@]}"
+    return $?
+  fi
   return 127
 }
 
+# Provider dispatch wrappers (call provider-specific implementations if present)
+refresh_models_dispatch() {
+  local destfile="${1:-$MODELS_FILE}"
+  local fn="refresh_models_${PROVIDER}"
+  if call_provider "$fn"; then
+    return 0
+  else
+    return $?
+  fi
+}
+
+validate_model_dispatch() {
+  local model="$1"
+  local fn="validate_model_${PROVIDER}"
+  if type "$fn" >/dev/null 2>&1; then
+    "$fn" "$model"
+    return $?
+  fi
+  # Default permissive behavior if provider does not implement validation
+  return 0
+}
+
+auto_select_model_dispatch() {
+  local fn="auto_select_model_${PROVIDER}"
+  if call_provider "$fn"; then
+    return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Build payload from current vars (delegates to provider)
+# ---------------------------------------------------------------------------
 build_payload_from_vars() {
   ensure_run_tmpdir
-  local fn="buildpayload${PROVIDER}"
+  local fn="buildpayload_${PROVIDER}"
   if call_provider "$fn"; then
     return 0
   else
@@ -1288,6 +1027,9 @@ build_payload_from_vars() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# API call wrappers (non-streaming and streaming)
+# ---------------------------------------------------------------------------
 call_api_once() {
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
     show_payload_head "$PAYLOAD" 200 || true
@@ -1328,6 +1070,9 @@ call_api_streaming() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Response extraction helpers
+# ---------------------------------------------------------------------------
 extract_text_from_resp() {
   [ ! -s "${RESP:-}" ] && return 0
   if jq -e . "$RESP" >/dev/null 2>&1; then
@@ -1349,6 +1094,9 @@ extract_api_error() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Finalize and output (fixed tmp usage and save logic)
+# ---------------------------------------------------------------------------
 finalize_and_output() {
   local mode="$1" text="$2"
   if { [ "$mode" = "json" ] || [ "$mode" = "pretty" ]; } && [ ! -s "${RESP:-}" ]; then
@@ -1366,7 +1114,7 @@ finalize_and_output() {
 
   if [ "$mode" = "text" ] || [ "$mode" = "raw" ]; then
     [ "${FORCE_SAVE_MODE:-}" = "nosave" ] && return 0
-    local len do_save=0 tmpf dest_dir dest_path
+    local len do_save=0 dest_dir dest_path
     len="$(printf '%s' "$text" | wc -c | tr -d ' ')"
     if [ "${FORCE_SAVE_MODE:-}" = "save" ]; then
       do_save=1
@@ -1386,14 +1134,15 @@ finalize_and_output() {
         return "$GROQBASHERRTMP"
       fi
 
-      tmpf="$(mktemp -p "$RUN_TMPDIR" groq-out.XXXX 2>/dev/null || true)"
-      [ -z "$tmpf" ] && { log_error "TMPFAIL" "cannot create temporary file for saving. Skipping save."; return "$GROQBASHERRTMP"; }
-      printf '%s\n' "$text" > "$tmpf"
-      save_to_history "$text" || { log_warn "HISTORY" "Output saved to (tmp): $tmpf"; }
+      # Save via save_to_history which handles atomic tmp creation and rotation
+      save_to_history "$text" || log_warn "HISTORY" "Failed to save output to history."
     fi
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Perform request with retries
+# ---------------------------------------------------------------------------
 perform_request_once() {
   local attempt=1 rc
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
@@ -1430,17 +1179,45 @@ perform_request_once() {
   return "$GROQBASHERRAPI"
 }
 
-# CLI parsing (complete) — flags, normalization, immediate actions
+# ---------------------------------------------------------------------------
+# Input helpers
+# ---------------------------------------------------------------------------
+collect_input_from_files() {
+  local out="" first=1 f
+  for f in "$@"; do
+    if file_readable "$f"; then
+      [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${f} ---"$'\n\n'
+      out="${out}$(cat "$f")"; first=0
+    else log_error "FILE" "file not readable: $f"; exit "$GROQBASHERRTMP"; fi
+  done
+  printf '%s' "$out"
+}
+expand_args_to_content() {
+  local out="" first=1 a
+  for a in "${ARGS[@]}"; do
+    if file_readable "$a"; then
+      [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${a} ---"$'\n\n'
+      out="${out}$(cat "$a")"; first=0
+    else
+      [ "$first" -eq 0 ] && out="${out}"$'\n\n'
+      out="${out}${a}"; first=0
+    fi
+  done
+  printf '%s' "$out"
+}
+file_readable() { [ -r "$1" ] && [ -f "$1" ]; }
+trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
+is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
+
+# ---------------------------------------------------------------------------
+# CLI parsing (flags, normalization, immediate actions)
+# ---------------------------------------------------------------------------
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 REFRESH_MODELS="${REFRESH_MODELS:-0}" LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}"
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
-
-# Note: we accept --install-extras [components...] --source <path> --force --dry-run
-# We'll parse positional args after --install-extras into INSTALL_EXTRAS_COMPONENTS array.
-INSTALL_EXTRAS_COMPONENTS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -1476,23 +1253,7 @@ while [ $# -gt 0 ]; do
     --provider)
       if [ "${2:-}" ] && [ "${2:0:1}" != "-" ]; then PROVIDER_CLI="${2:-}"; shift 2; else PROVIDER_INTERACTIVE=1; shift; fi
       ;;
-    --install-extras)
-      INSTALL_EXTRAS=1
-      shift
-      # collect following args until next option or end as components
-      while [ $# -gt 0 ] && [ "${1:0:1}" != "-" ]; do
-        INSTALL_EXTRAS_COMPONENTS+=("$1")
-        shift
-      done
-      ;;
-    --source)
-      INSTALL_EXTRAS_SOURCE="${2:-}"
-      shift 2
-      ;;
-    --force)
-      INSTALL_EXTRAS_FORCE=1
-      shift
-      ;;
+    --install-extras) INSTALL_EXTRAS=1; shift ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
       help_file="$GROQBASH_EXTRAS_DIR/docs/help.txt"
@@ -1504,38 +1265,169 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# ---------------------------------------------------------------------------
 # Normalize boolean-like flags
+# ---------------------------------------------------------------------------
 for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE REFRESH_MODELS LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
   if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
 done
 
-# Map global --dry-run to installer-specific flag
-if [ "${DRY_RUN:-0}" -eq 1 ]; then
-  INSTALL_EXTRAS_DRYRUN=1
-fi
-
-# Guard: prevent accidental real API calls
+# Guard: prevent accidental real API calls (ALLOW_API_CALLS defaults to 1)
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
   exit "$GROQBASHERRTMP"
 fi
 
-# Immediate actions: implement install-extras immediate action
-if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
-  # Export installer flags for use by function
-  INSTALL_EXTRAS_SOURCE="${INSTALL_EXTRAS_SOURCE:-}"
-  INSTALL_EXTRAS_FORCE="${INSTALL_EXTRAS_FORCE:-0}"
-  INSTALL_EXTRAS_DRYRUN="${INSTALL_EXTRAS_DRYRUN:-0}"
-  # Call installer with components (if any)
-  if install_extras "${INSTALL_EXTRAS_COMPONENTS[@]}"; then
-    exit 0
-  else
-    exit "$GROQBASHERRINSTALL"
+# ---------------------------------------------------------------------------
+# Immediate actions: refresh, list providers/models, set-default, install-extras
+# ---------------------------------------------------------------------------
+if [ "$REFRESH_MODELS" -eq 1 ]; then
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+    exit "$GROQBASHERRNOAPIKEY"
   fi
+  refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
+  exit 0
 fi
 
-# Configuration loaders
+if [ "$LIST_PROVIDERS" -eq 1 ]; then
+  PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
+  printf 'Available providers:\n' >&2
+  printf '  - groq (embedded)\n' >&2
+  extras_prov_dir="$GROQBASH_EXTRAS_DIR/providers"
+  if [ -d "$extras_prov_dir" ]; then
+    found=0
+    for f in "$extras_prov_dir"/*.sh; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f" .sh)"
+      [ "$base" = "groq" ] && continue
+      printf '  - %s\n' "$base" >&2
+      found=1
+    done
+  fi
+  if [ -f "$PROVIDER_FILE" ]; then
+    active="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
+    if [ -n "$active" ]; then
+      printf '\nActive provider: %s\n' "$active" >&2
+    else
+      printf '\nActive provider: groq (default)\n' >&2
+    fi
+  else
+    printf '\nActive provider: groq (default)\n' >&2
+  fi
+  exit 0
+fi
+
+if [ "$LIST_MODELS" -eq 1 ]; then
+  if [ -s "$MODELS_FILE" ]; then cat "$MODELS_FILE" >&2; exit 0
+  else printf 'No models available locally. Consider --refresh-models.\n' >&2; exit "$GROQBASHERRTMP"; fi
+fi
+
+if [ -n "$SET_DEFAULT_MODEL" ]; then
+  mkdir -p "$GROQBASH_CONFIG_DIR" 2>/dev/null || true
+  if [ -L "$GROQBASH_CONFIG_DIR" ]; then log_error "SEC" "config dir is a symlink."; exit "$GROQBASHERRTMP"; fi
+  printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$GROQBASH_CONFIG_DIR/model.$PROVIDER" 10 \
+    || { log_error "SEC" "cannot write default model."; exit "$GROQBASHERRTMP"; }
+  printf 'groqbash: INFO: Default model for provider %s set to: %s\n' "$PROVIDER" "$SET_DEFAULT_MODEL" >&2
+  exit 0
+fi
+
+if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE" = "pretty" ]; }; then
+  log_error "ARGS" "--stream incompatible with --json/--pretty."
+  exit "$GROQBASHERRTMP"
+fi
+
+if [ "$INSTALL_EXTRAS" -eq 1 ]; then
+  dest_base="$GROQBASH_EXTRAS_DIR"
+  dest_docs="$dest_base/docs"
+  dest_lib="$dest_base/lib"
+  dest_prov="$dest_base/providers"
+  dest_security="$dest_base/security"
+  dest_test="$dest_base/test"
+  src_base="$SCRIPTDIR/extras"
+  src_docs="$src_base/docs"
+  src_lib="$src_base/lib"
+  src_prov="$src_base/providers"
+  src_security="$src_base/security"
+  src_test="$src_base/test"
+
+  mkdir -p "$dest_docs" "$dest_lib" "$dest_prov" "$dest_security" "$dest_test" 2>/dev/null \
+    || { log_error "EXTRAS" "cannot create extras dirs."; exit "$GROQBASHERRTMP"; }
+  chmod 700 "$dest_base" "$dest_docs" "$dest_lib" "$dest_prov" "$dest_security" "$dest_test" 2>/dev/null || true
+
+  current_user="$(id -un 2>/dev/null || printf '')"
+  [ -d "$src_base" ] || { log_error "EXTRAS" "missing extras source directory: $src_base"; exit "$GROQBASHERRTMP"; }
+
+  files_to_copy=()
+  while IFS= read -r -d '' f; do files_to_copy+=("$f"); done < <(find "$src_base" -type f -print0 2>/dev/null || true)
+
+  if [ "${#files_to_copy[@]}" -eq 0 ]; then
+    printf 'No extras files found under %s; nothing to install.\n' "$src_base" >&2
+    exit 0
+  fi
+
+  for src in "${files_to_copy[@]}"; do
+    [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$GROQBASHERRTMP"; }
+    [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$GROQBASHERRTMP"; }
+    src_owner="$(_get_owner "$src")"
+    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$GROQBASHERRTMP"; }
+  done
+
+  installed_providers=()
+  installed_libs=()
+  installed_docs=()
+  installed_security=()
+  installed_tests=()
+
+  for src in "${files_to_copy[@]}"; do
+    rel="${src#"$src_base"/}"
+    dest="$dest_base/$rel"
+    destdir="$(dirname "$dest")"
+    mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$GROQBASHERRTMP"; }
+    cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$GROQBASHERRTMP"; }
+    chmod 600 "$dest" 2>/dev/null || true
+
+    case "$rel" in
+      providers/*.sh) installed_providers+=("$(basename "$rel" .sh)") ;;
+      lib/*.sh) installed_libs+=("$(basename "$rel")") ;;
+      docs/*) installed_docs+=("$(basename "$rel")") ;;
+      security/*) installed_security+=("$(basename "$rel")") ;;
+      test/*) installed_tests+=("$(basename "$rel")") ;;
+    esac
+  done
+
+  printf 'groqbash: INFO: Extras installed under %s/extras/\n' "$GROQBASH_DIR" >&2
+
+  if [ "${#installed_providers[@]}" -gt 0 ]; then
+    printf 'Installed providers: %s\n' "$(printf '%s ' "${installed_providers[@]}")" >&2
+  fi
+  if [ "${#installed_libs[@]}" -gt 0 ]; then
+    printf 'Installed libs: %s\n' "$(printf '%s ' "${installed_libs[@]}")" >&2
+  fi
+  if [ "${#installed_docs[@]}" -gt 0 ]; then
+    printf 'Installed docs: %s\n' "$(printf '%s ' "${installed_docs[@]}")" >&2
+  fi
+  if [ "${#installed_security[@]}" -gt 0 ]; then
+    printf 'Installed security scripts: %s\n' "$(printf '%s ' "${installed_security[@]}")" >&2
+  fi
+  if [ "${#installed_tests[@]}" -gt 0 ]; then
+    printf 'Installed test scripts: %s\n' "$(printf '%s ' "${installed_tests[@]}")" >&2
+  fi
+
+  for p in "${installed_providers[@]}"; do
+    PROVIDER_MODULE_PATH="$dest_prov/${p}.sh"
+    if ! bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
+      printf 'groqbash: WARN: provider %s has syntax errors; check %s\n' "$p" "$PROVIDER_MODULE_PATH" >&2
+    fi
+  done
+
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Load local config and whitelist
+# ---------------------------------------------------------------------------
 load_local_config() {
   local cfg="$GROQBASH_CONFIG_DIR/config" key val
   [ -f "$cfg" ] || return 0
@@ -1559,4 +1451,509 @@ load_whitelist() {
     ALLOWED_MODELS="$(cat "$MODELS_FILE" 2>/dev/null || true)"
   fi
 }
-# === CLI_MAIN END ===
+
+# ---------------------------------------------------------------------------
+# Small runtime helpers used by CORE
+# - is_tty_out: returns 0 if stdout is a TTY (useful for interactive prompts)
+# - provider_api_env_var_name: canonical env var name for provider API key
+# - ensure_api_key_for_provider: ensure API key present (supports PROVIDER_API_ENV_<prov>)
+# ---------------------------------------------------------------------------
+is_tty_out() {
+  # Return success if stdout is a TTY
+  [ -t 1 ]
+}
+
+provider_api_env_var_name() {
+  local prov="$1"
+  local prov_upper
+  prov_upper="$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  printf '%s' "${prov_upper}_API_KEY"
+}
+
+ensure_api_key_for_provider() {
+  local prov="$1"
+  local envvar current_key input_key custom_var custom_env
+  [ -n "$prov" ] || return 1
+  envvar="$(provider_api_env_var_name "$prov")"
+  custom_var="PROVIDER_API_ENV_${prov}"
+  custom_env="${!custom_var:-}"
+  if [ -n "$custom_env" ]; then
+    envvar="$custom_env"
+  fi
+  current_key="${!envvar:-}"
+  if [ -n "$current_key" ]; then
+    # If provider is groq and envvar differs, sync GROQ_API_KEY for backward compatibility
+    if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+      export GROQ_API_KEY="$current_key"
+    fi
+    return 0
+  fi
+
+  # If not interactive, fail with error code
+  if [ ! -t 0 ]; then
+    printf 'groqbash: ERROR: API key for provider %s not set (env %s). Run interactively or export the variable.\n' "$prov" "$envvar" >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  # Prompt user for key
+  printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
+  if ! IFS= read -r input_key; then
+    printf '\ngroqbash: ERROR: no input received. Aborting.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+  input_key="$(printf '%s' "$input_key" | tr -d '\r\n')"
+  if [ -z "$input_key" ]; then
+    printf 'groqbash: ERROR: API key required. Aborting.\n' >&2
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  export "$envvar"="$input_key"
+  if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+    export GROQ_API_KEY="$input_key"
+  fi
+
+  printf '\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\n' >&2
+  printf '\n export %s="%s"\n' "$envvar" "$input_key" >&2
+  printf '\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\n' >&2
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Provider discovery and loading (keeps behavior compatible)
+# ---------------------------------------------------------------------------
+PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
+
+_supported_providers_arr=()
+_supported_providers_arr+=("groq")
+extras_prov_dir="$GROQBASH_EXTRAS_DIR/providers"
+if [ -d "$extras_prov_dir" ]; then
+  for pf in "$extras_prov_dir"/*.sh; do
+    [ -e "$pf" ] || continue
+    base="$(basename "$pf" .sh)"
+    [ "$base" = "groq" ] && continue
+    _supported_providers_arr+=("$base")
+  done
+fi
+SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
+
+# Respect persisted provider selection unless overridden via CLI
+if [ -f "$PROVIDER_FILE" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_INTERACTIVE" -eq 0 ]; then
+  prov="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
+  [ -n "$prov" ] && PROVIDER="$prov"
+fi
+
+# CLI provider selection handling
+if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
+  case " $SUPPORTED_PROVIDERS " in
+    *" $PROVIDER_CLI "*) 
+      prev_provider="$PROVIDER"
+      PROVIDER="$PROVIDER_CLI"
+      ;;
+    *) log_error "PROVIDER" "unknown provider: $PROVIDER_CLI"; exit "$GROQBASHERRTMP" ;;
+  esac
+
+  mkdir -p "$(dirname "$PROVIDER_FILE")" 2>/dev/null || true
+
+  if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
+    if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
+      rm -f "$MODELS_FILE" 2>/dev/null || true
+    fi
+  fi
+
+  printf '%s\n' "$PROVIDER" | atomic_write "$PROVIDER_FILE" 10 \
+    || { log_error "PROVIDER" "cannot persist provider selection."; exit "$GROQBASHERRTMP"; }
+  chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
+
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+    exit "$GROQBASHERRNOAPIKEY"
+  fi
+  refresh_models_dispatch "$MODELS_FILE" || true
+fi
+
+# Interactive provider selection
+if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
+  IFS=' ' read -r -a _prov_arr <<EOF
+$SUPPORTED_PROVIDERS
+EOF
+  current_default="$PROVIDER"
+  [ -f "$PROVIDER_FILE" ] && pf="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)" && [ -n "$pf" ] && current_default="$pf"
+
+  printf 'Select provider:\n' >&2
+  i=1
+  for p in "${_prov_arr[@]}"; do
+    if [ "$p" = "$current_default" ]; then printf '%d) %s (default)\n' "$i" "$p" >&2
+    else printf '%d) %s\n' "$i" "$p" >&2; fi
+    i=$((i+1))
+  done
+
+  printf '> ' >&2
+  if ! IFS= read -r sel; then printf 'No selection made.\n' >&2; exit "$GROQBASHERRTMP"; fi
+  sel="$(trim "$sel")"
+  printf '%s\n' "$sel" | grep -qE '^[0-9]+$' || { log_error "PROVIDER" "Invalid selection."; exit "$GROQBASHERRTMP"; }
+
+  idx="$sel"
+  chosen="${_prov_arr[$((idx-1))]}"
+  [ -z "$chosen" ] && { log_error "PROVIDER" "Selection out of range."; exit "$GROQBASHERRTMP"; }
+
+  prev_provider="$PROVIDER"
+  if ! printf '%s\n' "$chosen" | atomic_write "$PROVIDER_FILE" 10; then
+    log_error "PROVIDER" "cannot persist provider selection."
+    exit "$GROQBASHERRTMP"
+  fi
+  chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
+  PROVIDER="$chosen"
+
+  if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
+    if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
+      rm -f "$MODELS_FILE" 2>/dev/null || true
+    fi
+  fi
+
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+    exit "$GROQBASHERRNOAPIKEY"
+  fi
+  refresh_models_dispatch "$MODELS_FILE" || true
+  exit 0
+fi
+
+# Load provider module if present (embedded groq is always available)
+PROVIDER_MODULE_LOADED=0
+PROVIDER_MODULE_PATH="$GROQBASH_EXTRAS_DIR/providers/${PROVIDER}.sh"
+PROVIDER_DIR="$(dirname "$PROVIDER_MODULE_PATH")"
+
+if [ ! -d "$PROVIDER_DIR" ]; then
+  mkdir -p "$PROVIDER_DIR" 2>/dev/null || { log_error "PROVIDER" "cannot create provider directory."; exit "$GROQBASHERRTMP"; }
+fi
+
+if _is_world_writable "$PROVIDER_DIR"; then
+  log_error "SEC" "provider directory is world-writable."
+  exit "$GROQBASHERRTMP"
+fi
+
+current_user="$(id -un 2>/dev/null || printf '')"
+owner="$(_get_owner "$PROVIDER_DIR")"
+[ -n "$owner" ] && [ "$owner" != "$current_user" ] && log_warn "SEC" "provider directory owned by $owner"
+
+if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
+  if [ "$PROVIDER" != "groq" ]; then
+    printf 'Provider %s is not installed.\n' "$PROVIDER" >&2
+    PROVIDER_MODULE_LOADED=0
+  else
+    PROVIDER_MODULE_LOADED=1
+  fi
+else
+  if [ -L "$PROVIDER_MODULE_PATH" ]; then log_error "SEC" "provider file is symlink."; exit "$GROQBASHERRTMP"; fi
+
+  file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
+  [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ] && { log_error "SEC" "wrong owner for provider file."; exit "$GROQBASHERRTMP"; }
+
+  perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
+  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
+  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
+  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
+    log_error "SEC" "provider file writable by group/world."
+    exit "$GROQBASHERRTMP"
+  fi
+
+  beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
+
+  # Quick syntax check and presence of required functions
+  if bash -c ". \"$PROVIDER_MODULE_PATH\" >/dev/null 2>&1 || true; declare -F | grep -q \"buildpayload_${PROVIDER}\" && declare -F | grep -q \"call_api_${PROVIDER}\""; then
+    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
+    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; exit "$GROQBASHERRTMP"; }
+
+    . "$PROVIDER_MODULE_PATH"
+    PROVIDER_MODULE_LOADED=1
+
+    invalid_provider=0
+    for _req in "buildpayload_${PROVIDER}" "call_api_${PROVIDER}"; do
+      type "$_req" >/dev/null 2>&1 || invalid_provider=1
+    done
+
+    if [ "$invalid_provider" -eq 1 ]; then
+      log_warn "PROVIDER" "provider module incomplete; falling back to embedded provider."
+      PROVIDER_MODULE_LOADED=0
+    fi
+  else
+    log_warn "PROVIDER" "provider module invalid; falling back to embedded provider."
+    PROVIDER_MODULE_LOADED=0
+  fi
+fi
+
+# Validate provider interface
+validate_provider_interface() {
+  local p="$1" missing=0
+  local required=( "buildpayload_${p}" "call_api_${p}" )
+  local optional=( "call_api_streaming_${p}" "refresh_models_${p}" "validate_model_${p}" "auto_select_model_${p}" )
+  local f
+  for f in "${required[@]}"; do
+    if ! type "$f" >/dev/null 2>&1; then
+      printf 'Provider '\''%s'\'' module does not define required function %s().\n' "$p" "$f" >&2
+      missing=1
+    fi
+  done
+  for f in "${optional[@]}"; do
+    if ! type "$f" >/dev/null 2>&1; then
+      log_info "PROVIDER" "Provider '$p' missing optional function $f()"
+    fi
+  done
+  return $missing
+}
+
+if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
+  validate_provider_interface "$PROVIDER" || exit "$GROQBASHERRAPI"
+else
+  log_error "PROVIDER" "no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin."
+  exit "$GROQBASHERRAPI"
+fi
+
+# ---------------------------------------------------------------------------
+# Show config / diagnostics
+# ---------------------------------------------------------------------------
+if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
+  printf 'GroqBash configuration:\n'
+  printf '  Version: %s (%s)\n' "$SCRIPT_VERSION" "$SCRIPT_DATE"
+  printf '  Provider: %s\n' "$PROVIDER"
+  printf '  Model (active): %s\n' "$MODEL"
+  MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
+  if [ -s "$MODEL_PROVIDER_CFG" ]; then
+    printf '  Model (default): %s\n' "$(sed -n '1p' "$MODEL_PROVIDER_CFG")"
+  else
+    printf '  Model (default): <none>\n'
+  fi
+  printf '  Config dir: %s\n' "$GROQBASH_CONFIG_DIR"
+  printf '  Models dir: %s\n' "$GROQBASH_MODELS_DIR"
+  printf '  Tmp dir: %s\n' "$GROQBASH_TMPDIR"
+  printf '  History dir: %s\n' "$GROQBASH_HISTORY_DIR"
+  printf '  Quiet: %s\n' "$QUIET"
+  printf '  Debug: %s\n' "$DEBUG"
+  printf '  Dry-run: %s\n' "$DRY_RUN"
+  printf '  Whitelist models: %s\n' "$(printf '%s\n' "$ALLOWED_MODELS" | wc -l)"
+  exit 0
+fi
+
+if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
+  printf 'GroqBash diagnostics:\n'
+
+  printf '\n[Directories]\n'
+  for d in "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$GROQBASH_HISTORY_DIR"; do
+    if [ -d "$d" ]; then
+      printf '  OK: %s\n' "$d"
+    else
+      printf '  ERROR: missing directory %s\n' "$d"
+    fi
+  done
+
+  printf '\n[Provider]\n'
+  printf '  Active provider: %s\n' "$PROVIDER"
+  if type "buildpayload_${PROVIDER}" >/dev/null 2>&1; then
+    printf '  Provider functions: OK\n'
+  else
+    printf '  ERROR: provider functions missing\n'
+  fi
+
+  printf '\n[Model]\n'
+  printf '  Active model: %s\n' "$MODEL"
+  if printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$MODEL"; then
+    printf '  Model in whitelist: OK\n'
+  else
+    printf '  WARNING: model not in whitelist\n'
+  fi
+
+  printf '\n[API Key]\n'
+  prov_upper="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  check_var="${prov_upper}_API_KEY"
+  custom_env_var_var="PROVIDER_API_ENV_${PROVIDER}"
+  custom_env_var="${!custom_env_var_var:-}"
+  if [ -n "$custom_env_var" ]; then check_var="$custom_env_var"; fi
+
+  if [ -n "${!check_var:-}" ]; then
+    printf '  API key: present (env %s)\n' "$check_var"
+  else
+    printf '  WARNING: API key missing (expected env %s)\n' "$check_var"
+  fi
+
+  printf '\n[Tmpdir]\n'
+  if [ -d "$GROQBASH_TMPDIR" ]; then
+    printf '  Tmpdir exists: OK\n'
+  else
+    printf '  ERROR: tmpdir missing\n'
+  fi
+
+  printf '\nDiagnostics complete.\n'
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Main flow: assemble content, select model, and execute request(s)
+# ---------------------------------------------------------------------------
+load_local_config
+load_whitelist
+
+final_model=""
+
+if [ -n "$MODEL" ]; then
+  final_model="$MODEL"
+else
+  MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
+  if [ -s "$MODEL_PROVIDER_CFG" ]; then
+    final_model="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
+  fi
+  if [ -z "$final_model" ]; then
+    final_model="$(auto_select_model_dispatch 2>/dev/null || true)"
+  fi
+  if [ -z "$final_model" ] && [ -f "$GROQBASH_CONFIG_DIR/config" ]; then
+    final_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "$GROQBASH_CONFIG_DIR/config" 2>/dev/null || true)"
+  fi
+  if [ -z "$final_model" ] && [ -n "$ALLOWED_MODELS" ]; then
+    final_model="$(printf '%s\n' "$ALLOWED_MODELS" | awk 'NF{print; exit}')"
+  fi
+fi
+
+if [ -z "$final_model" ]; then
+  log_error "MODEL" "no model could be selected."
+  exit "$GROQBASHERRBAD_MODEL"
+fi
+
+if ! validate_model_dispatch "$final_model"; then
+  log_error "MODEL" "invalid model: $final_model"
+  exit "$GROQBASHERRBAD_MODEL"
+fi
+
+MODEL="$final_model"
+
+STDIN_CONTENT=""; [ ! -t 0 ] && STDIN_CONTENT="$(cat - 2>/dev/null || true)"
+
+assemble_content() {
+  CONTENT="${CONTENT:-}"
+  local tmpl tmp_tmpl tmp_final extra file_content
+
+  if [ -n "$JSON_INPUT" ]; then CONTENT=""; return 0; fi
+
+  if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
+    CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")"
+    if [ "${#ARGS[@]}" -gt 0 ]; then
+      extra="$(expand_args_to_content)"
+      [ -n "$extra" ] && CONTENT="${CONTENT}"$'\n\n'"$extra"
+    fi
+    return 0
+  fi
+
+  if [ -n "$TEMPLATE" ]; then
+    if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
+      CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")"
+    elif [ -n "$STDIN_CONTENT" ]; then
+      CONTENT="$STDIN_CONTENT"
+    else
+      if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
+    fi
+
+    tmpl="$(cat "$GROQBASH_TEMPLATES_DIR/$TEMPLATE" 2>/dev/null || true)"
+    ensure_run_tmpdir
+    tmp_tmpl="$(_mktemp_in_dir "$RUN_TMPDIR" 2>/dev/null || true)"
+
+    if [ -n "$tmp_tmpl" ]; then
+      printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}' > "$tmp_tmpl"
+      tmp_final="${tmp_tmpl}.final"
+      mv "$tmp_tmpl" "$tmp_final" 2>/dev/null || true
+      file_content="$(cat "$tmp_final" 2>/dev/null || printf '%s' "$tmpl")"
+      CONTENT="$file_content"
+      rm -f "$tmp_final" 2>/dev/null || true
+    else
+      CONTENT="$(printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}')"
+    fi
+    return 0
+  fi
+
+  if [ -n "$STDIN_CONTENT" ]; then
+    CONTENT="$STDIN_CONTENT"
+    if [ "${#ARGS[@]}" -gt 0 ]; then
+      extra="$(expand_args_to_content)"
+      [ -n "$extra" ] && CONTENT="${CONTENT}"$'\n\n'"$extra"
+    fi
+    return 0
+  fi
+
+  if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
+  return 0
+}
+
+assemble_content
+
+if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "$CHAT_MODE" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
+  log_error "INPUT" "no prompt provided."
+  exit "$GROQBASHERRNO_PROMPT"
+fi
+
+is_number "$TURE" || { log_error "ARGS" "--ture must be numeric"; exit "$GROQBASHERRTMP"; }
+is_number "$MAX_TOKENS" || { log_error "ARGS" "--max must be numeric"; exit "$GROQBASHERRTMP"; }
+
+if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
+  if ! printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$MODEL"; then
+    log_error "MODEL" "model '$MODEL' not supported or deprecated."
+    printf '%s\n' "$ALLOWED_MODELS" >&2
+    exit "$GROQBASHERRBAD_MODEL"
+  fi
+fi
+
+ensure_run_tmpdir
+
+# Batch processing
+if [ -n "$BATCH_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|\#*) continue ;; esac
+    CONTENT="$line"
+    build_payload_from_vars
+    if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting batch item."; continue; fi
+    if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || log_error "CALL" "Error during streaming call."
+    else perform_request_once || true; fi
+    printf '\n----\n'
+  done < "$BATCH_FILE"
+  exit 0
+fi
+
+# Interactive chat mode
+if [ "$CHAT_MODE" -eq 1 ]; then
+  if [ ! -t 0 ]; then log_error "CHAT" "interactive chat requires a TTY."; exit "$GROQBASHERRTMP"; fi
+  [ -t 1 ] && [ "$QUIET" -ne 1 ] && printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2
+  CONVERSATION=""
+  while true; do
+    if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then printf '\nYou: ' >&2; fi
+    if ! IFS= read -r userline; then printf '\n' >&2; break; fi
+    [ -z "$userline" ] && continue
+    [ -z "$CONVERSATION" ] && CONVERSATION="$userline" || CONVERSATION="${CONVERSATION}"$'\n\n'"User: ${userline}"
+    CONTENT="$userline"
+    build_payload_from_vars
+    if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting chat turn."; continue; fi
+    if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || log_error "CALL" "Streaming call failed."
+    else perform_request_once || log_error "CALL" "Call failed."; fi
+  done
+  exit 0
+fi
+
+# Single request (streaming or non-streaming)
+if [ "$STREAM_MODE" -eq 1 ]; then
+  build_payload_from_vars
+  if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting."; exit "$GROQBASHERRTMP"; fi
+  if call_api_streaming; then log_info "STREAM" "Streaming completed; captured response in $RESP"; printf '\n'; exit 0
+  else log_error "STREAM" "streaming request failed."; exit "$GROQBASHERRCURL_FAILED"; fi
+else
+  if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
+    printf '%b\n' "\033[1;36mYou:\033[0m" >&2
+    if [ "${#ARGS[@]}" -gt 0 ]; then
+      anyfile=0
+      for a in "${ARGS[@]}"; do [ -r "$a" ] && [ -f "$a" ] && { anyfile=1; break; }; done
+      [ "$anyfile" -eq 1 ] && printf '%s\n' "(using file contents)" >&2 || printf '%s\n' "$CONTENT" >&2
+    else printf '%s\n' "$CONTENT" >&2; fi
+    printf '%b\n' "\033[1;32mProvider ($PROVIDER, model: $MODEL):\033[0m" >&2
+  fi
+  build_payload_from_vars
+  if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting."; exit "$GROQBASHERRTMP"; fi
+  perform_request_once || exit "$GROQBASHERRAPI"
+  exit 0
+fi
+# ==== CORE END ====
+# End of file
