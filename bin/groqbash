@@ -5,6 +5,7 @@
 # Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
+# =============================================================================
 # Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
 # ==== PRECORE BEGIN ====
 set -euo pipefail
