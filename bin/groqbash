@@ -911,7 +911,6 @@ call_api_streaming_groq() {
       'data: [DONE]'|'data:[DONE]') break ;;
       data:\ * )
         json="${line#data: }"
-        # Attempt to parse JSON and extract content fragments; be tolerant of missing fields
         content="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true)"
         if [ -n "$content" ]; then
           printf '%s' "$content"
@@ -945,19 +944,14 @@ call_api_streaming_groq() {
   done < "$RUN_TMPDIR/resp.lines"
 
   if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
-    # create array of chunks
     jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
-    # reconstruct text by concatenating delta/message content
     jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
-    # atomically write RESP (use existing atomic_write helper if available)
     if type atomic_write >/dev/null 2>&1; then
-      # atomic_write expects stdin -> atomic_write <dest> <timeout>
       cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
     else
       cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
     fi
   else
-    # fallback: if resp.raw itself is valid JSON, copy it
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
     fi
@@ -965,7 +959,6 @@ call_api_streaming_groq() {
 
   return 0
 }
-
 
 call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 
