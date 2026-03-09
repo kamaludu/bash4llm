@@ -55,9 +55,9 @@ _escape_json_string_mistral() {
 }
 
 # -------------------------
-# buildpayloadmistral
+# buildpayload_mistral
 # -------------------------
-buildpayloadmistral() {
+buildpayload_mistral() {
   local workdir tmp_payload model_in_file model_to_use user_prompt
   workdir="$(_get_work_tmpdir_mistral)" || return 1
   tmp_payload="$(_mktemp_in_dir_mistral "$workdir")" || return 1
@@ -128,9 +128,9 @@ buildpayloadmistral() {
 }
 
 # -------------------------
-# callapimistral (non-streaming)
+# call_api_mistral (non-streaming)
 # -------------------------
-callapimistral() {
+call_api_mistral() {
   local key="${MISTRAL_API_KEY:-}"
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
@@ -180,9 +180,9 @@ callapimistral() {
 }
 
 # -------------------------
-# callapistreaming_mistral (SSE)
+# call_api_streaming_mistral (SSE)
 # -------------------------
-callapistreaming_mistral() {
+call_api_streaming_mistral() {
   local key="${MISTRAL_API_KEY:-}"
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
@@ -256,9 +256,9 @@ callapistreaming_mistral() {
 }
 
 # -------------------------
-# refreshmodelsmistral
+# refresh_models_mistral
 # -------------------------
-refreshmodelsmistral() {
+refresh_models_mistral() {
   local outpath="${1:-${MODELS_FILE:-}}"
   local key="${MISTRAL_API_KEY:-}"
 
@@ -308,7 +308,7 @@ refreshmodelsmistral() {
 # -------------------------
 # validate/autoselect
 # -------------------------
-validatemodelmistral() {
+validate_model_mistral() {
   local model="$1"
   local file="${MODELS_FILE:-}"
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
@@ -318,7 +318,7 @@ validatemodelmistral() {
   return 0
 }
 
-autoselectmodelmistral() {
+auto_select_model_mistral() {
   local file="${MODELS_FILE:-}"
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
     awk 'NF{print; exit}' "$file" 2>/dev/null || true
