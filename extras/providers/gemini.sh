@@ -57,9 +57,9 @@ _escape_json_string_gemini() {
 }
 
 # -------------------------
-# buildpayloadgemini
+# buildpayload_gemini
 # -------------------------
-buildpayloadgemini() {
+buildpayload_gemini() {
   local workdir tmp_payload model_in_file model_to_use user_prompt
   workdir="$(_get_work_tmpdir_gemini)" || return 1
   tmp_payload="$(_mktemp_in_dir_gemini "$workdir")" || return 1
@@ -128,9 +128,9 @@ buildpayloadgemini() {
 }
 
 # -------------------------
-# callapigemini
+# call_api_gemini
 # -------------------------
-callapigemini() {
+call_api_gemini() {
   local key="${GEMINI_API_KEY:-}"
   if [ -z "$key" ]; then
     echo "Error: GEMINI_API_KEY is not set." >&2
@@ -180,9 +180,9 @@ callapigemini() {
 }
 
 # -------------------------
-# callapistreaming_gemini
+# call_api_streaming_gemini
 # -------------------------
-callapistreaming_gemini() {
+call_api_streaming_gemini() {
   local key="${GEMINI_API_KEY:-}"
   if [ -z "$key" ]; then
     echo "Error: GEMINI_API_KEY is not set." >&2
@@ -258,9 +258,9 @@ callapistreaming_gemini() {
 }
 
 # -------------------------
-# refreshmodelsgemini
+# refresh_models_gemini
 # -------------------------
-refreshmodelsgemini() {
+refresh_models_gemini() {
   local outpath="${1:-${MODELS_FILE:-${MODELSFILE:-}}}"
   local key="${GEMINI_API_KEY:-}"
   if [ -z "$key" ]; then
@@ -305,7 +305,7 @@ refreshmodelsgemini() {
   return 9
 }
 
-validatemodelgemini() {
+validate_model_gemini() {
   local model="$1"
   local file="${MODELS_FILE:-${MODELSFILE:-}}"
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
@@ -315,7 +315,7 @@ validatemodelgemini() {
   return 0
 }
 
-autoselectmodelgemini() {
+auto_select_model_gemini() {
   local file="${MODELS_FILE:-${MODELSFILE:-}}"
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
     awk 'NF{print; exit}' "$file" 2>/dev/null || true
