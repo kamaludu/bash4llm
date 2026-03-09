@@ -6,7 +6,10 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-set -euo pipefail
+# Enable strict mode only when executed directly, not when sourced
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  set -euo pipefail
+fi
 
 # Accept either GEMINI_API_KEY or legacy GEMINIAPIKEY
 GEMINI_API_KEY="${GEMINI_API_KEY:-${GEMINIAPIKEY:-}}"
