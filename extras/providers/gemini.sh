@@ -193,21 +193,24 @@ callapistreaming_gemini() {
     return 0
   fi
 
-  local api_url rc
+  local api_url rc RESP_RAW
   api_url="${API_URL_GEMINI}"
+  RESP_RAW="${RUN_TMPDIR:-}/resp.raw"
+  : > "$RESP_RAW" 2>/dev/null || true
+  chmod 600 "$RESP_RAW" 2>/dev/null || true
 
   curl ${CURL_BASE_OPTS:-} \
        -H "Authorization: Bearer $key" \
        -H "Content-Type: application/json" \
        --data-binary @"$PAYLOAD" \
        "$api_url" \
-       2>"$ERRF" | tee "$RESP" | \
+       2>"$ERRF" | tee -a "$RESP_RAW" | \
   while IFS= read -r line; do
     case "$line" in
       'data: [DONE]'|'data:[DONE]') break ;;
       data:\ * )
         json="${line#data: }"
-        chunk="$(printf '%s' "$json" | jq -r '.choices[]?.delta?.content // .choices[]?.message?.content // empty' 2>/dev/null || true)"
+        chunk="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // empty)) catch empty' 2>/dev/null || true)"
         [ -n "$chunk" ] && printf '%s' "$chunk"
         ;;
       *) printf '%s' "$line" ;;
@@ -219,6 +222,38 @@ callapistreaming_gemini() {
     dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
     return 6
   }
+
+  # Post-processing: build resp.chunks.json, resp.text.txt and write RESP atomically
+  : > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
+  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
+
+  : > "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+  while IFS= read -r _line; do
+    if printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
+      printf '%s\n' "$_line" >> "$RUN_TMPDIR/resp.valid.jsons"
+    fi
+  done < "$RUN_TMPDIR/resp.lines"
+
+  if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
+    jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
+    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${GROQBASH_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    else
+      cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    fi
+
+    # safe cleanup of intermediates if RUN_TMPDIR is under GROQBASH_TMPDIR
+    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${GROQBASH_TMPDIR:-}"/*) true;; "${GROQBASH_TMPDIR:-}") true;; *) false;; esac; then
+      rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+    fi
+  else
+    # fallback: if RESP_RAW is valid JSON, copy to RESP
+    if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
+      cp -f "$RESP_RAW" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    fi
+  fi
+
   return 0
 }
 
