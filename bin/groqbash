@@ -874,7 +874,7 @@ call_api_groq_legacy() { call_api_groq "$@"; }
 # ---------------------------------------------------------------------------
 # call_api_streaming_groq
 # - Performs an HTTP/1.1 request and parses SSE lines of the form "data: <json>"
-# - Writes raw stream to RESP_RAW and, if valid JSON, copies to RESP at end.
+# - Writes raw stream to RESP_RAW and, if valid JSON chunks exist, builds RESP (array)
 # - Emits content fragments to stdout as they arrive.
 # ---------------------------------------------------------------------------
 call_api_streaming_groq() {
@@ -928,13 +928,44 @@ call_api_streaming_groq() {
     return "$GROQBASHERRCURL_FAILED"
   fi
 
-  # If the raw response is valid JSON, copy it to RESP for downstream processing
-  if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
-    cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
+  # Robust save of streaming response:
+  # 1) extract lines starting with "data:" and strip the prefix
+  # 2) keep only JSON-valid lines
+  # 3) build resp.chunks.json (array) and resp.text.txt (concatenated content)
+  # 4) write RESP atomically if chunks exist
+  #
+  : > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
+  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
+
+  : > "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+  while IFS= read -r _line; do
+    if printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
+      printf '%s\n' "$_line" >> "$RUN_TMPDIR/resp.valid.jsons"
+    fi
+  done < "$RUN_TMPDIR/resp.lines"
+
+  if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
+    # create array of chunks
+    jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
+    # reconstruct text by concatenating delta/message content
+    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
+    # atomically write RESP (use existing atomic_write helper if available)
+    if type atomic_write >/dev/null 2>&1; then
+      # atomic_write expects stdin -> atomic_write <dest> <timeout>
+      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
+    else
+      cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
+    fi
+  else
+    # fallback: if resp.raw itself is valid JSON, copy it
+    if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
+      cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
+    fi
   fi
 
   return 0
 }
+
 
 call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 
