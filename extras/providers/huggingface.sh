@@ -41,9 +41,9 @@ _mktemp_in_dir_hf() {
 }
 
 # -------------------------
-# buildpayloadhuggingface
+# buildpayload_huggingface
 # -------------------------
-buildpayloadhuggingface() {
+buildpayload_huggingface() {
   local workdir tmp_payload model_in_file model_to_use user_prompt
   workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
   tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
@@ -100,9 +100,9 @@ buildpayloadhuggingface() {
 }
 
 # -------------------------
-# callapihuggingface
+# call_api_huggingface
 # -------------------------
-callapihuggingface() {
+call_api_huggingface() {
   if [ -z "${HFAPIKEY:-}" ]; then
     echo "Error: HFAPIKEY is not set." >&2
     return $GROQBASHERRNOAPIKEY
@@ -151,9 +151,9 @@ callapihuggingface() {
 }
 
 # -------------------------
-# callapistreaming_huggingface
+# call_api_streaming_huggingface
 # -------------------------
-callapistreaming_huggingface() {
+call_api_streaming_huggingface() {
   if [ -z "${HFAPIKEY:-}" ]; then
     echo "Error: HFAPIKEY is not set." >&2
     return $GROQBASHERRNOAPIKEY
@@ -226,9 +226,9 @@ callapistreaming_huggingface() {
 }
 
 # -------------------------
-# refreshmodelshuggingface
+# refresh_models_huggingface
 # -------------------------
-refreshmodelshuggingface() {
+refresh_models_huggingface() {
   local outpath="${1:-$MODELS_FILE}"
 
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
@@ -243,7 +243,7 @@ refreshmodelshuggingface() {
   return 1
 }
 
-validatemodelhuggingface() {
+validate_model_huggingface() {
   local model="$1"
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
     grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null
@@ -252,7 +252,7 @@ validatemodelhuggingface() {
   return 0
 }
 
-autoselectmodelhuggingface() {
+auto_select_model_huggingface() {
   local file="$MODELS_FILE" result=""
   if [ -f "$file" ] && [ -s "$file" ]; then
     result="$(awk 'NF{print; exit}' "$file" 2>/dev/null || true)"
