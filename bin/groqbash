@@ -905,6 +905,9 @@ call_api_streaming_groq() {
     CURL_CMD=(curl --http1.1 "${CURL_BASE_OPTS[@]}")
   fi
 
+  # Inform the user that streaming is starting and where chunks will be saved
+  log_info "STREAM" "Streaming active; chunks will be saved under $RUN_TMPDIR"
+
   "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
   while IFS= read -r line; do
     case "$line" in
@@ -926,6 +929,9 @@ call_api_streaming_groq() {
     log_error "CURLSTREAM" "curl streaming failed (rc $rc)"; head -n 50 "$ERRF" >&2 || true
     return "$GROQBASHERRCURL_FAILED"
   fi
+
+  # Inform the user that streaming completed and where the reconstructed output will be written
+  log_info "STREAM" "Streaming completed; building outputs in $RUN_TMPDIR (final JSON: $RESP)"
 
   # Robust save of streaming response:
   # 1) extract lines starting with "data:" and strip the prefix
@@ -950,6 +956,12 @@ call_api_streaming_groq() {
       cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
     else
       cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
+    fi
+
+    # Remove intermediate files to keep run dir clean (safe removal only under GROQBASH_TMPDIR)
+    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "$GROQBASH_TMPDIR"/*) true;; "$GROQBASH_TMPDIR") true;; *) false;; esac; then
+      rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+      log_info "STREAM" "Removed intermediate files resp.lines and resp.valid.jsons from $RUN_TMPDIR"
     fi
   else
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
