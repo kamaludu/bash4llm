@@ -119,12 +119,28 @@ ensure_api_key_for_provider() {
 
 SCRIPTDIR="$(resolve_script_dir)"
 GROQBASH_DIR="${GROQBASH_DIR:-$SCRIPTDIR/groqbash.d}"
+
+# Enforce canonical extras location under groqbash.d
+CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
+LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
+
+# If a legacy extras exists and is not the canonical dir, fail fast to avoid ambiguity
+if [ -d "${LEGACY_EXTRAS_DIR}" ] && [ "$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd)" != "$(cd "${CANONICAL_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' '')" ]; then
+  printf 'groqbash: ERROR: legacy extras directory found at %s\n' "${LEGACY_EXTRAS_DIR}" >&2
+  printf 'groqbash: ERROR: only %s is supported. Move or remove the legacy directory and retry.\n' "${CANONICAL_EXTRAS_DIR}" >&2
+  exit 1
+fi
+
+# Export canonical extras and providers dirs
+GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
+PROVIDERS_DIR="${GROQBASH_EXTRAS_DIR%/}/providers"
+export GROQBASH_EXTRAS_DIR PROVIDERS_DIR
+
 GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
 GROQBASH_MODELS_DIR="${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}"
 GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
 GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
-GROQBASH_EXTRAS_DIR="${GROQBASH_EXTRAS_DIR:-$GROQBASH_DIR/extras}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 
 umask 077
@@ -161,7 +177,7 @@ GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
 GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 
 # ---------------------------------------------------------------------------
-# Logging structured (activabile via GROQBASH_DEBUG or GROQBASH_LOG)
+# Logging structured (activabile via GROQBASH_DEBUG o GROQBASH_LOG)
 # ---------------------------------------------------------------------------
 GROQBASH_DEBUG="${GROQBASH_DEBUG:-0}"
 GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
