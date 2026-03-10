@@ -1706,11 +1706,8 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
     || { log_error "PROVIDER" "cannot persist provider selection."; exit "$GROQBASHERRTMP"; }
   chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
 
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-    exit "$GROQBASHERRNOAPIKEY"
-  fi
-  refresh_models_dispatch "$MODELS_FILE" || true
+  # NOTE: do not call refresh_models_dispatch here — provider module must be loaded first.
+  # ensure_api_key_for_provider will be attempted after provider module is validated/loaded.
 fi
 
 # Interactive provider selection
@@ -1752,11 +1749,7 @@ EOF
     fi
   fi
 
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-    exit "$GROQBASHERRNOAPIKEY"
-  fi
-  refresh_models_dispatch "$MODELS_FILE" || true
+  # NOTE: do not call refresh_models_dispatch here — provider module must be loaded first.
   exit 0
 fi
 
@@ -1849,6 +1842,17 @@ if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
 else
   log_error "PROVIDER" "no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin."
   exit "$GROQBASHERRAPI"
+fi
+
+# After provider module is loaded and validated, refresh models if local whitelist is missing
+# This ensures refresh_models_dispatch invokes the provider-specific refresh implementation.
+if [ ! -s "${MODELS_FILE:-}" ]; then
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+    # do not exit hard here; allow operation without refreshed models where possible
+  else
+    refresh_models_dispatch "$MODELS_FILE" || true
+  fi
 fi
 
 # ---------------------------------------------------------------------------
