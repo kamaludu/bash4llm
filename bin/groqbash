@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_NAME="groqbash"
 SCRIPT_VERSION="2.0.0"
-SCRIPT_DATE="2026-03-06"
+SCRIPT_DATE="2026-03-10"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
