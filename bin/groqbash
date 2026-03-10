@@ -1436,7 +1436,7 @@ if [ "$LIST_PROVIDERS" -eq 1 ]; then
   PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
   printf 'Available providers:\n' >&2
   printf '  - groq (embedded)\n' >&2
-  extras_prov_dir="$GROQBASH_EXTRAS_DIR/providers"
+  extras_prov_dir="$PROVIDERS_DIR"
   if [ -d "$extras_prov_dir" ]; then
     found=0
     for f in "$extras_prov_dir"/*.sh; do
@@ -1483,7 +1483,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ]; then
   dest_base="$GROQBASH_EXTRAS_DIR"
   dest_docs="$dest_base/docs"
   dest_lib="$dest_base/lib"
-  dest_prov="$dest_base/providers"
+  dest_prov="$PROVIDERS_DIR"
   dest_security="$dest_base/security"
   dest_test="$dest_base/test"
   src_base="$SCRIPTDIR/extras"
@@ -1667,7 +1667,7 @@ PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
 
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
-extras_prov_dir="$GROQBASH_EXTRAS_DIR/providers"
+extras_prov_dir="$PROVIDERS_DIR"
 if [ -d "$extras_prov_dir" ]; then
   for pf in "$extras_prov_dir"/*.sh; do
     [ -e "$pf" ] || continue
