@@ -1762,8 +1762,8 @@ fi
 
 # Load provider module if present (embedded groq is always available)
 PROVIDER_MODULE_LOADED=0
-PROVIDER_MODULE_PATH="$GROQBASH_EXTRAS_DIR/providers/${PROVIDER}.sh"
-PROVIDER_DIR="$(dirname "$PROVIDER_MODULE_PATH")"
+PROVIDER_MODULE_PATH="$PROVIDERS_DIR/${PROVIDER}.sh"
+PROVIDER_DIR="$PROVIDERS_DIR"
 
 if [ ! -d "$PROVIDER_DIR" ]; then
   mkdir -p "$PROVIDER_DIR" 2>/dev/null || { log_error "PROVIDER" "cannot create provider directory."; exit "$GROQBASHERRTMP"; }
