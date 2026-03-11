@@ -59,6 +59,12 @@ _escape_json_string_gemini() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g'
 }
 
+# Provide a no-op dbg() if not defined to avoid "command not found" errors.
+# This makes debug calls optional without changing provider logic.
+if ! type dbg >/dev/null 2>&1; then
+  dbg() { :; }
+fi
+
 # -------------------------
 # buildpayload_gemini
 # -------------------------
@@ -148,20 +154,40 @@ call_api_gemini() {
     return 0
   fi
 
-  local workdir tmpout api_url http_code time_total tmpresp
+  local workdir tmpout api_url http_code time_total tmpresp auth_header
   workdir="$(_get_work_tmpdir_gemini)" || return 4
   tmpout="$(_mktemp_in_dir_gemini "$workdir")" || return 4
   tmpresp="$(_mktemp_in_dir_gemini "$workdir")" || return 4
   api_url="${API_URL_GEMINI}"
 
-  curl ${CURL_BASE_OPTS:-} \
-       -H "Authorization: Bearer $key" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       -o "$tmpresp" \
-       -w '%{http_code} %{time_total}' \
-       "$api_url" \
-       2>"$ERRF" >"$tmpout" || true
+  # Distinguish API key (AIza...) vs OAuth access token
+  auth_header=""
+  if printf '%s' "${key:-}" | grep -qE '^AIza'; then
+    # API key detected: use query param if endpoint supports it
+    api_url="${api_url}?key=${key}"
+  else
+    auth_header="-H"
+    # We'll pass header as two args to curl below
+  fi
+
+  if [ -n "$auth_header" ]; then
+    curl ${CURL_BASE_OPTS:-} \
+         -H "Authorization: Bearer $key" \
+         -H "Content-Type: application/json" \
+         --data-binary @"$PAYLOAD" \
+         -o "$tmpresp" \
+         -w '%{http_code} %{time_total}' \
+         "$api_url" \
+         2>"$ERRF" >"$tmpout" || true
+  else
+    curl ${CURL_BASE_OPTS:-} \
+         -H "Content-Type: application/json" \
+         --data-binary @"$PAYLOAD" \
+         -o "$tmpresp" \
+         -w '%{http_code} %{time_total}' \
+         "$api_url" \
+         2>"$ERRF" >"$tmpout" || true
+  fi
 
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
@@ -196,29 +222,48 @@ call_api_streaming_gemini() {
     return 0
   fi
 
-  local api_url rc RESP_RAW
+  local api_url rc RESP_RAW auth_header
   api_url="${API_URL_GEMINI}"
   RESP_RAW="${RUN_TMPDIR:-}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
 
-  curl ${CURL_BASE_OPTS:-} \
-       -H "Authorization: Bearer $key" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       "$api_url" \
-       2>"$ERRF" | tee -a "$RESP_RAW" | \
-  while IFS= read -r line; do
-    case "$line" in
-      'data: [DONE]'|'data:[DONE]') break ;;
-      data:\ * )
-        json="${line#data: }"
-        chunk="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // empty)) catch empty' 2>/dev/null || true)"
-        [ -n "$chunk" ] && printf '%s' "$chunk"
-        ;;
-      *) printf '%s' "$line" ;;
-    esac
-  done
+  # Distinguish API key vs OAuth token for streaming as well
+  if printf '%s' "${GEMINI_API_KEY:-}" | grep -qE '^AIza'; then
+    api_url="${api_url}?key=${GEMINI_API_KEY}"
+    auth_header=""
+  else
+    auth_header="-H Authorization: Bearer ${GEMINI_API_KEY}"
+  fi
+
+  if [ -n "$auth_header" ]; then
+    # shellcheck disable=SC2086
+    curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${GEMINI_API_KEY}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
+    while IFS= read -r line; do
+      case "$line" in
+        'data: [DONE]'|'data:[DONE]') break ;;
+        data:\ * )
+          json="${line#data: }"
+          chunk="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // empty)) catch empty' 2>/dev/null || true)"
+          [ -n "$chunk" ] && printf '%s' "$chunk"
+          ;;
+        *) printf '%s' "$line" ;;
+      esac
+    done
+  else
+    curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
+    while IFS= read -r line; do
+      case "$line" in
+        'data: [DONE]'|'data:[DONE]') break ;;
+        data:\ * )
+          json="${line#data: }"
+          chunk="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // empty)) catch empty' 2>/dev/null || true)"
+          [ -n "$chunk" ] && printf '%s' "$chunk"
+          ;;
+        *) printf '%s' "$line" ;;
+      esac
+    done
+  fi
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
@@ -275,31 +320,58 @@ refresh_models_gemini() {
     return 7
   fi
 
-  local workdir tmpd out errf api_url parsed tmpout
+  local workdir tmpd out errf api_url parsed tmpout curlout http_code time_total
   workdir="$(_get_work_tmpdir_gemini)" || return 4
   tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)"
   [ -n "$tmpd" ] || return 4
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
+  curlout="$tmpd/curl.out"
   api_url="${MODELS_ENDPOINT_GEMINI}"
 
-  if ! curl ${CURL_BASE_OPTS:-} \
-            -H "Authorization: Bearer $key" \
-            -H "Content-Type: application/json" \
-            "$api_url" -o "$out" 2>"$errf"; then
-    dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
-    rm -rf "$tmpd" 2>/dev/null || true
-    return 8
+  # Distinguish API key vs OAuth token: API keys (AIza...) may need to be passed as ?key=,
+  # OAuth access tokens should be used in Authorization header.
+  if printf '%s' "${key:-}" | grep -qE '^AIza'; then
+    api_url="${api_url}?key=${key}"
+    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
+      dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
+      rm -rf "$tmpd" 2>/dev/null || true
+      return 8
+    fi
+  else
+    # Use Authorization header for OAuth access token
+    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+      # curl may still write output; continue to inspect http code
+      :
+    fi
+    read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
+    if [ -z "$http_code" ]; then http_code="000"; fi
+    case "$http_code" in
+      2*) ;; # ok
+      *)
+        dbg "models refresh HTTP code: $http_code"
+        dbg "curl stderr (head):"; head -n 80 "$errf" >&2 || true
+        dbg "Raw response (head):"; head -n 80 "$out" >&2 || true
+        rm -rf "$tmpd" 2>/dev/null || true
+        return 8
+        ;;
+    esac
   fi
 
   parsed="$tmpd/parsed_models.txt"
-  jq -r '.models[]?.name // empty' "$out" | sort -u > "$parsed" 2>/dev/null || true
+  # Be permissive: try name then id
+  jq -r '.models[]?.name // .models[]?.id // empty' "$out" | sort -u > "$parsed" 2>/dev/null || true
 
   if [ -s "$parsed" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    tmpout="$(_mktemp_in_dir_gemini "$(dirname "$outpath")")" || tmpout="$outpath.tmp"
-    cat "$parsed" | atomic_write "$outpath"
+    # Use atomic_write if available to ensure safe write
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$parsed" | atomic_write "$outpath" 10 || { dbg "Failed atomic write to $outpath"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
+    else
+      cat "$parsed" > "$outpath" || { dbg "Failed write to $outpath"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
+    fi
     rm -rf "$tmpd" 2>/dev/null || true
+    dbg "Models refreshed and saved to: $outpath"
     return 0
   fi
 
