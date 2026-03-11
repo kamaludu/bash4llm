@@ -84,23 +84,24 @@ detect_gemini_cred_type() {
 # Report error to stderr based on Gemini error JSON or fallback to curl stderr.
 # Usage: gemini_report_error <json_file> <curl_err_file>
 gemini_report_error() {
-  local jsonf="${1:-}" errf="${2:-}" status msg code
-  status=""
-  msg=""
-  code=""
+  local jsonf="${1:-}" errf="${2:-}" status msg code raw
+  status="" ; msg="" ; code=""
 
   if [ -n "$jsonf" ] && [ -s "$jsonf" ] && jq -e . "$jsonf" >/dev/null 2>&1; then
-    # Try to extract structured error info
-    status="$(jq -r '.error?.status // .error?.code // empty' "$jsonf" 2>/dev/null || true)"
-    msg="$(jq -r '.error?.message // .error?.details // empty' "$jsonf" 2>/dev/null || true)"
-    code="$(jq -r '.error?.code // empty' "$jsonf" 2>/dev/null || true)"
+    # Try multiple common locations for status/code/message
+    status="$(jq -r '.error?.status // .error?.code // .status // empty' "$jsonf" 2>/dev/null || true)"
+    code="$(jq -r '.error?.code // .error?.status // empty' "$jsonf" 2>/dev/null || true)"
+    msg="$(jq -r '.error?.message // .error?.details // .message // empty' "$jsonf" 2>/dev/null || true)"
+  else
+    # If JSON not present or invalid, capture raw head for diagnostics
+    if [ -n "$jsonf" ] && [ -s "$jsonf" ]; then
+      raw="$(head -n 200 "$jsonf" 2>/dev/null || true)"
+    fi
   fi
 
-  # Normalize status/code to upper-case for matching
   status="$(printf '%s' "$status" | tr '[:lower:]' '[:upper:]')"
   code="$(printf '%s' "$code" | tr '[:lower:]' '[:upper:]')"
 
-  # Map known statuses to user-friendly messages
   case "$status" in
     INVALID_ARGUMENT)
       printf '%s\n' "gemini: richiesta malformata (INVALID_ARGUMENT). Controlla il payload." >&2
@@ -130,9 +131,11 @@ gemini_report_error() {
           printf '%s\n' "gemini: credenziale non valida o scaduta." >&2
           ;;
         *)
-          # Fallback: print message if available, otherwise show curl stderr head
           if [ -n "$msg" ]; then
             printf '%s\n' "gemini: errore: $msg" >&2
+          elif [ -n "$raw" ]; then
+            printf '%s\n' "gemini: errore: risposta non JSON. Vedi head della risposta:" >&2
+            printf '%s\n' "$raw" >&2
           else
             if [ -n "$errf" ] && [ -s "$errf" ]; then
               printf '%s\n' "gemini: errore HTTP. Vedi curl stderr (head):" >&2
@@ -145,7 +148,6 @@ gemini_report_error() {
       esac
       ;;
     *)
-      # Unknown status: print message if present, else fallback
       if [ -n "$msg" ]; then
         printf '%s\n' "gemini: errore: $msg" >&2
       else
@@ -265,21 +267,33 @@ call_api_gemini() {
   if [ "$cred_type" = "apikey" ]; then
     # Use API key as query param (default behavior)
     api_url="${api_url}?key=${key}"
+    dbg "call_api_gemini: using API key; url=${api_url}"
     if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-      # curl failed; continue to inspect outputs
+      # curl returned non-zero; continue to inspect outputs
       :
     fi
   else
     # Use OAuth/Service Account token in Authorization header
+    dbg "call_api_gemini: using OAuth token; url=${api_url}"
     if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
   fi
 
+  # Ensure we can read http_code even if curl returned non-zero
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
     time_total="0"
   }
+
+  # Verify that tmpresp was written; if not, surface curl stderr for diagnostics
+  if [ ! -s "$tmpresp" ]; then
+    printf '%s\n' "gemini: attenzione: risposta vuota o file temporaneo non scritto: $tmpresp" >&2
+    if [ -s "$ERRF" ]; then
+      printf '%s\n' "gemini: curl stderr (head):" >&2
+      head -n 80 "$ERRF" >&2 || true
+    fi
+  fi
 
   cat "$tmpresp" | atomic_write "$RESP"
   rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
@@ -289,9 +303,9 @@ call_api_gemini() {
     *)
       # Provide user-friendly messages based on response JSON or curl stderr
       gemini_report_error "$RESP" "$ERRF"
+
       # If credential type is oauth and error indicates UNAUTHENTICATED or PERMISSION_DENIED, give specific hint
       if [ "$cred_type" = "oauth" ]; then
-        # Check for UNAUTHENTICATED or PERMISSION_DENIED in response
         if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$RESP" >/dev/null 2>&1; then
           printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
         fi
@@ -301,6 +315,21 @@ call_api_gemini() {
           printf '%s\n' "gemini: la richiesta è stata rifiutata. Verifica che la tua API Key sia valida e abbia accesso alla Gemini API." >&2
         fi
       fi
+
+      # If response file is present but parsing didn't find structured error, also show raw head for debugging
+      if [ -s "$RESP" ]; then
+        if ! jq -e . "$RESP" >/dev/null 2>&1; then
+          printf '%s\n' "gemini: risposta non JSON (head):" >&2
+          head -n 80 "$RESP" >&2 || true
+        else
+          # If JSON but gemini_report_error didn't match, show a short head of the JSON for context
+          if ! jq -e '.error' "$RESP" >/dev/null 2>&1; then
+            printf '%s\n' "gemini: risposta JSON senza campo error (head):" >&2
+            head -n 80 "$RESP" >&2 || true
+          fi
+        fi
+      fi
+
       return 5
       ;;
   esac
@@ -440,40 +469,50 @@ refresh_models_gemini() {
 
   if [ "$cred_type" = "apikey" ]; then
     api_url="${api_url}?key=${key}"
-    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
-      # curl failed; report and return
+    # Always capture http_code via -w into curlout
+    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+      # curl returned non-zero; still inspect outputs
+      :
+    fi
+    read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
+    if [ -z "$http_code" ]; then http_code="000"; fi
+    if [ "${http_code:0:1}" != "2" ]; then
+      printf '%s\n' "gemini: models.list HTTP code: $http_code" >&2
+      printf '%s\n' "gemini: raw response (head):" >&2
+      head -n 200 "$out" >&2 || true
+      printf '%s\n' "gemini: curl stderr (head):" >&2
+      head -n 200 "$errf" >&2 || true
       gemini_report_error "$out" "$errf"
       rm -rf "$tmpd" 2>/dev/null || true
       return 8
     fi
   else
-    # Use Authorization header for OAuth access token
+    # OAuth token path: use Authorization header and capture http_code
     if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
       :
     fi
     read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
     if [ -z "$http_code" ]; then http_code="000"; fi
-    case "$http_code" in
-      2*) ;; # ok
-      *)
-        # Report error and provide hint for oauth tokens
-        gemini_report_error "$out" "$errf"
-        if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$out" >/dev/null 2>&1; then
-          printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
-        fi
-        rm -rf "$tmpd" 2>/dev/null || true
-        return 8
-        ;;
-    esac
+    if [ "${http_code:0:1}" != "2" ]; then
+      printf '%s\n' "gemini: models.list HTTP code: $http_code" >&2
+      printf '%s\n' "gemini: raw response (head):" >&2
+      head -n 200 "$out" >&2 || true
+      printf '%s\n' "gemini: curl stderr (head):" >&2
+      head -n 200 "$errf" >&2 || true
+      gemini_report_error "$out" "$errf"
+      if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$out" >/dev/null 2>&1; then
+        printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
+      fi
+      rm -rf "$tmpd" 2>/dev/null || true
+      return 8
+    fi
   fi
 
   parsed="$tmpd/parsed_models.txt"
-  # Be permissive: try name then id
   jq -r '.models[]?.name // .models[]?.id // empty' "$out" | sort -u > "$parsed" 2>/dev/null || true
 
   if [ -s "$parsed" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    # Use atomic_write if available to ensure safe write
     if type atomic_write >/dev/null 2>&1; then
       cat "$parsed" | atomic_write "$outpath" 10 || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
     else
@@ -485,6 +524,10 @@ refresh_models_gemini() {
   fi
 
   # If parsed empty, report raw response for diagnostics
+  printf '%s\n' "gemini: parsed models list empty; raw response (head):" >&2
+  head -n 200 "$out" >&2 || true
+  printf '%s\n' "gemini: curl stderr (head):" >&2
+  head -n 200 "$errf" >&2 || true
   gemini_report_error "$out" "$errf"
   rm -rf "$tmpd" 2>/dev/null || true
   return 9
