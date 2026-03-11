@@ -84,16 +84,21 @@ detect_gemini_cred_type() {
 # Report error to stderr based on Gemini error JSON or fallback to curl stderr.
 # Usage: gemini_report_error <json_file> <curl_err_file>
 gemini_report_error() {
-  local jsonf="${1:-}" errf="${2:-}" status msg code raw
-  status="" ; msg="" ; code=""
+  local jsonf="${1:-}" errf="${2:-}"
+  local status msg code raw
+  status="" ; msg="" ; code="" ; raw=""
 
   if [ -n "$jsonf" ] && [ -s "$jsonf" ] && jq -e . "$jsonf" >/dev/null 2>&1; then
     # Try multiple common locations for status/code/message
     status="$(jq -r '.error?.status // .error?.code // .status // empty' "$jsonf" 2>/dev/null || true)"
     code="$(jq -r '.error?.code // .error?.status // empty' "$jsonf" 2>/dev/null || true)"
     msg="$(jq -r '.error?.message // .error?.details // .message // empty' "$jsonf" 2>/dev/null || true)"
+    # If details is an array with messages, try to extract first
+    if [ -z "$msg" ]; then
+      msg="$(jq -r '(.error?.details[]? // empty) | tostring' "$jsonf" 2>/dev/null | head -n1 || true)"
+    fi
   else
-    # If JSON not present or invalid, capture raw head for diagnostics
+    # If JSON not present or invalid, capture raw head for diagnostics (always safe)
     if [ -n "$jsonf" ] && [ -s "$jsonf" ]; then
       raw="$(head -n 200 "$jsonf" 2>/dev/null || true)"
     fi
@@ -160,6 +165,7 @@ gemini_report_error() {
       fi
       ;;
   esac
+
   return 0
 }
 
