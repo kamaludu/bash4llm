@@ -7,7 +7,10 @@
 # License: GPL-3.0-or-later
 # =============================================================================
 # Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
-# ==== PRECORE BEGIN ====
+
+########################################
+# SECTION: PRECORE - BEGIN
+########################################
 set -euo pipefail
 
 SCRIPT_NAME="groqbash"
@@ -743,8 +746,13 @@ show_payload_head() {
   fi
   return 0
 }
-# ==== PRECORE END ====
-# ==== PROVIDER BEGIN ====
+########################################
+# SECTION: PRECORE - END
+########################################
+
+########################################
+# SECTION: PROVIDER - BEGIN
+########################################
 # ---------------------------------------------------------------------------
 # Provider embedded: groq (full implementations)
 # Functions: buildpayload_groq, call_api_groq, call_api_streaming_groq,
@@ -1103,8 +1111,13 @@ auto_select_model_groq() {
 }
 
 autoselectmodelgroq() { auto_select_model_groq "$@"; }
-# ==== PROVIDER END ====
-# ==== CORE BEGIN ====
+########################################
+# SECTION: PROVIDER - END
+########################################
+
+########################################
+# SECTION: CORE - BEGIN
+########################################
 # ---------------------------------------------------------------------------
 # Core helpers and CLI wiring (public interfaces preserved)
 # ---------------------------------------------------------------------------
@@ -2116,5 +2129,7 @@ else
   perform_request_once || exit "$GROQBASHERRAPI"
   exit 0
 fi
-# ==== CORE END ====
+########################################
+# SECTION: CORE - END
+########################################
 # End of file
