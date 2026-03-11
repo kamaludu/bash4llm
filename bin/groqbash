@@ -1406,6 +1406,22 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Ensure provider selection from CLI or persisted config is applied early,
+# so immediate actions like --refresh-models use the intended provider.
+PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
+
+# If user passed --provider on CLI (and it's not the interactive "list"), prefer it.
+if [ -n "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_CLI}" != "list" ]; then
+  PROVIDER="$PROVIDER_CLI"
+else
+  # Otherwise, if a persisted provider exists and user did not request interactive selection,
+  # use the persisted value so immediate actions operate against the correct provider.
+  if [ -f "$PROVIDER_FILE" ] && [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ]; then
+    prov="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
+    [ -n "$prov" ] && PROVIDER="$prov"
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # Normalize boolean-like flags
 # ---------------------------------------------------------------------------
