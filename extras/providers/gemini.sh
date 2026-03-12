@@ -295,6 +295,9 @@ call_api_gemini() {
     time_total="0"
   }
 
+  # DEBUG: always print http_code for visibility
+  printf '%s\n' "DEBUG: http_code=${http_code} time_total=${time_total}" >&2
+
   # Ensure response file exists and is non-empty; if not, show curl stderr for diagnostics
   if [ ! -s "$tmpresp" ]; then
     printf '%s\n' "gemini: attenzione: risposta vuota o file temporaneo non scritto: $tmpresp" >&2
@@ -304,27 +307,52 @@ call_api_gemini() {
     fi
   fi
 
-  cat "$tmpresp" | atomic_write "$RESP"
-  rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
+  # Save response to RESP (atomic) if possible
+  if [ -s "$tmpresp" ]; then
+    cat "$tmpresp" | atomic_write "$RESP"
+  else
+    # Ensure RESP exists as empty file to avoid downstream errors
+    : > "${RESP:-/dev/null}" 2>/dev/null || true
+  fi
 
+  # Always call gemini_report_error on non-2xx, passing the tmp response file and curl stderr
   case "$http_code" in
-    2*) return 0 ;;
+    2*)
+      # success
+      rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
+      return 0
+      ;;
     *)
       # Provide user-friendly messages based on response JSON or curl stderr
-      gemini_report_error "$RESP" "$ERRF"
+      # Pass the temporary response file (tmpresp) so gemini_report_error inspects the raw response
+      gemini_report_error "$tmpresp" "$ERRF"
 
       # If credential type is oauth and error indicates UNAUTHENTICATED or PERMISSION_DENIED, give specific hint
       if [ "$cred_type" = "oauth" ]; then
-        if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$RESP" >/dev/null 2>&1; then
+        if [ -s "$tmpresp" ] && jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$tmpresp" >/dev/null 2>&1; then
           printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
         fi
       else
         # For API key, if common errors appear, give a clear hint
-        if jq -e '.error?.status == "PERMISSION_DENIED" or .error?.status == "UNAUTHENTICATED" or .error?.code == "API_KEY_INVALID"' "$RESP" >/dev/null 2>&1; then
+        if [ -s "$tmpresp" ] && jq -e '.error?.status == "PERMISSION_DENIED" or .error?.status == "UNAUTHENTICATED" or .error?.code == "API_KEY_INVALID"' "$tmpresp" >/dev/null 2>&1; then
           printf '%s\n' "gemini: la richiesta è stata rifiutata. Verifica che la tua API Key sia valida e abbia accesso alla Gemini API." >&2
         fi
       fi
 
+      # For extra diagnostics, if tmpresp is JSON but lacks .error, show a short head
+      if [ -s "$tmpresp" ]; then
+        if jq -e . "$tmpresp" >/dev/null 2>&1; then
+          if ! jq -e '.error' "$tmpresp" >/dev/null 2>&1; then
+            printf '%s\n' "gemini: risposta JSON senza campo error (head):" >&2
+            head -n 80 "$tmpresp" >&2 || true
+          fi
+        else
+          printf '%s\n' "gemini: risposta non JSON (head):" >&2
+          head -n 80 "$tmpresp" >&2 || true
+        fi
+      fi
+
+      rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
       return 5
       ;;
   esac
