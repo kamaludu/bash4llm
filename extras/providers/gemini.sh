@@ -271,18 +271,19 @@ call_api_gemini() {
 
   if [ "$cred_type" = "apikey" ]; then
     # Append key as query parameter, preserving existing query string if present
-    if printf '%s' "$api_url" | grep -q '\?'; then
-      api_url="${api_url}&key=${key}"
-    else
-      api_url="${api_url}?key=${key}"
-    fi
-    dbg "call_api_gemini: using API key; url=${api_url}"
+    case "$api_url" in
+      *\?*) api_url="${api_url}&key=${key}" ;;
+      *)    api_url="${api_url}?key=${key}" ;;
+    esac
+    dbg "call_api_gemini: using API key; url:"
+    dbg "$(printf '%s' "$api_url")"
     # Ensure curl writes both response and http_code even on non-2xx
     if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
   else
-    dbg "call_api_gemini: using OAuth token; url=${api_url}"
+    dbg "call_api_gemini: using OAuth token; url:"
+    dbg "$(printf '%s' "$api_url")"
     if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
@@ -352,13 +353,12 @@ call_api_streaming_gemini() {
   cred_type="$(detect_gemini_cred_type "$key")"
 
   if [ "$cred_type" = "apikey" ]; then
-    # Append key as query parameter, preserving existing query string if present
-    if printf '%s' "$api_url" | grep -q '\?'; then
-      api_url="${api_url}&key=${key}"
-    else
-      api_url="${api_url}?key=${key}"
-    fi
-    dbg "call_api_streaming_gemini: using API key; url=${api_url}"
+    case "$api_url" in
+      *\?*) api_url="${api_url}&key=${key}" ;;
+      *)    api_url="${api_url}?key=${key}" ;;
+    esac
+    dbg "call_api_streaming_gemini: using API key; url:"
+    dbg "$(printf '%s' "$api_url")"
     curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
     while IFS= read -r line; do
       case "$line" in
@@ -372,7 +372,8 @@ call_api_streaming_gemini() {
       esac
     done
   else
-    dbg "call_api_streaming_gemini: using OAuth token; url=${api_url}"
+    dbg "call_api_streaming_gemini: using OAuth token; url:"
+    dbg "$(printf '%s' "$api_url")"
     curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
     while IFS= read -r line; do
       case "$line" in
