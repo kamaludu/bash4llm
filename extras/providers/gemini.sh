@@ -68,14 +68,16 @@ fi
 # Detect credential type: returns "apikey", "oauth", or "none"
 detect_gemini_cred_type() {
   local key="${1:-${GEMINI_API_KEY:-}}"
+  # Trim whitespace (leading/trailing) to avoid false negatives
+  key="$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   if [ -z "$key" ]; then
     printf '%s' "none"
     return 0
   fi
   # Use Bash pattern matching to detect API keys that start with "AIza"
   case "$key" in
-    AIza*) printf '%s' "apikey" ;;
-    *)     printf '%s' "oauth" ;;
+    AIza*|AIza*) printf '%s' "apikey" ;; # tolerate common accidental case variants
+    *)           printf '%s' "oauth" ;;
   esac
   return 0
 }
@@ -88,13 +90,14 @@ gemini_report_error() {
   status="" ; msg="" ; code="" ; raw=""
 
   if [ -n "$jsonf" ] && [ -s "$jsonf" ] && jq -e . "$jsonf" >/dev/null 2>&1; then
-    # Try multiple common locations for status/code/message
-    status="$(jq -r '.error?.status // .error?.code // .status // empty' "$jsonf" 2>/dev/null || true)"
-    code="$(jq -r '.error?.code // .error?.status // empty' "$jsonf" 2>/dev/null || true)"
-    msg="$(jq -r '.error?.message // .error?.details // .message // empty' "$jsonf" 2>/dev/null || true)"
-    # If details is an array with messages, try to extract first
+    # Normalize top-level array/object: if response is an array, inspect its first element.
+    # Then try multiple common locations for status/code/message.
+    status="$(jq -r 'if type=="array" then .[0] else . end | (.error?.status // .status // empty) | tostring' "$jsonf" 2>/dev/null || true)"
+    code="$(jq -r 'if type=="array" then .[0] else . end | (.error?.code // .error?.status // .code // empty) | tostring' "$jsonf" 2>/dev/null || true)"
+    msg="$(jq -r 'if type=="array" then .[0] else . end | (.error?.message // .message // empty) | tostring' "$jsonf" 2>/dev/null || true)"
+    # If msg still empty, try details arrays (either top-level or inside error)
     if [ -z "$msg" ]; then
-      msg="$(jq -r '(.error?.details[]? // empty) | tostring' "$jsonf" 2>/dev/null | head -n1 || true)"
+      msg="$(jq -r 'if type=="array" then .[0] else . end | (.error?.details[]? // .details[]? // empty) | tostring' "$jsonf" 2>/dev/null | head -n1 || true)"
     fi
   else
     # If JSON not present or invalid, capture raw head for diagnostics (always safe)
@@ -261,41 +264,56 @@ call_api_gemini() {
     return 0
   fi
 
-  local workdir tmpout api_url http_code time_total tmpresp cred_type
+  local workdir tmpout api_url http_code time_total tmpresp cred_type key_trim
   workdir="$(_get_work_tmpdir_gemini)" || return 4
   tmpout="$(_mktemp_in_dir_gemini "$workdir")" || return 4
   tmpresp="$(_mktemp_in_dir_gemini "$workdir")" || return 4
-  api_url="${API_URL_GEMINI}"
+  api_url="${API_URL_GEMINI:-}"
+  # Trim possible whitespace/newlines from key and api_url
+  key_trim="$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  api_url="$(printf '%s' "$api_url" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-  cred_type="$(detect_gemini_cred_type "$key")"
+  cred_type="$(detect_gemini_cred_type "$key_trim")"
 
   if [ "$cred_type" = "apikey" ]; then
     # Append key as query parameter, preserving existing query string if present
     case "$api_url" in
-      *\?*) api_url="${api_url}&key=${key}" ;;
-      *)    api_url="${api_url}?key=${key}" ;;
+      *\?*) api_url="${api_url}&key=${key_trim}" ;;
+      *)    api_url="${api_url}?key=${key_trim}" ;;
     esac
     dbg "call_api_gemini: using API key; url:"
     dbg "$(printf '%s' "$api_url")"
     # Ensure curl writes both response and http_code even on non-2xx
-    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    # Place -H "Authorization:" AFTER CURL_BASE_OPTS so it overrides any Authorization header set there.
+    if ! curl ${CURL_BASE_OPTS:-} --silent --show-error --no-buffer --max-time 120 \
+         -H "Authorization:" -H "Content-Type: application/json" \
+         --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
   else
     dbg "call_api_gemini: using OAuth token; url:"
     dbg "$(printf '%s' "$api_url")"
-    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    # For OAuth, send Authorization header (place after CURL_BASE_OPTS as well)
+    if ! curl ${CURL_BASE_OPTS:-} --silent --show-error --no-buffer --max-time 120 \
+         -H "Authorization: Bearer ${key_trim}" -H "Content-Type: application/json" \
+         --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
   fi
 
-  # Read http_code even if curl returned non-zero
-  read -r http_code time_total < "$tmpout" 2>/dev/null || {
+  # Read http_code even if curl returned non-zero. Parse robustly.
+  http_code="$(awk '{print $1}' "$tmpout" 2>/dev/null || true)"
+  time_total="$(awk '{print $2}' "$tmpout" 2>/dev/null || true)"
+  if [ -z "$http_code" ]; then
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
+    http_code="$(printf '%s' "$http_code" | awk '{print $1}' 2>/dev/null || true)"
+  fi
+  if [ -z "$time_total" ]; then
     time_total="0"
-  }
+  fi
 
-  # DEBUG: always print http_code for visibility
+  # Temporary debug lines (remove after verification)
+  printf '%s\n' "DEBUG: cred_type=${cred_type}" >&2
   printf '%s\n' "DEBUG: http_code=${http_code} time_total=${time_total}" >&2
 
   # Ensure response file exists and is non-empty; if not, show curl stderr for diagnostics
@@ -311,38 +329,33 @@ call_api_gemini() {
   if [ -s "$tmpresp" ]; then
     cat "$tmpresp" | atomic_write "$RESP"
   else
-    # Ensure RESP exists as empty file to avoid downstream errors
     : > "${RESP:-/dev/null}" 2>/dev/null || true
   fi
 
   # Always call gemini_report_error on non-2xx, passing the tmp response file and curl stderr
   case "$http_code" in
     2*)
-      # success
       rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
       return 0
       ;;
     *)
-      # Provide user-friendly messages based on response JSON or curl stderr
-      # Pass the temporary response file (tmpresp) so gemini_report_error inspects the raw response
       gemini_report_error "$tmpresp" "$ERRF"
 
-      # If credential type is oauth and error indicates UNAUTHENTICATED or PERMISSION_DENIED, give specific hint
+      # Credential-specific hints
       if [ "$cred_type" = "oauth" ]; then
-        if [ -s "$tmpresp" ] && jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$tmpresp" >/dev/null 2>&1; then
+        if [ -s "$tmpresp" ] && jq -e 'if type=="array" then .[0].error?.status == "UNAUTHENTICATED" or .[0].error?.status == "PERMISSION_DENIED" else .error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED" end' "$tmpresp" >/dev/null 2>&1; then
           printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
         fi
       else
-        # For API key, if common errors appear, give a clear hint
-        if [ -s "$tmpresp" ] && jq -e '.error?.status == "PERMISSION_DENIED" or .error?.status == "UNAUTHENTICATED" or .error?.code == "API_KEY_INVALID"' "$tmpresp" >/dev/null 2>&1; then
+        if [ -s "$tmpresp" ] && jq -e 'if type=="array" then (.[]?.error?.status == "PERMISSION_DENIED" or .[]?.error?.status == "UNAUTHENTICATED" or .[]?.error?.code == "API_KEY_INVALID") else (.error?.status == "PERMISSION_DENIED" or .error?.status == "UNAUTHENTICATED" or .error?.code == "API_KEY_INVALID") end' "$tmpresp" >/dev/null 2>&1; then
           printf '%s\n' "gemini: la richiesta è stata rifiutata. Verifica che la tua API Key sia valida e abbia accesso alla Gemini API." >&2
         fi
       fi
 
-      # For extra diagnostics, if tmpresp is JSON but lacks .error, show a short head
+      # Extra diagnostics: if JSON but no error key, show head
       if [ -s "$tmpresp" ]; then
         if jq -e . "$tmpresp" >/dev/null 2>&1; then
-          if ! jq -e '.error' "$tmpresp" >/dev/null 2>&1; then
+          if ! jq -e 'if type=="array" then any(.[]; (has("error") or (.error != null))) else (has("error") or (.error != null)) end' "$tmpresp" >/dev/null 2>&1; then
             printf '%s\n' "gemini: risposta JSON senza campo error (head):" >&2
             head -n 80 "$tmpresp" >&2 || true
           fi
@@ -372,22 +385,28 @@ call_api_streaming_gemini() {
     return 0
   fi
 
-  local api_url rc RESP_RAW cred_type
-  api_url="${API_URL_GEMINI}"
-  RESP_RAW="${RUN_TMPDIR:-}/resp.raw"
+  local api_url rc RESP_RAW cred_type workdir key_trim
+  api_url="${API_URL_GEMINI:-}"
+  workdir="$(_get_work_tmpdir_gemini)" || return 4
+  RESP_RAW="$(_mktemp_in_dir_gemini "$workdir")" || RESP_RAW="${workdir}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
 
-  cred_type="$(detect_gemini_cred_type "$key")"
+  # Trim inputs
+  key_trim="$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  api_url="$(printf '%s' "$api_url" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+  cred_type="$(detect_gemini_cred_type "$key_trim")"
 
   if [ "$cred_type" = "apikey" ]; then
     case "$api_url" in
-      *\?*) api_url="${api_url}&key=${key}" ;;
-      *)    api_url="${api_url}?key=${key}" ;;
+      *\?*) api_url="${api_url}&key=${key_trim}" ;;
+      *)    api_url="${api_url}?key=${key_trim}" ;;
     esac
     dbg "call_api_streaming_gemini: using API key; url:"
     dbg "$(printf '%s' "$api_url")"
-    curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
+    # Ensure Authorization header is explicitly cleared (placed after CURL_BASE_OPTS)
+    curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
     while IFS= read -r line; do
       case "$line" in
         'data: [DONE]'|'data:[DONE]') break ;;
@@ -402,7 +421,7 @@ call_api_streaming_gemini() {
   else
     dbg "call_api_streaming_gemini: using OAuth token; url:"
     dbg "$(printf '%s' "$api_url")"
-    curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
+    curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key_trim}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
     while IFS= read -r line; do
       case "$line" in
         'data: [DONE]'|'data:[DONE]') break ;;
@@ -418,7 +437,6 @@ call_api_streaming_gemini() {
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
-    # Report error using curl stderr and any partial JSON in RESP_RAW
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       gemini_report_error "$RESP_RAW" "$ERRF"
     else
@@ -426,14 +444,14 @@ call_api_streaming_gemini() {
       head -n 50 "$ERRF" >&2 || true
     fi
     if [ "$cred_type" = "oauth" ]; then
-      if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$RESP_RAW" >/dev/null 2>&1; then
+      if jq -e 'if type=="array" then .[0].error?.status == "UNAUTHENTICATED" or .[0].error?.status == "PERMISSION_DENIED" else .error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED" end' "$RESP_RAW" >/dev/null 2>&1; then
         printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
       fi
     fi
     return 6
   }
 
-  # Post-processing: build resp.chunks.json, resp.text.txt and write RESP atomically
+  # Post-processing unchanged...
   : > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
   grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
 
@@ -453,12 +471,10 @@ call_api_streaming_gemini() {
       cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     fi
 
-    # safe cleanup of intermediates if RUN_TMPDIR is under GROQBASH_TMPDIR
     if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${GROQBASH_TMPDIR:-}"/*) true;; "${GROQBASH_TMPDIR:-}") true;; *) false;; esac; then
       rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
     fi
   else
-    # fallback: if RESP_RAW is valid JSON, copy to RESP
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       cp -f "$RESP_RAW" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     fi
@@ -494,10 +510,12 @@ refresh_models_gemini() {
   cred_type="$(detect_gemini_cred_type "$key")"
 
   if [ "$cred_type" = "apikey" ]; then
-    api_url="${api_url}?key=${key}"
-    # Always capture http_code via -w into curlout
-    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
-      # curl returned non-zero; still inspect outputs
+    case "$api_url" in
+      *\?*) api_url="${api_url}&key=${key}" ;;
+      *)    api_url="${api_url}?key=${key}" ;;
+    esac
+    # Always capture http_code via -w into curlout; clear Authorization header explicitly
+    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
       :
     fi
     read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
@@ -526,7 +544,7 @@ refresh_models_gemini() {
       printf '%s\n' "gemini: curl stderr (head):" >&2
       head -n 200 "$errf" >&2 || true
       gemini_report_error "$out" "$errf"
-      if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$out" >/dev/null 2>&1; then
+      if jq -e 'if type=="array" then .[0].error?.status == "UNAUTHENTICATED" or .[0].error?.status == "PERMISSION_DENIED" else .error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED" end' "$out" >/dev/null 2>&1; then
         printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
       fi
       rm -rf "$tmpd" 2>/dev/null || true
