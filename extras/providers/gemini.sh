@@ -65,19 +65,18 @@ if ! type dbg >/dev/null 2>&1; then
   dbg() { :; }
 fi
 
-# Detect credential type: returns "apikey" or "oauth"
+# Detect credential type: returns "apikey", "oauth", or "none"
 detect_gemini_cred_type() {
   local key="${1:-${GEMINI_API_KEY:-}}"
   if [ -z "$key" ]; then
     printf '%s' "none"
     return 0
   fi
-  # API keys issued by Google commonly start with "AIza"
-  if printf '%s' "$key" | grep -qE '^AIza'; then
-    printf '%s' "apikey"
-  else
-    printf '%s' "oauth"
-  fi
+  # Use Bash pattern matching to detect API keys that start with "AIza"
+  case "$key" in
+    AIza*) printf '%s' "apikey" ;;
+    *)     printf '%s' "oauth" ;;
+  esac
   return 0
 }
 
@@ -271,28 +270,31 @@ call_api_gemini() {
   cred_type="$(detect_gemini_cred_type "$key")"
 
   if [ "$cred_type" = "apikey" ]; then
-    # Use API key as query param (default behavior)
-    api_url="${api_url}?key=${key}"
+    # Append key as query parameter, preserving existing query string if present
+    if printf '%s' "$api_url" | grep -q '\?'; then
+      api_url="${api_url}&key=${key}"
+    else
+      api_url="${api_url}?key=${key}"
+    fi
     dbg "call_api_gemini: using API key; url=${api_url}"
-    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-      # curl returned non-zero; continue to inspect outputs
+    # Ensure curl writes both response and http_code even on non-2xx
+    if ! curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
   else
-    # Use OAuth/Service Account token in Authorization header
     dbg "call_api_gemini: using OAuth token; url=${api_url}"
-    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       :
     fi
   fi
 
-  # Ensure we can read http_code even if curl returned non-zero
+  # Read http_code even if curl returned non-zero
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
     time_total="0"
   }
 
-  # Verify that tmpresp was written; if not, surface curl stderr for diagnostics
+  # Ensure response file exists and is non-empty; if not, show curl stderr for diagnostics
   if [ ! -s "$tmpresp" ]; then
     printf '%s\n' "gemini: attenzione: risposta vuota o file temporaneo non scritto: $tmpresp" >&2
     if [ -s "$ERRF" ]; then
@@ -319,20 +321,6 @@ call_api_gemini() {
         # For API key, if common errors appear, give a clear hint
         if jq -e '.error?.status == "PERMISSION_DENIED" or .error?.status == "UNAUTHENTICATED" or .error?.code == "API_KEY_INVALID"' "$RESP" >/dev/null 2>&1; then
           printf '%s\n' "gemini: la richiesta è stata rifiutata. Verifica che la tua API Key sia valida e abbia accesso alla Gemini API." >&2
-        fi
-      fi
-
-      # If response file is present but parsing didn't find structured error, also show raw head for debugging
-      if [ -s "$RESP" ]; then
-        if ! jq -e . "$RESP" >/dev/null 2>&1; then
-          printf '%s\n' "gemini: risposta non JSON (head):" >&2
-          head -n 80 "$RESP" >&2 || true
-        else
-          # If JSON but gemini_report_error didn't match, show a short head of the JSON for context
-          if ! jq -e '.error' "$RESP" >/dev/null 2>&1; then
-            printf '%s\n' "gemini: risposta JSON senza campo error (head):" >&2
-            head -n 80 "$RESP" >&2 || true
-          fi
         fi
       fi
 
@@ -364,8 +352,13 @@ call_api_streaming_gemini() {
   cred_type="$(detect_gemini_cred_type "$key")"
 
   if [ "$cred_type" = "apikey" ]; then
-    api_url="${api_url}?key=${key}"
-    # Use API key as query param
+    # Append key as query parameter, preserving existing query string if present
+    if printf '%s' "$api_url" | grep -q '\?'; then
+      api_url="${api_url}&key=${key}"
+    else
+      api_url="${api_url}?key=${key}"
+    fi
+    dbg "call_api_streaming_gemini: using API key; url=${api_url}"
     curl ${CURL_BASE_OPTS:-} -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
     while IFS= read -r line; do
       case "$line" in
@@ -379,7 +372,7 @@ call_api_streaming_gemini() {
       esac
     done
   else
-    # Use Authorization header for OAuth token
+    dbg "call_api_streaming_gemini: using OAuth token; url=${api_url}"
     curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
     while IFS= read -r line; do
       case "$line" in
@@ -397,14 +390,12 @@ call_api_streaming_gemini() {
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
     # Report error using curl stderr and any partial JSON in RESP_RAW
-    # If RESP_RAW contains JSON error objects, prefer them
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       gemini_report_error "$RESP_RAW" "$ERRF"
     else
       printf '%s\n' "gemini: errore durante lo streaming. Vedi curl stderr (head):" >&2
       head -n 50 "$ERRF" >&2 || true
     fi
-    # If oauth token used and error suggests auth problem, print hint
     if [ "$cred_type" = "oauth" ]; then
       if jq -e '.error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED"' "$RESP_RAW" >/dev/null 2>&1; then
         printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
