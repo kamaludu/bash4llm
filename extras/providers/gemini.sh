@@ -563,7 +563,6 @@ refresh_models_gemini() {
   local compat_b64="${outpath}.b64"
 
   base64 -w0 < "$tmpfinal" > "$preferred_b64" 2>/dev/null || base64 < "$tmpfinal" > "$preferred_b64" 2>/dev/null || true
-  # also write compat file to handle older runs
   cp -f "$preferred_b64" "$compat_b64" 2>/dev/null || true
 
   # Try atomic decode/move using lock_exec if available
