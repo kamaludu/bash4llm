@@ -487,112 +487,183 @@ call_api_streaming_gemini() {
 # refresh_models_gemini
 # -------------------------
 refresh_models_gemini() {
+  # Policy globale GroqBash per provider esterni:
+  # - Mai scaricare liste illimitate
+  # - Sempre applicare MAX_MODELS lato API se possibile
+  # - Sempre tagliare a MAX_MODELS prima di scrivere MODELS_FILE
+  # - Scrittura atomica + lock (b64_atomic_write + lock_exec)
   local outpath="${1:-${MODELS_FILE:-${MODELSFILE:-}}}"
   local key="${GEMINI_API_KEY:-}"
   if [ -z "$key" ]; then
-    echo "Error: GEMINI_API_KEY is required to refresh models." >&2
+    printf '%s\n' "Error: GEMINI_API_KEY is required to refresh models." >&2
     return 2
   fi
   if [ -z "$outpath" ]; then
-    echo "Error: MODELS file path not provided." >&2
+    printf '%s\n' "Error: MODELS file path not provided." >&2
     return 7
   fi
 
-  local workdir tmpd out errf api_url parsed tmpout curlout http_code time_total cred_type
+  local workdir tmpd out errf curlout api_url parsed tmpfinal b64tmp http_code time_total cred_type
   workdir="$(_get_work_tmpdir_gemini)" || return 4
   tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)"
   [ -n "$tmpd" ] || return 4
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
   curlout="$tmpd/curl.out"
-  api_url="${MODELS_ENDPOINT_GEMINI}"
+  parsed="$tmpd/parsed_models.txt"
+  tmpfinal="$tmpd/final_models.txt"
+  b64tmp="${outpath}.b64.tmp"
+
+  api_url="${MODELS_ENDPOINT_GEMINI:-}"
 
   cred_type="$(detect_gemini_cred_type "$key")"
 
+  # If provider supports page size param, append it defensively
+  case "$api_url" in
+    *\?*) api_url="${api_url}&pageSize=${MAX_MODELS}" ;;
+    *) api_url="${api_url}?pageSize=${MAX_MODELS}" ;;
+  esac
+
   if [ "$cred_type" = "apikey" ]; then
-    case "$api_url" in
-      *\?*) api_url="${api_url}&key=${key}" ;;
-      *)    api_url="${api_url}?key=${key}" ;;
-    esac
-    # Always capture http_code via -w into curlout; clear Authorization header explicitly
+    # Clear Authorization header explicitly
     if ! curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
       :
     fi
-    read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
-    if [ -z "$http_code" ]; then http_code="000"; fi
-    if [ "${http_code:0:1}" != "2" ]; then
-      printf '%s\n' "gemini: models.list HTTP code: $http_code" >&2
-      printf '%s\n' "gemini: raw response (head):" >&2
-      head -n 200 "$out" >&2 || true
-      printf '%s\n' "gemini: curl stderr (head):" >&2
-      head -n 200 "$errf" >&2 || true
-      gemini_report_error "$out" "$errf"
-      rm -rf "$tmpd" 2>/dev/null || true
-      return 8
-    fi
   else
-    # OAuth token path: use Authorization header and capture http_code
-    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
       :
     fi
-    read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
-    if [ -z "$http_code" ]; then http_code="000"; fi
-    if [ "${http_code:0:1}" != "2" ]; then
-      printf '%s\n' "gemini: models.list HTTP code: $http_code" >&2
-      printf '%s\n' "gemini: raw response (head):" >&2
-      head -n 200 "$out" >&2 || true
-      printf '%s\n' "gemini: curl stderr (head):" >&2
-      head -n 200 "$errf" >&2 || true
-      gemini_report_error "$out" "$errf"
-      if jq -e 'if type=="array" then .[0].error?.status == "UNAUTHENTICATED" or .[0].error?.status == "PERMISSION_DENIED" else .error?.status == "UNAUTHENTICATED" or .error?.status == "PERMISSION_DENIED" end' "$out" >/dev/null 2>&1; then
-        printf '%s\n' "gemini: il token OAuth/Service Account è scaduto o non valido. Genera un nuovo token." >&2
-      fi
-      rm -rf "$tmpd" 2>/dev/null || true
-      return 8
-    fi
   fi
 
-  parsed="$tmpd/parsed_models.txt"
-  jq -r '.models[]?.name // .models[]?.id // empty' "$out" | sort -u > "$parsed" 2>/dev/null || true
-
-  if [ -s "$parsed" ]; then
-    mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$parsed" | atomic_write "$outpath" 10 || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
-    else
-      cat "$parsed" > "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
-    fi
+  read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
+  if [ -z "$http_code" ]; then http_code="000"; fi
+  if [ "${http_code:0:1}" != "2" ]; then
+    printf '%s\n' "gemini: models.list HTTP code: $http_code" >&2
+    printf '%s\n' "gemini: raw response (head):" >&2
+    head -n 200 "$out" >&2 || true
+    printf '%s\n' "gemini: curl stderr (head):" >&2
+    head -n 200 "$errf" >&2 || true
+    gemini_report_error "$out" "$errf"
     rm -rf "$tmpd" 2>/dev/null || true
-    dbg "Models refreshed and saved to: $outpath"
-    return 0
+    return 8
   fi
 
-  # If parsed empty, report raw response for diagnostics
-  printf '%s\n' "gemini: parsed models list empty; raw response (head):" >&2
-  head -n 200 "$out" >&2 || true
-  printf '%s\n' "gemini: curl stderr (head):" >&2
-  head -n 200 "$errf" >&2 || true
-  gemini_report_error "$out" "$errf"
+  # Primary parse: jq if JSON valid
+  if jq -e . "$out" >/dev/null 2>&1; then
+    jq -r '.models[]?.name // .models[]?.id // empty' "$out" > "$parsed" 2>/dev/null || true
+  else
+    # Fallback heuristic: extract "name" or "id" tokens from raw response
+    grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' > "$parsed" 2>/dev/null || true
+    if [ ! -s "$parsed" ]; then
+      grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' > "$parsed" 2>/dev/null || true
+    fi
+  fi
+
+  # If parsed empty, report and exit
+  if [ ! -s "$parsed" ]; then
+    printf '%s\n' "gemini: parsed models list empty; raw response (head):" >&2
+    head -n 200 "$out" >&2 || true
+    printf '%s\n' "gemini: curl stderr (head):" >&2
+    head -n 200 "$errf" >&2 || true
+    gemini_report_error "$out" "$errf"
+    rm -rf "$tmpd" 2>/dev/null || true
+    return 9
+  fi
+
+  # Deduplicate while preserving order, then trim to MAX_MODELS
+  awk '!seen[$0]++{print}' "$parsed" | head -n "${MAX_MODELS:-${MAX_MODELS:-200}}" > "$tmpfinal" 2>/dev/null || true
+
+  # Ensure destination dir exists
+  mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
+
+  # Write atomically using b64_atomic_write + lock_exec
+  if type b64_atomic_write >/dev/null 2>&1; then
+    # write base64 staging file
+    base64 -w0 < "$tmpfinal" > "$b64tmp" 2>/dev/null || base64 < "$tmpfinal" > "$b64tmp" 2>/dev/null || true
+    if [ -s "$b64tmp" ]; then
+      # Use lock_exec to move/decode into final path
+      if type lock_exec >/dev/null 2>&1; then
+        lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -c '
+          set -e
+          manifest_b64="$1"
+          dest="$2"
+          base64 ${B64_DECODE_OPT:--d} < "$manifest_b64" > "$dest"
+          chmod 600 "$dest" 2>/dev/null || true
+        ' _ "$b64tmp" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$b64tmp" 2>/dev/null || true; return 9; }
+      else
+        # Fallback: decode directly (best-effort)
+        base64 ${B64_DECODE_OPT:--d} < "$b64tmp" > "$outpath" 2>/dev/null || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$b64tmp" 2>/dev/null || true; return 9; }
+        chmod 600 "$outpath" 2>/dev/null || true
+      fi
+      rm -f "$b64tmp" 2>/dev/null || true
+    else
+      # If b64tmp empty, fallback to plain write with lock_exec
+      if type lock_exec >/dev/null 2>&1; then
+        lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -c '
+          set -e
+          src="$1"
+          dest="$2"
+          cat "$src" > "$dest"
+          chmod 600 "$dest" 2>/dev/null || true
+        ' _ "$tmpfinal" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
+      else
+        cat "$tmpfinal" > "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
+        chmod 600 "$outpath" 2>/dev/null || true
+      fi
+    fi
+  else
+    # No b64_atomic_write available: best-effort plain write with lock if possible
+    if type lock_exec >/dev/null 2>&1; then
+      lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -c '
+        set -e
+        src="$1"
+        dest="$2"
+        cat "$src" > "$dest"
+        chmod 600 "$dest" 2>/dev/null || true
+      ' _ "$tmpfinal" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
+    else
+      cat "$tmpfinal" > "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
+      chmod 600 "$outpath" 2>/dev/null || true
+    fi
+  fi
+
   rm -rf "$tmpd" 2>/dev/null || true
-  return 9
+  dbg "Models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
+  return 0
 }
 
 validate_model_gemini() {
-  local model="$1"
-  local file="${MODELS_FILE:-${MODELSFILE:-}}"
-  if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
-    grep -x -F -q "$model" "$file" 2>/dev/null
-    return $?
-  fi
+  # Minimal provider-specific validation.
+  # NOTE: Core already runs validate_model_core which checks MODELS_FILE and is_supported_model.
+  # Keep provider-level checks only for Gemini-specific constraints (none required currently).
   return 0
 }
 
 auto_select_model_gemini() {
   local file="${MODELS_FILE:-${MODELSFILE:-}}"
+  local cnt=0 model
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
-    awk 'NF{print; exit}' "$file" 2>/dev/null || true
-    return 0
+    # Preserve order, skip duplicates, stop after MAX_MODELS, and return first supported model
+    while IFS= read -r model || [ -n "$model" ]; do
+      [ -z "$model" ] && continue
+      cnt=$((cnt+1))
+      # Check provider/core support for the model
+      if type is_supported_model >/dev/null 2>&1; then
+        if is_supported_model "$model"; then
+          printf '%s\n' "$model"
+          return 0
+        fi
+      else
+        # If is_supported_model not available, fallback to returning first non-empty entry
+        printf '%s\n' "$model"
+        return 0
+      fi
+      if [ "$cnt" -ge "${MAX_MODELS:-200}" ]; then
+        break
+      fi
+    done < "$file"
   fi
+  # No candidate found
   printf ''
   return 0
 }
