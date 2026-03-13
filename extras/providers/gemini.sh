@@ -503,7 +503,7 @@ refresh_models_gemini() {
     return 7
   fi
 
-  local workdir tmpd out errf curlout api_url parsed tmpfinal b64tmp http_code time_total cred_type b64candidate
+  local workdir tmpd out errf curlout api_url parsed tmpfinal http_code time_total cred_type
   workdir="$(_get_work_tmpdir_gemini)" || return 4
   tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)"
   [ -n "$tmpd" ] || return 4
@@ -512,9 +512,6 @@ refresh_models_gemini() {
   curlout="$tmpd/curl.out"
   parsed="$tmpd/parsed_models.txt"
   tmpfinal="$tmpd/final_models.txt"
-  # prefer .b64.tmp but accept .b64 for compatibility with older runs
-  b64tmp_candidates=("${outpath}.b64.tmp" "${outpath}.b64")
-
   api_url="${MODELS_ENDPOINT_GEMINI:-}"
   cred_type="$(detect_gemini_cred_type "$key")"
 
@@ -533,9 +530,7 @@ refresh_models_gemini() {
   if [ -z "$http_code" ]; then http_code="000"; fi
   if [ "${http_code:0:1}" != "2" ]; then
     printf '%s\n' "gemini: models.list HTTP code: $http_code" >&2
-    printf '%s\n' "gemini: raw response (head):" >&2
     head -n 200 "$out" >&2 || true
-    printf '%s\n' "gemini: curl stderr (head):" >&2
     head -n 200 "$errf" >&2 || true
     gemini_report_error "$out" "$errf"
     rm -rf "$tmpd" 2>/dev/null || true
@@ -554,7 +549,6 @@ refresh_models_gemini() {
   if [ ! -s "$parsed" ]; then
     printf '%s\n' "gemini: parsed models list empty; raw response (head):" >&2
     head -n 200 "$out" >&2 || true
-    printf '%s\n' "gemini: curl stderr (head):" >&2
     head -n 200 "$errf" >&2 || true
     gemini_report_error "$out" "$errf"
     rm -rf "$tmpd" 2>/dev/null || true
@@ -564,30 +558,34 @@ refresh_models_gemini() {
   awk '!seen[$0]++{print}' "$parsed" | head -n "${MAX_MODELS:-200}" > "$tmpfinal" 2>/dev/null || true
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
 
-  # Try atomic base64 staging + lock move (write to preferred candidate .b64.tmp first)
-  preferred_b64="${outpath}.b64.tmp"
-  base64 -w0 < "$tmpfinal" > "$preferred_b64" 2>/dev/null || base64 < "$tmpfinal" > "$preferred_b64" 2>/dev/null || true
+  # Write staging in both candidate names for compatibility
+  local preferred_b64="${outpath}.b64.tmp"
+  local compat_b64="${outpath}.b64"
 
+  base64 -w0 < "$tmpfinal" > "$preferred_b64" 2>/dev/null || base64 < "$tmpfinal" > "$preferred_b64" 2>/dev/null || true
+  # also write compat file to handle older runs
+  cp -f "$preferred_b64" "$compat_b64" 2>/dev/null || true
+
+  # Try atomic decode/move using lock_exec if available
   if [ -s "$preferred_b64" ]; then
-    # attempt atomic move/decode using lock_exec if available
     if type lock_exec >/dev/null 2>&1; then
       lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -e -c '
         manifest_b64="$1"
         dest="$2"
         base64 ${B64_DECODE_OPT:--d} < "$manifest_b64" > "$dest"
         chmod 600 "$dest" 2>/dev/null || true
-      ' _ "$preferred_b64" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$preferred_b64" 2>/dev/null || true; return 9; }
-      rm -f "$preferred_b64" 2>/dev/null || true
+      ' _ "$preferred_b64" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$preferred_b64" "$compat_b64" 2>/dev/null || true; return 9; }
+      rm -f "$preferred_b64" "$compat_b64" 2>/dev/null || true
     else
-      base64 ${B64_DECODE_OPT:--d} < "$preferred_b64" > "$outpath" 2>/dev/null || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$preferred_b64" 2>/dev/null || true; return 9; }
+      base64 ${B64_DECODE_OPT:--d} < "$preferred_b64" > "$outpath" 2>/dev/null || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$preferred_b64" "$compat_b64" 2>/dev/null || true; return 9; }
       chmod 600 "$outpath" 2>/dev/null || true
-      rm -f "$preferred_b64" 2>/dev/null || true
+      rm -f "$preferred_b64" "$compat_b64" 2>/dev/null || true
     fi
   fi
 
-  # If final file still missing, check for any existing .b64 candidate (compatibility) and decode it
+  # If final file still missing, try decoding any existing candidate
   if [ ! -s "$outpath" ]; then
-    for b64candidate in "${b64tmp_candidates[@]}"; do
+    for b64candidate in "$preferred_b64" "$compat_b64"; do
       if [ -s "$b64candidate" ]; then
         base64 --decode < "$b64candidate" > "$outpath" 2>/dev/null || base64 -d < "$b64candidate" > "$outpath" 2>/dev/null || (openssl base64 -d -in "$b64candidate" -out "$outpath" 2>/dev/null) || true
         chmod 600 "$outpath" 2>/dev/null || true
@@ -597,7 +595,7 @@ refresh_models_gemini() {
     done
   fi
 
-  # Final fallback: write tmpfinal directly under lock or plain write
+  # Final fallback: write tmpfinal directly
   if [ ! -s "$outpath" ]; then
     if type lock_exec >/dev/null 2>&1; then
       lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -e -c '
