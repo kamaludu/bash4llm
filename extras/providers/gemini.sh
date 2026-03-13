@@ -491,7 +491,7 @@ refresh_models_gemini() {
   # - Mai scaricare liste illimitate
   # - Sempre applicare MAX_MODELS lato API se possibile
   # - Sempre tagliare a MAX_MODELS prima di scrivere MODELS_FILE
-  # - Scrittura atomica + lock (b64_atomic_write + lock_exec)
+  # - Scrittura atomica + lock (b64_atomic_write + lock_exec) con fallback di decodifica
   local outpath="${1:-${MODELS_FILE:-${MODELSFILE:-}}}"
   local key="${GEMINI_API_KEY:-}"
   if [ -z "$key" ]; then
@@ -515,24 +515,17 @@ refresh_models_gemini() {
   b64tmp="${outpath}.b64.tmp"
 
   api_url="${MODELS_ENDPOINT_GEMINI:-}"
-
   cred_type="$(detect_gemini_cred_type "$key")"
 
-  # If provider supports page size param, append it defensively
   case "$api_url" in
     *\?*) api_url="${api_url}&pageSize=${MAX_MODELS}" ;;
     *) api_url="${api_url}?pageSize=${MAX_MODELS}" ;;
   esac
 
   if [ "$cred_type" = "apikey" ]; then
-    # Clear Authorization header explicitly
-    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
-      :
-    fi
+    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then :; fi
   else
-    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
-      :
-    fi
+    if ! curl ${CURL_BASE_OPTS:-} -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then :; fi
   fi
 
   read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
@@ -548,18 +541,15 @@ refresh_models_gemini() {
     return 8
   fi
 
-  # Primary parse: jq if JSON valid
   if jq -e . "$out" >/dev/null 2>&1; then
     jq -r '.models[]?.name // .models[]?.id // empty' "$out" > "$parsed" 2>/dev/null || true
   else
-    # Fallback heuristic: extract "name" or "id" tokens from raw response
     grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' > "$parsed" 2>/dev/null || true
     if [ ! -s "$parsed" ]; then
       grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' > "$parsed" 2>/dev/null || true
     fi
   fi
 
-  # If parsed empty, report and exit
   if [ ! -s "$parsed" ]; then
     printf '%s\n' "gemini: parsed models list empty; raw response (head):" >&2
     head -n 200 "$out" >&2 || true
@@ -570,37 +560,38 @@ refresh_models_gemini() {
     return 9
   fi
 
-  # Deduplicate while preserving order, then trim to MAX_MODELS
-  awk '!seen[$0]++{print}' "$parsed" | head -n "${MAX_MODELS:-${MAX_MODELS:-200}}" > "$tmpfinal" 2>/dev/null || true
-
-  # Ensure destination dir exists
+  awk '!seen[$0]++{print}' "$parsed" | head -n "${MAX_MODELS:-200}" > "$tmpfinal" 2>/dev/null || true
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
 
-  # Write atomically using b64_atomic_write + lock_exec
+  # Try atomic base64 staging + lock move
   if type b64_atomic_write >/dev/null 2>&1; then
-    # write base64 staging file
     base64 -w0 < "$tmpfinal" > "$b64tmp" 2>/dev/null || base64 < "$tmpfinal" > "$b64tmp" 2>/dev/null || true
     if [ -s "$b64tmp" ]; then
-      # Use lock_exec to move/decode into final path
       if type lock_exec >/dev/null 2>&1; then
-        lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -c '
-          set -e
+        lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -e -c '
           manifest_b64="$1"
           dest="$2"
           base64 ${B64_DECODE_OPT:--d} < "$manifest_b64" > "$dest"
           chmod 600 "$dest" 2>/dev/null || true
         ' _ "$b64tmp" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$b64tmp" 2>/dev/null || true; return 9; }
       else
-        # Fallback: decode directly (best-effort)
         base64 ${B64_DECODE_OPT:--d} < "$b64tmp" > "$outpath" 2>/dev/null || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; rm -f "$b64tmp" 2>/dev/null || true; return 9; }
         chmod 600 "$outpath" 2>/dev/null || true
       fi
       rm -f "$b64tmp" 2>/dev/null || true
+    fi
+  fi
+
+  # Fallback: if final file missing but .b64 exists or atomic path failed, decode directly
+  if [ ! -s "$outpath" ]; then
+    if [ -s "$b64tmp" ]; then
+      base64 --decode < "$b64tmp" > "$outpath" 2>/dev/null || base64 -d < "$b64tmp" > "$outpath" 2>/dev/null || (openssl base64 -d -in "$b64tmp" -out "$outpath" 2>/dev/null) || true
+      chmod 600 "$outpath" 2>/dev/null || true
+      rm -f "$b64tmp" 2>/dev/null || true
     else
-      # If b64tmp empty, fallback to plain write with lock_exec
+      # If no b64 staging, write tmpfinal directly under lock if possible
       if type lock_exec >/dev/null 2>&1; then
-        lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -c '
-          set -e
+        lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -e -c '
           src="$1"
           dest="$2"
           cat "$src" > "$dest"
@@ -610,20 +601,6 @@ refresh_models_gemini() {
         cat "$tmpfinal" > "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
         chmod 600 "$outpath" 2>/dev/null || true
       fi
-    fi
-  else
-    # No b64_atomic_write available: best-effort plain write with lock if possible
-    if type lock_exec >/dev/null 2>&1; then
-      lock_exec "${MODELS_LOCK:-${outpath}.lock}" "${GROQBASH_LOCK_TIMEOUT_MODELS:-10}" -- sh -c '
-        set -e
-        src="$1"
-        dest="$2"
-        cat "$src" > "$dest"
-        chmod 600 "$dest" 2>/dev/null || true
-      ' _ "$tmpfinal" "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
-    else
-      cat "$tmpfinal" > "$outpath" || { gemini_report_error "$out" "$errf"; rm -rf "$tmpd" 2>/dev/null || true; return 9; }
-      chmod 600 "$outpath" 2>/dev/null || true
     fi
   fi
 
