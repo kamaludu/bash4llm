@@ -145,6 +145,9 @@ GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
 GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
+# Limits - Maximum number of models to keep per provider when refreshing model lists.
+# Configurable via environment: export MAX_MODELS=200
+MAX_MODELS="${MAX_MODELS:-200}"
 
 umask 077
 mkdir -p "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$GROQBASH_EXTRAS_DIR/providers" 2>/dev/null || true
@@ -1005,6 +1008,9 @@ call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 # - Writes via b64_atomic_write + lock_exec to ensure atomic update.
 # ---------------------------------------------------------------------------
 refresh_models_groq() {
+  # refresh_models_groq: safe, MAX_MODELS-limited refresh of provider model list.
+  # Policy: ALL providers must never download unbounded model lists.
+  #         Always prefer API-side limits; otherwise parse incrementally and trim to MAX_MODELS.
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
     GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
   fi
@@ -1014,7 +1020,7 @@ refresh_models_groq() {
   fi
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  local workdir tmpd out errf parsed tmpout api_url jq_ok
+  local workdir tmpd out errf parsed tmpout api_url try_url jq_ok rc
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
   tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX 2>/dev/null || true)"
@@ -1022,49 +1028,74 @@ refresh_models_groq() {
   out="$tmpd/models.json"; errf="$tmpd/curl.err"
   api_url="https://api.groq.com/openai/v1/models"
 
-  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
-    log_error "CURL" "curl failed while refreshing models"; head -n 50 "$errf" >&2 || true
-    rm -rf "$tmpd"
-    return "$GROQBASHERRCURL_FAILED"
-  fi
-
-  parsed="$tmpd/parsed_models.txt"
-  if jq -e . "$out" >/dev/null 2>&1; then
-    jq_ok=1
-    jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u > "$parsed" || true
-  else
-    jq_ok=0
-    log_warn "MODELREFRESH" "models response not valid JSON; using heuristic parse"
-    # Heuristic: extract "id":"..." occurrences
-    grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u > "$parsed" || true
-  fi
-
-  if [ -s "$parsed" ]; then
-    if [ "$jq_ok" -eq 0 ]; then
-      # Validate heuristic output contains plausible ids (alnum, ., _, :, -)
-      if ! awk '/^[[:alnum:]._:-]+$/{print; ok=1} END{exit !ok}' "$parsed"; then
-        log_error "MODELREFRESH" "Heuristic parse produced invalid model ids; aborting refresh"
-        rm -rf "$tmpd"
-        return "$GROQBASHERRAPI"
+  # 1) Try common limit/pagination params to avoid full download
+  jq_ok=0
+  for param in "limit" "page[size]" "pageSize"; do
+    try_url="${api_url}?${param}=${MAX_MODELS}"
+    rm -f "$out" "$errf" 2>/dev/null || true
+    if curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$try_url" -o "$out" 2>"$errf"; then
+      if jq -e . "$out" >/dev/null 2>&1; then
+        jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
+        if [ -s "$tmpd/parsed_models.txt" ]; then parsed="$tmpd/parsed_models.txt"; jq_ok=1; break; fi
+      else
+        # Heuristic parse but still limit
+        grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
+        if [ -s "$tmpd/parsed_models.txt" ]; then parsed="$tmpd/parsed_models.txt"; jq_ok=0; break; fi
       fi
     fi
+  done
+
+  # 2) If no paged/limited response worked, perform a conservative fetch and trim
+  if [ -z "${parsed:-}" ] || [ ! -s "$parsed" ]; then
+    rm -f "$out" "$errf" 2>/dev/null || true
+    # Attempt streaming extraction to avoid storing huge payloads.
+    # Note: curl may be terminated by pipe close once awk exits after MAX_MODELS.
+    if curl --no-buffer "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" 2>"$errf" | \
+       grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt"; then
+      parsed="$tmpd/parsed_models.txt"
+      jq_ok=0
+    else
+      # Fallback: single conservative download, then parse and trim
+      if curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
+        if jq -e . "$out" >/dev/null 2>&1; then
+          jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
+          parsed="$tmpd/parsed_models.txt"; jq_ok=1
+        else
+          grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
+          parsed="$tmpd/parsed_models.txt"; jq_ok=0
+        fi
+      fi
+    fi
+  fi
+
+  # 3) Validate and write at most MAX_MODELS lines atomically
+  if [ -s "${parsed:-}" ]; then
+    # Validate plausible ids (alnum, ., _, :, -)
+    if ! awk '/^[[:alnum:]._:-]+$/{print; ok=1} END{exit !ok}' "$parsed"; then
+      log_error "MODELREFRESH" "Parsed model ids invalid; aborting refresh"
+      rm -rf "$tmpd"
+      return "$GROQBASHERRAPI"
+    fi
+
+    # Trim defensively to MAX_MODELS (already trimmed upstream, but enforce again)
+    awk 'NR<=ENVIRON["MAX_MODELS"]{print}' "$parsed" > "$tmpd/parsed_trimmed.txt" || true
 
     mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
     tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" )" || tmpout="$MODELS_FILE.tmp"
-    cat "$parsed" > "$tmpout"
-    # write base64 staging and then atomically decode under models lock
+    cat "$tmpd/parsed_trimmed.txt" > "$tmpout"
+
+    # Atomic write via base64 staging and models lock
     b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
     lockfile="$MODELS_LOCK"
     lock_exec "$lockfile" 10 -- sh -c '
       set -e
       manifest_b64="$1"
       dest="$2"
-      # decode staging using exported decode opt
       base64 ${B64_DECODE_OPT} < "$manifest_b64" > "$dest"
       chmod 600 "$dest" 2>/dev/null || true
     ' _ "${MODELS_FILE}.b64" "$MODELS_FILE"
     chmod 600 "$MODELS_FILE" 2>/dev/null || true
-    log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE"
+    log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
     rm -rf "$tmpd"
     return 0
   else
@@ -1363,6 +1394,58 @@ file_readable() { [ -r "$1" ] && [ -f "$1" ]; }
 trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
 is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
 
+is_supported_model() {
+  local m="$1"
+  case "$m" in
+    *image*|*img*|*imagen*|*vision*|*veo*|\
+    *audio*|*native-audio*|*tts*|*speech*|*wav2vec*|*whisper*|\
+    *embedding*|*embed*|\
+    *robotics*|*computer-use*|\
+    *vqa*|*clip*|*vit*)
+      return 1 ;;
+    *)
+      return 0 ;;
+  esac
+}
+
+list_models_cli() {
+  if [ ! -s "$MODELS_FILE" ]; then
+    printf 'No models available locally. Consider --refresh-models.\n' >&2
+    return 1
+  fi
+  # Read up to MAX_MODELS lines defensively
+  local count=0 model
+  while IFS= read -r model || [ -n "$model" ]; do
+    [ -z "$model" ] && continue
+    count=$((count+1))
+    if is_supported_model "$model"; then
+      printf '%s\n' "$model"
+    else
+      printf '%s\t[NOT SUPPORTED: Requires non-text input]\n' "$model"
+    fi
+    # Defensive stop if MODELS_FILE unexpectedly long
+    if [ "$count" -ge "$MAX_MODELS" ]; then break; fi
+  done < "$MODELS_FILE"
+  return 0
+}
+
+validate_model_core() {
+  local model="$1"
+  # If MODELS_FILE exists and is non-empty, require presence
+  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
+    if ! grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
+      printf 'groqbash: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
+      return 1
+    fi
+  fi
+  # Check textual support
+  if ! is_supported_model "$model"; then
+    printf 'groqbash: ERROR: The "%s" model is not supported by GroqBash (requires non-text input).\n' "$model" >&2
+    return 1
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # CLI parsing (flags, normalization, immediate actions)
 # ---------------------------------------------------------------------------
@@ -1490,8 +1573,7 @@ if [ "$LIST_PROVIDERS" -eq 1 ]; then
 fi
 
 if [ "$LIST_MODELS" -eq 1 ]; then
-  if [ -s "$MODELS_FILE" ]; then cat "$MODELS_FILE" >&2; exit 0
-  else printf 'No models available locally. Consider --refresh-models.\n' >&2; exit "$GROQBASHERRTMP"; fi
+  if list_models_cli; then exit 0; else exit "$GROQBASHERRTMP"; fi
 fi
 
 if [ -n "$SET_DEFAULT_MODEL" ]; then
@@ -1967,6 +2049,7 @@ fi
 load_local_config
 load_whitelist
 
+# Determine final_model (preserve existing precedence but ensure only supported models are selected)
 final_model=""
 
 if [ -n "$MODEL" ]; then
@@ -1976,14 +2059,47 @@ else
   if [ -s "$MODEL_PROVIDER_CFG" ]; then
     final_model="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
   fi
+
+  # If still empty, try provider auto-select but ensure it's supported
   if [ -z "$final_model" ]; then
-    final_model="$(auto_select_model_dispatch 2>/dev/null || true)"
+    # Try provider auto-select; if it returns an unsupported model, try next candidates from MODELS_FILE
+    candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
+    if [ -n "$candidate" ] && is_supported_model "$candidate"; then
+      final_model="$candidate"
+    else
+      # Fallback: scan MODELS_FILE for first supported model (defensive, up to MAX_MODELS)
+      if [ -s "$MODELS_FILE" ]; then
+        cnt=0
+        while IFS= read -r m || [ -n "$m" ]; do
+          [ -z "$m" ] && continue
+          cnt=$((cnt+1))
+          if is_supported_model "$m"; then
+            final_model="$m"
+            break
+          fi
+          if [ "$cnt" -ge "$MAX_MODELS" ]; then break; fi
+        done < "$MODELS_FILE"
+      fi
+    fi
   fi
+
+  # Additional fallbacks: config MODEL= in config file or ALLOWED_MODELS first supported entry
   if [ -z "$final_model" ] && [ -f "$GROQBASH_CONFIG_DIR/config" ]; then
     final_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "$GROQBASH_CONFIG_DIR/config" 2>/dev/null || true)"
+    if [ -n "$final_model" ] && ! is_supported_model "$final_model"; then final_model=""; fi
   fi
+
   if [ -z "$final_model" ] && [ -n "$ALLOWED_MODELS" ]; then
-    final_model="$(printf '%s\n' "$ALLOWED_MODELS" | awk 'NF{print; exit}')"
+    # ALLOWED_MODELS may contain up to MAX_MODELS lines; pick first supported
+    cnt=0
+    while IFS= read -r m || [ -n "$m" ]; do
+      [ -z "$m" ] && continue
+      cnt=$((cnt+1))
+      if is_supported_model "$m"; then final_model="$m"; break; fi
+      if [ "$cnt" -ge "$MAX_MODELS" ]; then break; fi
+    done <<EOF
+$(printf '%s\n' "$ALLOWED_MODELS")
+EOF
   fi
 fi
 
@@ -1992,6 +2108,12 @@ if [ -z "$final_model" ]; then
   exit "$GROQBASHERRBAD_MODEL"
 fi
 
+# Core-level validation: presence in MODELS_FILE (if present) and text-only support
+if ! validate_model_core "$final_model"; then
+  exit "$GROQBASHERRBAD_MODEL"
+fi
+
+# Provider-specific validation (optional)
 if ! validate_model_dispatch "$final_model"; then
   log_error "MODEL" "invalid model: $final_model"
   exit "$GROQBASHERRBAD_MODEL"
