@@ -396,21 +396,26 @@ call_api_streaming_gemini() {
 # Attempts to fetch models list from MODELS_ENDPOINT_GEMINI.
 # If the API key is not authorized for models.list (common), writes a safe static fallback models.txt.
 refresh_models_gemini() {
+  # Strict, jq-only refresh for Gemini models
   local outpath="${1:-${MODELS_FILE:-${MODELSFILE:-}}}"
   local key="${GEMINI_API_KEY:-}"
+  local api_url="${MODELS_ENDPOINT_GEMINI:-https://generativelanguage.googleapis.com/v1beta/models}"
+  local max="${MAX_MODELS:-200}"
+
   if [ -z "$outpath" ]; then
-    printf '%s\n' "Error: MODELS file path not provided." >&2
-    return 7
+    log_error "MODELREFRESH" "MODELS file path not provided."
+    return "$GROQBASHERRTMP"
   fi
   if [ -z "$key" ]; then
-    printf '%s\n' "Error: GEMINI_API_KEY is required to refresh models." >&2
-    return 2
+    log_error "APIKEY" "GEMINI_API_KEY is required to refresh models."
+    return "$GROQBASHERRNOAPIKEY"
   fi
 
-  local workdir tmpd out errf curlout parsed tmpfinal http_code time_total api_url key_trim
-  workdir="$(_get_work_tmpdir_gemini)" || return 4
-  tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)"
-  [ -n "$tmpd" ] || return 4
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  local workdir tmpd out errf curlout parsed tmpfinal http_code time_total key_trim tmpout lockfile
+  workdir="$(_get_work_tmpdir_gemini)" || workdir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+  tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX)" || return "$GROQBASHERRTMP"
 
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
@@ -418,66 +423,81 @@ refresh_models_gemini() {
   parsed="$tmpd/parsed_models.txt"
   tmpfinal="$tmpd/final_models.txt"
 
-  api_url="${MODELS_ENDPOINT_GEMINI:-}"
   key_trim="$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-  # Append pageSize and API key to the models endpoint
   case "$api_url" in
-    *\?*) api_url="${api_url}&pageSize=${MAX_MODELS:-200}&key=${key_trim}" ;;
-    *)    api_url="${api_url}?pageSize=${MAX_MODELS:-200}&key=${key_trim}" ;;
+    *\?*) api_url="${api_url}&pageSize=${max}&key=${key_trim}" ;;
+    *)    api_url="${api_url}?pageSize=${max}&key=${key_trim}" ;;
   esac
 
-  # Try to call models.list (may return 403 for API keys). Explicitly clear Authorization header.
-  curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout" || true
+  # Fetch models list (explicitly clear Authorization header)
+  rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
+  if ! curl ${CURL_BASE_OPTS:-} -H "Authorization:" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+    log_error "MODELREFRESH" "HTTP request to Gemini models endpoint failed."
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
 
   read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
   http_code="${http_code:-000}"
 
   if [ "${http_code:0:1}" != "2" ]; then
-    # Likely 403: API key not authorized for models.list. Use a safe static fallback.
-    printf '%s\n' "gemini: models.list HTTP code: $http_code (falling back to static models list)" >&2
-    mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    {
-      printf '%s\n' "gemini-2.5-flash"
-    } > "$tmpfinal"
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$tmpfinal" | atomic_write "$outpath" || cp -f "$tmpfinal" "$outpath" 2>/dev/null || true
-    else
-      cp -f "$tmpfinal" "$outpath" 2>/dev/null || true
-    fi
-    chmod 600 "$outpath" 2>/dev/null || true
-    rm -rf "$tmpd" 2>/dev/null || true
-    dbg "Models fallback written to: $outpath"
-    return 0
+    log_error "MODELREFRESH" "models.list HTTP code: $http_code"
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
   fi
 
-  # If we got a 2xx, parse the response for model names
-  if jq -e . "$out" >/dev/null 2>&1; then
-    jq -r '.models[]?.name // .models[]?.id // empty' "$out" > "$parsed" 2>/dev/null || true
-  else
-    grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' > "$parsed" 2>/dev/null || true
-    if [ ! -s "$parsed" ]; then
-      grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' > "$parsed" 2>/dev/null || true
-    fi
+  # Parse model names using jq (strict)
+  if ! jq -e . "$out" >/dev/null 2>&1; then
+    log_error "MODELREFRESH" "Invalid JSON received from Gemini models endpoint."
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
   fi
+
+  jq -r '.models[]?.name // empty' "$out" | awk 'NF{print}' | sort -u > "$parsed" 2>/dev/null || true
 
   if [ ! -s "$parsed" ]; then
-    printf '%s\n' "gemini: parsed models list empty; using static fallback" >&2
-    mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    printf '%s\n' "gemini-2.5-flash" > "$tmpfinal"
-  else
-    awk '!seen[$0]++{print}' "$parsed" | head -n "${MAX_MODELS:-200}" > "$tmpfinal" 2>/dev/null || true
+    log_error "MODELREFRESH" "parsed models list empty"
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
   fi
 
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$tmpfinal" | atomic_write "$outpath" || cp -f "$tmpfinal" "$outpath" 2>/dev/null || true
-  else
-    cp -f "$tmpfinal" "$outpath" 2>/dev/null || true
+  # Trim to MAX_MODELS defensively
+  awk -v M="$max" 'NR<=M{print}' "$parsed" > "$tmpfinal" || true
+
+  # Ensure destination dir exists
+  mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
+  tmpout="$(_mktemp_in_dir "$(dirname "$outpath")" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
+  cat "$tmpfinal" > "$tmpout"
+
+  # Atomic write via base64 staging and lock (project pattern)
+  if ! b64_atomic_write "${outpath}.b64" 10 < "$tmpout"; then
+    log_error "MODELREFRESH" "failed to stage models file"
+    rm -f "$tmpout" 2>/dev/null || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRTMP"
   fi
+
+  lockfile="${MODELS_LOCK:-${outpath}.lock}"
+  lock_exec "$lockfile" 10 -- sh -c '
+    set -e
+    manifest_b64="$1"
+    dest="$2"
+    base64 ${B64_DECODE_OPT} < "$manifest_b64" > "$dest"
+    chmod 600 "$dest" 2>/dev/null || true
+  ' _ "${outpath}.b64" "$outpath" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+
   chmod 600 "$outpath" 2>/dev/null || true
+  log_info "MODELREFRESH" "Gemini models refreshed and saved to: $outpath (max ${max})"
 
-  rm -rf "$tmpd" 2>/dev/null || true
-  dbg "Models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
+  rm -rf "$tmpd"
   return 0
 }
 
