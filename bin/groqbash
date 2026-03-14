@@ -806,12 +806,16 @@ _mktemp_in_dir() {
 # - Honors STREAM_MODE via stream boolean in payload.
 # ---------------------------------------------------------------------------
 buildpayload_groq() {
-  local workdir tmp_payload model_in_file model_to_use user_prompt stream_json
+  # Build provider payload for Groq and stage it as a base64 file.
+  # Ensure $PAYLOAD points to a .b64 staged file so caller can reliably detect/decodify.
+  local workdir tmp_payload tmp_b64 dest_b64 model_in_file model_to_use user_prompt stream_json
+
   workdir="${RUN_TMPDIR:-}"
   if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
     workdir="$(make_tmpdir 2>/dev/null || true)"
   fi
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+
   tmp_payload="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
   umask 077
 
@@ -820,9 +824,10 @@ buildpayload_groq() {
   # If JSON_INPUT provided, prefer it (supports both messages and prompt shapes)
   if [ -n "${JSON_INPUT:-}" ]; then
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      # stage the provided JSON as base64
       b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-      mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      dest_b64="${PAYLOAD:-$workdir/payload}.b64"
+      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      PAYLOAD="$dest_b64"
       return 0
     fi
     if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
@@ -836,12 +841,17 @@ buildpayload_groq() {
             --arg user "$user_prompt" \
             '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
       b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-      mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      dest_b64="${PAYLOAD:-$workdir/payload}.b64"
+      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      PAYLOAD="$dest_b64"
       return 0
     fi
+
     # Otherwise stage the raw JSON_INPUT
     b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-    mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    dest_b64="${PAYLOAD:-$workdir/payload}.b64"
+    mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    PAYLOAD="$dest_b64"
     return 0
   fi
 
@@ -864,7 +874,12 @@ buildpayload_groq() {
   fi
 
   b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-  mv -f "$tmp_payload.b64" "$PAYLOAD" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+
+  # Move staged .b64 to a deterministic destination and ensure PAYLOAD points to it.
+  dest_b64="${PAYLOAD:-$workdir/payload}.b64"
+  mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+  PAYLOAD="$dest_b64"
+
   return 0
 }
 
@@ -876,6 +891,8 @@ buildpayloadgroq() { buildpayload_groq "$@"; }
 # - Writes response to $RESP and returns 0 on HTTP 2xx.
 # ---------------------------------------------------------------------------
 call_api_groq() {
+  # Send payload to Groq API. Robustly detect and decode base64-staged payloads
+  # even if the filename lacks a .b64 extension. Validate decoded JSON before sending.
   if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
   if [ -z "${PAYLOAD:-}" ] || [ ! -s "${PAYLOAD:-}" ]; then log_error "PAYLOAD" "payload file missing or empty: ${PAYLOAD:-<unset>}"; return "$GROQBASHERRTMP"; fi
   if is_truthy "${DRY_RUN:-0}"; then log_info "DRYRUN" "DRY-RUN: skipping HTTP call"; return 0; fi
@@ -884,26 +901,84 @@ call_api_groq() {
   ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
   RESP="${RESP:-$RUN_TMPDIR/resp.json}"
 
-  local workdir tmpout http_code _time_total api_url rc decoded_payload
+  local workdir tmpout http_code _time_total api_url rc decoded_payload try_decoded
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
   tmpout="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
   api_url="https://api.groq.com/openai/v1/chat/completions"
 
   decoded_payload="$workdir/payload.dec.$$"
+  try_decoded=0
+
+  # Strategy:
+  # 1) If filename ends with .b64 -> decode and validate JSON.
+  # 2) Else attempt to decode and validate; if decode+jq succeeds, use decoded.
+  # 3) Else treat as raw and validate JSON; if invalid, abort with diagnostics.
+
   if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
-    b64decode < "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    if b64decode < "$PAYLOAD" > "$decoded_payload" 2>"$ERRF"; then
+      if jq -e . "$decoded_payload" >/dev/null 2>&1; then
+        try_decoded=1
+      else
+        # decoded but not valid JSON
+        log_error "PAYLOAD" "decoded payload is not valid JSON; aborting HTTP call"
+        printf 'groqbash: INFO: decoded payload (head 200 bytes):\n' >&2
+        head -c 200 "$decoded_payload" >&2 || true
+        printf '\ngroqbash: INFO: curl stderr (head):\n' >&2
+        head -n 200 "$ERRF" >&2 || true
+        rm -f "$decoded_payload" 2>/dev/null || true
+        rm -f "$tmpout" 2>/dev/null || true
+        return "$GROQBASHERRTMP"
+      fi
+    else
+      log_error "B64DECODE" "base64 decode failed; see $ERRF"
+      head -n 200 "$ERRF" >&2 || true
+      rm -f "$decoded_payload" 2>/dev/null || true
+      rm -f "$tmpout" 2>/dev/null || true
+      return "$GROQBASHERRTMP"
+    fi
   else
-    cp -f "$PAYLOAD" "$decoded_payload" 2>/dev/null || true
+    # Try decode-then-validate as a heuristic (handles providers that moved .b64 without extension)
+    if b64decode < "$PAYLOAD" > "$decoded_payload" 2>/dev/null; then
+      if jq -e . "$decoded_payload" >/dev/null 2>&1; then
+        try_decoded=1
+      else
+        # decoded but not JSON -> discard decoded and try raw
+        rm -f "$decoded_payload" 2>/dev/null || true
+        try_decoded=0
+      fi
+    else
+      try_decoded=0
+    fi
   fi
 
-  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-    rc=$?
+  if [ "$try_decoded" -eq 1 ]; then
+    # send decoded JSON
+    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+      rc=$?
+    else
+      rc=0
+    fi
+    rm -f "$decoded_payload" 2>/dev/null || true
   else
-    rc=0
+    # treat PAYLOAD as raw JSON file; validate before sending
+    if ! jq -e . "$PAYLOAD" >/dev/null 2>&1; then
+      log_error "PAYLOAD" "payload is not valid JSON and not decodable as base64; aborting HTTP call"
+      printf 'groqbash: INFO: payload (head 200 bytes):\n' >&2
+      head -c 200 "$PAYLOAD" >&2 || true
+      printf '\ngroqbash: INFO: curl stderr (head):\n' >&2
+      head -n 200 "$ERRF" >&2 || true
+      rm -f "$tmpout" 2>/dev/null || true
+      return "$GROQBASHERRTMP"
+    fi
+
+    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+      rc=$?
+    else
+      rc=0
+    fi
   fi
 
-  rm -f "$decoded_payload" 2>/dev/null || true
   read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
   rm -f "$tmpout" 2>/dev/null || true
 
