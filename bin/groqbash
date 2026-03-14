@@ -1025,9 +1025,8 @@ call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 # - Writes via b64_atomic_write + lock_exec to ensure atomic update.
 # ---------------------------------------------------------------------------
 refresh_models_groq() {
-  # Robust model refresh for Groq API
-  # Writes up to MAX_MODELS lines to $MODELS_FILE atomically.
-  # Returns 0 on success, non-zero on failure.
+  # Fetch Groq models and write normalized model names to MODELS_FILE.
+  # Prefer .data[].name then .data[].id then top-level array .[].name/.id.
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
     GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
   fi
@@ -1037,7 +1036,7 @@ refresh_models_groq() {
   fi
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  local workdir tmpd out errf api_url tmp_parsed tmp_trim rc
+  local workdir tmpd out errf api_url tmp_parsed tmp_trim tmpout rc
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
   tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX)" || return "$GROQBASHERRTMP"
@@ -1045,20 +1044,16 @@ refresh_models_groq() {
   errf="$tmpd/curl.err"
   api_url="https://api.groq.com/openai/v1/models"
 
-  # Fetch with a limit parameter to avoid huge downloads
   rm -f "$out" "$errf" 2>/dev/null || true
   if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
     log_error "MODELREFRESH" "Failed to fetch models from $api_url"
-    log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
 
-  # Validate JSON and extract model ids using jq (strict path handling)
   if ! jq -e . "$out" >/dev/null 2>&1; then
     log_error "MODELREFRESH" "Invalid JSON received from $api_url"
-    log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
@@ -1067,43 +1062,46 @@ refresh_models_groq() {
   tmp_parsed="$tmpd/parsed_models.txt"
   : > "$tmp_parsed"
 
-  # Preferred extraction: .data[].id; also accept top-level array of objects with id
+  # Extract candidate names: prefer .data[].name, then .data[].id, then top-level array .[].name/.id
   jq -r '
     if (has("data") and (.data|type) == "array") then
-      .data[]?.id // empty
+      .data[]? | (.name // .id // empty)
     elif (type == "array") then
-      .[]?.id // empty
+      .[]? | (.name // .id // empty)
     else
       empty
     end
-  ' "$out" | awk 'NF{print}' | sort -u > "$tmp_parsed"
+  ' "$out" | awk 'NF{print}' | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//' | sort -u > "$tmp_parsed" 2>/dev/null || true
 
   if [ ! -s "$tmp_parsed" ]; then
     log_error "MODELREFRESH" "models refresh: parsed list empty"
-    log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
 
-  # Validate plausible ids (allow alnum and common separators / . _ : -)
-  if ! awk '/^[[:alnum:]._\/:-]+$/{print; ok=1} END{exit !ok}' "$tmp_parsed"; then
-    log_error "MODELREFRESH" "Parsed model ids invalid; aborting refresh"
+  # Normalize entries: strip common prefixes like "models/" and "groq:"; validate allowed chars
+  tmp_trim="$tmpd/parsed_trimmed.txt"
+  awk '{
+    g=$0
+    sub(/^models\//,"",g)
+    sub(/^groq[:\/-]*/,"",g)
+    # keep only plausible model names (alnum and common separators)
+    if (g ~ /^[[:alnum:]._\/:-]+$/) print g
+  }' "$tmp_parsed" | awk -v M="$MAX_MODELS" 'NR<=M{print}' > "$tmp_trim" || true
+
+  if [ ! -s "$tmp_trim" ]; then
+    log_error "MODELREFRESH" "no valid model names after normalization"
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
 
-  # Trim to MAX_MODELS defensively
-  tmp_trim="$tmpd/parsed_trimmed.txt"
-  awk -v M="$MAX_MODELS" 'NR<=M{print}' "$tmp_parsed" > "$tmp_trim"
-
-  # Ensure destination dir exists
+  # Ensure destination dir exists and write atomically via base64 staging
   mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
   tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="$MODELS_FILE.tmp"
   cat "$tmp_trim" > "$tmpout"
 
-  # Atomic write via base64 staging and models lock (consistent with project pattern)
   if ! b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout"; then
     log_error "MODELREFRESH" "failed to stage models file"
     rm -f "$tmpout" 2>/dev/null || true
@@ -1123,7 +1121,6 @@ refresh_models_groq() {
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
   log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
 
-  # Cleanup
   rm -rf "$tmpd"
   return 0
 }
@@ -1136,15 +1133,41 @@ refreshmodelsgroq() { refresh_models_groq "$@"; }
 # - If MODELS_FILE does not exist or is empty, allow (backwards compatible).
 # ---------------------------------------------------------------------------
 validate_model_groq() {
-  local model="$1"
-  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
+  # Provider-specific validation for Groq models.
+  # Accepts either exact matches as stored in MODELS_FILE or normalized names
+  # (stripping common prefixes like "models/" or "groq:"), and enforces textual support.
+  local model="$1" norm_model file_match
+  [ -n "$model" ] || { printf 'groqbash: ERROR: validate_model_groq: model required\n' >&2; return 1; }
+
+  # Normalize incoming model for comparison: strip leading "models/" and "groq:" and trim
+  norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+  # If MODELS_FILE exists and non-empty, require presence (allow either raw or normalized forms)
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    # Exact match first (file may contain provider-specific forms)
     if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
-      return 0
+      file_match=1
     else
+      # Compare against normalized entries (strip common prefixes in file)
+      if awk '{g=$0; sub(/^models\//,"",g); sub(/^groq[:\/ -]*/,"",g); print g}' "$MODELS_FILE" | grep -x -F -q "$norm_model" 2>/dev/null; then
+        file_match=1
+      else
+        file_match=0
+      fi
+    fi
+
+    if [ "$file_match" -ne 1 ]; then
+      printf 'groqbash: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
       return 1
     fi
   fi
-  # No local whitelist available: accept (compat)
+
+  # Ensure the (normalized) model is text-capable
+  if ! is_supported_model "$norm_model"; then
+    printf 'groqbash: ERROR: The "%s" model is not supported by GroqBash (requires non-text input).\n' "$model" >&2
+    return 1
+  fi
+
   return 0
 }
 
@@ -1152,16 +1175,26 @@ validatemodelgroq() { validate_model_groq "$@"; }
 
 # ---------------------------------------------------------------------------
 # auto_select_model_groq
-# - Returns the first non-empty model from MODELS_FILE if present.
 # ---------------------------------------------------------------------------
 auto_select_model_groq() {
-  local file="$MODELS_FILE" result=""
+  # Return the first supported model candidate from MODELS_FILE for Groq provider.
+  # Normalizes entries by stripping common prefixes like "models/" and "groq:".
+  # Prints the selected model (normalized) to stdout and returns 0 on success,
+  # returns 1 if no suitable model found.
+  local file="$MODELS_FILE" line norm cnt=0
   if [ -f "$file" ] && [ -s "$file" ]; then
-    result="$(awk 'NF{print; exit}' "$file" 2>/dev/null || true)"
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -z "$line" ] && continue
+      cnt=$((cnt+1))
+      norm="$(printf '%s' "$line" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      if is_supported_model "$norm"; then
+        printf '%s' "$norm"
+        return 0
+      fi
+      [ "$cnt" -ge "$MAX_MODELS" ] && break
+    done < "$file"
   fi
-  result="$(printf '%s' "$result" | awk '{$1=$1;print}')"
-  printf '%s' "$result"
-  return 0
+  return 1
 }
 
 autoselectmodelgroq() { auto_select_model_groq "$@"; }
@@ -1188,13 +1221,30 @@ call_provider() {
 
 # Provider dispatch wrappers (call provider-specific implementations if present)
 refresh_models_dispatch() {
-  local destfile="${1:-$MODELS_FILE}"
+  # Dispatch to provider-specific refresh function.
+  # Accepts optional destination file path (defaults to MODELS_FILE).
+  local destfile="${1:-${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}}"
   local fn="refresh_models_${PROVIDER}"
-  if call_provider "$fn"; then
-    return 0
-  else
-    return $?
+
+  if ! type "$fn" >/dev/null 2>&1; then
+    log_error "MODELREFRESH" "Provider '$PROVIDER' does not implement $fn()."
+    return 127
   fi
+
+  # Try calling provider refresh with destfile first (many providers accept a target)
+  if "$fn" "$destfile" 2>/dev/null; then
+    return 0
+  fi
+
+  # If that failed, try calling without args (some providers ignore args)
+  if "$fn" 2>/dev/null; then
+    return 0
+  fi
+
+  # If both attempts failed, capture exit code and report
+  rc=$?
+  log_error "MODELREFRESH" "refresh_models for provider $PROVIDER failed (rc $rc)."
+  return "$rc"
 }
 
 validate_model_dispatch() {
@@ -1418,54 +1468,80 @@ trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
 is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
 
 is_supported_model() {
-  local m="$1"
-  case "$m" in
-    *image*|*img*|*imagen*|*vision*|*veo*|\
-    *audio*|*native-audio*|*tts*|*speech*|*wav2vec*|*whisper*|\
-    *embedding*|*embed*|\
-    *robotics*|*computer-use*|\
-    *vqa*|*clip*|*vit*)
-      return 1 ;;
-    *)
-      return 0 ;;
+  # Return 0 if model name appears to support text-only usage.
+  # Reject models that clearly indicate image/audio/embedding/multimodal capabilities.
+  local m="${1:-}" l
+  [ -n "$m" ] || return 1
+  l="$(printf '%s' "$m" | tr '[:upper:]' '[:lower:]')"
+
+  # Patterns that indicate non-text capabilities
+  case "$l" in
+    *image*|*imagen*|*img*|*vision*|*vqa*|*vit*|*clip*|*render*|*generate-image*|*generate_image* ) return 1 ;;
+    *audio*|*speech*|*tts*|*wav2vec*|*whisper*|*native-audio* ) return 1 ;;
+    *embed*|*embedding*|*vector* ) return 1 ;;
+    *multimodal*|*vision_audio*|*vision-audio* ) return 1 ;;
+    *) return 0 ;;
   esac
 }
 
 list_models_cli() {
-  if [ ! -s "$MODELS_FILE" ]; then
+  # Print MODELS_FILE entries in a provider-agnostic way.
+  # Normalize entries (strip leading "models/") and mark non-text models.
+  if [ ! -s "${MODELS_FILE:-}" ]; then
     printf 'No models available locally. Consider --refresh-models.\n' >&2
     return 1
   fi
-  # Read up to MAX_MODELS lines defensively
-  local count=0 model
+
+  local count=0 model norm
   while IFS= read -r model || [ -n "$model" ]; do
     [ -z "$model" ] && continue
     count=$((count+1))
-    if is_supported_model "$model"; then
-      printf '%s\n' "$model"
+    norm="$(printf '%s' "$model" | sed -e 's/^models\///' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if is_supported_model "$norm"; then
+      printf '%s\n' "$norm"
     else
-      printf '%s\t[NOT SUPPORTED: Requires non-text input]\n' "$model"
+      printf '%s\t[NOT SUPPORTED: Requires non-text input]\n' "$norm"
     fi
-    # Defensive stop if MODELS_FILE unexpectedly long
     if [ "$count" -ge "$MAX_MODELS" ]; then break; fi
   done < "$MODELS_FILE"
   return 0
 }
 
 validate_model_core() {
-  local model="$1"
-  # If MODELS_FILE exists and is non-empty, require presence
-  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    if ! grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
+  # Validate a model name against local MODELS_FILE (if present) and textual support.
+  # Accepts exact matches or matches after stripping common provider prefixes like "models/".
+  local model="$1" norm_model file_match
+  [ -n "$model" ] || { printf 'groqbash: ERROR: validate_model_core: model required\n' >&2; return 1; }
+
+  # Normalize incoming model for comparison: strip leading "models/" and surrounding whitespace
+  norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+  # If MODELS_FILE exists and non-empty, require presence (allow either raw or prefixed forms)
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    # Check exact match first (file may contain provider-specific forms)
+    if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
+      file_match=1
+    else
+      # Check normalized match (strip leading models/ in file entries and compare)
+      if awk '{gsub(/^models\//,""); print}' "$MODELS_FILE" | grep -x -F -q "$norm_model" 2>/dev/null; then
+        file_match=1
+      else
+        file_match=0
+      fi
+    fi
+
+    if [ "$file_match" -ne 1 ]; then
       printf 'groqbash: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
       return 1
     fi
   fi
-  # Check textual support
-  if ! is_supported_model "$model"; then
+
+  # Check textual support (reject obvious multimodal/audio/image models by name patterns)
+  if ! is_supported_model "$norm_model"; then
     printf 'groqbash: ERROR: The "%s" model is not supported by GroqBash (requires non-text input).\n' "$model" >&2
     return 1
   fi
+
   return 0
 }
 
