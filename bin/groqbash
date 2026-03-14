@@ -624,13 +624,30 @@ make_tmpdir() {
 }
 
 ensure_run_tmpdir() {
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then return 0; fi
+  # Create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
+  # The payload file is intentionally neutral (no extension); providers decide format.
+  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+    return 0
+  fi
+
   RUN_TMPDIR="$(make_tmpdir)" || { log_error "TMPFAIL" "cannot create RUN_TMPDIR in $GROQBASH_TMPDIR"; exit "$GROQBASHERRTMP"; }
-  PAYLOAD="$RUN_TMPDIR/payload.json.b64"
-  RESP="$RUN_TMPDIR/resp.json"
-  ERRF="$RUN_TMPDIR/err.log"
+
+  # Provider-agnostic payload path (no imposed extension or semantics)
+  PAYLOAD="${PAYLOAD:-$RUN_TMPDIR/payload}"
+  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
+  ERRF="${ERRF:-$RUN_TMPDIR/err.log}"
+
+  # Ensure response and error files exist with strict perms
+  : > "$RESP" 2>/dev/null || true
+  chmod 600 "$RESP" 2>/dev/null || true
+  : > "$ERRF" 2>/dev/null || true
+  chmod 600 "$ERRF" 2>/dev/null || true
+
+  # Cleanup trap: remove run dir unless debugging is enabled
   trap 'if [ "${GROQBASH_DEBUG:-0}" -eq 0 ]; then cleanup_tmp; else log_info "TMPDEBUG" "preserving RUN_TMPDIR=$RUN_TMPDIR"; fi' EXIT INT TERM
+
   log_info "TMPCREATE" "Created RUN_TMPDIR: $RUN_TMPDIR"
+  return 0
 }
 
 cleanup_tmp() {
