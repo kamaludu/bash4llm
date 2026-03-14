@@ -1025,9 +1025,9 @@ call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 # - Writes via b64_atomic_write + lock_exec to ensure atomic update.
 # ---------------------------------------------------------------------------
 refresh_models_groq() {
-  # refresh_models_groq: safe, MAX_MODELS-limited refresh of provider model list.
-  # Policy: ALL providers must never download unbounded model lists.
-  #         Always prefer API-side limits; otherwise parse incrementally and trim to MAX_MODELS.
+  # Robust model refresh for Groq API
+  # Writes up to MAX_MODELS lines to $MODELS_FILE atomically.
+  # Returns 0 on success, non-zero on failure.
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
     GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
   fi
@@ -1037,89 +1037,95 @@ refresh_models_groq() {
   fi
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  local workdir tmpd out errf parsed tmpout api_url try_url jq_ok rc
+  local workdir tmpd out errf api_url tmp_parsed tmp_trim rc
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX 2>/dev/null || true)"
-  [ -n "$tmpd" ] || return "$GROQBASHERRTMP"
-  out="$tmpd/models.json"; errf="$tmpd/curl.err"
+  tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX)" || return "$GROQBASHERRTMP"
+  out="$tmpd/models.json"
+  errf="$tmpd/curl.err"
   api_url="https://api.groq.com/openai/v1/models"
 
-  # 1) Try common limit/pagination params to avoid full download
-  jq_ok=0
-  for param in "limit" "page[size]" "pageSize"; do
-    try_url="${api_url}?${param}=${MAX_MODELS}"
-    rm -f "$out" "$errf" 2>/dev/null || true
-    if curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$try_url" -o "$out" 2>"$errf"; then
-      if jq -e . "$out" >/dev/null 2>&1; then
-        jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
-        if [ -s "$tmpd/parsed_models.txt" ]; then parsed="$tmpd/parsed_models.txt"; jq_ok=1; break; fi
-      else
-        # Heuristic parse but still limit
-        grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
-        if [ -s "$tmpd/parsed_models.txt" ]; then parsed="$tmpd/parsed_models.txt"; jq_ok=0; break; fi
-      fi
-    fi
-  done
-
-  # 2) If no paged/limited response worked, perform a conservative fetch and trim
-  if [ -z "${parsed:-}" ] || [ ! -s "$parsed" ]; then
-    rm -f "$out" "$errf" 2>/dev/null || true
-    # Attempt streaming extraction to avoid storing huge payloads.
-    # Note: curl may be terminated by pipe close once awk exits after MAX_MODELS.
-    if curl --no-buffer "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" 2>"$errf" | \
-       grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt"; then
-      parsed="$tmpd/parsed_models.txt"
-      jq_ok=0
-    else
-      # Fallback: single conservative download, then parse and trim
-      if curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "$api_url" -o "$out" 2>"$errf"; then
-        if jq -e . "$out" >/dev/null 2>&1; then
-          jq -r '.data[]?.id // empty' "$out" 2>/dev/null | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
-          parsed="$tmpd/parsed_models.txt"; jq_ok=1
-        else
-          grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$out" 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | awk 'NR<=ENVIRON["MAX_MODELS"]{print}' > "$tmpd/parsed_models.txt" || true
-          parsed="$tmpd/parsed_models.txt"; jq_ok=0
-        fi
-      fi
-    fi
-  fi
-
-  # 3) Validate and write at most MAX_MODELS lines atomically
-  if [ -s "${parsed:-}" ]; then
-    # Validate plausible ids (alnum, ., _, :, -)
-    if ! awk '/^[[:alnum:]._:-]+$/{print; ok=1} END{exit !ok}' "$parsed"; then
-      log_error "MODELREFRESH" "Parsed model ids invalid; aborting refresh"
-      rm -rf "$tmpd"
-      return "$GROQBASHERRAPI"
-    fi
-
-    # Trim defensively to MAX_MODELS (already trimmed upstream, but enforce again)
-    awk 'NR<=ENVIRON["MAX_MODELS"]{print}' "$parsed" > "$tmpd/parsed_trimmed.txt" || true
-
-    mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
-    tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" )" || tmpout="$MODELS_FILE.tmp"
-    cat "$tmpd/parsed_trimmed.txt" > "$tmpout"
-
-    # Atomic write via base64 staging and models lock
-    b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout" || { rm -f "$tmpout" 2>/dev/null || true; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
-    lockfile="$MODELS_LOCK"
-    lock_exec "$lockfile" 10 -- sh -c '
-      set -e
-      manifest_b64="$1"
-      dest="$2"
-      base64 ${B64_DECODE_OPT} < "$manifest_b64" > "$dest"
-      chmod 600 "$dest" 2>/dev/null || true
-    ' _ "${MODELS_FILE}.b64" "$MODELS_FILE"
-    chmod 600 "$MODELS_FILE" 2>/dev/null || true
-    log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
-    rm -rf "$tmpd"
-    return 0
-  else
-    log_error "MODELREFRESH" "models refresh: parsed list empty"
+  # Fetch with a limit parameter to avoid huge downloads
+  rm -f "$out" "$errf" 2>/dev/null || true
+  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
+    log_error "MODELREFRESH" "Failed to fetch models from $api_url"
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
+
+  # Validate JSON and extract model ids using jq (strict path handling)
+  if ! jq -e . "$out" >/dev/null 2>&1; then
+    log_error "MODELREFRESH" "Invalid JSON received from $api_url"
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  tmp_parsed="$tmpd/parsed_models.txt"
+  : > "$tmp_parsed"
+
+  # Preferred extraction: .data[].id; also accept top-level array of objects with id
+  jq -r '
+    if (has("data") and (.data|type) == "array") then
+      .data[]?.id // empty
+    elif (type == "array") then
+      .[]?.id // empty
+    else
+      empty
+    end
+  ' "$out" | awk 'NF{print}' | sort -u > "$tmp_parsed"
+
+  if [ ! -s "$tmp_parsed" ]; then
+    log_error "MODELREFRESH" "models refresh: parsed list empty"
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  # Validate plausible ids (allow alnum and common separators / . _ : -)
+  if ! awk '/^[[:alnum:]._\/:-]+$/{print; ok=1} END{exit !ok}' "$tmp_parsed"; then
+    log_error "MODELREFRESH" "Parsed model ids invalid; aborting refresh"
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  # Trim to MAX_MODELS defensively
+  tmp_trim="$tmpd/parsed_trimmed.txt"
+  awk -v M="$MAX_MODELS" 'NR<=M{print}' "$tmp_parsed" > "$tmp_trim"
+
+  # Ensure destination dir exists
+  mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
+  tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="$MODELS_FILE.tmp"
+  cat "$tmp_trim" > "$tmpout"
+
+  # Atomic write via base64 staging and models lock (consistent with project pattern)
+  if ! b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout"; then
+    log_error "MODELREFRESH" "failed to stage models file"
+    rm -f "$tmpout" 2>/dev/null || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRTMP"
+  fi
+
+  lockfile="$MODELS_LOCK"
+  lock_exec "$lockfile" 10 -- sh -c '
+    set -e
+    manifest_b64="$1"
+    dest="$2"
+    base64 ${B64_DECODE_OPT} < "$manifest_b64" > "$dest"
+    chmod 600 "$dest" 2>/dev/null || true
+  ' _ "${MODELS_FILE}.b64" "$MODELS_FILE" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+
+  chmod 600 "$MODELS_FILE" 2>/dev/null || true
+  log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
+
+  # Cleanup
+  rm -rf "$tmpd"
+  return 0
 }
 
 refreshmodelsgroq() { refresh_models_groq "$@"; }
