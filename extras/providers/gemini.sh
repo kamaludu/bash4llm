@@ -168,10 +168,21 @@ buildpayload_gemini() {
   tmp_payload="$(_mktemp_in_dir_gemini "$workdir")" || return 1
   umask 077
 
+  # Helper to write atomically if available, otherwise fallback to safe write
+  _write_payload() {
+    local src="$1" dst="$2"
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$src" | atomic_write "$dst"
+    else
+      cat "$src" > "$dst"
+      chmod 600 "$dst" 2>/dev/null || true
+    fi
+  }
+
   # If JSON_INPUT provided and already in Gemini format (has "contents"), pass through.
   if [ -n "${JSON_INPUT:-}" ] && [ -s "${JSON_INPUT:-}" ]; then
     if jq -e 'has("contents")' "$JSON_INPUT" >/dev/null 2>&1; then
-      cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+      _write_payload "$JSON_INPUT" "$PAYLOAD"
       return 0
     fi
 
@@ -187,7 +198,7 @@ buildpayload_gemini() {
         ))
       }' "$JSON_INPUT" > "$tmp_payload" 2>/dev/null || true
 
-      cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      _write_payload "$tmp_payload" "$PAYLOAD"
       return 0
     fi
 
@@ -196,12 +207,12 @@ buildpayload_gemini() {
       local user_prompt
       user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
       jq -n --arg user "$user_prompt" '{contents:[{role:"user",parts:[{text:$user}]}]}' > "$tmp_payload"
-      cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      _write_payload "$tmp_payload" "$PAYLOAD"
       return 0
     fi
 
     # Otherwise pass through raw JSON_INPUT
-    cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+    _write_payload "$JSON_INPUT" "$PAYLOAD"
     return 0
   fi
 
@@ -210,13 +221,13 @@ buildpayload_gemini() {
     local esc_content
     esc_content="$(_escape_json_string_gemini "${CONTENT:-}")"
     jq -n --arg user "$esc_content" '{contents:[{role:"user",parts:[{text:$user}]}]}' > "$tmp_payload"
-    cat "$tmp_payload" | atomic_write "$PAYLOAD"
+    _write_payload "$tmp_payload" "$PAYLOAD"
     return 0
   fi
 
   # No input: create empty contents (caller should validate)
   jq -n '{contents:[]}' > "$tmp_payload"
-  cat "$tmp_payload" | atomic_write "$PAYLOAD"
+  _write_payload "$tmp_payload" "$PAYLOAD"
   return 0
 }
 
@@ -410,9 +421,10 @@ refresh_models_gemini() {
   api_url="${MODELS_ENDPOINT_GEMINI:-}"
   key_trim="$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
+  # Append pageSize and API key to the models endpoint
   case "$api_url" in
-    *\?*) api_url="${api_url}&pageSize=${MAX_MODELS:-200}" ;;
-    *) api_url="${api_url}?pageSize=${MAX_MODELS:-200}" ;;
+    *\?*) api_url="${api_url}&pageSize=${MAX_MODELS:-200}&key=${key_trim}" ;;
+    *)    api_url="${api_url}?pageSize=${MAX_MODELS:-200}&key=${key_trim}" ;;
   esac
 
   # Try to call models.list (may return 403 for API keys). Explicitly clear Authorization header.
@@ -424,13 +436,9 @@ refresh_models_gemini() {
   if [ "${http_code:0:1}" != "2" ]; then
     # Likely 403: API key not authorized for models.list. Use a safe static fallback.
     printf '%s\n' "gemini: models.list HTTP code: $http_code (falling back to static models list)" >&2
-    # Static fallback: include the common Gemini model(s) you intend to use.
-    # Keep this minimal and safe; users can edit groqbash.d/models/models.txt manually.
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
     {
       printf '%s\n' "gemini-2.5-flash"
-      # add other known models if desired, e.g.:
-      # printf '%s\n' "gemini-2.5-pro"
     } > "$tmpfinal"
     if type atomic_write >/dev/null 2>&1; then
       cat "$tmpfinal" | atomic_write "$outpath" || cp -f "$tmpfinal" "$outpath" 2>/dev/null || true
