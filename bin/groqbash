@@ -1276,7 +1276,6 @@ autoselectmodelgroq() { auto_select_model_groq "$@"; }
 ########################################
 # SECTION: PROVIDER - END
 ########################################
-
 ########################################
 # SECTION: CORE - BEGIN
 ########################################
@@ -1624,7 +1623,8 @@ validate_model_core() {
 # CLI parsing (flags, normalization, immediate actions)
 # ---------------------------------------------------------------------------
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
-REFRESH_MODELS="${REFRESH_MODELS:-0}" LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
+# REFRESH_MODELS removed from immediate-action handling here (moved later)
+LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}"
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
@@ -1677,7 +1677,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Ensure provider selection from CLI or persisted config is applied early,
-# so immediate actions like --refresh-models use the intended provider.
+# so immediate actions like --list-providers use the intended provider.
 PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
 
 # If user passed --provider on CLI (and it's not the interactive "list"), prefer it.
@@ -1695,7 +1695,7 @@ fi
 # ---------------------------------------------------------------------------
 # Normalize boolean-like flags
 # ---------------------------------------------------------------------------
-for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE REFRESH_MODELS LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
+for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
   if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
 done
 
@@ -1707,17 +1707,9 @@ if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_tru
 fi
 
 # ---------------------------------------------------------------------------
-# Immediate actions: refresh, list providers/models, set-default, install-extras
+# Immediate actions: list providers/models, set-default, install-extras
+# Note: explicit --refresh-models handling has been moved to after provider load.
 # ---------------------------------------------------------------------------
-if [ "$REFRESH_MODELS" -eq 1 ]; then
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-    exit "$GROQBASHERRNOAPIKEY"
-  fi
-  refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
-  exit 0
-fi
-
 if [ "$LIST_PROVIDERS" -eq 1 ]; then
   PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
   printf 'Available providers:\n' >&2
@@ -2079,18 +2071,20 @@ else
 
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
 
-  # Quick syntax check and presence of required functions
-  if bash -c ". \"$PROVIDER_MODULE_PATH\" >/dev/null 2>&1 || true; declare -F | grep -q \"buildpayload_${PROVIDER}\" && declare -F | grep -q \"call_api_${PROVIDER}\""; then
-    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; exit "$GROQBASHERRTMP"; }
-
+  # Robust syntax check and load in current shell (avoid subshell tests)
+  if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
+    # Source the provider into the current shell so functions are visible
     . "$PROVIDER_MODULE_PATH"
     PROVIDER_MODULE_LOADED=1
 
+    # Validate presence of required functions in current shell
     invalid_provider=0
     for _req in "buildpayload_${PROVIDER}" "call_api_${PROVIDER}"; do
       type "$_req" >/dev/null 2>&1 || invalid_provider=1
     done
+
+    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
+    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; exit "$GROQBASHERRTMP"; }
 
     if [ "$invalid_provider" -eq 1 ]; then
       log_warn "PROVIDER" "provider module incomplete; falling back to embedded provider."
@@ -2127,6 +2121,16 @@ if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
 else
   log_error "PROVIDER" "no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin."
   exit "$GROQBASHERRAPI"
+fi
+
+# Handle explicit --refresh-models only after provider module is loaded and validated
+if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+    exit "$GROQBASHERRNOAPIKEY"
+  fi
+  refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
+  exit 0
 fi
 
 # After provider module is loaded and validated, refresh models if local whitelist is missing
