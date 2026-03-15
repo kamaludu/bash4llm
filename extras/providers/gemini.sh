@@ -308,6 +308,26 @@ call_api_gemini() {
     : > "${RESP:-/dev/null}" 2>/dev/null || true
   fi
 
+  # --- BEGIN: Gemini -> OpenAI-like response compatibility shim ---
+  # Convert Gemini response to OpenAI-like JSON so CORE can extract textual content.
+  # Requires: jq, _get_work_tmpdir_gemini, _mktemp_in_dir_gemini, _write_atomic.
+  if [ -n "${RESP:-}" ] && [ -s "${RESP}" ] && jq -e . "${RESP}" >/dev/null 2>&1; then
+    # Extract first non-empty textual part from common Gemini response locations.
+    extracted_text="$(jq -r '([(.candidates[]?.content?.parts[]?.text), (.content?.parts[]?.text), (.outputs[]?.content?.parts[]?.text)] | map(select(.!=null and .!="")) | .[0]) // empty' "${RESP}" 2>/dev/null || true)"
+    if [ -n "${extracted_text}" ]; then
+      workdir="$(_get_work_tmpdir_gemini)" || workdir="$(dirname "${RESP}")"
+      tmpconv="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null || true)"
+      if [ -z "$tmpconv" ]; then
+        tmpconv="$(mktemp 2>/dev/null || printf '/tmp/gemini-conv-%s' "$$")"
+      fi
+      jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
+      # Atomically replace RESP with the converted OpenAI-like JSON
+      _write_atomic "$tmpconv" "${RESP}" || { cp -f "$tmpconv" "${RESP}" 2>/dev/null || true; }
+      rm -f "$tmpconv" 2>/dev/null || true
+    fi
+  fi
+  # --- END: Gemini -> OpenAI-like response compatibility shim ---
+
   case "$http_code" in
     2*)
       rm -f "$tmpresp" "$tmpout" "$errf" 2>/dev/null || true
@@ -399,6 +419,23 @@ call_api_streaming_gemini() {
   if [ -n "${RESP:-}" ]; then
     _write_atomic "$RESP_RAW" "${RESP}"
   fi
+
+  # --- BEGIN: Gemini -> OpenAI-like response compatibility shim (streaming) ---
+  # Convert the saved streaming response to OpenAI-like JSON so CORE can extract textual content.
+  if [ -n "${RESP:-}" ] && [ -s "${RESP}" ] && jq -e . "${RESP}" >/dev/null 2>&1; then
+    extracted_text="$(jq -r '([(.candidates[]?.content?.parts[]?.text), (.content?.parts[]?.text), (.outputs[]?.content?.parts[]?.text)] | map(select(.!=null and .!="")) | .[0]) // empty' "${RESP}" 2>/dev/null || true)"
+    if [ -n "${extracted_text}" ]; then
+      workdir="$(_get_work_tmpdir_gemini)" || workdir="$(dirname "${RESP}")"
+      tmpconv="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null || true)"
+      if [ -z "$tmpconv" ]; then
+        tmpconv="$(mktemp 2>/dev/null || printf '/tmp/gemini-conv-%s' "$$")"
+      fi
+      jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
+      _write_atomic "$tmpconv" "${RESP}" || { cp -f "$tmpconv" "${RESP}" 2>/dev/null || true; }
+      rm -f "$tmpconv" 2>/dev/null || true
+    fi
+  fi
+  # --- END: Gemini -> OpenAI-like response compatibility shim (streaming) ---
 
   return 0
 }
