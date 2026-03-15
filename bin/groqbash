@@ -1866,7 +1866,9 @@ load_local_config() {
 load_whitelist() {
   ALLOWED_MODELS="${ALLOWED_MODELS:-}"
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    ALLOWED_MODELS="$(cat "$MODELS_FILE" 2>/dev/null || true)"
+    # Normalize entries: strip leading "models/" and trim whitespace
+    # Keep one model per line in ALLOWED_MODELS
+    ALLOWED_MODELS="$(awk '{ gsub(/^models\//,""); sub(/^[[:space:]]+/,""); sub(/[[:space:]]+$/,""); if (NF) print }' "$MODELS_FILE" 2>/dev/null || true)"
   fi
 }
 
@@ -2365,8 +2367,10 @@ fi
 is_number "$TURE" || { log_error "ARGS" "--ture must be numeric"; exit "$GROQBASHERRTMP"; }
 is_number "$MAX_TOKENS" || { log_error "ARGS" "--max must be numeric"; exit "$GROQBASHERRTMP"; }
 
+# Final guard: if ALLOWED_MODELS is present, compare normalized model names
 if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
-  if ! printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$MODEL"; then
+  norm_model="$(printf '%s' "$MODEL" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  if ! printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$norm_model"; then
     log_error "MODEL" "model '$MODEL' not supported or deprecated."
     printf '%s\n' "$ALLOWED_MODELS" >&2
     exit "$GROQBASHERRBAD_MODEL"
