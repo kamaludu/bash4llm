@@ -1629,6 +1629,7 @@ DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INST
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
+MODEL_CLI_SET="${MODEL_CLI_SET:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -1636,7 +1637,7 @@ while [ $# -gt 0 ]; do
     --list-models) LIST_MODELS=1; shift ;;
     --list-providers) LIST_PROVIDERS=1; shift ;;
     --set-default) SET_DEFAULT_MODEL="${2:-}"; shift 2 ;;
-    -m|--model) MODEL="${2:-}"; shift 2 ;;
+    -m|--model) MODEL="${2:-}"; MODEL_CLI_SET=1; shift 2 ;;
     -f) FILE_INPUTS+=("${2:-}"); shift 2 ;;
     --json-input) JSON_INPUT="${2:-}"; shift 2 ;;
     --template) TEMPLATE="${2:-}"; shift 2 ;;
@@ -2154,6 +2155,7 @@ if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   printf '  Version: %s (%s)\n' "$SCRIPT_VERSION" "$SCRIPT_DATE"
   printf '  Provider: %s\n' "$PROVIDER"
   printf '  Model (active): %s\n' "$MODEL"
+  printf '  Model set via CLI: %s\n' "${MODEL_CLI_SET:-0}"
   MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
   if [ -s "$MODEL_PROVIDER_CFG" ]; then
     printf '  Model (default): %s\n' "$(sed -n '1p' "$MODEL_PROVIDER_CFG")"
@@ -2232,7 +2234,9 @@ load_whitelist
 # Determine final_model (preserve existing precedence but ensure only supported models are selected)
 final_model=""
 
-if [ -n "$MODEL" ]; then
+# If MODEL was explicitly provided via CLI (-m/--model), honor it.
+# Otherwise ignore any MODEL value inherited from the environment and prefer persisted default / auto-select.
+if [ -n "$MODEL" ] && [ "${MODEL_CLI_SET:-0}" -eq 1 ]; then
   final_model="$MODEL"
 else
   MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
@@ -2242,12 +2246,10 @@ else
 
   # If still empty, try provider auto-select but ensure it's supported
   if [ -z "$final_model" ]; then
-    # Try provider auto-select; if it returns an unsupported model, try next candidates from MODELS_FILE
     candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
     if [ -n "$candidate" ] && is_supported_model "$candidate"; then
       final_model="$candidate"
     else
-      # Fallback: scan MODELS_FILE for first supported model (defensive, up to MAX_MODELS)
       if [ -s "$MODELS_FILE" ]; then
         cnt=0
         while IFS= read -r m || [ -n "$m" ]; do
@@ -2270,7 +2272,6 @@ else
   fi
 
   if [ -z "$final_model" ] && [ -n "$ALLOWED_MODELS" ]; then
-    # ALLOWED_MODELS may contain up to MAX_MODELS lines; pick first supported
     cnt=0
     while IFS= read -r m || [ -n "$m" ]; do
       [ -z "$m" ] && continue
