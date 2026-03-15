@@ -1,4 +1,4 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 # INSTALLATION [🇮🇹](INSTALL.md) 🇬🇧
 
 GroqBash is a portable and secure Bash wrapper for the Groq API.  
