@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-# groqbash-gui-install.sh
+# =============================================================================
 # Single-file installer for groqbash-gui Apache integration (Termux-friendly).
+# File: groqbash-gui-install.sh
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# =============================================================================
+# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
 # Strict: idempotent, atomic writes, rollback rules, permission policy.
+
+set -euo pipefail
 
 # --- Configurable defaults ---
 PROJECT_NAME="groqbash-gui"
