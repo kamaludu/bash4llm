@@ -25,7 +25,7 @@ La GUI fornisce:
 
 ## 📁 Struttura delle directory
 
-``text
+```text
 ui/
   gui-server.sh          ← entrypoint CGI
   gui-bootstrap.sh       ← bootstrap portabile (ambiente, percorsi, atomic_write, lock, ecc.)
@@ -66,7 +66,7 @@ ui/
       (file temporanei, lock, atomic_write)
 
   assets/                ← creato automaticamente (vuoto)
-``
+```
 
 ---
 
@@ -105,9 +105,9 @@ Questa separazione garantisce portabilità totale e manutenibilità.
 
 Usa l’installa‑script ufficiale:
 
-``sh
+```sh
 ./groqbash-gui-install.sh
-``
+```
 
 L’installer:
 
@@ -120,9 +120,9 @@ L’installer:
 
 Dopo l’installazione, apri:
 
-``
+```
 http://localhost:19970/groqbash-gui/cgi
-``
+```
 
 ---
 
@@ -131,9 +131,9 @@ http://localhost:19970/groqbash-gui/cgi
 1. Copia la cartella ui/ sul server CGI.  
 2. Rendi eseguibile lo script:
 
-``sh
+```sh
 chmod +x ui/gui-server.sh
-``
+```
 
 3. Configura il web server per eseguire gui-server.sh come CGI.  
 4. Apri nel browser l’URL configurato.
@@ -232,7 +232,7 @@ The GUI provides:
 
 ## 📁 Directory Structure
 
-``text
+```text
 ui/
   gui-server.sh          ← CGI entrypoint
   gui-bootstrap.sh       ← portable bootstrap (environment, paths, atomic_write, lock, etc.)
@@ -258,7 +258,7 @@ ui/
   logs/
   tmp/
   assets/
-``
+```
 
 ---
 
@@ -266,21 +266,21 @@ ui/
 
 ### Apache (recommended)
 
-``sh
+```sh
 ./groqbash-gui-install.sh
-``
+```
 
 Then open:
 
-``
+```
 http://localhost:19970/groqbash-gui/cgi
-``
+```
 
 ### Generic CGI servers
 
-``sh
+```sh
 chmod +x ui/gui-server.sh
-``
+```
 
 Configure your server to run gui-server.sh as CGI.
 
