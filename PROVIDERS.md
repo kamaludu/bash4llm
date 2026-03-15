@@ -192,8 +192,8 @@ Questo contratto garantisce che tutti i provider siano:
 e che producano sempre JSON compatibile con `extract_text_from_resp`.
 
 ---
-
-# 🇬🇧 English Section Provider Contract
+🇬🇧
+# English Section Provider Contract
 
 This document defines the **official contract** for creating external providers compatible with GroqBash.
 
