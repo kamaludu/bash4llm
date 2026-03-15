@@ -21,7 +21,7 @@ e sono **eseguiti nella shell dell’utente**, con pieno accesso alle variabili 
 
 ---
 
-# 1. Requisiti del file provider
+## 1. Requisiti del file provider
 
 Un provider deve:
 
@@ -35,7 +35,7 @@ GroqBash verifica automaticamente questi requisiti tramite `extras/security/veri
 
 ---
 
-# 2. Nome del provider
+## 2. Nome del provider
 
 Il nome del provider è il nome del file senza estensione:
 
@@ -46,13 +46,13 @@ extras/providers/mistral.sh → provider "mistral"
 
 ---
 
-# 3. Funzioni obbligatorie
+## 3. Funzioni obbligatorie
 
 Ogni provider deve implementare **tre funzioni**, con nome basato sul provider:
 
 ---
 
-## ✔️ `buildpayload_<provider>()`
+### ✔️ `buildpayload_<provider>()`
 
 Responsabilità:
 
@@ -73,7 +73,7 @@ Formato richiesto: **OpenAI Chat Completions compatibile**
 
 ---
 
-## ✔️ `call_api_<provider>()` (non‑streaming)
+### ✔️ `call_api_<provider>()` (non‑streaming)
 
 Responsabilità:
 
@@ -90,7 +90,7 @@ choices[].message.content
 
 ---
 
-## ✔️ `call_api_streaming_<provider>()`
+### ✔️ `call_api_streaming_<provider>()`
 
 Responsabilità:
 
@@ -107,7 +107,7 @@ data: { "choices":[{"delta":{"content":"..."}}] }
 
 ---
 
-# 4. Variabili garantite dal CORE
+## 4. Variabili garantite dal CORE
 
 Il CORE garantisce al provider:
 
@@ -128,7 +128,7 @@ Il provider **non deve modificare** queste variabili.
 
 ---
 
-# 5. Regole di comportamento
+## 5. Regole di comportamento
 
 Un provider **NON deve**:
 
@@ -150,7 +150,7 @@ Un provider **DEVE**:
 
 ---
 
-# 6. Esempio minimo
+## 6. Esempio minimo
 
 ```sh
 buildpayload_example() {
@@ -178,6 +178,16 @@ call_api_streaming_example() {
 }
 ```
 
+## 📎 Note Finali 
+Questo contratto garantisce che tutti i provider siano:
+
+- coerenti  
+- sicuri  
+- compatibili con il CORE  
+- facilmente manutenibili  
+
+e che producano sempre JSON compatibile con `extract_text_from_resp`.
+
 ---
 
 # 🇬🇧 English Section — Provider Contract
@@ -194,7 +204,7 @@ and run **inside the user’s shell**.
 
 ---
 
-# 1. Provider file requirements
+## 1. Provider file requirements
 
 A provider must:
 
@@ -206,7 +216,7 @@ A provider must:
 
 ---
 
-# 2. Provider name
+## 2. Provider name
 
 The provider name is the filename without extension:
 
@@ -217,13 +227,13 @@ mistral.sh → "mistral"
 
 ---
 
-# 3. Required functions
+## 3. Required functions
 
 Each provider must implement:
 
 ---
 
-## ✔️ `buildpayload_<provider>()`
+### ✔️ `buildpayload_<provider>()`
 - Build an **OpenAI‑compatible JSON payload**  
 - Use global variables (`MODEL`, `CONTENT`, `SYSTEM_PROMPT`, `TURE`, `MAX_TOKENS`)  
 - Write the payload to `$PAYLOAD` using `atomic_write`  
@@ -231,7 +241,7 @@ Each provider must implement:
 
 ---
 
-## ✔️ `call_api_<provider>()`
+### ✔️ `call_api_<provider>()`
 - Perform the **non‑streaming** HTTP request  
 - Read from `$PAYLOAD`  
 - Write the full JSON response to `$RESP`  
@@ -245,7 +255,7 @@ choices[].message.content
 
 ---
 
-## ✔️ `call_api_streaming_<provider>()`
+### ✔️ `call_api_streaming_<provider>()`
 - Perform the **streaming** request (SSE)  
 - Print chunks to stdout  
 - Save the aggregated JSON to `$RESP`  
@@ -259,7 +269,7 @@ data: { "choices":[{"delta":{"content":"..."}}] }
 
 ---
 
-# 4. Variables guaranteed by GroqBash
+## 4. Variables guaranteed by GroqBash
 
 The CORE provides:
 
@@ -280,7 +290,7 @@ Providers **must not modify** these variables.
 
 ---
 
-# 5. Behavioral rules
+## 5. Behavioral rules
 
 A provider **MUST NOT**:
 
@@ -300,7 +310,7 @@ A provider **MUST**:
 
 ---
 
-# 6. Minimal example
+## 6. Minimal example
 
 ```sh
 buildpayload_example() {
@@ -330,13 +340,12 @@ call_api_streaming_example() {
 
 ---
 
-# 📎 Final Notes
+## 📎 Final Notes
+This contract ensures that all providers are:
 
-Questo contratto garantisce che tutti i provider siano:
+- consistent
+- secure
+- compatible with the CORE
+- easy to maintain
 
-- coerenti  
-- sicuri  
-- compatibili con il CORE  
-- facilmente manutenibili  
-
-e che producano sempre JSON compatibile con `extract_text_from_resp`.
+and that they always produce JSON compatible with `extract_text_from_text`.
