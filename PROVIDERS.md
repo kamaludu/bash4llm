@@ -1,15 +1,14 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 # Providers  
-Documento bilingue: Italiano / English
-
-🇮🇹 [🇬🇧](#english-section-provider-contract)
+Documento bilingue: 🇮🇹 Italiano / [🇬🇧 English](#provider-contract)
  
 GroqBash 2.x
 
 ---
 
-# 🇮🇹 Sezione Italiana — Contratto Provider
+## 🇮🇹 Sezione Italiana
+# Contratto Provider
 
 Questo documento definisce il **contratto ufficiale** per creare provider esterni compatibili con GroqBash.  
 Un *provider* è uno script Bash che implementa un backend alternativo all’API Groq (es. Gemini, HuggingFace, Mistral, ecc.).
@@ -192,8 +191,8 @@ Questo contratto garantisce che tutti i provider siano:
 e che producano sempre JSON compatibile con `extract_text_from_resp`.
 
 ---
-🇬🇧
-# English Section Provider Contract
+## 🇬🇧 English Section
+# Provider Contract
 
 This document defines the **official contract** for creating external providers compatible with GroqBash.
 
