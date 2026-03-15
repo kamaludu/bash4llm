@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# GroqBash⁺ — Bash-first wrapper for the Groq API
 # File: groqbash
 # Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
