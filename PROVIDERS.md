@@ -1,7 +1,10 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 # Providers  
-Documento bilingue: Italiano / English  
+Documento bilingue: Italiano / English
+
+🇮🇹 [🇬🇧](#english-section-provider-contract)
+ 
 GroqBash 2.x
 
 ---
@@ -190,7 +193,7 @@ e che producano sempre JSON compatibile con `extract_text_from_resp`.
 
 ---
 
-# 🇬🇧 English Section — Provider Contract
+# 🇬🇧 English Section Provider Contract
 
 This document defines the **official contract** for creating external providers compatible with GroqBash.
 
