@@ -1,12 +1,12 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![ShellCheck](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml)
 [![Smoke Tests](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml)
 
-# GroqBash [🇮🇹](README.md) 🇬🇧
+# GroqBash⁺ [🇮🇹](README.md) 🇬🇧
 
-**GroqBash** — secure, Bash‑first and fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API.
+**GroqBash⁺** — secure, Bash‑first and fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API.
 
 GroqBash is a single Bash script, self‑contained, readable and verifiable.  
 Download it, make it executable, export your API key and start using it.
