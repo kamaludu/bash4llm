@@ -264,7 +264,7 @@ call_api_gemini() {
   errf="$(_mktemp_in_dir_gemini "$workdir")" || return 4
 
   api_template="$API_URL_GEMINI_TEMPLATE"
-  model_subst="${MODEL:-}"
+  model_subst="${MODEL#models/}"
   if [ -z "$model_subst" ]; then
     printf '%s\n' "Error: MODEL not set. Set MODEL to a Gemini model name (e.g., gemini-2.5-flash)." >&2
     return 7
@@ -351,7 +351,7 @@ call_api_streaming_gemini() {
   chmod 600 "$RESP_RAW" 2>/dev/null || true
 
   api_template="$API_URL_GEMINI_TEMPLATE"
-  model_subst="${MODEL:-}"
+  model_subst="${MODEL#models/}"
   if [ -z "$model_subst" ]; then
     printf '%s\n' "Error: MODEL not set. Set MODEL to a Gemini model name (e.g., gemini-2.5-flash)." >&2
     return 7
