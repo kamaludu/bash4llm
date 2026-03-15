@@ -8,7 +8,7 @@ Questa guida descrive l’intero processo di installazione della GUI:
 
 ---
 
-# Ⓐ Installazione della UI come extra di GroqBash
+## Ⓐ Installazione della UI come extra di GroqBash
 
 La GUI vive nella directory:
 
@@ -61,7 +61,7 @@ ui/
 
 ---
 
-# Ⓑ Installazione automatica su Apache (consigliata)
+## Ⓑ Installazione automatica su Apache (consigliata)
 
 La GUI include un installer dedicato:
 
@@ -126,7 +126,7 @@ Questo script:
 
 ---
 
-# Ⓒ Installazione manuale su qualsiasi server CGI
+## Ⓒ Installazione manuale su qualsiasi server CGI
 
 Se non usi Apache, puoi configurare la GUI manualmente.
 
@@ -199,7 +199,7 @@ http://localhost/cgi-bin/gui-server.sh
 
 ---
 
-# 🧪 Requisiti
+## 🧪 Requisiti
 
 - bash  
 - coreutils  
@@ -213,7 +213,7 @@ http://localhost/cgi-bin/gui-server.sh
 
 ---
 
-# 🛠️ Debug
+## 🛠️ Debug
 
 Log disponibili in:
 
@@ -221,7 +221,3 @@ Log disponibili in:
 ui/logs/server.log
 ui/logs/errors.log
 ```
-
----
-
-# ✔ Fine procedura
