@@ -7,9 +7,9 @@
 Questa è la GUI HTML ufficiale di GroqBash, progettata per essere:
 
 - completamente portabile  
-- Bash‑only (nessuna dipendenza oltre a bash, coreutils, findutils, util-linux, gawk, curl, jq)  
+- Bash‑only (nessuna dipendenza esterna oltre a bash, coreutils, findutils, util-linux, gawk, curl, jq)  
 - sicura (atomic_write, lock globale, sanitizzazione input)  
-- compatibile con qualsiasi web server che supporti CGI  
+- compatibile con qualsiasi web server che supporti CGI (BusyBox httpd, Lighttpd, Apache, ecc.)  
 - integrabile automaticamente con Apache tramite installer dedicato  
 
 La GUI fornisce:
@@ -74,7 +74,7 @@ ui/
 
 ### gui-server.sh  
 È l’unico script eseguito dal web server.  
-Contiene la logica applicativa:
+Contiene solo la logica applicativa:
 
 - routing GET/POST  
 - rendering template  
@@ -83,10 +83,10 @@ Contiene la logica applicativa:
 - sanitizzazione input  
 
 ### gui-bootstrap.sh  
-Gestisce l’ambiente di runtime:
+Viene importato da gui-server.sh e gestisce tutto l’ambiente:
 
 - rilevamento UI_ROOT  
-- creazione directory runtime  
+- creazione directory  
 - atomic_write / atomic_append_conv  
 - mktemp portabile  
 - lock globale tramite flock  
@@ -95,12 +95,15 @@ Gestisce l’ambiente di runtime:
 - risoluzione GROQBASH_CMD  
 - configurazioni di default  
 
+Questa separazione garantisce portabilità totale e manutenibilità.
+
 ---
 
 ## 🚀 Installazione
 
-### ✔ Installazione su Apache (consigliata)
-Usa l’installa script ufficiale:
+### ✔ Installazione automatica su Apache (consigliata)
+
+Usa l’installa‑script ufficiale:
 
 ``sh
 ./groqbash-gui-install.sh
@@ -109,11 +112,11 @@ Usa l’installa script ufficiale:
 L’installer:
 
 - rileva automaticamente Apache  
-- crea un VirtualHost dedicato  
+- crea un VirtualHost dedicato sulla porta 19970  
 - configura CGI e statici  
 - applica i permessi corretti  
 - garantisce idempotenza  
-- non copia la UI: Apache punta alla directory reale  
+- **non copia la UI**: Apache punta alla directory reale  
 
 Dopo l’installazione, apri:
 
@@ -124,15 +127,18 @@ http://localhost:19970/groqbash-gui/cgi
 ---
 
 ### ✔ Installazione generica su altri web server CGI
-1. Assicurati che il server supporti CGI.  
+
+1. Copia la cartella ui/ sul server CGI.  
 2. Rendi eseguibile lo script:
 
 ``sh
 chmod +x ui/gui-server.sh
 ``
 
-3. Configura il server per eseguire gui-server.sh come CGI.  
+3. Configura il web server per eseguire gui-server.sh come CGI.  
 4. Apri nel browser l’URL configurato.
+
+Istruzioni dettagliate in: INSTALL.md
 
 ---
 
@@ -145,7 +151,7 @@ La localizzazione è definita in:
 Ogni chiave può avere:
 
 - una versione globale  
-- una versione specifica per lingua (es. KEY.en=, KEY.it=)
+- una versione specifica per lingua (es. KEY.en=, KEY.it=, KEY.es=)
 
 Esempio:
 
@@ -156,7 +162,7 @@ TXT_TITLE.it=Interfaccia Web GroqBash
 
 ## 🎨 Temi
 
-La GUI supporta:
+La GUI supporta due temi:
 
 - light  
 - dark  
@@ -208,9 +214,9 @@ Log disponibili in:
 This is the official HTML GUI for GroqBash, designed to be:
 
 - fully portable  
-- Bash‑only (no dependencies beyond bash, coreutils, findutils, util-linux, gawk, curl, jq)  
+- Bash‑only (no external dependencies beyond bash, coreutils, findutils, util-linux, gawk, curl, jq)  
 - secure (atomic writes, global lock, input sanitization)  
-- compatible with any CGI‑capable web server  
+- compatible with any CGI‑capable web server (BusyBox httpd, Lighttpd, Apache, etc.)  
 - automatically integrable with Apache via dedicated installer  
 
 The GUI provides:
@@ -219,7 +225,7 @@ The GUI provides:
 - Conversation management  
 - Multi‑language localization  
 - Light/Dark themes  
-- File handling  
+- File handling (input/output)  
 - Persistent configuration  
 
 ---
@@ -228,17 +234,26 @@ The GUI provides:
 
 ``text
 ui/
-  gui-server.sh
-  gui-bootstrap.sh
+  gui-server.sh          ← CGI entrypoint
+  gui-bootstrap.sh       ← portable bootstrap (environment, paths, atomic_write, lock, etc.)
   gui-lang.conf
   gui-style-light.css
   gui-style-dark.css
   groqbash-tui.sh
   README.md
   INSTALL.md
+
   templates/
-  conversations/
+    header.html
+    content.html
+    footer.html
+    settings-header.html
+    settings-content.html
+
+  conversations/         ← auto-created
   files/
+      input/
+      output/
   config/
   logs/
   tmp/
@@ -250,6 +265,7 @@ ui/
 ## 🚀 Installation
 
 ### Apache (recommended)
+
 ``sh
 ./groqbash-gui-install.sh
 ``
@@ -261,6 +277,7 @@ http://localhost:19970/groqbash-gui/cgi
 ``
 
 ### Generic CGI servers
+
 ``sh
 chmod +x ui/gui-server.sh
 ``
@@ -270,16 +287,19 @@ Configure your server to run gui-server.sh as CGI.
 ---
 
 ## 🌐 Localization
+
 Defined in gui-lang.conf.
 
 ---
 
 ## 🎨 Themes
+
 Stored in config/gui-theme.
 
 ---
 
 ## 🔒 Security
+
 - No `eval`  
 - No system `/tmp`  
 - Atomic writes  
@@ -289,6 +309,7 @@ Stored in config/gui-theme.
 ---
 
 ## 🧪 Requirements
+
 - bash  
 - coreutils  
 - findutils  
@@ -302,5 +323,6 @@ Stored in config/gui-theme.
 ---
 
 ## 🛠️ Debug
+
 logs/server.log  
 logs/errors.log
