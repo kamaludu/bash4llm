@@ -1,9 +1,9 @@
 
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README-en.md)
+[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README-en.md)
 
 # SECURITY POLICY  [🇮🇹](SECURITY.md) 🇬🇧
 
-# GroqBash — Security Policy
+# GroqBash⁺ — Security Policy
 
 GroqBash is a single Bash script designed with strong focus on **security**, **portability**, and **auditability**.  
 This document describes the **threat model**, **security assumptions**, **known limitations**, **best practices**, and the **responsible disclosure process**.
