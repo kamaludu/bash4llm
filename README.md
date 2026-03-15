@@ -50,7 +50,7 @@ GroqBash è progettato per ambienti single‑user (laptop, Termux, shell persona
 - Lo script non esegue mai l’output del modello.  
 - I rischi TOCTOU e i limiti del parsing JSON/SSE sono mitigati e documentati.
 
-Dettagli completi in `SECURITY.md`.
+Dettagli completi in **[SECURITY](SECURITY.md)**.
 
 ---
 
