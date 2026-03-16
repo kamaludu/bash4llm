@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_NAME="groqbash"
 SCRIPT_VERSION="2.0.0"
-SCRIPT_DATE="2026-03-10"
+SCRIPT_DATE="2026-03-16"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
@@ -123,18 +123,12 @@ ensure_api_key_for_provider() {
 SCRIPTDIR="$(resolve_script_dir)"
 GROQBASH_DIR="${GROQBASH_DIR:-$SCRIPTDIR/groqbash.d}"
 
-# Enforce canonical extras location under groqbash.d
+# Canonical runtime destination for extras (always under groqbash.d)
 CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
+# Historical/legacy candidate (extras shipped next to script in older layouts)
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 
-# If a legacy extras exists and is not the canonical dir, fail fast to avoid ambiguity
-if [ -d "${LEGACY_EXTRAS_DIR}" ] && [ "$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd)" != "$(cd "${CANONICAL_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' '')" ]; then
-  printf 'groqbash: ERROR: legacy extras directory found at %s\n' "${LEGACY_EXTRAS_DIR}" >&2
-  printf 'groqbash: ERROR: only %s is supported. Move or remove the legacy directory and retry.\n' "${CANONICAL_EXTRAS_DIR}" >&2
-  exit 1
-fi
-
-# Export canonical extras and providers dirs
+# Export canonical extras and providers dirs (GROQBASH_EXTRAS_DIR is the single runtime destination)
 GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 PROVIDERS_DIR="${GROQBASH_EXTRAS_DIR%/}/providers"
 export GROQBASH_EXTRAS_DIR PROVIDERS_DIR
@@ -145,8 +139,6 @@ GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
 GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
-# Limits - Maximum number of models to keep per provider when refreshing model lists.
-# Configurable via environment: export MAX_MODELS=200
 MAX_MODELS="${MAX_MODELS:-200}"
 
 umask 077
@@ -162,13 +154,9 @@ for d in "$GROQBASH_DIR" "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBAS
   chmod 700 "$d" 2>/dev/null || true
 done
 
-mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { printf 'groqbash: ERROR: cannot create tmpdir: %s\n' "$GROQBASH_TMPDIR" >&2; exit "$GROQBASHERRTMP"; }
-if [ -L "$GROQBASH_TMPDIR" ]; then
-  printf 'groqbash: ERROR: GROQBASH_TMPDIR is a symlink: %s\n' "$GROQBASH_TMPDIR" >&2
-  exit "$GROQBASHERRTMP"
-fi
-chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
-export TMPDIR="$GROQBASH_TMPDIR"
+# Legacy extras handling (fail only when a legacy dir exists outside the chosen source/destination)
+# Note: do not treat SCRIPTDIR/extras as fatal if it will be used as the explicit source for install.
+# The immediate-action install-extras logic will perform the final legacy checks in context of chosen source.
 
 # ---------------------------------------------------------------------------
 # Centralized lock names (co-located with resources)
@@ -1623,13 +1611,13 @@ validate_model_core() {
 # CLI parsing (flags, normalization, immediate actions)
 # ---------------------------------------------------------------------------
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
-# REFRESH_MODELS removed from immediate-action handling here (moved later)
 LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}"
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
 MODEL_CLI_SET="${MODEL_CLI_SET:-0}"
+INSTALL_EXTRAS_SRC=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -1665,7 +1653,20 @@ while [ $# -gt 0 ]; do
     --provider)
       if [ "${2:-}" ] && [ "${2:0:1}" != "-" ]; then PROVIDER_CLI="${2:-}"; shift 2; else PROVIDER_INTERACTIVE=1; shift; fi
       ;;
-    --install-extras) INSTALL_EXTRAS=1; shift ;;
+    --install-extras)
+      INSTALL_EXTRAS=1
+      # optional explicit source: accept either "--install-extras <dir>" or "--install-extras=<dir>"
+      if [ $# -gt 1 ] && [ "${2:0:1}" != "-" ]; then
+        INSTALL_EXTRAS_SRC="${2:-}"
+        shift
+      fi
+      shift
+      ;;
+    --install-extras=*)
+      INSTALL_EXTRAS=1
+      INSTALL_EXTRAS_SRC="${1#--install-extras=}"
+      shift
+      ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
       help_file="$GROQBASH_EXTRAS_DIR/docs/help.txt"
@@ -1680,18 +1681,6 @@ done
 # Ensure provider selection from CLI or persisted config is applied early,
 # so immediate actions like --list-providers use the intended provider.
 PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
-
-# If user passed --provider on CLI (and it's not the interactive "list"), prefer it.
-if [ -n "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_CLI}" != "list" ]; then
-  PROVIDER="$PROVIDER_CLI"
-else
-  # Otherwise, if a persisted provider exists and user did not request interactive selection,
-  # use the persisted value so immediate actions operate against the correct provider.
-  if [ -f "$PROVIDER_FILE" ] && [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ]; then
-    prov="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
-    [ -n "$prov" ] && PROVIDER="$prov"
-  fi
-fi
 
 # ---------------------------------------------------------------------------
 # Normalize boolean-like flags
@@ -1757,35 +1746,68 @@ if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE"
   exit "$GROQBASHERRTMP"
 fi
 
-if [ "$INSTALL_EXTRAS" -eq 1 ]; then
-  dest_base="$GROQBASH_EXTRAS_DIR"
-  dest_docs="$dest_base/docs"
-  dest_lib="$dest_base/lib"
-  dest_prov="$PROVIDERS_DIR"
-  dest_security="$dest_base/security"
-  dest_test="$dest_base/test"
-  src_base="$SCRIPTDIR/extras"
-  src_docs="$src_base/docs"
-  src_lib="$src_base/lib"
-  src_prov="$src_base/providers"
-  src_security="$src_base/security"
-  src_test="$src_base/test"
+if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
+  # Determine chosen source: explicit override wins, otherwise default to SCRIPTDIR/extras
+  if [ -n "${INSTALL_EXTRAS_SRC:-}" ]; then
+    SRC_BASE="${INSTALL_EXTRAS_SRC%/}"
+  else
+    SRC_BASE="${SCRIPTDIR%/}/extras"
+  fi
 
-  mkdir -p "$dest_docs" "$dest_lib" "$dest_prov" "$dest_security" "$dest_test" 2>/dev/null \
-    || { log_error "EXTRAS" "cannot create extras dirs."; exit "$GROQBASHERRTMP"; }
-  chmod 700 "$dest_base" "$dest_docs" "$dest_lib" "$dest_prov" "$dest_security" "$dest_test" 2>/dev/null || true
+  # Canonicalize chosen source and destination (use cd && pwd for portability)
+  if [ -d "${SRC_BASE}" ]; then
+    SRC_BASE="$(cd "${SRC_BASE}" >/dev/null 2>&1 && pwd || printf '%s' "${SRC_BASE}")"
+  else
+    SRC_BASE="${SRC_BASE%/}"
+  fi
+  DEST_BASE="$(cd "${GROQBASH_EXTRAS_DIR%/}" >/dev/null 2>&1 && pwd || printf '%s' "${GROQBASH_EXTRAS_DIR%/}")"
+  DEST_PROV="${PROVIDERS_DIR:-${DEST_BASE}/providers}"
 
-  current_user="$(id -un 2>/dev/null || printf '')"
-  [ -d "$src_base" ] || { log_error "EXTRAS" "missing extras source directory: $src_base"; exit "$GROQBASHERRTMP"; }
+  # Legacy detection: only fatal if a legacy dir exists and is neither the canonical destination
+  # nor the chosen source. Do not treat SCRIPTDIR/extras as fatal when it is the chosen source.
+  if [ -d "${LEGACY_EXTRAS_DIR}" ]; then
+    LEGACY_REAL="$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' "${LEGACY_EXTRAS_DIR}")"
+    if [ "${LEGACY_REAL}" != "${DEST_BASE}" ] && [ "${LEGACY_REAL}" != "${SRC_BASE}" ]; then
+      printf 'groqbash: ERROR: legacy extras directory found at %s\n' "${LEGACY_REAL}" >&2
+      printf 'groqbash: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${DEST_BASE}" >&2
+      exit "$GROQBASHERRTMP"
+    fi
+  fi
 
+  # Validate source existence and type
+  if [ ! -d "${SRC_BASE}" ]; then
+    log_error "EXTRAS" "missing extras source directory: ${SRC_BASE}"
+    exit "$GROQBASHERRTMP"
+  fi
+  if [ -L "${SRC_BASE}" ]; then
+    log_error "EXTRAS" "extras source is a symlink: ${SRC_BASE}"
+    exit "$GROQBASHERRTMP"
+  fi
+
+  # Prevent copying when source equals destination or source is inside destination (avoid nested copies)
+  if [ "${SRC_BASE}" = "${DEST_BASE}" ]; then
+    log_error "EXTRAS" "extras source and destination are identical (${SRC_BASE}); nothing to do."
+    exit "$GROQBASHERRTMP"
+  fi
+  case "${SRC_BASE}/" in
+    "${DEST_BASE}/"*) log_error "EXTRAS" "extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy."; exit "$GROQBASHERRTMP" ;;
+  esac
+
+  # Prepare destination directories with strict perms
+  mkdir -p "${DEST_BASE}" "${DEST_PROV}" 2>/dev/null || { log_error "EXTRAS" "cannot create extras dest: ${DEST_BASE}"; exit "$GROQBASHERRTMP"; }
+  chmod 700 "${DEST_BASE}" 2>/dev/null || true
+
+  # Gather regular files from source
   files_to_copy=()
-  while IFS= read -r -d '' f; do files_to_copy+=("$f"); done < <(find "$src_base" -type f -print0 2>/dev/null || true)
+  while IFS= read -r -d '' f; do files_to_copy+=("$f"); done < <(find "${SRC_BASE}" -type f -print0 2>/dev/null || true)
 
   if [ "${#files_to_copy[@]}" -eq 0 ]; then
-    printf 'No extras files found under %s; nothing to install.\n' "$src_base" >&2
+    printf 'No extras files found under %s; nothing to install.\n' "${SRC_BASE}" >&2
     exit 0
   fi
 
+  # Validate ownership and file types before any writes
+  current_user="$(id -un 2>/dev/null || printf '')"
   for src in "${files_to_copy[@]}"; do
     [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$GROQBASHERRTMP"; }
     [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$GROQBASHERRTMP"; }
@@ -1793,6 +1815,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ]; then
     [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$GROQBASHERRTMP"; }
   done
 
+  # Copy files atomically preserving relative layout under DEST_BASE
   installed_providers=()
   installed_libs=()
   installed_docs=()
@@ -1800,23 +1823,30 @@ if [ "$INSTALL_EXTRAS" -eq 1 ]; then
   installed_tests=()
 
   for src in "${files_to_copy[@]}"; do
-    rel="${src#"$src_base"/}"
-    dest="$dest_base/$rel"
+    rel="${src#${SRC_BASE}/}"
+    dest="${DEST_BASE}/${rel}"
     destdir="$(dirname "$dest")"
     mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$GROQBASHERRTMP"; }
-    cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$GROQBASHERRTMP"; }
+
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$GROQBASHERRTMP"; }
+    else
+      cp -f "$src" "$dest" 2>/dev/null || { log_error "EXTRAS" "Error copying $src"; exit "$GROQBASHERRTMP"; }
+      chmod 600 "$dest" 2>/dev/null || true
+    fi
+
     chmod 600 "$dest" 2>/dev/null || true
 
     case "$rel" in
       providers/*.sh) installed_providers+=("$(basename "$rel" .sh)") ;;
-      lib/*.sh) installed_libs+=("$(basename "$rel")") ;;
+      lib/*) installed_libs+=("$(basename "$rel")") ;;
       docs/*) installed_docs+=("$(basename "$rel")") ;;
       security/*) installed_security+=("$(basename "$rel")") ;;
       test/*) installed_tests+=("$(basename "$rel")") ;;
     esac
   done
 
-  printf 'groqbash: INFO: Extras installed under %s/extras/\n' "$GROQBASH_DIR" >&2
+  printf 'groqbash: INFO: Extras installed under %s\n' "${DEST_BASE}" >&2
 
   if [ "${#installed_providers[@]}" -gt 0 ]; then
     printf 'Installed providers: %s\n' "$(printf '%s ' "${installed_providers[@]}")" >&2
@@ -1834,8 +1864,9 @@ if [ "$INSTALL_EXTRAS" -eq 1 ]; then
     printf 'Installed test scripts: %s\n' "$(printf '%s ' "${installed_tests[@]}")" >&2
   fi
 
+  # Syntax check for installed providers
   for p in "${installed_providers[@]}"; do
-    PROVIDER_MODULE_PATH="$dest_prov/${p}.sh"
+    PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
     if ! bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
       printf 'groqbash: WARN: provider %s has syntax errors; check %s\n' "$p" "$PROVIDER_MODULE_PATH" >&2
     fi
