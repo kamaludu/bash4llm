@@ -3,9 +3,9 @@
 Questa guida descrive l’intero processo di installazione della GUI:
 
 1. Installazione della UI come extra di GroqBash  
-2. Attivazione della GUI CGI
-   - Installazione automatica su Apache tramite groqbash-gui-install.sh
-   - Installazione manuale su qualsiasi server con supporto CGI
+2. Attivazione della GUI CGI:
+   A Installazione automatica su Apache tramite groqbash-gui-install.sh
+   B Installazione manuale su qualsiasi server con supporto CGI
 
 ---
 
