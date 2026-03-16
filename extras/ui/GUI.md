@@ -9,7 +9,7 @@ Questa guida descrive l’intero processo di installazione della GUI:
 
 ---
 
-## Installazione della UI come extra di GroqBash
+## 🧩 Installazione della UI come extra di GroqBash
 
 La GUI vive nella directory:
 
