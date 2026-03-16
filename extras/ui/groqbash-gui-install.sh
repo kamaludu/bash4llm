@@ -1,26 +1,18 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Single-file installer for groqbash-gui Apache integration (Termux-friendly).
-# File: groqbash-gui-install.sh
-# Copyright (C) 2026 Cristian Evangelisti
-# License: GPL-3.0-or-later
-# =============================================================================
-# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
-# Strict: idempotent, atomic writes, rollback rules, permission policy.
-
 set -euo pipefail
 
-# --- Configurable defaults ---
+# groqbash-gui-install.sh
+# Installer for groqbash-gui Apache integration (Termux-friendly).
+# Requirements: bash, coreutils, findutils, util-linux, gawk, curl, jq, apachectl, flock
+
 PROJECT_NAME="groqbash-gui"
 DEFAULT_PORT="19970"
 CGI_URL_PATH="/groqbash-gui/cgi"
 STATIC_URL_PATH="/groqbash-gui/static"
 CONF_FILENAME="${PROJECT_NAME}.conf"
-# Termux environment defaults for CGI
 TERMUX_HOME="/data/data/com.termux/files/home"
 TERMUX_PATH="/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/bin/applets"
 
-# --- Globals populated at runtime ---
 APP_ROOT=""
 APP_BIN=""
 APP_STATIC=""
@@ -31,12 +23,15 @@ APACHE_CONF_DIR=""
 FINAL_CONF_PATH=""
 PORT="$DEFAULT_PORT"
 TMP_FILES=()
+NONINTERACTIVE=0
+EXPLICIT_APACHE_ROOT=""
 
-# --- Helpers ---
+# Logging helpers
 err() { printf '%s\n' "ERROR: $*" >&2; }
 warn() { printf '%s\n' "WARNING: $*" >&2; }
 info() { printf '%s\n' "INFO: $*"; }
 
+# Cleanup temp files on exit
 cleanup_tmp() {
   for f in "${TMP_FILES[@]:-}"; do
     [[ -e "$f" ]] && rm -f -- "$f" || true
@@ -47,18 +42,18 @@ on_exit() {
 }
 trap on_exit EXIT INT TERM
 
-# atomic write: write to temp in same dir then mv
+# Atomic write helper
 write_atomic() {
-  local dest="$1" content_file="$2" tmp
+  local dest="$1" src="$2" tmp
   tmp="$(mktemp "${dest}.tmp.XXXXXX")"
   TMP_FILES+=("$tmp")
-  cat "$content_file" >"$tmp"
+  cat "$src" >"$tmp"
   sync || true
   mv -f "$tmp" "$dest"
   TMP_FILES=("${TMP_FILES[@]/$tmp}") || true
 }
 
-# find upward for gui-server.sh
+# Locate UI root by finding gui-server.sh in expected tree
 locate_ui_root() {
   local start dir candidate
   if [[ -n "${1:-}" ]]; then
@@ -79,7 +74,7 @@ locate_ui_root() {
   return 1
 }
 
-# detect apachectl/httpd
+# Detect apachectl/httpd
 detect_apache() {
   if command -v apachectl >/dev/null 2>&1; then
     APACHECTL="apachectl"
@@ -90,28 +85,38 @@ detect_apache() {
     return 1
   fi
   APACHECTL_BIN="$(command -v "$APACHECTL")"
-  # basic checks
-  "$APACHECTL" -v >/dev/null 2>&1 || true
-  "$APACHECTL" -V >/dev/null 2>&1 || true
+  # allow -v and -V to run later
   return 0
 }
 
-# parse apachectl -V for SERVER_ROOT and SERVER_CONFIG_FILE
+# Derive SERVER_ROOT and SERVER_CONFIG_FILE robustly from apachectl -V output
 derive_server_root() {
   local out
   out="$("$APACHECTL" -V 2>/dev/null || true)"
-  SERVER_ROOT="$(printf '%s\n' "$out" | awk -F': ' '/HTTPD_ROOT/ {print $2}' | tr -d '"')"
-  if [[ -z "$SERVER_ROOT" ]]; then
-    SERVER_ROOT="$(printf '%s\n' "$out" | awk -F': ' '/SERVER_CONFIG_FILE/ {print $2}' | sed -E 's#/[^/]+$##' | tr -d '"')"
+  # Use robust sed extraction for -D HTTPD_ROOT="..."
+  SERVER_ROOT="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*HTTPD_ROOT=\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
+  SERVER_CONFIG_FILE="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*SERVER_CONFIG_FILE=\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
+  # If SERVER_ROOT found and SERVER_CONFIG_FILE is relative, compute absolute path
+  if [[ -n "$SERVER_ROOT" && -n "$SERVER_CONFIG_FILE" ]]; then
+    # Normalize SERVER_ROOT
+    SERVER_ROOT="$(cd "$SERVER_ROOT" 2>/dev/null && pwd -P || printf '%s' "$SERVER_ROOT")"
+    return 0
   fi
-  if [[ -z "$SERVER_ROOT" ]]; then
-    err "Could not determine Apache ServerRoot from $APACHECTL -V"
-    return 1
+  # If user provided explicit apache root, use it (explicit wins)
+  if [[ -n "${EXPLICIT_APACHE_ROOT:-}" ]]; then
+    if [[ -d "$EXPLICIT_APACHE_ROOT" ]]; then
+      SERVER_ROOT="$(cd "$EXPLICIT_APACHE_ROOT" 2>/dev/null && pwd -P || printf '%s' "$EXPLICIT_APACHE_ROOT")"
+      return 0
+    else
+      err "Explicit Apache root provided but directory does not exist: $EXPLICIT_APACHE_ROOT"
+      return 1
+    fi
   fi
-  return 0
+  err "Could not determine Apache ServerRoot from $APACHECTL -V"
+  return 1
 }
 
-# candidate conf dirs in order
+# Candidate conf dirs in order
 candidate_conf_dirs() {
   printf '%s\n' \
     "$SERVER_ROOT/conf.d" \
@@ -120,33 +125,28 @@ candidate_conf_dirs() {
     "$SERVER_ROOT"
 }
 
-# probe conf dir by writing temp conf and running configtest
+# Probe conf dir by writing a minimal probe file and running configtest
 detect_conf_dir() {
-  local cand tmpconf name ok
+  local cand tmpconf probe
   for cand in $(candidate_conf_dirs); do
     [[ -d "$cand" ]] || continue
-    name=".${CONF_FILENAME}.probe.$$"
-    tmpconf="$cand/$name"
-    # create minimal valid conf that will be ignored but parsed
-    printf '%s\n' "## probe $PROJECT_NAME" >"$tmpconf"
-    TMP_FILES+=("$tmpconf")
+    probe="$cand/.${CONF_FILENAME}.probe.$$"
+    printf '%s\n' "## probe $PROJECT_NAME" >"$probe"
+    TMP_FILES+=("$probe")
     if "$APACHECTL" configtest >/dev/null 2>&1; then
-      # configtest passed with probe file present -> accept
       APACHE_CONF_DIR="$cand"
-      # remove probe file (we will create final later)
-      rm -f -- "$tmpconf" || true
-      TMP_FILES=("${TMP_FILES[@]/$tmpconf}") || true
+      rm -f -- "$probe" || true
+      TMP_FILES=("${TMP_FILES[@]/$probe}") || true
       return 0
     else
-      # remove probe and continue
-      rm -f -- "$tmpconf" || true
-      TMP_FILES=("${TMP_FILES[@]/$tmpconf}") || true
+      rm -f -- "$probe" || true
+      TMP_FILES=("${TMP_FILES[@]/$probe}") || true
     fi
   done
   return 1
 }
 
-# check required commands (hard requirements)
+# Check required commands
 check_dependencies() {
   local reqs=(bash awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock gawk curl jq)
   local cmd
@@ -156,18 +156,16 @@ check_dependencies() {
       return 1
     fi
   done
-  # apachectl already detected
   return 0
 }
 
-# check and tighten permissions per policy
+# Apply permission policy
 check_permissions() {
   local script1="$APP_BIN/gui-server.sh"
   local script2="$APP_BIN/gui-bootstrap.sh"
   local templates_dir="$APP_BIN/templates"
   local runtime_dirs=( "$APP_BIN/config" "$APP_BIN/conversations" "$APP_BIN/files" "$APP_BIN/logs" "$APP_BIN/tmp" "$APP_BIN/assets" )
   local runtime_files=( "$APP_BIN/config/current-conversation" "$APP_BIN/config/lang-current" "$APP_BIN/config/gui-theme" "$APP_BIN/config/default-model" "$APP_BIN/config/default-provider" )
-  # scripts
   for s in "$script1" "$script2"; do
     if [[ ! -f "$s" ]]; then
       err "Critical script missing: $s"
@@ -178,21 +176,15 @@ check_permissions() {
       return 1
     fi
   done
-  # templates and static files
   if [[ -d "$templates_dir" ]]; then
     find "$templates_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
   fi
-  # runtime dirs
   for d in "${runtime_dirs[@]}"; do
-    if [[ -e "$d" && ! -d "$d" ]]; then
-      warn "Expected directory but found file: $d"
-    fi
     mkdir -p "$d" 2>/dev/null || true
     if ! chmod 700 "$d" 2>/dev/null; then
       warn "Could not tighten permissions on runtime dir $d"
     fi
   done
-  # runtime files
   for f in "${runtime_files[@]}"; do
     if [[ -e "$f" ]]; then
       if ! chmod 600 "$f" 2>/dev/null; then
@@ -203,14 +195,13 @@ check_permissions() {
   return 0
 }
 
-# check GROQBASH_CMD via sourcing bootstrap and calling ensure_groqbash_available
+# Verify GROQBASH_CMD via bootstrap (safe subshell)
 check_groqbash_cmd() {
   local bootstrap="$APP_BIN/gui-bootstrap.sh"
   if [[ ! -f "$bootstrap" ]]; then
     err "gui-bootstrap.sh not found at $bootstrap"
     return 1
   fi
-  # source in a subshell to avoid polluting environment
   if ! ( set -euo pipefail; . "$bootstrap"; ensure_groqbash_available ); then
     err "groqbash binary not resolvable by bootstrap (ensure_groqbash_available failed)"
     return 1
@@ -218,7 +209,7 @@ check_groqbash_cmd() {
   return 0
 }
 
-# check port availability
+# Check if port is in use
 port_in_use() {
   local p="$1"
   if command -v ss >/dev/null 2>&1; then
@@ -226,22 +217,21 @@ port_in_use() {
   elif command -v netstat >/dev/null 2>&1; then
     netstat -tln | awk '{print $4}' | grep -E ":$p\$" >/dev/null 2>&1 && return 0 || return 1
   else
-    # fallback: try to bind with nc (not guaranteed)
-    if command -v nc >/dev/null 2>&1; then
-      (echo >"/dev/tcp/127.0.0.1/$p") >/dev/null 2>&1 && return 0 || return 1
-    fi
-    # cannot determine; assume free
     return 1
   fi
 }
 
-# prompt for port if busy
+# Prompt for alternative port
 choose_port() {
-  local tries=3
+  local tries=3 alt
   while port_in_use "$PORT"; do
     warn "Port $PORT appears in use."
     if [[ "$tries" -le 0 ]]; then
       err "No available port chosen. Aborting."
+      return 1
+    fi
+    if [[ "$NONINTERACTIVE" -eq 1 ]]; then
+      err "Port $PORT in use and non-interactive mode set. Aborting."
       return 1
     fi
     printf 'Choose alternative port (or press Enter to abort): '
@@ -260,7 +250,7 @@ choose_port() {
   return 0
 }
 
-# generate vhost content to a temp file
+# Generate vhost config to file
 generate_vhost_config() {
   local out="$1"
   cat >"$out" <<EOF
@@ -289,40 +279,33 @@ Listen ${PORT}
 EOF
 }
 
-# write conf atomically with rollback rules
+# Write final conf atomically with configtest rollback rules
 write_conf_atomic() {
-  local target="$1" tmpf
-  tmpf="$(mktemp "${target}.tmp.XXXXXX")"
-  TMP_FILES+=("$tmpf")
-  generate_vhost_config "$tmpf"
-  # attempt to place temp into candidate dir and run configtest
-  if ! mv -f "$tmpf" "${target}.pending" 2>/dev/null; then
-    rm -f -- "$tmpf" || true
-    TMP_FILES=("${TMP_FILES[@]/$tmpf}") || true
-    err "Failed to move temp conf to ${target}.pending"
+  local target="$1" genfile="$2" pending
+  pending="${target}.pending"
+  if ! mv -f "$genfile" "$pending" 2>/dev/null; then
+    rm -f -- "$genfile" || true
+    err "Failed to move generated config to pending location."
     return 1
   fi
-  TMP_FILES+=("${target}.pending")
-  # run configtest with pending file present
+  TMP_FILES+=("$pending")
   if ! "$APACHECTL" configtest >/dev/null 2>&1; then
-    # rollback: delete pending
-    rm -f -- "${target}.pending" || true
-    TMP_FILES=("${TMP_FILES[@]/${target}.pending}") || true
-    err "apachectl configtest failed after writing ${target}.pending; file removed."
+    rm -f -- "$pending" || true
+    TMP_FILES=("${TMP_FILES[@]/$pending}") || true
+    err "apachectl configtest failed after writing ${pending}; file removed."
     return 2
   fi
-  # atomic final move
-  if ! mv -f "${target}.pending" "$target"; then
-    rm -f -- "${target}.pending" || true
-    TMP_FILES=("${TMP_FILES[@]/${target}.pending}") || true
-    err "Failed to move ${target}.pending to $target; operation aborted."
+  if ! mv -f "$pending" "$target"; then
+    rm -f -- "$pending" || true
+    TMP_FILES=("${TMP_FILES[@]/$pending}") || true
+    err "Failed to move ${pending} to $target; operation aborted."
     return 1
   fi
-  TMP_FILES=("${TMP_FILES[@]/${target}.pending}") || true
+  TMP_FILES=("${TMP_FILES[@]/$pending}") || true
   return 0
 }
 
-# run configtest (wrapper)
+# Run configtest wrapper
 run_configtest() {
   if ! "$APACHECTL" configtest >/dev/null 2>&1; then
     return 1
@@ -330,7 +313,7 @@ run_configtest() {
   return 0
 }
 
-# reload apache with best-effort and messages
+# Reload apache best-effort
 reload_apache() {
   if "$APACHECTL" graceful >/dev/null 2>&1; then
     return 0
@@ -347,7 +330,7 @@ reload_apache() {
   return 2
 }
 
-# summarize final state
+# Print summary
 summarize() {
   printf '\n'
   info "Installation summary:"
@@ -359,20 +342,19 @@ summarize() {
   printf '\n'
 }
 
-# --- Main flow ---
+# Main
 main() {
-  # parse args: optional APP_ROOT and PORT
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --app-root) APP_ROOT="$2"; shift 2 ;;
       --port) PORT="$2"; shift 2 ;;
+      --apache-root) EXPLICIT_APACHE_ROOT="$2"; shift 2 ;;
       --non-interactive) NONINTERACTIVE=1; shift ;;
-      -h|--help) printf 'Usage: %s [--app-root PATH] [--port PORT]\n' "$0"; exit 0 ;;
+      -h|--help) printf 'Usage: %s [--app-root PATH] [--port PORT] [--apache-root PATH]\n' "$0"; exit 0 ;;
       *) err "Unknown arg: $1"; exit 2 ;;
     esac
   done
 
-  # locate UI root if APP_ROOT not provided
   if [[ -z "${APP_ROOT:-}" ]]; then
     if ui_root="$(locate_ui_root)"; then
       APP_ROOT="$ui_root"
@@ -385,24 +367,18 @@ main() {
   APP_BIN="${APP_ROOT}/groqbash/groqbash.d/extras/ui"
   APP_STATIC="$APP_BIN"
 
-  # detect apache
   detect_apache || exit 1
-
-  # derive server root
   derive_server_root || exit 1
 
-  # check dependencies
   check_dependencies || exit 1
 
-  # detect conf dir
   if ! detect_conf_dir; then
-    err "Could not find a writable/parsable Apache conf directory. Aborting."
+    err "Could not find a writable/parsable Apache conf directory under $SERVER_ROOT. Aborting."
     exit 1
   fi
 
   FINAL_CONF_PATH="${APACHE_CONF_DIR}/${CONF_FILENAME}"
 
-  # check APP_BIN exists and contains required scripts
   if [[ ! -d "$APP_BIN" ]]; then
     err "APP_BIN not found at $APP_BIN"
     exit 1
@@ -412,16 +388,13 @@ main() {
     exit 1
   fi
 
-  # permissions
   check_permissions || exit 1
 
-  # check groqbash cmd via bootstrap
   if ! check_groqbash_cmd; then
     err "GROQBASH_CMD check failed. Aborting."
     exit 1
   fi
 
-  # port handling
   if port_in_use "$PORT"; then
     info "Default port $PORT appears in use."
     if ! choose_port; then
@@ -429,15 +402,12 @@ main() {
     fi
   fi
 
-  # generate config to temp file and attempt to write into APACHE_CONF_DIR atomically
-  # but first check idempotence
   local gen_tmp
   gen_tmp="$(mktemp "${APACHE_CONF_DIR}/${CONF_FILENAME}.gen.XXXXXX")"
   TMP_FILES+=("$gen_tmp")
   generate_vhost_config "$gen_tmp"
 
   if [[ -f "$FINAL_CONF_PATH" ]]; then
-    # compare
     if cmp -s "$gen_tmp" "$FINAL_CONF_PATH"; then
       info "Configuration already installed and identical. Nothing to do."
       rm -f -- "$gen_tmp" || true
@@ -445,6 +415,12 @@ main() {
       summarize
       exit 0
     else
+      if [[ "$NONINTERACTIVE" -eq 1 ]]; then
+        err "Existing config differs and non-interactive mode set. Aborting."
+        rm -f -- "$gen_tmp" || true
+        TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
+        exit 1
+      fi
       printf 'Existing config differs. Overwrite? [y/N]: '
       read -r ans || true
       if [[ ! "$ans" =~ ^[Yy]$ ]]; then
@@ -456,9 +432,7 @@ main() {
     fi
   fi
 
-  # attempt atomic write with rollback semantics
   if ! write_conf_atomic "$FINAL_CONF_PATH" "$gen_tmp"; then
-    # write_conf_atomic returns 2 for configtest failure, 1 for write failure
     err "Failed to install Apache config. Aborting."
     rm -f -- "$gen_tmp" || true
     TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
@@ -467,15 +441,12 @@ main() {
   rm -f -- "$gen_tmp" || true
   TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
 
-  # final configtest (should pass)
   if ! run_configtest; then
-    # rollback: delete final conf
     rm -f -- "$FINAL_CONF_PATH" || true
     err "apachectl configtest failed after installing $FINAL_CONF_PATH. File removed. Aborting."
     exit 1
   fi
 
-  # attempt reload
   if ! reload_apache; then
     warn "Apache reload failed. Configuration file remains at $FINAL_CONF_PATH. Please reload Apache manually."
     summarize
