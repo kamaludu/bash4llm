@@ -84,8 +84,89 @@ URL: http://localhost:19970/groqbash-gui/cgi
 
 Apri il browser e visita l’URL indicato.
 
+## 2.2 Configurazione manuale Apache (senza installer)
+
+Questa sezione spiega come configurare manualmente Apache per eseguire la GroqBash GUI in modalità CGI, senza usare lo script di installazione automatica.
+
+È utile quando:
+- vuoi integrare la GUI in un VirtualHost esistente
+- Apache non usa directory standard
+- stai lavorando in ambienti embedded o containerizzati
+
 ---
-## 2.2 Installazione manuale su qualsiasi server CGI
+### 1. Abilitare CGI
+
+`sudo a2enmod cgi`  
+oppure:
+
+`sudo a2enmod cgid`
+
+Poi:
+
+`sudo systemctl restart apache2`
+
+---
+### 2. Individuare la directory della UI
+
+La UI si trova in:
+
+`<APP_ROOT>/groqbash/groqbash.d/extras/ui`
+
+Lo script CGI principale è:
+
+`<APP_ROOT>/groqbash/groqbash.d/extras/ui/gui-server.sh`
+
+Assicurati che sia eseguibile:
+
+`chmod 755 gui-server.sh`
+
+---
+### 3. VirtualHost di esempio (configurazione moderna)
+
+Questa configurazione:
+- esegue direttamente `gui-server.sh` come CGI
+- espone gli asset statici
+- non richiede cgi-bin
+- è compatibile con la struttura attuale della GUI
+
+```
+<VirtualHost *:80>
+    ServerName groqbash.local
+
+    # Directory della UI
+    Alias /groqbash-gui/static /path/to/ui
+    ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
+
+    <Directory "/path/to/ui">
+        Options -Indexes -ExecCGI
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    <Directory "/path/to/ui">
+        Options +ExecCGI
+        AddHandler cgi-script .sh
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+
+Sostituisci:
+- `/path/to/ui` con il percorso reale della UI
+
+---
+### 4. Attivare il sito
+
+`sudo a2ensite groqbash`  
+`sudo systemctl reload apache2`
+
+---
+### 5. Apertura della GUI
+
+`http://localhost/groqbash-gui/cgi`
+
+---
+## 2.3 Installazione manuale su qualsiasi server CGI
 ---
 
 Funziona con:
@@ -263,7 +344,89 @@ URL: http://localhost:19970/groqbash-gui/cgi
 Open the URL in your browser.
 
 ---
-## 2.2 Manual installation on any CGI server
+## 2.2 Manual Apache Configuration (without installer)
+
+This section explains how to manually configure Apache to run the GroqBash GUI in CGI mode, without using the automatic installer.
+
+Useful when:
+- integrating the GUI into an existing VirtualHost
+- Apache uses non‑standard directories
+- working in embedded or containerized environments
+
+---
+### 1. Enable CGI
+
+`sudo a2enmod cgi`  
+or:
+
+`sudo a2enmod cgid`
+
+Then:
+
+`sudo systemctl restart apache2`
+
+---
+### 2. Locate the UI directory
+
+The UI lives at:
+
+`<APP_ROOT>/groqbash/groqbash.d/extras/ui`
+
+The main CGI script is:
+
+`<APP_ROOT>/groqbash/groqbash.d/extras/ui/gui-server.sh`
+
+Ensure it is executable:
+
+`chmod 755 gui-server.sh`
+
+---
+### 3. Example VirtualHost (modern configuration)
+
+This configuration:
+- executes `gui-server.sh` directly as a CGI script
+- exposes static assets
+- does not require cgi-bin
+- matches the current GUI architecture
+
+```
+<VirtualHost *:80>
+    ServerName groqbash.local
+
+    # UI directory
+    Alias /groqbash-gui/static /path/to/ui
+    ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
+
+    <Directory "/path/to/ui">
+        Options -Indexes -ExecCGI
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    <Directory "/path/to/ui">
+        Options +ExecCGI
+        AddHandler cgi-script .sh
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+
+Replace:
+- `/path/to/ui` with the actual UI path
+
+---
+### 4. Enable the site
+
+`sudo a2ensite groqbash`  
+`sudo systemctl reload apache2`
+
+---
+### 5. Open the GUI
+
+`http://localhost/groqbash-gui/cgi`
+
+---
+## 2.3 Manual installation on any CGI server
 ---
 
 Works with:
