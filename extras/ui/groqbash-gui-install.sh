@@ -77,26 +77,54 @@ detect_apache() {
 # Derive SERVER_ROOT and SERVER_CONFIG_PATH from apachectl -V
 derive_server_root() {
   local out httpd_root scf cfgpath cfgdir
+
   out="$("$APACHECTL" -V 2>/dev/null || true)"
-  httpd_root="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*HTTPD_ROOT="\([^\"]*)".*/\1/p' | head -n1 || true)"
-  scf="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*SERVER_CONFIG_FILE="\([^\"]*)".*/\1/p' | head -n1 || true)"
+
+  httpd_root="$(
+    printf '%s\n' "$out" |
+    awk -F'"' '/HTTPD_ROOT=/ {print $2; exit}'
+  )"
+
+  scf="$(
+    printf '%s\n' "$out" |
+    awk -F'"' '/SERVER_CONFIG_FILE=/ {print $2; exit}'
+  )"
+
   if [[ -n "${APACHE_ROOT_OVERRIDE:-}" ]]; then
     if [[ -d "$APACHE_ROOT_OVERRIDE" ]]; then
-      httpd_root="$(cd "$APACHE_ROOT_OVERRIDE" 2>/dev/null && pwd -P || printf '%s' "$APACHE_ROOT_OVERRIDE")"
+      httpd_root="$(cd "$APACHE_ROOT_OVERRIDE" 2>/dev/null && pwd -P)"
       info "Using explicit Apache root: $httpd_root"
     else
-      err "Provided --apache-root does not exist: $APACHE_ROOT_OVERRIDE"; return 1
+      err "Provided --apache-root does not exist: $APACHE_ROOT_OVERRIDE"
+      return 1
     fi
   fi
+
   if [[ -z "$httpd_root" || -z "$scf" ]]; then
-    err "Could not parse HTTPD_ROOT or SERVER_CONFIG_FILE from $APACHECTL -V"; return 1
+    err "Could not parse HTTPD_ROOT or SERVER_CONFIG_FILE from $APACHECTL -V"
+    return 1
   fi
-  SERVER_ROOT="$(cd "$httpd_root" 2>/dev/null && pwd -P || printf '%s' "$httpd_root")"
-  if [[ "$scf" = /* ]]; then cfgpath="$scf"; else cfgpath="$SERVER_ROOT/$scf"; fi
-  if [[ ! -e "$cfgpath" ]]; then err "Server config file not found: $cfgpath"; return 1; fi
+
+  SERVER_ROOT="$(cd "$httpd_root" 2>/dev/null && pwd -P)"
+  if [[ "$scf" = /* ]]; then
+    cfgpath="$scf"
+  else
+    cfgpath="$SERVER_ROOT/$scf"
+  fi
+
+  if [[ ! -e "$cfgpath" ]]; then
+    err "Server config file not found: $cfgpath"
+    return 1
+  fi
+
   cfgdir="$(cd "$(dirname -- "$cfgpath")" 2>/dev/null && pwd -P)"
   SERVER_CONFIG_PATH="$cfgdir/$(basename -- "$cfgpath")"
-  if [[ ! -r "$SERVER_CONFIG_PATH" ]]; then err "Cannot read $SERVER_CONFIG_PATH"; return 1; fi
+
+  if [[ ! -r "$SERVER_CONFIG_PATH" ]]; then
+    err "Cannot read $SERVER_CONFIG_PATH"
+    return 1
+  fi
+
   info "Derived SERVER_ROOT: $SERVER_ROOT"
   info "Derived SERVER_CONFIG_PATH: $SERVER_CONFIG_PATH"
   return 0
@@ -104,11 +132,16 @@ derive_server_root() {
 
 # Detect if a string contains glob chars (* ? [) WITHOUT using [...]
 contains_glob() {
-  local s="$1"
-  case "$s" in
-    *\**|*\?*|*\[* ) return 0 ;;
-    * ) return 1 ;;
+  case "$1" in
+    *\** ) return 0 ;;
+    *\?* ) return 0 ;;
   esac
+
+  case "$1" in
+    *[*]* ) return 0 ;;
+  esac
+
+  return 1
 }
 
 # Expand simple patterns: absolute or relative to provided bases.
