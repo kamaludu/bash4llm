@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # =============================================================================
-# extras/ui/groqbash-gui-install.sh
 # Installer for GroqBash GUI Apache integration (CGI)
+# File: extras/ui/groqbash-gui-install.sh
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Source: https://github.com/kamaludu/groqbash
+# =============================================================================
 # - Practical, robust, Apache-driven installer
 # - No edits to httpd.conf; writes a single groqbash-gui.conf in an included dir
-# =============================================================================
 set -euo pipefail
 umask 077
 
