@@ -226,8 +226,7 @@ The GUI provides:
 - File handling (input/output)  
 - Persistent configuration  
 
-For detailed installation instructions, see:  
-**`INSTALL.md`**
+For detailed installation instructions, **see: [INSTALL.md](INSTALL.md)**
 
 ---
 
