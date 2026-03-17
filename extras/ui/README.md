@@ -315,9 +315,7 @@ Open:
 3. Configure your server to execute `gui-server.sh` as CGI  
 4. Open the configured URL in your browser  
 
-For detailed server-specific instructions (BusyBox, Nginx, Lighttpd, manual Apache): 
-
-**[INSTALL.md](INSTALL.md)**
+For detailed server-specific instructions (BusyBox, Nginx, Lighttpd, manual Apache): **see [INSTALL.md](INSTALL.md)**
 ---
 
 ## 🌐 Localization
