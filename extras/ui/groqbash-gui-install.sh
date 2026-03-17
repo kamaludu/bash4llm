@@ -7,6 +7,7 @@
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
 # Goals: portable, audit-able, no invisible chars, compatible with Termux/macOS/Linux/BSD
+
 set -euo pipefail
 umask 077
 
