@@ -136,7 +136,7 @@ Dopo l’installazione, apri:
 4. Apri nel browser l’URL configurato.
 
 Per configurazioni dettagliate (BusyBox, Nginx, Lighttpd, Apache manuale):  
-**vedi `INSTALL.md`**
+**vedi [INSTALL.md](INSTALL.md)**
 
 ---
 
