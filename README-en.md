@@ -192,7 +192,7 @@ Extras do not change core behavior.
 
 ### Security
 
-- additional providers, **see: [ PROVIDERS](PROVIDERS.md)**
+- additional providers (**see: [ PROVIDERS](PROVIDERS.md)**)
 - tools to verify permissions, symlinks, owner, checksum  
 - templates and documentation
 
