@@ -78,8 +78,8 @@ detect_apache() {
 derive_server_root() {
   local out httpd_root scf cfgpath cfgdir
   out="$("$APACHECTL" -V 2>/dev/null || true)"
-  httpd_root="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*HTTPD_ROOT=\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
-  scf="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*SERVER_CONFIG_FILE=\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
+  httpd_root="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*HTTPD_ROOT="\([^\"]*)".*/\1/p' | head -n1 || true)"
+  scf="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*SERVER_CONFIG_FILE="\([^\"]*)".*/\1/p' | head -n1 || true)"
   if [[ -n "${APACHE_ROOT_OVERRIDE:-}" ]]; then
     if [[ -d "$APACHE_ROOT_OVERRIDE" ]]; then
       httpd_root="$(cd "$APACHE_ROOT_OVERRIDE" 2>/dev/null && pwd -P || printf '%s' "$APACHE_ROOT_OVERRIDE")"
@@ -106,9 +106,7 @@ derive_server_root() {
 contains_glob() {
   local s="$1"
   case "$s" in
-    *\**|*\?*|*
-
-\[* ) return 0 ;;
+    *\**|*\?*|*\[* ) return 0 ;;
     * ) return 1 ;;
   esac
 }
