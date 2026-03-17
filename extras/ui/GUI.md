@@ -1,9 +1,9 @@
 # Guida Installazione GroqBash GUI  
 # Installation Guide for GroqBash GUI
 
-============================================================
-# 🇮🇹 Sezione Italiana
-============================================================
+---
+## 🇮🇹 Sezione Italiana
+---
 
 # Guida all’Installazione della GroqBash GUI
 
@@ -181,9 +181,9 @@ Poi:
 ### ❗ Porta occupata
 Lo script lo rileva automaticamente.
 
-============================================================
-# 🇬🇧 English Section
-============================================================
+---
+## 🇬🇧 English Section
+---
 
 # GroqBash GUI Installation Guide
 
