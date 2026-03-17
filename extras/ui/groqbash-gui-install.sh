@@ -6,8 +6,7 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Goals: portable, audit-able, no invisible chars, compatible with Termux/macOS/Linux/BSD
-
+# Key: NO character-class patterns (no [...] used to detect globs)
 set -euo pipefail
 umask 077
 
@@ -17,36 +16,25 @@ DEFAULT_PORT="19970"
 CGI_URL_PATH="/groqbash-gui/cgi"
 STATIC_URL_PATH="/groqbash-gui/static"
 
-# Runtime vars
+# runtime
 APP_ROOT=""
-APP_BIN=""
-APP_STATIC=""
-APP_RUNTIME_DIR=""
-APP_CGI_RUNTIME_DIR=""
-CGI_SOCK_PATH=""
+APACHE_ROOT_OVERRIDE=""
+PORT="$DEFAULT_PORT"
+NONINTERACTIVE=0
 
 APACHECTL=""
 SERVER_ROOT=""
-SERVER_CONFIG_FILE=""
 SERVER_CONFIG_PATH=""
 APACHE_CONF_DIR=""
 FINAL_CONF_PATH=""
-PORT="$DEFAULT_PORT"
+
 TMP_FILES=()
-NONINTERACTIVE=0
-EXPLICIT_APACHE_ROOT=""
 
-# Logging
-err()  { printf 'ERROR: %s\n' "$*" >&2; }
-warn() { printf 'WARNING: %s\n' "$*" >&2; }
-info() { printf 'INFO: %s\n' "$*"; }
+err(){ printf 'ERROR: %s\n' "$*" >&2; }
+warn(){ printf 'WARNING: %s\n' "$*" >&2; }
+info(){ printf 'INFO: %s\n' "$*"; }
 
-cleanup_tmp() {
-  for f in "${TMP_FILES[@]:-}"; do
-    [[ -e "$f" ]] && rm -f -- "$f" || true
-  done
-}
-trap cleanup_tmp EXIT INT TERM
+trap 'for f in "${TMP_FILES[@]:-}"; do [[ -e "$f" ]] && rm -f -- "$f"; done' EXIT INT TERM
 
 portable_sha1() {
   if command -v sha1sum >/dev/null 2>&1; then
@@ -59,10 +47,8 @@ portable_sha1() {
 }
 
 safe_mktemp_in_dir() {
-  local dir="$1"; shift
-  local tmpl="${1:-tmp.XXXXXX}"
+  local dir="$1" tmpl="${2:-tmp.XXXXXX}" tmp
   mkdir -p "$dir" 2>/dev/null || return 1
-  local tmp
   if tmp="$(mktemp -p "$dir" "$tmpl" 2>/dev/null)"; then
     printf '%s' "$tmp"; return 0
   fi
@@ -78,113 +64,63 @@ safe_mktemp_in_dir() {
   tmp="$dir/${tmpl%XXXXXX}$$.${rand}.${stamp}.${short}"
   : >"$tmp"
   printf '%s' "$tmp"
-  return 0
 }
 
-write_conf_atomic() {
-  local target="$1" genfile="$2"
-  local ddir pending
-  ddir="$(dirname -- "$target")"
-  pending="$(safe_mktemp_in_dir "$ddir" "$(basename "$target").pending.XXXXXX")"
-  TMP_FILES+=("$pending")
-  if ! mv -f "$genfile" "$pending" 2>/dev/null; then
-    rm -f -- "$genfile" || true
-    err "Failed to move generated config to pending location."
-    TMP_FILES=("${TMP_FILES[@]/$pending}") || true
-    return 1
-  fi
-  if ! "$APACHECTL" configtest >/dev/null 2>&1; then
-    rm -f -- "$pending" || true
-    TMP_FILES=("${TMP_FILES[@]/$pending}") || true
-    err "apachectl configtest failed after writing ${pending}; file removed."
-    return 2
-  fi
-  if ! mv -f "$pending" "$target"; then
-    rm -f -- "$pending" || true
-    TMP_FILES=("${TMP_FILES[@]/$pending}") || true
-    err "Failed to move ${pending} to $target; operation aborted."
-    return 1
-  fi
-  TMP_FILES=("${TMP_FILES[@]/$pending}") || true
-  return 0
-}
-
-locate_ui_root() {
-  local start dir candidate
-  start="${1:-$(pwd)}"
-  dir="$start"
-  while true; do
-    candidate="$dir/groqbash/groqbash.d/extras/ui/gui-server.sh"
-    if [[ -f "$candidate" ]]; then
-      printf '%s\n' "$(cd "$dir" && pwd -P)"; return 0
-    fi
-    [[ "$dir" == "/" || "$dir" == "." ]] && break
-    dir="$(dirname -- "$dir")"
-  done
-  return 1
-}
-
+# Detect apachectl/httpd
 detect_apache() {
-  if command -v apachectl >/dev/null 2>&1; then
-    APACHECTL="apachectl"
-  elif command -v httpd >/dev/null 2>&1; then
-    APACHECTL="httpd"
-  else
-    err "Apache not found (apachectl or httpd). Aborting."
-    return 1
-  fi
+  if command -v apachectl >/dev/null 2>&1; then APACHECTL="apachectl"
+  elif command -v httpd >/dev/null 2>&1; then APACHECTL="httpd"
+  else err "apachectl or httpd not found"; return 1; fi
   return 0
 }
 
+# Derive SERVER_ROOT and SERVER_CONFIG_PATH from apachectl -V
 derive_server_root() {
   local out httpd_root scf cfgpath cfgdir
   out="$("$APACHECTL" -V 2>/dev/null || true)"
   httpd_root="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*HTTPD_ROOT=\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
   scf="$(printf '%s\n' "$out" | sed -n 's/.*-D[[:space:]]*SERVER_CONFIG_FILE=\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
-  if [[ -n "${EXPLICIT_APACHE_ROOT:-}" ]]; then
-    if [[ -d "$EXPLICIT_APACHE_ROOT" ]]; then
-      httpd_root="$(cd "$EXPLICIT_APACHE_ROOT" 2>/dev/null && pwd -P || printf '%s' "$EXPLICIT_APACHE_ROOT")"
+  if [[ -n "${APACHE_ROOT_OVERRIDE:-}" ]]; then
+    if [[ -d "$APACHE_ROOT_OVERRIDE" ]]; then
+      httpd_root="$(cd "$APACHE_ROOT_OVERRIDE" 2>/dev/null && pwd -P || printf '%s' "$APACHE_ROOT_OVERRIDE")"
       info "Using explicit Apache root: $httpd_root"
     else
-      err "Explicit Apache root provided but directory does not exist: $EXPLICIT_APACHE_ROOT"
-      return 1
+      err "Provided --apache-root does not exist: $APACHE_ROOT_OVERRIDE"; return 1
     fi
   fi
   if [[ -z "$httpd_root" || -z "$scf" ]]; then
-    err "Could not determine HTTPD_ROOT or SERVER_CONFIG_FILE from '$APACHECTL -V'."
-    return 1
+    err "Could not parse HTTPD_ROOT or SERVER_CONFIG_FILE from $APACHECTL -V"; return 1
   fi
   SERVER_ROOT="$(cd "$httpd_root" 2>/dev/null && pwd -P || printf '%s' "$httpd_root")"
-  SERVER_CONFIG_FILE="$scf"
-  if [[ "$SERVER_CONFIG_FILE" = /* ]]; then
-    cfgpath="$SERVER_CONFIG_FILE"
-  else
-    cfgpath="$SERVER_ROOT/$SERVER_CONFIG_FILE"
-  fi
-  if [[ -e "$cfgpath" ]]; then
-    cfgdir="$(cd "$(dirname -- "$cfgpath")" 2>/dev/null && pwd -P)"
-    SERVER_CONFIG_PATH="$cfgdir/$(basename -- "$cfgpath")"
-  else
-    err "SERVER_CONFIG_PATH does not exist: $cfgpath"
-    return 1
-  fi
-  if [[ ! -r "$SERVER_CONFIG_PATH" ]]; then
-    err "SERVER_CONFIG_PATH is not readable: $SERVER_CONFIG_PATH"
-    return 1
-  fi
+  if [[ "$scf" = /* ]]; then cfgpath="$scf"; else cfgpath="$SERVER_ROOT/$scf"; fi
+  if [[ ! -e "$cfgpath" ]]; then err "Server config file not found: $cfgpath"; return 1; fi
+  cfgdir="$(cd "$(dirname -- "$cfgpath")" 2>/dev/null && pwd -P)"
+  SERVER_CONFIG_PATH="$cfgdir/$(basename -- "$cfgpath")"
+  if [[ ! -r "$SERVER_CONFIG_PATH" ]]; then err "Cannot read $SERVER_CONFIG_PATH"; return 1; fi
   info "Derived SERVER_ROOT: $SERVER_ROOT"
   info "Derived SERVER_CONFIG_PATH: $SERVER_CONFIG_PATH"
   return 0
 }
 
+# Detect if a string contains glob chars (* ? [) WITHOUT using [...]
+contains_glob() {
+  local s="$1"
+  case "$s" in
+    *\**|*\?*|*
+
+\[* ) return 0 ;;
+    * ) return 1 ;;
+  esac
+}
+
+# Expand simple patterns: absolute or relative to provided bases.
 expand_simple_pattern() {
   local pattern="$1"; shift
   local base cand dirpart bname
+  # if absolute
   if [[ "$pattern" = /* ]]; then
     cand="$pattern"
-    if [[ "$cand" == *[\*\?
-
-\[]* ]]; then
+    if contains_glob "$cand"; then
       dirpart="$(dirname -- "$cand")"
       bname="$(basename -- "$cand")"
       [[ -d "$dirpart" ]] && find "$dirpart" -maxdepth 1 -type f -name "$bname" -print || true
@@ -195,9 +131,7 @@ expand_simple_pattern() {
   fi
   for base in "$@"; do
     cand="$base/$pattern"
-    if [[ "$cand" == *[\*\?
-
-\[]* ]]; then
+    if contains_glob "$cand"; then
       dirpart="$(dirname -- "$cand")"
       bname="$(basename -- "$cand")"
       [[ -d "$dirpart" ]] && find "$dirpart" -maxdepth 1 -type f -name "$bname" -print || true
@@ -207,10 +141,9 @@ expand_simple_pattern() {
   done
 }
 
-# Minimal parse_includes: supports common Include/IncludeOptional forms, limited depth
+# Minimal parse_includes: follow Include/IncludeOptional lines (simple cases)
 parse_includes() {
-  local entry="$1"; shift
-  local limit="${1:-6}"
+  local entry="$1" limit="${2:-6}"
   local -a stack seen
   stack=("$entry"); seen=()
   local depth=0 file curdir line pat matches m
@@ -222,14 +155,13 @@ parse_includes() {
     seen+=("$file")
     printf '%s\n' "$file"
     depth=$((depth+1))
-    if (( depth > limit )); then
-      warn "Include parsing depth limit ($limit) reached; stopping further recursion."
-      continue
-    fi
+    if (( depth > limit )); then warn "Include depth limit reached"; continue; fi
     curdir="$(dirname -- "$file")"
     while IFS= read -r line || [[ -n "$line" ]]; do
+      # trim leading/trailing
       line="$(printf '%s' "$line" | awk '{$1=$1;print}')"
       [[ -z "$line" ]] && continue
+      # simple match: Include or IncludeOptional at line start (case-insensitive)
       if printf '%s\n' "$line" | grep -Eiq '^[[:space:]]*include(optional)?[[:space:]]+'; then
         pat="$(printf '%s\n' "$line" | sed -E 's/^[[:space:]]*[Ii]nclude(Optional)?[[:space:]]+//; s/[[:space:]]+$//')"
         case "$pat" in
@@ -252,21 +184,21 @@ parse_includes() {
     done <"$file"
   done
   for f in "${seen[@]}"; do printf '%s\n' "$f"; done | sort -u || true
-  return 0
 }
 
+# Pragmatic detect_conf_dir: check a few standard candidates and ensure they are included
 detect_conf_dir() {
-  local CONF_BASE_DIR cand probe included_files ok
-  CONF_BASE_DIR="$(dirname -- "$SERVER_CONFIG_PATH")"
-  local candidates=( "$CONF_BASE_DIR/conf.d" "$CONF_BASE_DIR/extra" "$CONF_BASE_DIR/sites-enabled" "$CONF_BASE_DIR" )
+  local base_dir candidates cand probe included_files ok
+  base_dir="$(dirname -- "$SERVER_CONFIG_PATH")"
+  candidates=( "$base_dir/conf.d" "$base_dir/extra" "$base_dir/sites-enabled" "$base_dir" )
   for cand in "${candidates[@]}"; do
     [[ -d "$cand" ]] || continue
-    if ! find "$cand" -maxdepth 1 -type f -print -quit >/dev/null 2>&1; then
-      continue
-    fi
+    # skip empty
+    if ! find "$cand" -maxdepth 1 -type f -print -quit >/dev/null 2>&1; then continue; fi
     probe="$cand/.${CONF_FILENAME}.probe.$$"
-    printf '%s\n' "# probe for ${PROJECT_NAME}" >"$probe"
+    printf '%s\n' "# probe" >"$probe"
     TMP_FILES+=("$probe")
+    # quick sanity: configtest should run
     if ! "$APACHECTL" configtest >/dev/null 2>&1; then
       rm -f -- "$probe" || true
       TMP_FILES=("${TMP_FILES[@]/$probe}") || true
@@ -277,12 +209,8 @@ detect_conf_dir() {
     if [[ -n "$included_files" ]]; then
       while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        local fdir
         fdir="$(dirname -- "$f")"
-        if [[ "$fdir" = "$cand" ]]; then ok=1; break; fi
-        case "$fdir" in
-          "$cand"/*) ok=1; break ;;
-        esac
+        if [[ "$fdir" = "$cand" ]] || [[ "$fdir" = "$cand"/* ]]; then ok=1; break; fi
       done <<<"$included_files"
     fi
     if [[ "$ok" -eq 1 ]]; then
@@ -295,49 +223,40 @@ detect_conf_dir() {
     rm -f -- "$probe" || true
     TMP_FILES=("${TMP_FILES[@]/$probe}") || true
   done
-  printf 'ERROR: Could not find a usable Apache conf directory near %s\n' "$SERVER_CONFIG_PATH" >&2
+  err "Could not find usable Apache conf dir near $SERVER_CONFIG_PATH"
   return 1
 }
 
 check_dependencies() {
-  local reqs=(bash find sed mktemp curl jq)
-  if command -v awk >/dev/null 2>&1; then :; elif command -v gawk >/dev/null 2>&1; then :; else
-    err "Required command missing: awk or gawk"; return 1
-  fi
-  if ! command -v sha1sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    err "Required command missing: sha1sum or shasum"; return 1
-  fi
-  local cmd
-  for cmd in "${reqs[@]}"; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then err "Required command missing: $cmd"; return 1; fi
+  local reqs=(bash find sed mktemp awk)
+  # awk or gawk acceptable (we require awk)
+  if ! command -v awk >/dev/null 2>&1; then err "awk required"; return 1; fi
+  if ! command -v sha1sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then err "sha1sum or shasum required"; return 1; fi
+  local c
+  for c in "${reqs[@]}"; do
+    if ! command -v "$c" >/dev/null 2>&1; then err "Required command missing: $c"; return 1; fi
   done
   return 0
 }
 
-check_permissions() {
-  local script1="$APP_BIN/gui-server.sh"
-  local script2="$APP_BIN/gui-bootstrap.sh"
-  local templates_dir="$APP_BIN/templates"
-  local runtime_dirs=( "$APP_BIN/config" "$APP_BIN/conversations" "$APP_BIN/files" "$APP_BIN/logs" "$APP_BIN/tmp" "$APP_BIN/assets" "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" )
-  for s in "$script1" "$script2"; do
-    if [[ ! -f "$s" ]]; then err "Critical script missing: $s"; return 1; fi
-    chmod 755 "$s" 2>/dev/null || warn "Could not set 755 on $s"
-  done
-  [[ -d "$templates_dir" ]] && find "$templates_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+check_permissions_and_dirs() {
+  local app_bin="$1"
+  local runtime_dirs=( "$app_bin/config" "$app_bin/conversations" "$app_bin/files" "$app_bin/logs" "$app_bin/tmp" "$app_bin/assets" )
   for d in "${runtime_dirs[@]}"; do
-    [[ -n "$d" ]] || continue
     mkdir -p "$d" 2>/dev/null || true
     chmod 700 "$d" 2>/dev/null || warn "Could not set 700 on $d"
   done
-  [[ -d "$APP_BIN/config" ]] && find "$APP_BIN/config" -maxdepth 1 -type f -exec chmod 600 {} \; 2>/dev/null || true
-  return 0
+  chmod 755 "$app_bin/gui-server.sh" 2>/dev/null || warn "Could not set 755 on gui-server.sh"
+  chmod 755 "$app_bin/gui-bootstrap.sh" 2>/dev/null || warn "Could not set 755 on gui-bootstrap.sh"
+  [[ -d "$app_bin/templates" ]] && find "$app_bin/templates" -type f -exec chmod 644 {} \; 2>/dev/null || true
+  [[ -d "$app_bin/config" ]] && find "$app_bin/config" -maxdepth 1 -type f -exec chmod 600 {} \; 2>/dev/null || true
 }
 
-check_groqbash_cmd() {
-  local bootstrap="$APP_BIN/gui-bootstrap.sh"
-  if [[ ! -f "$bootstrap" ]]; then err "gui-bootstrap.sh not found at $bootstrap"; return 1; fi
+check_groqbash_bootstrap() {
+  local bootstrap="$1/gui-bootstrap.sh"
+  if [[ ! -f "$bootstrap" ]]; then err "Missing $bootstrap"; return 1; fi
   if ! ( set -euo pipefail; . "$bootstrap"; ensure_groqbash_available ); then
-    err "groqbash binary not resolvable by bootstrap (ensure_groqbash_available failed)"; return 1
+    err "ensure_groqbash_available failed"; return 1
   fi
   return 0
 }
@@ -346,12 +265,13 @@ check_cgi_module() {
   local mods
   mods="$("$APACHECTL" -M 2>/dev/null || true)"
   if ! printf '%s\n' "$mods" | grep -E 'cgid_module|cgi_module' >/dev/null 2>&1; then
-    warn "Neither mod_cgid nor mod_cgi appears to be loaded. CGI may not work until you enable one of them in your Apache config."
+    warn "mod_cgid or mod_cgi not detected; CGI may not work until enabled"
   else
-    info "CGI module appears loaded."
+    info "CGI module appears loaded"
   fi
 }
 
+# port_in_use with ss/netstat/dev/tcp
 port_in_use() {
   local p="$1"
   if command -v ss >/dev/null 2>&1; then
@@ -368,17 +288,17 @@ port_in_use() {
   return 1
 }
 
-choose_port() {
+choose_port_interactive() {
   local tries=3 alt
   while port_in_use "$PORT"; do
-    warn "Port $PORT appears in use."
-    if (( tries <= 0 )); then err "No available port chosen. Aborting."; return 1; fi
-    if [[ "$NONINTERACTIVE" -eq 1 ]]; then err "Port $PORT in use and non-interactive mode set. Aborting."; return 1; fi
-    printf 'Choose alternative port (or press Enter to abort): '
+    warn "Port $PORT in use"
+    if (( tries <= 0 )); then err "No available port chosen"; return 1; fi
+    if [[ "$NONINTERACTIVE" -eq 1 ]]; then err "Port in use and non-interactive"; return 1; fi
+    printf 'Choose alternative port (or Enter to abort): '
     read -r alt || true
-    [[ -z "$alt" ]] && { err "User aborted port selection."; return 1; }
+    [[ -z "$alt" ]] && { err "Aborted"; return 1; }
     if ! printf '%s' "$alt" | grep -Eq '^[0-9]+$' || (( alt < 1025 || alt > 65535 )); then
-      warn "Invalid port: $alt"; tries=$((tries-1)); continue
+      warn "Invalid port"; tries=$((tries-1)); continue
     fi
     PORT="$alt"
   done
@@ -386,90 +306,94 @@ choose_port() {
 }
 
 generate_vhost_config() {
-  local out="$1"
-  if [[ "$APP_STATIC" = "$APP_BIN" ]]; then
-    cat >"$out" <<EOF
-# groqbash-gui Apache config (generated)
-ScriptSock "${CGI_SOCK_PATH}"
+  local out="$1" app_bin="$2" app_static="$3" sock="$4"
+  cat >"$out" <<EOF
+# ${PROJECT_NAME} Apache config (generated)
+ScriptSock "${sock}"
 
 Listen ${PORT}
 <VirtualHost *:${PORT}>
-    ScriptAlias ${CGI_URL_PATH} "${APP_BIN}/gui-server.sh"
-    Alias ${STATIC_URL_PATH} "${APP_STATIC}"
+    ScriptAlias ${CGI_URL_PATH} "${app_bin}/gui-server.sh"
+    Alias ${STATIC_URL_PATH} "${app_static}"
 
-    <Directory "${APP_BIN}">
+    <Directory "${app_bin}">
         Options +ExecCGI -Indexes
         AllowOverride None
         Require all granted
     </Directory>
-</VirtualHost>
 EOF
-  else
-    cat >"$out" <<EOF
-# groqbash-gui Apache config (generated)
-ScriptSock "${CGI_SOCK_PATH}"
+  if [[ "$app_static" != "$app_bin" ]]; then
+    cat >>"$out" <<EOF
 
-Listen ${PORT}
-<VirtualHost *:${PORT}>
-    ScriptAlias ${CGI_URL_PATH} "${APP_BIN}/gui-server.sh"
-    Alias ${STATIC_URL_PATH} "${APP_STATIC}"
-
-    <Directory "${APP_BIN}">
-        Options +ExecCGI -Indexes
-        AllowOverride None
-        Require all granted
-    </Directory>
-
-    <Directory "${APP_STATIC}">
+    <Directory "${app_static}">
         Options -ExecCGI -Indexes
         AllowOverride None
         Require all granted
     </Directory>
-</VirtualHost>
 EOF
   fi
+  cat >>"$out" <<EOF
+
+</VirtualHost>
+EOF
 }
 
 run_configtest() {
-  if ! "$APACHECTL" configtest >/dev/null 2>&1; then return 1; fi
-  return 0
+  "$APACHECTL" configtest >/dev/null 2>&1
 }
 
 reload_apache() {
   if "$APACHECTL" graceful >/dev/null 2>&1; then return 0; fi
   if "$APACHECTL" restart >/dev/null 2>&1; then return 0; fi
   if command -v service >/dev/null 2>&1; then
-    if service apache2 reload >/dev/null 2>&1 || service httpd reload >/dev/null 2>&1; then return 0; fi
+    service apache2 reload >/dev/null 2>&1 || service httpd reload >/dev/null 2>&1 && return 0 || true
   fi
-  warn "Apache reload/restart failed. Manual reload required."
+  warn "Apache reload failed; manual reload may be required"
   return 2
 }
 
 summarize() {
   printf '\n'
-  info "Installation summary:"
   info "APP_ROOT: $APP_ROOT"
-  info "APP_BIN: $APP_BIN"
   info "APACHE_CONF: $FINAL_CONF_PATH"
   info "PORT: $PORT"
   info "URL: http://localhost:${PORT}${CGI_URL_PATH}"
   printf '\n'
 }
 
+usage() {
+  printf 'Usage: %s [--app-root PATH] [--apache-root PATH] [--port PORT] [--non-interactive]\n' "$0"
+}
+
 main() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --app-root) APP_ROOT="$2"; shift 2 ;;
+      --apache-root) APACHE_ROOT_OVERRIDE="$2"; shift 2 ;;
       --port) PORT="$2"; shift 2 ;;
-      --apache-root) EXPLICIT_APACHE_ROOT="$2"; shift 2 ;;
       --non-interactive) NONINTERACTIVE=1; shift ;;
-      -h|--help) printf 'Usage: %s [--app-root PATH] [--port PORT] [--apache-root PATH] [--non-interactive]\n' "$0"; exit 0 ;;
-      *) err "Unknown arg: $1"; exit 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) err "Unknown arg: $1"; usage; exit 2 ;;
     esac
   done
 
   if [[ -z "${APP_ROOT:-}" ]]; then
-    if ui_root="$(locate_ui_root)"; then APP_ROOT="$ui_root"; else err "Could not locate groqbash UI root. Provide --app-root."; exit 1; fi
+    if ui_root="$(pwd)"; then
+      # try to locate ui by walking up
+      if [[ -f "./groqbash/groqbash.d/extras/ui/gui-server.sh" ]]; then
+        APP_ROOT="$(pwd)"
+      else
+        # walk up
+        local d="$PWD"
+        while [[ "$d" != "/" && "$d" != "." ]]; do
+          if [[ -f "$d/groqbash/groqbash.d/extras/ui/gui-server.sh" ]]; then
+            APP_ROOT="$d"; break
+          fi
+          d="$(dirname -- "$d")"
+        done
+      fi
+    fi
+    if [[ -z "${APP_ROOT:-}" ]]; then err "Provide --app-root"; exit 1; fi
   fi
 
   APP_BIN="${APP_ROOT}/groqbash/groqbash.d/extras/ui"
@@ -480,81 +404,71 @@ main() {
 
   detect_apache || exit 1
   derive_server_root || exit 1
-
   check_dependencies || exit 1
-
-  if ! detect_conf_dir; then exit 1; fi
+  detect_conf_dir || exit 1
 
   FINAL_CONF_PATH="${APACHE_CONF_DIR}/${CONF_FILENAME}"
 
-  if [[ ! -d "$APP_BIN" ]]; then err "APP_BIN not found at $APP_BIN"; exit 1; fi
+  if [[ ! -d "$APP_BIN" ]]; then err "APP_BIN not found: $APP_BIN"; exit 1; fi
   if [[ ! -f "$APP_BIN/gui-server.sh" || ! -f "$APP_BIN/gui-bootstrap.sh" ]]; then err "Required UI scripts missing in $APP_BIN"; exit 1; fi
 
   mkdir -p "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
-  chmod 700 "$APP_RUNTIME_DIR" 2>/dev/null || warn "Could not set 700 on $APP_RUNTIME_DIR"
-  chmod 700 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || warn "Could not set 700 on $APP_CGI_RUNTIME_DIR"
+  chmod 700 "$APP_RUNTIME_DIR" 2>/dev/null || true
+  chmod 700 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
 
-  check_permissions || exit 1
-
-  if ! check_groqbash_cmd; then err "GROQBASH_CMD check failed. Aborting."; exit 1; fi
-
+  check_permissions_and_dirs "$APP_BIN" || exit 1
+  check_groqbash_bootstrap "$APP_BIN" || exit 1
   check_cgi_module
 
-  if port_in_use "$PORT"; then info "Default port $PORT appears in use."; if ! choose_port; then exit 1; fi; fi
+  if port_in_use "$PORT"; then
+    info "Default port $PORT in use"
+    if ! choose_port_interactive; then exit 1; fi
+  fi
 
   mkdir -p "$(dirname -- "$CGI_SOCK_PATH")" 2>/dev/null || true
-  chmod 700 "$(dirname -- "$CGI_SOCK_PATH")" 2>/dev/null || warn "Could not set 700 on $(dirname -- "$CGI_SOCK_PATH")"
+  chmod 700 "$(dirname -- "$CGI_SOCK_PATH")" 2>/dev/null || true
 
   local gen_tmp
   gen_tmp="$(safe_mktemp_in_dir "$APACHE_CONF_DIR" "${CONF_FILENAME}.gen.XXXXXX")"
   TMP_FILES+=("$gen_tmp")
-  generate_vhost_config "$gen_tmp"
+  generate_vhost_config "$gen_tmp" "$APP_BIN" "$APP_STATIC" "$CGI_SOCK_PATH"
 
   if [[ -f "$FINAL_CONF_PATH" ]]; then
     if cmp -s "$gen_tmp" "$FINAL_CONF_PATH"; then
-      info "Configuration already installed and identical. Nothing to do."
+      info "Config identical; nothing to do"
       rm -f -- "$gen_tmp" || true
       TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
       summarize; exit 0
-    else
-      if [[ "$NONINTERACTIVE" -eq 1 ]]; then
-        err "Existing config differs and non-interactive mode set. Aborting."
-        rm -f -- "$gen_tmp" || true
-        TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
-        exit 1
-      fi
-      printf 'Existing config differs. Overwrite? [y/N]: '
-      read -r ans || true
-      if ! printf '%s' "$ans" | grep -Eq '^[Yy]$'; then
-        info "Aborting per user choice. Existing config left intact."
-        rm -f -- "$gen_tmp" || true
-        TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
-        exit 0
-      fi
     fi
+    if [[ "$NONINTERACTIVE" -eq 1 ]]; then
+      err "Existing config differs and non-interactive mode set"; rm -f -- "$gen_tmp" || true; exit 1
+    fi
+    printf 'Existing config differs. Overwrite? [y/N]: '
+    read -r ans || true
+    case "$ans" in [Yy]) ;; *) info "Aborting"; rm -f -- "$gen_tmp" || true; exit 0 ;; esac
   fi
 
-  if ! write_conf_atomic "$FINAL_CONF_PATH" "$gen_tmp"; then
-    err "Failed to install Apache config. Aborting."
-    rm -f -- "$gen_tmp" || true
-    TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
-    exit 1
+  if ! mv -f "$gen_tmp" "${FINAL_CONF_PATH}.pending" 2>/dev/null; then
+    err "Failed to stage config"; rm -f -- "$gen_tmp" || true; exit 1
   fi
-  rm -f -- "$gen_tmp" || true
-  TMP_FILES=("${TMP_FILES[@]/$gen_tmp}") || true
+  TMP_FILES+=("${FINAL_CONF_PATH}.pending")
 
   if ! run_configtest; then
-    rm -f -- "$FINAL_CONF_PATH" || true
-    err "apachectl configtest failed after installing $FINAL_CONF_PATH. File removed. Aborting."
-    exit 1
+    rm -f -- "${FINAL_CONF_PATH}.pending" || true
+    err "apachectl configtest failed after staging; pending file removed"; exit 1
   fi
 
+  if ! mv -f "${FINAL_CONF_PATH}.pending" "$FINAL_CONF_PATH"; then
+    err "Failed to install config"; rm -f -- "${FINAL_CONF_PATH}.pending" || true; exit 1
+  fi
+  TMP_FILES=("${TMP_FILES[@]/${FINAL_CONF_PATH}.pending}") || true
+
   if ! reload_apache; then
-    warn "Apache reload failed. Configuration file remains at $FINAL_CONF_PATH. Please reload Apache manually."
+    warn "Apache reload failed; config installed at $FINAL_CONF_PATH"
     summarize; exit 2
   fi
 
-  info "Installation completed successfully."
+  info "Installation completed"
   summarize
   exit 0
 }
