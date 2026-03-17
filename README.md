@@ -192,7 +192,7 @@ Gli extras non modificano il core.
 
 ### Sicurezza
 
-- provider aggiuntivi  
+- provider aggiuntivi **[vedi: PROVIDERS](PROVIDERS.md)**
 - strumenti di verifica permessi, symlink, owner  
 - template e documentazione
 
