@@ -22,7 +22,7 @@ La GUI fornisce:
 - Configurazioni persistenti  
 
 Per istruzioni dettagliate di installazione, consulta anche:  
-**`INSTALL.md`**
+**[INSTALL.md](INSTALL.md)**
 
 ---
 
