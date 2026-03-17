@@ -212,9 +212,10 @@ expand_simple_pattern() {
   # Absolute pattern
   if [[ "$pattern" = /* ]]; then
     cand="$pattern"
-    if [[ "$cand" =~ [\*\?
+    # Use glob-style test for presence of glob chars for portability
+    if [[ "$cand" == *[\*\?
 
-\[] ]]; then
+\[]* ]]; then
       dirpart="$(dirname -- "$cand")"
       bname="$(basename -- "$cand")"
       if [[ -d "$dirpart" ]]; then
@@ -229,9 +230,9 @@ expand_simple_pattern() {
   # Relative: try each base
   for base in "$@"; do
     cand="$base/$pattern"
-    if [[ "$cand" =~ [\*\?
+    if [[ "$cand" == *[\*\?
 
-\[] ]]; then
+\[]* ]]; then
       dirpart="$(dirname -- "$cand")"
       bname="$(basename -- "$cand")"
       if [[ -d "$dirpart" ]]; then
@@ -276,13 +277,17 @@ parse_includes() {
     fi
     curdir="$(dirname -- "$file")"
     while IFS= read -r line || [[ -n "$line" ]]; do
-      # Strip comments and trim
+      # Strip comments (starting with #) and trim leading/trailing whitespace
       line="${line%%#*}"
       line="$(printf '%s' "$line" | awk '{$1=$1;print}')"
-      if [[ "$line" =~ ^[Ii]nclude(Optional)?[[:space:]]+(.+)$ ]]; then
+      # Allow leading spaces/tabs before Include
+      if [[ "$line" =~ ^[[:space:]]*[Ii]nclude(Optional)?[[:space:]]+(.+)$ ]]; then
         pat="${BASH_REMATCH[2]}"
+        # Remove surrounding quotes if present
         pat="${pat%\"}"; pat="${pat#\"}"
         pat="${pat%\'}"; pat="${pat#\'}"
+        # Trim trailing whitespace again
+        pat="$(printf '%s' "$pat" | awk '{$1=$1;print}')"
         # Expand pattern against curdir, SERVER_ROOT, CONF_BASE_DIR
         matches="$(expand_simple_pattern "$pat" "$curdir" "$SERVER_ROOT" "$(dirname -- "$SERVER_CONFIG_PATH")")"
         while IFS= read -r m; do
@@ -316,9 +321,18 @@ detect_conf_dir() {
   local candidates=( "$CONF_BASE_DIR/conf.d" "$CONF_BASE_DIR/sites-enabled" "$CONF_BASE_DIR/extra" "$CONF_BASE_DIR" )
   for cand in "${candidates[@]}"; do
     [[ -d "$cand" ]] || continue
+
+    # Quick heuristic: if candidate is empty, skip to save time
+    if ! find "$cand" -maxdepth 1 -type f -print -quit >/dev/null 2>&1; then
+      # directory has no files; skip
+      continue
+    fi
+
     probe="$cand/.${CONF_FILENAME}.probe.$$"
     printf '%s\n' "# probe for ${PROJECT_NAME}" >"$probe"
     TMP_FILES+=("$probe")
+
+    # Run configtest once per candidate; if apachectl fails, continue to next candidate
     if "$APACHECTL" configtest >/dev/null 2>&1; then
       # Parse includes with depth limit 10
       included_files="$(parse_includes "$SERVER_CONFIG_PATH" 10 || true)"
@@ -352,8 +366,18 @@ detect_conf_dir() {
 # Required tools per environment assumptions
 # ---------------------------------------------------------------------------
 check_dependencies() {
-  local reqs=(bash coreutils find awk gawk sed mktemp sha1sum curl jq)
+  local reqs=(bash coreutils find sed mktemp sha1sum curl jq)
   local cmd
+  # awk or gawk acceptable
+  if command -v awk >/dev/null 2>&1; then
+    : # awk present
+  elif command -v gawk >/dev/null 2>&1; then
+    : # gawk present
+  else
+    err "Required command missing: awk or gawk"
+    return 1
+  fi
+
   for cmd in "${reqs[@]}"; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       err "Required command missing: $cmd"
@@ -441,14 +465,21 @@ port_in_use() {
   if command -v ss >/dev/null 2>&1; then
     ss -ltn "( sport = :$p )" >/dev/null 2>&1 && return 0 || return 1
   elif command -v netstat >/dev/null 2>&1; then
-    netstat -tln | awk '{print $4}' | grep -E ":$p\$" >/dev/null 2>&1 && return 0 || return 1
-  else
-    if ( exec 3<>/dev/tcp/127.0.0.1/"$p" ) 2>/dev/null; then
-      exec 3>&- 3<&- || true
-      return 0
+    # netstat may fail on some platforms (Termux); treat failure as non-fatal and fallback
+    if netstat -tln >/dev/null 2>&1; then
+      netstat -tln | awk '{print $4}' | grep -E ":$p\$" >/dev/null 2>&1 && return 0 || return 1
+    else
+      # fallback to /dev/tcp
+      :
     fi
-    return 1
   fi
+
+  # Fallback: try /dev/tcp
+  if ( exec 3<>/dev/tcp/127.0.0.1/"$p" ) 2>/dev/null; then
+    exec 3>&- 3<&- || true
+    return 0
+  fi
+  return 1
 }
 
 choose_port() {
@@ -485,7 +516,27 @@ choose_port() {
 # ---------------------------------------------------------------------------
 generate_vhost_config() {
   local out="$1"
-  cat >"$out" <<EOF
+  # If APP_STATIC equals APP_BIN, emit a single Directory block
+  if [[ "$APP_STATIC" = "$APP_BIN" ]]; then
+    cat >"$out" <<EOF
+# groqbash-gui Apache config (generated)
+# ScriptSock must be in server config context and point to a socket path we control
+ScriptSock "${CGI_SOCK_PATH}"
+
+Listen ${PORT}
+<VirtualHost *:${PORT}>
+    ScriptAlias ${CGI_URL_PATH} "${APP_BIN}/gui-server.sh"
+    Alias ${STATIC_URL_PATH} "${APP_STATIC}"
+
+    <Directory "${APP_BIN}">
+        Options +ExecCGI -Indexes
+        AllowOverride None
+        Require all granted
+    </Directory>
+</VirtualHost>
+EOF
+  else
+    cat >"$out" <<EOF
 # groqbash-gui Apache config (generated)
 # ScriptSock must be in server config context and point to a socket path we control
 ScriptSock "${CGI_SOCK_PATH}"
@@ -508,6 +559,7 @@ Listen ${PORT}
     </Directory>
 </VirtualHost>
 EOF
+  fi
 }
 
 # ---------------------------------------------------------------------------
