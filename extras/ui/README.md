@@ -316,7 +316,7 @@ Open:
 
 For detailed server-specific instructions (BusyBox, Nginx, Lighttpd, manual Apache),  **see: [INSTALL.md](INSTALL.md)**
 
-
+---
 ## 🌐 Localization
 
 Defined in:
