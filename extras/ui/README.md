@@ -1,7 +1,8 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
-[![GroqBash⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 🇮🇹 [🇬🇧](#-groqbash-gui-minimalist-web-interface)
+[![GroqBash⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 🇮🇹 [🇬🇧](#-minimalist-web-interface)
 
-# 🇮🇹 GroqBash⁺ GUI — Interfaccia Web Minimalista
+# GroqBash⁺ GUI
+## 🇮🇹 Interfaccia Web Minimalista
 
 ## 🧩 Panoramica
 Questa è la GUI HTML ufficiale di GroqBash, progettata per essere:
@@ -202,8 +203,9 @@ Log disponibili in:
 - `logs/server.log`  
 - `logs/errors.log`  
 
-============================================================
-# 🇬🇧 GroqBash⁺ GUI — Minimalist Web Interface
+---
+# GroqBash⁺ GUI
+## 🇬🇧 Minimalist Web Interface
 
 ## 🧩 Overview
 This is the official HTML GUI for GroqBash, designed to be:
