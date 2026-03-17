@@ -313,8 +313,7 @@ Open:
 4. Open the configured URL in your browser  
 
 For detailed server-specific instructions (BusyBox, Nginx, Lighttpd, manual Apache):  
-**see `INSTALL.md`**
-
+**[INSTALL.md](INSTALL.md)**
 ---
 
 ## 🌐 Localization
