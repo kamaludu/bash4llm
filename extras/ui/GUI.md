@@ -179,7 +179,7 @@ Lo script lo rileva automaticamente.
 
 ---
 ## 🇬🇧 English Section
-# GroqBash GUI Installation Guide
+# GroqBash⁺ GUI Installation Guide
 
 This guide explains how to install and activate the **GroqBash GUI**, either through Apache (automatic installation) or any CGI-capable server (manual installation).
 
