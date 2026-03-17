@@ -1,7 +1,6 @@
 # GroqBash⁺ GUI  
 ---
 ## 🇮🇹 Sezione Italiana
----
 # Guida all’Installazione della GroqBash⁺ GUI
 
 Questa guida descrive l’intero processo per installare e attivare la **GroqBash GUI**, sia tramite Apache (installazione automatica) sia tramite qualsiasi altro server con supporto CGI (installazione manuale).
@@ -180,7 +179,6 @@ Lo script lo rileva automaticamente.
 
 ---
 ## 🇬🇧 English Section
----
 # GroqBash GUI Installation Guide
 
 This guide explains how to install and activate the **GroqBash GUI**, either through Apache (automatic installation) or any CGI-capable server (manual installation).
