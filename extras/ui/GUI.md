@@ -1,224 +1,366 @@
-# 📦 Installazione completa della GroqBash⁺ GUI
+# Guida Installazione GroqBash GUI  
+# Installation Guide for GroqBash GUI
 
-Questa guida descrive l’intero processo di installazione della GUI:
+============================================================
+# 🇮🇹 Sezione Italiana
+============================================================
 
-1. Installazione della UI come extra di GroqBash  
-2. Attivazione della GUI CGI:
-   - Installazione automatica su Apache tramite groqbash-gui-install.sh
-   - Installazione manuale su qualsiasi server con supporto CGI
+# Guida all’Installazione della GroqBash GUI
 
----
+Questa guida descrive l’intero processo per installare e attivare la **GroqBash GUI**, sia tramite Apache (installazione automatica) sia tramite qualsiasi altro server con supporto CGI (installazione manuale).
 
-## 🧩 Installazione della UI come extra di GroqBash
+La GUI è un extra opzionale di GroqBash e fornisce un’interfaccia web locale con backend CGI sicuro e isolato.
 
-La GUI vive nella directory:
+------------------------------------------------------------
+## 1. Installazione della UI (extra di GroqBash)
+------------------------------------------------------------
 
-```
-groqbash/groqbash.d/extras/ui/
-```
-
-La struttura aggiornata è:
-
-```sh
-ui/
-  groqbash-gui-install.sh
-  gui-server.sh
-  gui-bootstrap.sh
-  gui-lang.conf
-  gui-style-light.css
-  gui-style-dark.css
-
-  templates/
-    header.html
-    content.html
-    footer.html
-    settings-header.html
-    settings-content.html
-
-  conversations/
-  files/
-      input/
-      output/
-  config/
-  logs/
-  tmp/
-  assets/
-```
-
-### ✔ Installazione UI (metodo ufficiale)
-
-1. Clona o aggiorna GroqBash:
-   ```sh
-   git clone https://github.com/kamaludu/groqbash
-   ```
-
-2. Verifica che la UI sia presente in:
-   ```
-   groqbash/groqbash.d/extras/ui
-   ```
-
-3. Non spostare la UI altrove.  
-   La GUI **deve rimanere dentro l’albero di GroqBash**, perché gui-bootstrap.sh deriva i percorsi da lì.
-
----
-
-## 🅰 Installazione automatica su Apache (consigliata)
-
-La GUI include un installer dedicato:
+La GUI vive nella struttura standard di GroqBash:
 
 ```
-ui/groqbash-gui-install.sh
+groqbash/
+  groqbash.d/
+    extras/
+      ui/
+        gui-server.sh
+        gui-bootstrap.sh
+        templates/
+        assets/
+        runtime/
 ```
 
-Questo script:
+### ✔️ Installazione tramite GroqBash
 
-- rileva automaticamente Apache  
-- determina la directory corretta per i file .conf  
-- crea un VirtualHost dedicato  
-- configura CGI e statici  
-- applica i permessi minimi  
-- garantisce idempotenza  
-- non copia la UI (Apache punta alla directory reale)  
+Se GroqBash è già installato:
 
-### ✔ Esecuzione
+`groqbash extras install ui`
 
-1. Vai nella directory della UI:
-   ```sh
-   cd groqbash/groqbash.d/extras/ui
-   ```
+Oppure dal repository:
 
-2. Rendi eseguibile l’installer:
-   ```sh
-   chmod +x groqbash-gui-install.sh
-   ```
+`./groqbash extras install ui`
 
-3. Avvia l’installazione:
-   ```sh
-   ./groqbash-gui-install.sh
-   ```
+Questo comando:
+- posiziona la UI nella directory corretta
+- prepara gli script CGI
+- crea la struttura runtime
+- verifica la disponibilità di groqbash
 
-4. Al termine, apri:
-   ```
-   http://localhost:19970/groqbash-gui/cgi
-   ```
+------------------------------------------------------------
+## 2. Attivazione della GUI in modalità CGI
+------------------------------------------------------------
 
-### ✔ Cosa fa l’installer
+La GUI può essere attivata in due modi:
 
-- Crea il file:
-  ```
-  <APACHE_CONF_DIR>/groqbash-gui.conf
-  ```
+1. **Installazione automatica su Apache** (consigliata)  
+2. **Installazione manuale su qualsiasi server CGI**
 
-- Configura:
-  ```
-  ScriptAlias /groqbash-gui/cgi <APP_BIN>/gui-server.sh
-  Alias /groqbash-gui/static <APP_BIN>
-  ```
+------------------------------------------------------------
+## 2.1 Installazione automatica su Apache
+------------------------------------------------------------
 
-- Imposta HOME e PATH per CGI (Termux)
-- Applica permessi:
-  - script: 755  
-  - template/static: 644  
-  - runtime dirs: 700  
-  - runtime files: 600  
+Lo script `groqbash-gui-install.sh`:
+- rileva automaticamente la UI
+- rileva la configurazione di Apache tramite `apachectl -V`
+- trova una directory di configurazione realmente inclusa
+- genera `groqbash-gui.conf`
+- abilita ScriptSock e CGI
+- esegue `configtest`
+- ricarica Apache
 
-- Esegue configtest  
-- Esegue reload Apache (o mostra istruzioni manuali)
+### ✔️ Esecuzione
 
----
+`extras/ui/groqbash-gui-install.sh`
 
-## 🅱 Installazione manuale su qualsiasi server CGI
+Oppure:
 
-Se non usi Apache, puoi configurare la GUI manualmente.
+`groqbash gui install`
 
-### ✔ 3.1 Rendere eseguibile il CGI
+### ✔️ Risultato
 
-```sh
-chmod +x ui/gui-server.sh
-```
-
-### ✔ 3.2 Configurare il server per eseguire gui-server.sh
-
-Dipende dal server:
-
----
-
-## 🔹 BusyBox httpd
-
-Aggiungi nel file di configurazione:
+Lo script mostra un riepilogo simile:
 
 ```
-/cgi-bin:groqbash/groqbash.d/extras/ui
+APP_ROOT: /path/to/project
+APACHE_CONF: /etc/apache2/conf.d/groqbash-gui.conf
+PORT: 19970
+URL: http://localhost:19970/groqbash-gui/cgi
 ```
 
-E avvia:
+Apri il browser e visita l’URL indicato.
 
-```sh
-busybox httpd -f -p 8080 -h .
-```
+------------------------------------------------------------
+## 2.2 Installazione manuale su qualsiasi server CGI
+------------------------------------------------------------
 
-Apri:
+Funziona con:
+- lighttpd
+- nginx + fcgiwrap
+- busybox httpd
+- thttpd
+- server embedded
+- container minimalisti
 
-```
-http://localhost:8080/cgi-bin/gui-server.sh
-```
+### ✔️ Requisiti minimi
+- Supporto CGI
+- Possibilità di eseguire script `.sh` come CGI
+- Permessi di esecuzione nella directory della UI
 
----
+### ✔️ Passi
 
-## 🔹 Lighttpd
+#### 1. Individua lo script CGI principale
 
-Aggiungi:
+`APP_BIN/groqbash/groqbash.d/extras/ui/gui-server.sh`
 
-```
-cgi.assign = ( ".sh" => "/bin/bash" )
-alias.url += ( "/groqbash-gui" => "/percorso/ui" )
-```
+#### 2. Configura il server
 
----
-
-## 🔹 Nginx (tramite fcgiwrap)
-
-Nginx non supporta CGI nativamente.  
-Serve fcgiwrap + configurazione dedicata.
-
----
-
-## 🔹 Qualsiasi altro server CGI
-
-Regole generali:
-
-- gui-server.sh deve essere eseguibile  
-- deve essere invocato come CGI (stdin + env + stdout)  
-- deve poter leggere/scrivere nelle directory runtime  
-- deve poter eseguire GroqBash  
-
-URL tipico:
+Esempio generico:
 
 ```
-http://localhost/cgi-bin/gui-server.sh
+ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
+Alias /groqbash-gui/static /path/to/ui
 ```
 
----
+#### 3. Rendi eseguibili gli script
 
-## 🧪 Requisiti
+`chmod 755 gui-server.sh gui-bootstrap.sh`
 
-- bash  
-- coreutils  
-- findutils  
-- util-linux  
-- gawk  
-- curl  
-- jq  
-- web server con CGI  
-- GroqBash installato  
+#### 4. Proteggi le directory runtime
 
----
+`chmod 700 runtime runtime/cgid`
 
-## 🛠️ Debug
+#### 5. Riavvia il server
 
-Log disponibili in:
+#### 6. Apri nel browser:
+
+`http://localhost:<PORT>/groqbash-gui/cgi`
+
+------------------------------------------------------------
+## 3. Aggiornamento della GUI
+------------------------------------------------------------
+
+`groqbash extras update ui`
+
+Poi, se usi Apache:
+
+`extras/ui/groqbash-gui-install.sh`
+
+------------------------------------------------------------
+## 4. Rimozione della GUI
+------------------------------------------------------------
+
+### ✔️ Rimozione UI
+
+`groqbash extras remove ui`
+
+### ✔️ Rimozione configurazione Apache
+
+Elimina:
+
+`/path/to/apache/conf.d/groqbash-gui.conf`
+
+Poi:
+
+`apachectl graceful`
+
+------------------------------------------------------------
+## 5. Troubleshooting rapido
+------------------------------------------------------------
+
+### ❗ La GUI non si apre
+- Controlla che Apache ascolti sulla porta indicata
+- Controlla che mod_cgi o mod_cgid siano attivi
+- Controlla i permessi:
+  - `chmod 755 gui-server.sh`
+  - `chmod 700 runtime runtime/cgid`
+
+### ❗ Errore 500
+- Controlla i log Apache
+- Verifica groqbash:
+  - `extras/ui/gui-bootstrap.sh`
+
+### ❗ Porta occupata
+Lo script lo rileva automaticamente.
+
+============================================================
+# 🇬🇧 English Section
+============================================================
+
+# GroqBash GUI Installation Guide
+
+This guide explains how to install and activate the **GroqBash GUI**, either through Apache (automatic installation) or any CGI-capable server (manual installation).
+
+The GUI is an optional GroqBash extra providing a local web interface with a secure CGI backend.
+
+------------------------------------------------------------
+## 1. Installing the UI (GroqBash extra)
+------------------------------------------------------------
+
+The GUI lives inside the standard GroqBash structure:
 
 ```
-ui/logs/server.log
-ui/logs/errors.log
+groqbash/
+  groqbash.d/
+    extras/
+      ui/
+        gui-server.sh
+        gui-bootstrap.sh
+        templates/
+        assets/
+        runtime/
 ```
+
+### ✔️ Install via GroqBash
+
+If GroqBash is installed:
+
+`groqbash extras install ui`
+
+Or from the repository:
+
+`./groqbash extras install ui`
+
+This command:
+- places the UI in the correct directory
+- prepares the CGI scripts
+- creates runtime directories
+- verifies groqbash availability
+
+------------------------------------------------------------
+## 2. Activating the GUI in CGI mode
+------------------------------------------------------------
+
+Two activation methods:
+
+1. **Automatic Apache installation** (recommended)  
+2. **Manual installation on any CGI server**
+
+------------------------------------------------------------
+## 2.1 Automatic Apache installation
+------------------------------------------------------------
+
+The script `groqbash-gui-install.sh`:
+- auto-detects the UI
+- reads Apache configuration via `apachectl -V`
+- finds an actually included config directory
+- generates `groqbash-gui.conf`
+- enables ScriptSock and CGI
+- runs `configtest`
+- reloads Apache
+
+### ✔️ Run it
+
+`extras/ui/groqbash-gui-install.sh`
+
+Or:
+
+`groqbash gui install`
+
+### ✔️ Result
+
+You will see something like:
+
+```
+APP_ROOT: /path/to/project
+APACHE_CONF: /etc/apache2/conf.d/groqbash-gui.conf
+PORT: 19970
+URL: http://localhost:19970/groqbash-gui/cgi
+```
+
+Open the URL in your browser.
+
+------------------------------------------------------------
+## 2.2 Manual installation on any CGI server
+------------------------------------------------------------
+
+Works with:
+- lighttpd
+- nginx + fcgiwrap
+- busybox httpd
+- thttpd
+- embedded servers
+- minimal containers
+
+### ✔️ Requirements
+- CGI support
+- Ability to execute `.sh` scripts as CGI
+- Proper execution permissions
+
+### ✔️ Steps
+
+#### 1. Locate the CGI script
+
+`APP_BIN/groqbash/groqbash.d/extras/ui/gui-server.sh`
+
+#### 2. Configure your server
+
+Generic example:
+
+```
+ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
+Alias /groqbash-gui/static /path/to/ui
+```
+
+#### 3. Make scripts executable
+
+`chmod 755 gui-server.sh gui-bootstrap.sh`
+
+#### 4. Secure runtime directories
+
+`chmod 700 runtime runtime/cgid`
+
+#### 5. Restart your server
+
+#### 6. Open in browser:
+
+`http://localhost:<PORT>/groqbash-gui/cgi`
+
+------------------------------------------------------------
+## 3. Updating the GUI
+------------------------------------------------------------
+
+`groqbash extras update ui`
+
+Then, if using Apache:
+
+`extras/ui/groqbash-gui-install.sh`
+
+------------------------------------------------------------
+## 4. Removing the GUI
+------------------------------------------------------------
+
+### ✔️ Remove UI
+
+`groqbash extras remove ui`
+
+### ✔️ Remove Apache config
+
+Delete:
+
+`/path/to/apache/conf.d/groqbash-gui.conf`
+
+Then:
+
+`apachectl graceful`
+
+------------------------------------------------------------
+## 5. Quick Troubleshooting
+------------------------------------------------------------
+
+### ❗ GUI not loading
+- Check Apache is listening on the configured port
+- Ensure mod_cgi or mod_cgid is enabled
+- Check permissions:
+  - `chmod 755 gui-server.sh`
+  - `chmod 700 runtime runtime/cgid`
+
+### ❗ 500 Internal Server Error
+- Check Apache logs
+- Verify groqbash:
+  - `extras/ui/gui-bootstrap.sh`
+
+### ❗ Port already in use
+The installer detects this automatically.
+
+============================================================
+# Fine / End
+============================================================
