@@ -208,10 +208,13 @@ derive_server_root() {
 expand_simple_pattern() {
   local pattern="$1"; shift
   local base cand dirpart bname
+
   # Absolute pattern
   if [[ "$pattern" = /* ]]; then
     cand="$pattern"
-    if [[ "$cand" =~ [[]*?] ]]; then
+    if [[ "$cand" =~ [\*\?
+
+\[] ]]; then
       dirpart="$(dirname -- "$cand")"
       bname="$(basename -- "$cand")"
       if [[ -d "$dirpart" ]]; then
@@ -222,10 +225,13 @@ expand_simple_pattern() {
     fi
     return 0
   fi
+
   # Relative: try each base
   for base in "$@"; do
     cand="$base/$pattern"
-    if [[ "$cand" =~ [[]*?] ]]; then
+    if [[ "$cand" =~ [\*\?
+
+\[] ]]; then
       dirpart="$(dirname -- "$cand")"
       bname="$(basename -- "$cand")"
       if [[ -d "$dirpart" ]]; then
