@@ -1,4 +1,4 @@
-# GroqBash⁺ GUI   🇮🇹 [🇬🇧](#-english-section)
+# GroqBash⁺ GUI   [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
 ---
 ## 🇮🇹 Sezione Italiana
 # Guida all’Installazione della GroqBash⁺ GUI
