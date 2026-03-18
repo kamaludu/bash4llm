@@ -74,6 +74,34 @@ detect_apache() {
   return 0
 }
 
+# Detect Termux environment
+is_termux() {
+  # Reliable check: Termux installs under this PREFIX
+  if [[ -n "${PREFIX:-}" ]] && [[ "$PREFIX" = "/data/data/com.termux/files/usr" ]]; then
+    return 0
+  fi
+  # Fallback: check for typical Termux path
+  if [[ -d "/data/data/com.termux/files/usr" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# Detect which CGI mode is available: sets CGI_MODE to cgid|cgi|none
+detect_cgi_mode() {
+  CGI_MODE="none"
+  local mods
+  mods="$("$APACHECTL" -M 2>/dev/null || true)"
+  if printf '%s\n' "$mods" | grep -Eiq 'cgid_module'; then
+    CGI_MODE="cgid"
+  elif printf '%s\n' "$mods" | grep -Eiq 'cgi_module'; then
+    CGI_MODE="cgi"
+  else
+    CGI_MODE="none"
+  fi
+  return 0
+}
+
 # Derive SERVER_ROOT and SERVER_CONFIG_PATH from apachectl -V
 derive_server_root() {
   local out httpd_root scf cfgpath cfgdir
@@ -292,14 +320,67 @@ check_groqbash_bootstrap() {
   return 0
 }
 
+# Check CGI module and, on Termux, enable mod_cgi if commented out in the main httpd.conf
 check_cgi_module() {
-  local mods
-  mods="$("$APACHECTL" -M 2>/dev/null || true)"
-  if ! printf '%s\n' "$mods" | grep -E 'cgid_module|cgi_module' >/dev/null 2>&1; then
-    warn "mod_cgid or mod_cgi not detected; CGI may not work until enabled"
-  else
-    info "CGI module appears loaded"
+  detect_cgi_mode
+
+  # If CGI module present, report and return
+  if [[ "$CGI_MODE" = "cgid" || "$CGI_MODE" = "cgi" ]]; then
+    info "CGI module appears loaded ($CGI_MODE)"
+    return 0
   fi
+
+  # No CGI module detected
+  warn "mod_cgid or mod_cgi not detected; CGI may not work until enabled"
+
+  # If running on Termux, try to enable mod_cgi safely in the server config
+  if is_termux; then
+    # SERVER_CONFIG_PATH should already be derived; fallback to common Termux path
+    local conf="$SERVER_CONFIG_PATH"
+    if [[ -z "$conf" ]]; then
+      conf="/data/data/com.termux/files/usr/etc/apache2/httpd.conf"
+    fi
+
+    if [[ ! -f "$conf" ]]; then
+      warn "Termux detected but httpd.conf not found at $conf"
+      return 1
+    fi
+
+    # If a commented LoadModule cgi_module line exists, uncomment the first occurrence safely
+    if grep -Eiq '^[[:space:]]*#.*LoadModule[[:space:]]+cgi_module' "$conf"; then
+      info "Attempting to enable mod_cgi in $conf"
+      local tmp
+      tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "enable-cgi.XXXXXX")" || tmp="$(mktemp)"
+      # Use awk to uncomment the first matching line; avoid fragile sed regex
+      awk '
+        BEGIN { done=0 }
+        /^[[:space:]]*#/ && /LoadModule[[:space:]]+cgi_module/ && done==0 {
+          sub(/^[[:space:]]*#/, "")
+          done=1
+        }
+        { print }
+      ' "$conf" >"$tmp" && mv -f "$tmp" "$conf" && chmod 644 "$conf" 2>/dev/null || {
+        rm -f -- "$tmp" 2>/dev/null || true
+        err "Failed to enable mod_cgi in $conf"
+        return 1
+      }
+      info "Enabled mod_cgi in $conf"
+      # Re-evaluate loaded modules after change
+      if "$APACHECTL" configtest >/dev/null 2>&1; then
+        detect_cgi_mode
+        if [[ "$CGI_MODE" = "cgi" ]]; then
+          info "mod_cgi now available"
+          return 0
+        fi
+      else
+        warn "apachectl configtest failed after enabling mod_cgi; manual check recommended"
+      fi
+    else
+      warn "No commented LoadModule cgi_module line found in $conf; manual enable required"
+    fi
+  fi
+
+  return 0
 }
 
 # port_in_use with ss/netstat/dev/tcp
@@ -336,11 +417,26 @@ choose_port_interactive() {
   return 0
 }
 
+# generate_vhost_config: emits ScriptSock only when cgid_module is actually loaded
 generate_vhost_config() {
   local out="$1" app_bin="$2" app_static="$3" sock="$4"
+
+  # Ensure we know current CGI mode
+  detect_cgi_mode
+
+  # Header (no ScriptSock by default)
   cat >"$out" <<EOF
 # ${PROJECT_NAME} Apache config (generated)
+EOF
+
+  # Emit ScriptSock only when mod_cgid is loaded (cgid uses sockets)
+  if [[ "$CGI_MODE" = "cgid" ]]; then
+    cat >>"$out" <<EOF
 ScriptSock "${sock}"
+EOF
+  fi
+
+  cat >>"$out" <<EOF
 
 Listen ${PORT}
 <VirtualHost *:${PORT}>
@@ -353,6 +449,7 @@ Listen ${PORT}
         Require all granted
     </Directory>
 EOF
+
   if [[ "$app_static" != "$app_bin" ]]; then
     cat >>"$out" <<EOF
 
@@ -363,6 +460,7 @@ EOF
     </Directory>
 EOF
   fi
+
   cat >>"$out" <<EOF
 
 </VirtualHost>
