@@ -485,11 +485,13 @@ Listen ${PORT}
 <VirtualHost *:${PORT}>
 EOF
 
-  # On Termux ensure CGI processes can find /usr/bin/env and bash via PATH
+  # On Termux ensure CGI processes have PATH and HOME so /usr/bin/env and HOME-dependent code work
   if is_termux; then
     cat >>"$out" <<'EOF'
     # Ensure CGI has a usable PATH on Termux so /usr/bin/env works
     SetEnv PATH "/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/bin/applets"
+    # Provide HOME for scripts that expect it in the environment
+    SetEnv HOME "/data/data/com.termux/files/home"
 EOF
   fi
 
