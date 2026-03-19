@@ -483,6 +483,17 @@ EOF
 
 Listen ${PORT}
 <VirtualHost *:${PORT}>
+EOF
+
+  # On Termux ensure CGI processes can find /usr/bin/env and bash via PATH
+  if is_termux; then
+    cat >>"$out" <<'EOF'
+    # Ensure CGI has a usable PATH on Termux so /usr/bin/env works
+    SetEnv PATH "/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/bin/applets"
+EOF
+  fi
+
+  cat >>"$out" <<EOF
     ScriptAlias ${CGI_URL_PATH} "${app_bin}/gui-server.sh"
     Alias ${STATIC_URL_PATH} "${app_static}"
 
