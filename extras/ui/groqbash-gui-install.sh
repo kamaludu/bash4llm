@@ -90,22 +90,17 @@ is_termux() {
 # Detect which CGI mode is available: sets CGI_MODE to cgid|cgi|none
 detect_cgi_mode() {
   CGI_MODE="none"
-  local mods
-  mods="$("$APACHECTL" -M 2>/dev/null || true)"
 
-  # On Termux prefer mod_cgi and ignore mod_cgid even if listed
+  # On Termux force cgi mode; do not probe apachectl -M or warn
   if is_termux; then
-    if printf '%s\n' "$mods" | grep -Eiq 'cgi_module'; then
-      CGI_MODE="cgi"
-      info "Termux detected; using CGI mode (cgi_module). Ignoring cgid_module if present."
-    else
-      CGI_MODE="none"
-      warn "Termux detected but mod_cgi not found."
-    fi
+    CGI_MODE="cgi"
+    info "Termux detected; forcing CGI mode (cgi_module)."
     return 0
   fi
 
-  # Non-Termux: detect cgid first, then cgi
+  # Non-Termux: probe loaded modules via apachectl -M
+  local mods
+  mods="$("$APACHECTL" -M 2>/dev/null || true)"
   if printf '%s\n' "$mods" | grep -Eiq 'cgid_module'; then
     CGI_MODE="cgid"
   elif printf '%s\n' "$mods" | grep -Eiq 'cgi_module'; then
@@ -335,66 +330,99 @@ check_groqbash_bootstrap() {
   return 0
 }
 
-# Check CGI module and, on Termux, enable mod_cgi if commented out in the main httpd.conf
+# Check CGI module and, on Termux, enable mod_cgi via dedicated routine
 check_cgi_module() {
-  detect_cgi_mode
+  # Non-Termux: detect cgid first, then cgi
+  local mods
+  mods="$("$APACHECTL" -M 2>/dev/null || true)"
+  if printf '%s\n' "$mods" | grep -Eiq 'cgid_module'; then
+    CGI_MODE="cgid"
+  elif printf '%s\n' "$mods" | grep -Eiq 'cgi_module'; then
+    CGI_MODE="cgi"
+  else
+    CGI_MODE="none"
+  fi
 
-  # If CGI module present, report and return
   if [[ "$CGI_MODE" = "cgid" || "$CGI_MODE" = "cgi" ]]; then
     info "CGI module appears loaded ($CGI_MODE)"
     return 0
   fi
 
-  # No CGI module detected
   warn "mod_cgid or mod_cgi not detected; CGI may not work until enabled"
+  return 0
+}
 
-  # If running on Termux, try to enable mod_cgi safely in the server config
-  if is_termux; then
-    # SERVER_CONFIG_PATH should already be derived; fallback to common Termux path
-    local conf="$SERVER_CONFIG_PATH"
-    if [[ -z "$conf" ]]; then
-      conf="/data/data/com.termux/files/usr/etc/apache2/httpd.conf"
-    fi
+# Enable mod_cgi safely on Termux: insert LoadModule in the LoadModule block and comment mod_cgid
+enable_mod_cgi_termux() {
+  local conf="${SERVER_CONFIG_PATH:-/data/data/com.termux/files/usr/etc/apache2/httpd.conf}"
+  local backup tmp tmp2
+  local load_line="LoadModule cgi_module libexec/apache2/mod_cgi.so"
+  local cgid_pattern='LoadModule[[:space:]]\+cgid_module'
+  local cgi_pattern='LoadModule[[:space:]]\+cgi_module'
 
-    if [[ ! -f "$conf" ]]; then
-      warn "Termux detected but httpd.conf not found at $conf"
-      return 1
-    fi
+  [[ -f "$conf" ]] || { err "httpd.conf not found at $conf"; return 1; }
 
-    # If a commented LoadModule cgi_module line exists, uncomment the first occurrence safely
-    if grep -Eiq '^[[:space:]]*#.*LoadModule[[:space:]]+cgi_module' "$conf"; then
-      info "Attempting to enable mod_cgi in $conf"
-      local tmp
-      tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "enable-cgi.XXXXXX")" || tmp="$(mktemp)"
-      # Use awk to uncomment the first matching line; avoid fragile sed regex
-      awk '
-        BEGIN { done=0 }
-        /^[[:space:]]*#/ && /LoadModule[[:space:]]+cgi_module/ && done==0 {
-          sub(/^[[:space:]]*#/, "")
-          done=1
+  backup="${conf}.groqbash-gui.bak.$(date +%s)"
+  cp -p -- "$conf" "$backup" || { err "Failed to backup $conf"; return 1; }
+  info "Backed up $conf -> $backup"
+
+  tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "enable-cgi.XXXXXX")" || tmp="$(mktemp)"
+  tmp2="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "enable-cgi2.XXXXXX")" || tmp2="$(mktemp)"
+
+  # Strategy:
+  # - Find first contiguous LoadModule block and operate inside it.
+  # - Insert load_line if missing.
+  # - Comment any LoadModule cgid_module lines.
+  awk -v load_line="$load_line" '
+    BEGIN { in_block=0; inserted=0 }
+    {
+      if ($0 ~ /^[[:space:]]*LoadModule[[:space:]]+/) {
+        if (!in_block) { in_block=1 }
+        # comment cgid_module lines
+        if ($0 ~ /[[:space:]]LoadModule[[:space:]]+cgid_module/) {
+          if ($0 !~ /^[[:space:]]*#/) { print "#" $0; next }
         }
-        { print }
-      ' "$conf" >"$tmp" && mv -f "$tmp" "$conf" && chmod 644 "$conf" 2>/dev/null || {
-        rm -f -- "$tmp" 2>/dev/null || true
-        err "Failed to enable mod_cgi in $conf"
-        return 1
+        # detect existing cgi_module
+        if ($0 ~ /[[:space:]]LoadModule[[:space:]]+cgi_module/) { inserted=1; print; next }
+        print; next
       }
-      info "Enabled mod_cgi in $conf"
-      # Re-evaluate loaded modules after change
-      if "$APACHECTL" configtest >/dev/null 2>&1; then
-        detect_cgi_mode
-        if [[ "$CGI_MODE" = "cgi" ]]; then
-          info "mod_cgi now available"
-          return 0
-        fi
-      else
-        warn "apachectl configtest failed after enabling mod_cgi; manual check recommended"
-      fi
-    else
-      warn "No commented LoadModule cgi_module line found in $conf; manual enable required"
-    fi
+      if (in_block && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/) {
+        # end of LoadModule block: insert cgi if not yet inserted
+        if (in_block && inserted==0) {
+          print load_line
+          inserted=1
+        }
+        in_block=0
+      }
+      print
+    }
+    END {
+      if (in_block && inserted==0) {
+        print load_line
+      }
+    }
+  ' "$conf" >"$tmp" || { rm -f -- "$tmp" "$tmp2" 2>/dev/null || true; err "Failed to process $conf"; mv -f -- "$backup" "$conf" 2>/dev/null || true; return 1; }
+
+  # Ensure permissions and atomic move
+  chmod --reference="$conf" "$tmp" 2>/dev/null || chmod 644 "$tmp" 2>/dev/null
+  mv -f -- "$tmp" "$conf" || { rm -f -- "$tmp" 2>/dev/null || true; mv -f -- "$backup" "$conf" 2>/dev/null || true; err "Failed to install modified $conf"; return 1; }
+
+  # Validate config
+  if ! "$APACHECTL" configtest >/dev/null 2>&1; then
+    err "apachectl configtest failed after enabling mod_cgi; restoring backup"
+    mv -f -- "$backup" "$conf" 2>/dev/null || true
+    "$APACHECTL" configtest >/dev/null 2>&1 || true
+    return 1
   fi
 
+  # Restart gracefully
+  if ! "$APACHECTL" graceful >/dev/null 2>&1 && ! "$APACHECTL" restart >/dev/null 2>&1; then
+    warn "Apache reload failed after enabling mod_cgi; manual restart may be required"
+  fi
+
+  info "Enabled mod_cgi in $conf (backup at $backup)"
+  # After successful enablement, set CGI_MODE
+  CGI_MODE="cgi"
   return 0
 }
 
@@ -548,6 +576,15 @@ main() {
 
   detect_apache || exit 1
   derive_server_root || exit 1
+
+  # Detect Termux early and set a flag
+  if is_termux; then
+    TERMUX=1
+    info "Running on Termux"
+  else
+    TERMUX=0
+  fi
+
   check_dependencies || exit 1
   detect_conf_dir || exit 1
 
@@ -562,7 +599,19 @@ main() {
 
   check_permissions_and_dirs "$APP_BIN" || exit 1
   check_groqbash_bootstrap "$APP_BIN" || exit 1
-  check_cgi_module
+
+  # Ensure CGI module is available: Termux -> enable via dedicated routine; non-Termux -> probe
+  if [[ "${TERMUX:-0}" -eq 1 ]]; then
+    if ! enable_mod_cgi_termux; then
+      err "Failed to enable mod_cgi on Termux"
+      exit 1
+    fi
+  else
+    if ! check_cgi_module; then
+      err "CGI module check failed"
+      exit 1
+    fi
+  fi
 
   if port_in_use "$PORT"; then
     info "Default port $PORT in use"
