@@ -92,6 +92,20 @@ detect_cgi_mode() {
   CGI_MODE="none"
   local mods
   mods="$("$APACHECTL" -M 2>/dev/null || true)"
+
+  # On Termux prefer mod_cgi and ignore mod_cgid even if listed
+  if is_termux; then
+    if printf '%s\n' "$mods" | grep -Eiq 'cgi_module'; then
+      CGI_MODE="cgi"
+      info "Termux detected; using CGI mode (cgi_module). Ignoring cgid_module if present."
+    else
+      CGI_MODE="none"
+      warn "Termux detected but mod_cgi not found."
+    fi
+    return 0
+  fi
+
+  # Non-Termux: detect cgid first, then cgi
   if printf '%s\n' "$mods" | grep -Eiq 'cgid_module'; then
     CGI_MODE="cgid"
   elif printf '%s\n' "$mods" | grep -Eiq 'cgi_module'; then
@@ -99,6 +113,7 @@ detect_cgi_mode() {
   else
     CGI_MODE="none"
   fi
+
   return 0
 }
 
