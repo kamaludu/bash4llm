@@ -156,14 +156,44 @@ log_rotate_if_needed() {
 # -------------------------
 mktemp_portable() {
   local dir="$1" template="$2"
-  if [[ ! -d "$dir" || ! -w "$dir" ]]; then
+  # Validate dir
+  if [[ -z "$dir" || ! -d "$dir" || ! -w "$dir" ]]; then
     return 1
   fi
-  if mktemp --help >/dev/null 2>&1; then
-    mktemp --tmpdir="$dir" "$template"
-  else
-    mktemp "$dir/$template"
+
+  # Try mktemp with --tmpdir if supported
+  if command -v mktemp >/dev/null 2>&1; then
+    if mktemp --help >/dev/null 2>&1; then
+      if tmp="$(mktemp --tmpdir="$dir" "$template" 2>/dev/null)"; then
+        printf '%s' "$tmp"
+        return 0
+      fi
+    fi
+    # Fallback to mktemp with explicit path
+    if tmp="$(mktemp "$dir/$template" 2>/dev/null)"; then
+      printf '%s' "$tmp"
+      return 0
+    fi
   fi
+
+  # Final fallback: create a unique filename atomically using shell noclobber
+  local i=0 rand base file candidate tmpname
+  base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
+  while (( i < 100 )); do
+    rand="${base}.$RANDOM.$$.$i"
+    if [[ "$template" == *"XXXXXX"* ]]; then
+      tmpname="${template//XXXXXX/$rand}"
+    else
+      tmpname="${template}.$rand"
+    fi
+    candidate="$dir/$tmpname"
+    # Attempt atomic creation with noclobber
+    ( set -C; : >"$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; } || true
+    i=$((i+1))
+  done
+
+  log_error "GUIIO" "mktemp_portable failed to create temp file in $dir"
+  return 1
 }
 # NOTE: mktemp_portable should be tested on macOS and BusyBox to ensure the
 # fallback behavior works as expected in those environments.
@@ -313,12 +343,28 @@ html_escape_stream() {
 # -------------------------
 validate_name() {
   local name="$1"
-  if [[ -z "$name" ]]; then return 1; fi
-  if [[ "$name" == *"/"* || "$name" == *".."* || "$name" == *$'\x00'* ]]; then return 1; fi
-  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then return 1; fi
-  if (( ${#name} > MAX_NAME_LEN )); then return 1; fi
-  if [[ "$name" =~ $VALID_NAME_RE ]]; then return 0; fi
-  return 1
+  # Reject empty
+  if [[ -z "$name" ]]; then
+    return 1
+  fi
+  # Reject single dot or double dot
+  if [[ "$name" == "." || "$name" == ".." ]]; then
+    return 1
+  fi
+  # Reject slash, backslash, or NUL byte
+  if [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]]; then
+    return 1
+  fi
+  # Reject control characters (0x00-0x1F)
+  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
+    return 1
+  fi
+  # Length check
+  if (( ${#name} > MAX_NAME_LEN )); then
+    return 1
+  fi
+  # Accept otherwise (blacklist-only policy)
+  return 0
 }
 
 sanitize_param() {
