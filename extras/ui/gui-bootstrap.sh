@@ -530,4 +530,4 @@ export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE GROQBASH_CMD
 
 # End of bootstrap
-return 0 2>/dev/null || exit 0
+return 0 2>/dev/null || true
