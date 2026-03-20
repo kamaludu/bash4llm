@@ -6,14 +6,6 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Responsibilities:
-# - resolve UI_ROOT and runtime dirs
-# - create and secure runtime dirs (tmp, logs, config, conversations, files)
-# - provide portable utilities: mktemp_portable, same_filesystem, atomic_write, atomic_append_conv
-# - locking (flock), logging helpers, HTTP header/error helpers
-# - basic sanitization, URL decode, form parsing, config readers
-# - locate GROQBASH_CMD with safe fallbacks
-# This file is intended to be sourced by gui-server.sh
 set -euo pipefail
 umask 077
 
@@ -256,7 +248,7 @@ atomic_append_conv() {
 # -------------------------
 ensure_flock_available() {
   if ! command -v flock >/dev/null 2>&1; then
-    log_error "GUILOCK" "flock not available on this system; cannot guarantee safe concurrency"
+    log_error "GUILLOCK" "flock not available on this system; cannot guarantee safe concurrency"
     print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"
     return 1
   fi
