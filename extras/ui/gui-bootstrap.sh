@@ -342,7 +342,6 @@ html_escape_stream() {
 # Validation and sanitization
 # -------------------------
 validate_name() {
-validate_name() {
   local name="$1"
 
   # Reject empty
