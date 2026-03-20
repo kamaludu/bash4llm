@@ -7,9 +7,6 @@
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
 # Requisiti: bash, coreutils, curl, jq (usati da GroqBash) e un qualsiasi web server che supporta CGI (es. busybox).
-# Vincoli: Bash-only, nessun eval, nessun uso di /tmp di sistema, atomic_write obbligatorio,
-# lock globale per serializzare richieste, sanitizzazione input, limiti dimensione prompt.
-
 set -euo pipefail
 umask 077
 
@@ -24,18 +21,33 @@ fi
 : "${GROQBASH_CMD:=groqbash}"
 source "$BOOTSTRAP"
 
-# Now bootstrap exported variables and functions are available:
-# UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR
-# LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE
-# DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE GROQBASH_CMD
-# Functions: log_info, log_error, ensure_dirs, ensure_config_defaults, atomic_write, atomic_append_conv,
-# ensure_flock_available, acquire_lock, release_lock, print_http_header, print_http_error,
-# html_escape, validate_name, sanitize_param, get_query_param, read_post_body, parse_form_field,
-# get_current_conversation_file, get_default_model, get_default_provider, sanitize_model_output, mktemp_portable
-
 #######################################
 # Application-specific helpers (remain here)
 #######################################
+
+# Cleanup temporary directory: remove only known temp files older than 10 minutes.
+# - Operates only on $TMP_DIR
+# - Deletes regular files whose basename starts with atomic. or conv.
+# - Uses find -maxdepth 1 to avoid recursion and -type f to avoid directories
+# - Safe no-op if TMP_DIR missing or not a directory
+cleanup_tmp_dir() {
+  local dir="${TMP_DIR:-}"
+  # Age threshold in minutes
+  local age_min=10
+
+  if [[ -z "$dir" || ! -d "$dir" ]]; then
+    return 0
+  fi
+
+  # Ensure we operate only inside TMP_DIR and do not follow symlinks outside
+  # Use -maxdepth 1 to avoid recursion; match basenames atomic.* and conv.*
+  # Use -type f to avoid deleting directories
+  # Use -mindepth 1 to avoid matching the directory itself
+  # We run find twice (one for each prefix) to keep the expression simple and portable
+  # Use -mmin +N to select files older than N minutes
+  find "$dir" -maxdepth 1 -type f -name 'atomic.*' -mmin +"$age_min" -print -exec rm -f -- {} \; 2>/dev/null || true
+  find "$dir" -maxdepth 1 -type f -name 'conv.*' -mmin +"$age_min" -print -exec rm -f -- {} \; 2>/dev/null || true
+}
 
 # Minimal template renderer (keeps original behavior)
 render_template() {
@@ -259,6 +271,13 @@ render_page_settings() {
 main() {
   ensure_dirs
   ensure_config_defaults
+
+  # Cleanup old temp files and rotate logs BEFORE acquiring the global lock.
+  # This runs while no request is holding the lock (lock is acquired later),
+  # so it is safe and avoids interfering with in-flight operations.
+  cleanup_tmp_dir
+  log_rotate_if_needed "$SERVER_LOG" 1048576
+  log_rotate_if_needed "$ERROR_LOG" 1048576
 
   ensure_flock_available || { log_error "GUILOCK" "flock missing"; print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"; exit 1; }
   if ! ensure_groqbash_available; then
