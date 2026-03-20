@@ -339,6 +339,64 @@ uncomment_loadmodule_cgi_if_present() {
   return 0
 }
 
+# Termux-only: force mpm_prefork by toggling mpm_worker/prefork LoadModule lines.
+force_mpm_prefork_on_termux() {
+  local conf="${SERVER_CONFIG_PATH:-/data/data/com.termux/files/usr/etc/apache2/httpd.conf}"
+  local bak tmp ok
+
+  [[ -f "$conf" ]] || { warn "httpd.conf not found: $conf"; return 1; }
+
+  # Only run on Termux
+  if ! is_termux; then return 2; fi
+
+  # Create backup
+  bak="${conf}.mpm-backup.$(date +%s)"
+  if ! cp -p -- "$conf" "$bak" 2>/dev/null; then
+    warn "Could not create backup of $conf; skipping mpm adjustment"
+    return 1
+  fi
+
+  # Prepare temp file
+  tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "mpm-edit.XXXXXX")" || tmp="$(mktemp)"
+  TMP_FILES+=("$tmp")
+
+  # Transform:
+  # - uncomment first occurrence of prefork if commented
+  # - comment first occurrence of worker if uncommented
+  awk '
+    BEGIN { seen_prefork=0; seen_worker=0 }
+    {
+      line=$0
+      if (seen_prefork==0 && line ~ /^[[:space:]]*#.*LoadModule[[:space:]]+mpm_prefork_module/) {
+        sub(/^[[:space:]]*#/, "", line)
+        seen_prefork=1
+      } else if (seen_prefork==0 && line ~ /^[[:space:]]*LoadModule[[:space:]]+mpm_prefork_module/) {
+        seen_prefork=1
+      }
+      if (seen_worker==0 && line ~ /^[[:space:]]*LoadModule[[:space:]]+mpm_worker_module/) {
+        sub(/^[[:space:]]*LoadModule[[:space:]]+mpm_worker_module/, "#&", line)
+        seen_worker=1
+      } else if (seen_worker==0 && line ~ /^[[:space:]]*#.*LoadModule[[:space:]]+mpm_worker_module/) {
+        seen_worker=1
+      }
+      print line
+    }
+  ' "$conf" >"$tmp" || { warn "Failed to prepare mpm edit"; rm -f -- "$tmp" 2>/dev/null || true; return 1; }
+
+  mv -f "$tmp" "$conf" || { warn "Failed to install edited $conf"; cp -f -- "$bak" "$conf" 2>/dev/null || true; return 1; }
+
+  # Test config; rollback on failure
+  if ! "$APACHECTL" configtest >/dev/null 2>&1; then
+    warn "apachectl configtest failed after mpm change; rolling back"
+    cp -f -- "$bak" "$conf" 2>/dev/null || true
+    "$APACHECTL" configtest >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  info "Forced mpm_prefork in $conf (backup at $bak)"
+  return 0
+}
+
 # Check CGI module and, on Termux, attempt only minimal uncomment if present; otherwise warn.
 check_cgi_module() {
   detect_cgi_mode
@@ -541,6 +599,8 @@ main() {
   if is_termux; then
     TERMUX=1
     info "Running on Termux"
+    # Force prefork MPM on Termux so mod_cgi can load
+    force_mpm_prefork_on_termux || warn "Could not force mpm_prefork; please check $SERVER_CONFIG_PATH"
   else
     TERMUX=0
   fi
