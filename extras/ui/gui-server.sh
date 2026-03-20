@@ -25,6 +25,15 @@ source "$BOOTSTRAP"
 # Application-specific helpers (remain here)
 #######################################
 
+# Termux permission fix (only called if is_termux is true)
+fix_termux_perms() {
+  if [[ -n "${PREFIX:-}" ]]; then
+    chmod 755 "$PREFIX" 2>/dev/null || true
+    chmod 755 "$PREFIX/usr" 2>/dev/null || true
+    chmod 755 "$PREFIX/usr/bin/bash" 2>/dev/null || true
+  fi
+}
+
 # Cleanup temporary directory: remove only known temp files older than 10 minutes.
 # - Operates only on $TMP_DIR
 # - Deletes regular files whose basename starts with atomic. or conv.
@@ -45,8 +54,8 @@ cleanup_tmp_dir() {
   # Use -mindepth 1 to avoid matching the directory itself
   # We run find twice (one for each prefix) to keep the expression simple and portable
   # Use -mmin +N to select files older than N minutes
-  find "$dir" -maxdepth 1 -type f -name 'atomic.*' -mmin +"$age_min" -print -exec rm -f -- {} \; 2>/dev/null || true
-  find "$dir" -maxdepth 1 -type f -name 'conv.*' -mmin +"$age_min" -print -exec rm -f -- {} \; 2>/dev/null || true
+  find "$dir" -maxdepth 1 -type f -name 'atomic.*' -mmin +"$age_min" -exec rm -f -- {} \; 2>/dev/null || true
+  find "$dir" -maxdepth 1 -type f -name 'conv.*' -mmin +"$age_min" -exec rm -f -- {} \; 2>/dev/null || true
 }
 
 # Minimal template renderer (keeps original behavior)
@@ -270,6 +279,10 @@ render_page_settings() {
 # --- Main router (keeps original flow) ---
 main() {
   ensure_dirs
+  # If running on Termux (bootstrap may set is_termux), apply minimal permission fixes.
+  if [[ "${is_termux:-}" = "true" ]]; then
+    fix_termux_perms
+  fi
   ensure_config_defaults
 
   # Cleanup old temp files and rotate logs BEFORE acquiring the global lock.
