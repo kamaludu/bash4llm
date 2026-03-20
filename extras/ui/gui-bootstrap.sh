@@ -344,32 +344,17 @@ html_escape_stream() {
 validate_name() {
   local name="$1"
 
-  # Reject empty
-  if [[ -z "$name" ]]; then
+  [[ -z "$name" ]] && return 1
+  [[ "$name" == "." || "$name" == ".." ]] && return 1
+  [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]] && return 1
+
+  # SAFE: non fa fallire la pipeline con set -e
+  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { found=1 } END { exit found }'; then
     return 1
   fi
 
-  # Reject single dot or double dot
-  if [[ "$name" == "." || "$name" == ".." ]]; then
-    return 1
-  fi
+  (( ${#name} > MAX_NAME_LEN )) && return 1
 
-  # Reject slash, backslash, or NUL byte
-  if [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]]; then
-    return 1
-  fi
-
-  # Reject control characters (0x00-0x1F)
-  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
-    return 1
-  fi
-
-  # Length check
-  if (( ${#name} > MAX_NAME_LEN )); then
-    return 1
-  fi
-
-  # Accept otherwise (blacklist-only policy)
   return 0
 }
 
