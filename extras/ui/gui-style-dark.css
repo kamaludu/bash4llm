@@ -1,32 +1,39 @@
-/* Dark theme - gui-style-dark.css */
-:root{
-  --bg:#0f1113;
-  --panel:#0b0c0d;
-  --text:#e6eef6;
-  --muted:#9aa6b2;
-  --accent:#4aa3ff;
-  --accent-contrast:#0b0c0d;
-  --border:#1b1f23;
-  --user-bg:#062033;
-  --ai-bg:#0b0c0d;
-  --mono-font: "Courier New", Courier, monospace;
-  --base-font-size:18px;
+body {
+  background: #1a1a1a;
+  color: #e0e0e0;
+  font-family: sans-serif;
+  margin: 0;
+  padding: 0;
 }
 
-html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
-.ui-header{background:var(--panel);border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:10;}
-.ui-header-inner{max-width:900px;margin:0 auto;padding:12px;display:flex;align-items:center;gap:12px;}
-.ui-brand{flex:0 0 auto;color:var(--text);}
-.ui-nav{flex:1;}
-.ui-nav .ui-link{color:var(--text);margin-right:12px;text-decoration:none;font-weight:600;}
-.ui-controls{flex:0 0 360px;display:flex;gap:8px;align-items:center;}
-.btn{background:var(--accent);color:var(--accent-contrast);border:none;padding:8px 12px;border-radius:4px;cursor:pointer;}
-.btn:hover{opacity:0.95;}
-.ui-main{max-width:900px;margin:120px auto 40px;padding:20px;background:var(--panel);box-shadow:0 0 12px rgba(0,0,0,0.6);}
-.conversation-area pre{font-family:var(--mono-font);font-size:var(--base-font-size);white-space:pre-wrap;word-wrap:break-word;padding:12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);}
-pre.user{background:var(--user-bg);border-left:4px solid var(--accent);}
-pre.ai{background:var(--ai-bg);border-left:4px solid #666;}
-.files-list, .conversations-list{font-family:var(--mono-font);font-size:16px;background:#070809;padding:8px;border:1px solid var(--border);white-space:pre-wrap;color:var(--muted);}
-.settings-section label, .settings-section input, .settings-section select{display:block;margin:8px 0;color:var(--text);}
-.ui-footer{max-width:900px;margin:0 auto;padding:12px;text-align:center;color:var(--muted);font-size:14px;}
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.topbar {
+  background: #333333;
+  padding: 10px;
+}
+
+a { color: #66aaff; }
+
+main {
+  padding: 10px;
+}
+
+textarea, input, select {
+  width: 100%;
+  max-width: 600px;
+  background: #222;
+  color: #eee;
+  border: 1px solid #555;
+}
+
+pre {
+  white-space: pre-wrap;
+  background: #222;
+  padding: 5px;
+  border: 1px solid #444;
+}
+
+.footer {
+  margin-top: 20px;
+  padding: 10px;
+  background: #333333;
+}
