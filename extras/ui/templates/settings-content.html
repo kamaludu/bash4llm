@@ -1,30 +1,32 @@
-<section class="settings-section">
-  <form method="POST" action="?page=settings&theme={{THEME}}&lang={{LANG_CODE}}">
-    <label for="provider">{{TXT_PROVIDER}}</label>
-    <input id="provider" name="provider" type="text" value="{{PROVIDER_CURRENT}}" autocomplete="off">
+<section class="settings-block">
+  <form method="post" action="?page=settings&lang={{LANG_CODE}}">
 
-    <label for="model">{{TXT_MODEL}}</label>
-    <input id="model" name="model" type="text" value="{{MODEL_CURRENT}}" autocomplete="off">
+    <h2>{{TXT_PROVIDER}}</h2>
+    <input type="text" name="provider" value="{{PROVIDER_CURRENT}}">
 
-    <label for="lang">{{TXT_LANGUAGE}}</label>
-    <select id="lang" name="lang">
-      {{LANG_OPTIONS_SETTINGS}}
+    <h2>{{TXT_API_KEY}}</h2>
+    <input type="password" name="api_key" value="">
+
+    <h2>{{TXT_MODEL}}</h2>
+    <input type="text" name="model" value="{{MODEL_CURRENT}}">
+
+    <h2>{{TXT_REFRESH_MODELS}}</h2>
+    <button type="submit" name="action" value="refresh_models">
+      {{TXT_REFRESH}}
+    </button>
+
+    <h2>{{TXT_LANGUAGE}}</h2>
+    <select name="lang">
+      {{LANG_OPTIONS}}
     </select>
 
-    <label for="api_key">{{TXT_API_KEY}}</label>
-    <input id="api_key" name="api_key" type="password" value="" autocomplete="new-password" placeholder="{{TXT_API_KEY_PLACEHOLDER}}">
+    <h2>{{TXT_THEME}}</h2>
+    <select name="theme">
+      <option value="light" {{THEME_IS_light}}>{{TXT_THEME_LIGHT}}</option>
+      <option value="dark" {{THEME_IS_dark}}>{{TXT_THEME_DARK}}</option>
+    </select>
 
-    <div class="settings-actions">
-      <button class="btn" type="submit" name="save" value="1">{{TXT_SAVE}}</button>
-      <button class="btn" formaction="?page=main&theme={{THEME}}&lang={{LANG_CODE}}" formmethod="get">{{TXT_BACK}}</button>
-    </div>
+    <br><br>
+    <button type="submit">{{TXT_SAVE}}</button>
   </form>
-</section>
-
-<section class="files-section">
-  <h3>{{TXT_FILES_INPUT}}</h3>
-  <pre class="files-list">{{FILES_LIST}}</pre>
-
-  <h3>{{TXT_CONVERSATIONS}}</h3>
-  <pre class="conversations-list">{{CONV_LIST}}</pre>
 </section>
