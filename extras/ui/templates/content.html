@@ -1,8 +1,28 @@
-<h2>{{TXT_CONVERSATION}}</h2>
+<section class="conversation-list">
+  <h2>{{TXT_CONVERSATIONS}}</h2>
+  <pre>
+{{CONV_LIST}}
+  </pre>
+</section>
 
-<!-- Conversation area: only conversation content should appear here -->
-<div class="conversation-area" aria-live="polite">
-  {{CONVERSATION}}
-</div>
+<section class="conversation-current">
+  <h2>{{TXT_CURRENT_CONVERSATION}}</h2>
+  {{CURRENT_CONV}}
+</section>
 
-<!-- Controls are in header; keep content minimal and focused on conversation -->
+<section class="prompt-input">
+  <h2>{{TXT_SEND_PROMPT}}</h2>
+
+  <form method="post" action="?page=main&lang={{LANG_CODE}}">
+    <label>{{TXT_PROMPT}}</label><br>
+    <textarea name="prompt" rows="4" cols="60"></textarea><br>
+
+    <label>{{TXT_PROVIDER}}</label><br>
+    <input type="text" name="provider" value="{{PROVIDER_CURRENT}}"><br>
+
+    <label>{{TXT_MODEL}}</label><br>
+    <input type="text" name="model" value="{{MODEL_CURRENT}}"><br>
+
+    <button type="submit">{{TXT_SEND}}</button>
+  </form>
+</section>
