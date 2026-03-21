@@ -33,25 +33,18 @@ __GUI_BOOTSTRAP_LOADED=1
 
 # ---------------------------------------------------------------------------
 # Explicit dependency check (no implicit deps)
-# - ensure all external commands used by the GUI scripts are present
-# - builtins (bash) are intentionally NOT listed
 # ---------------------------------------------------------------------------
 for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
-    # Fail fast: GUI bootstrap cannot guarantee safe operation without these tools
     return 1 2>/dev/null || exit 1
   fi
 done
 
 # ---------------------------------------------------------------------------
-# Resolve this script's directory reliably (portable, avoids readlink -f portability issues)
-# - This routine resolves a symlink target when possible and falls back to
-#   deriving the directory from the source path. It avoids relying on
-#   readlink -f which is not portable on all platforms (macOS/BSD).
+# Resolve this script's directory reliably
 # ---------------------------------------------------------------------------
 _bootstrap_source="${BASH_SOURCE[0]:-}"
-# If the source is a symlink, try to resolve the link target (portable)
 if command -v readlink >/dev/null 2>&1 && [ -L "$_bootstrap_source" ]; then
   _rl="$(readlink "$_bootstrap_source" 2>/dev/null || true)"
   if [ -n "$_rl" ]; then
@@ -89,6 +82,7 @@ LANG_CURRENT_FILE="$CFG_DIR/lang-current"
 THEME_CURRENT_FILE="$CFG_DIR/gui-theme"
 DEFAULT_MODEL_FILE="$CFG_DIR/default-model"
 DEFAULT_PROVIDER_FILE="$CFG_DIR/default-provider"
+API_KEY_FILE="$CFG_DIR/api-key"
 
 LOCK_HELD=0
 
@@ -96,12 +90,9 @@ LOCK_HELD=0
 : "${GROQBASHGUILOCKTIMEOUT:=10}"
 
 # -------------------------
-# Logging and rotation (uniform prefixes to match GroqBash)
+# Logging and rotation
 # -------------------------
-log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; } 2>/dev/null || true
-
 log_info() {
-  # Usage: log_info [CODE] MESSAGE
   local code msg
   if [ "$#" -eq 1 ]; then
     code="INFO"
@@ -110,6 +101,7 @@ log_info() {
     code="${1:-INFO}"
     msg="${2:-}"
   fi
+  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
   printf 'groqbash: INFO: %s: %s\n' "$code" "$msg" >>"$SERVER_LOG" 2>/dev/null || true
 }
 
@@ -122,11 +114,11 @@ log_warn() {
     code="${1:-WARN}"
     msg="${2:-}"
   fi
+  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
   printf 'groqbash: WARN: %s: %s\n' "$code" "$msg" >>"$SERVER_LOG" 2>/dev/null || true
 }
 
 log_error() {
-  # Usage: log_error [CODE] MESSAGE
   local code msg
   if [ "$#" -eq 1 ]; then
     code="ERROR"
@@ -156,12 +148,9 @@ log_rotate_if_needed() {
 # -------------------------
 mktemp_portable() {
   local dir="$1" template="$2"
-  # Validate dir
   if [[ -z "$dir" || ! -d "$dir" || ! -w "$dir" ]]; then
     return 1
   fi
-
-  # Try mktemp with --tmpdir if supported
   if command -v mktemp >/dev/null 2>&1; then
     if mktemp --help >/dev/null 2>&1; then
       if tmp="$(mktemp --tmpdir="$dir" "$template" 2>/dev/null)"; then
@@ -169,14 +158,11 @@ mktemp_portable() {
         return 0
       fi
     fi
-    # Fallback to mktemp with explicit path
     if tmp="$(mktemp "$dir/$template" 2>/dev/null)"; then
       printf '%s' "$tmp"
       return 0
     fi
   fi
-
-  # Final fallback: create a unique filename atomically using shell noclobber
   local i=0 rand base file candidate tmpname
   base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
   while (( i < 100 )); do
@@ -187,16 +173,12 @@ mktemp_portable() {
       tmpname="${template}.$rand"
     fi
     candidate="$dir/$tmpname"
-    # Attempt atomic creation with noclobber
     ( set -C; : >"$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; } || true
     i=$((i+1))
   done
-
   log_error "GUIIO" "mktemp_portable failed to create temp file in $dir"
   return 1
 }
-# NOTE: mktemp_portable should be tested on macOS and BusyBox to ensure the
-# fallback behavior works as expected in those environments.
 
 # -------------------------
 # same_filesystem
@@ -253,8 +235,6 @@ atomic_write() {
   return 0
 }
 
-# atomic_append_conv must be called only when a lock is held (documented)
-# It performs an atomic append by writing a tmp file and renaming it into place.
 atomic_append_conv() {
   local conv_file="$1" append_text="$2" tmp dest_dir
   if [[ "$LOCK_HELD" -ne 1 ]]; then log_error "GUILOCK" "atomic_append_conv called without lock held"; return 1; fi
@@ -273,8 +253,6 @@ atomic_append_conv() {
 
 # -------------------------
 # flock availability and lock management (fd 9)
-# - acquire_lock now uses a configurable timeout to avoid indefinite blocking
-# - on timeout we log a LOCKTIMEOUT event and return non-zero
 # -------------------------
 ensure_flock_available() {
   if ! command -v flock >/dev/null 2>&1; then
@@ -288,12 +266,9 @@ ensure_flock_available() {
 acquire_lock() {
   mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
   exec 9>"$LOCK_FILE"
-  # Use timeout to avoid indefinite blocking; log LOCKTIMEOUT on failure
   if ! flock -x -w "$GROQBASHGUILOCKTIMEOUT" 9; then
     log_error "LOCKTIMEOUT" "could not acquire GUI lock on $LOCK_FILE within ${GROQBASHGUILOCKTIMEOUT}s"
-    # Inform client that server is busy/unavailable
     print_http_error "503 Service Unavailable" "Server busy; please retry"
-    # Close fd and mark not held
     exec 9>&- || true
     LOCK_HELD=0
     return 1
@@ -343,18 +318,13 @@ html_escape_stream() {
 # -------------------------
 validate_name() {
   local name="$1"
-
   [[ -z "$name" ]] && return 1
   [[ "$name" == "." || "$name" == ".." ]] && return 1
   [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]] && return 1
-
-  # SAFE: non fa fallire la pipeline con set -e
   if printf '%s' "$name" | awk '/[[:cntrl:]]/ { found=1 } END { exit found }'; then
     return 1
   fi
-
   (( ${#name} > MAX_NAME_LEN )) && return 1
-
   return 0
 }
 
@@ -387,7 +357,6 @@ get_query_param() {
 read_post_body() {
   local len="${CONTENT_LENGTH:-0}"
   if ! [[ "$len" =~ ^[0-9]+$ ]]; then len=0; fi
-  # Documented: CONTENT_LENGTH must be validated; we cap and handle missing values.
   if (( len > 0 )); then
     if command -v head >/dev/null 2>&1; then
       head -c "$len"
@@ -430,6 +399,7 @@ read_config_or_default() {
   return 0
 }
 
+# Return the current conversation file path; if invalid, fallback to conv-001.txt
 get_current_conversation_file() {
   local conv
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
@@ -442,8 +412,58 @@ get_current_conversation_file() {
   printf '%s/%s\n' "$CONV_DIR" "$conv"
 }
 
-get_default_model() { read_config_or_default "$DEFAULT_MODEL_FILE" "default"; }
-get_default_provider() { read_config_or_default "$DEFAULT_PROVIDER_FILE" "default"; }
+# IMPORTANT: return empty string when no default is set (GUI must treat empty as "not configured")
+get_default_model() { read_config_or_default "$DEFAULT_MODEL_FILE" ""; }
+get_default_provider() { read_config_or_default "$DEFAULT_PROVIDER_FILE" ""; }
+
+# -------------------------
+# API key helpers (secure storage for GUI)
+# - store API key in CFG_DIR/api-key with mode 600
+# - do NOT expose the key to templates or logs
+# -------------------------
+provider_api_env_var_name() {
+  # Uppercase provider and append _API_KEY (e.g. groq -> GROQ_API_KEY)
+  local prov="$1"
+  if [[ -z "$prov" ]]; then
+    printf '%s' "GROQ_API_KEY"
+    return 0
+  fi
+  printf '%s' "$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]')_API_KEY"
+}
+
+save_api_key_file() {
+  local key="$1"
+  if [[ -z "$key" ]]; then
+    rm -f "$API_KEY_FILE" 2>/dev/null || true
+    return 0
+  fi
+  mkdir -p "$(dirname "$API_KEY_FILE")" 2>/dev/null || true
+  atomic_write "$API_KEY_FILE" "$key" || return 1
+  chmod 600 "$API_KEY_FILE" || true
+  return 0
+}
+
+read_api_key_file() {
+  if [[ -r "$API_KEY_FILE" ]]; then
+    sed -n '1p' "$API_KEY_FILE" 2>/dev/null || printf ''
+  else
+    printf ''
+  fi
+}
+
+export_api_key_for_provider() {
+  local prov="$1"
+  local key
+  key="$(read_api_key_file)"
+  if [[ -z "$key" ]]; then
+    return 1
+  fi
+  local envname
+  envname="$(provider_api_env_var_name "$prov")"
+  # Export only in current process environment (CGI request)
+  export "$envname"="$key"
+  return 0
+}
 
 # -------------------------
 # Ensure runtime dirs exist (safe)
@@ -456,13 +476,14 @@ ensure_dirs() {
 }
 
 # -------------------------
-# Ensure config defaults (moved to bootstrap)
+# Ensure config defaults (REVISED)
+# - Do NOT populate default-model or default-provider with the literal "default".
+# - Leave model/provider files empty if not configured; GUI must treat empty as "not configured".
+# - Still ensure conversation file exists.
 # -------------------------
 ensure_config_defaults() {
   local conv_default="conv-001.txt"
   local lang_default="en"
-  local model_default="default"
-  local provider_default="default"
 
   if [[ ! -f "$CURRENT_CONV_FILE" ]]; then
     atomic_write "$CURRENT_CONV_FILE" "$conv_default" || true
@@ -473,13 +494,21 @@ ensure_config_defaults() {
   if [[ ! -f "$THEME_CURRENT_FILE" ]]; then
     atomic_write "$THEME_CURRENT_FILE" "light" || true
   fi
+
+  # IMPORTANT: do not write "default" into these files.
+  # Create empty files if missing so GUI can detect "not configured" (empty content).
   if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then
-    atomic_write "$DEFAULT_MODEL_FILE" "$model_default" || true
+    mkdir -p "$(dirname "$DEFAULT_MODEL_FILE")" 2>/dev/null || true
+    : >"$DEFAULT_MODEL_FILE" || true
+    chmod 600 "$DEFAULT_MODEL_FILE" || true
   fi
   if [[ ! -f "$DEFAULT_PROVIDER_FILE" ]]; then
-    atomic_write "$DEFAULT_PROVIDER_FILE" "$provider_default" || true
+    mkdir -p "$(dirname "$DEFAULT_PROVIDER_FILE")" 2>/dev/null || true
+    : >"$DEFAULT_PROVIDER_FILE" || true
+    chmod 600 "$DEFAULT_PROVIDER_FILE" || true
   fi
 
+  # Ensure conversation file exists and is valid
   local conv
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "$conv_default")"
   conv="$(sanitize_param "$conv")"
@@ -499,7 +528,6 @@ ensure_groqbash_available() {
   if command -v "$GROQBASH_CMD" >/dev/null 2>&1; then
     return 0
   fi
-  # try common relative locations
   for p in "$UI_ROOT/../groqbash" "$UI_ROOT/../bin/groqbash" "$HOME/groqbash/groqbash" "$HOME/groqbash"; do
     if [[ -x "$p" ]]; then
       GROQBASH_CMD="$p"
@@ -512,7 +540,7 @@ ensure_groqbash_available() {
 # Expose key variables for gui-server.sh
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
-       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE GROQBASH_CMD
+       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE GROQBASH_CMD
 
 # End of bootstrap
 return 0 2>/dev/null || true
