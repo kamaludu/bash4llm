@@ -2,40 +2,31 @@
 <html lang="{{LANG_CODE}}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{TXT_TITLE}}</title>
-  <link rel="stylesheet" href="/extras/ui/gui-style-{{THEME}}.css">
+  <title>GroqBash GUI</title>
+  <link rel="stylesheet" href="gui-style-{{THEME}}.css">
 </head>
-<body class="theme-{{THEME}}">
-<header class="ui-header">
-  <div class="ui-header-inner">
-    <div class="ui-brand">
-      <strong>GroqBash GUI</strong>
-    </div>
 
-    <nav class="ui-nav" role="navigation" aria-label="{{TXT_NAV}}">
-      <a class="ui-link" href="?page=main&theme={{THEME}}&lang={{LANG_CODE}}">{{TXT_CONVERSATION}}</a>
-      <a class="ui-link" href="?page=settings&theme={{THEME}}&lang={{LANG_CODE}}">{{TXT_SETTINGS}}</a>
-    </nav>
+<body>
+<header class="topbar">
+  <nav>
+    <a href="?page=main&lang={{LANG_CODE}}">{{TXT_HOME}}</a> |
+    <a href="?page=settings&lang={{LANG_CODE}}">{{TXT_SETTINGS}}</a> |
+    <a href="?page=newconv&lang={{LANG_CODE}}">{{TXT_NEW_CONVERSATION}}</a>
+  </nav>
 
-    <form class="ui-controls" method="GET" action="?">
-      <input type="hidden" name="page" value="main">
-      <label class="sr-only" for="theme-select">{{TXT_THEME}}</label>
-      <select id="theme-select" name="theme" onchange="this.form.submit()" aria-label="{{TXT_THEME}}">
-        <option value="light" {{THEME_IS_light}}>{{TXT_THEME_LIGHT}}</option>
-        <option value="dark"  {{THEME_IS_dark}}>{{TXT_THEME_DARK}}</option>
-      </select>
-
-      <label class="sr-only" for="lang-select">{{TXT_LANGUAGE}}</label>
-      <select id="lang-select" name="lang" onchange="this.form.submit()" aria-label="{{TXT_LANGUAGE}}">
+  <div class="lang-theme">
+    <form method="get">
+      <select name="lang">
         {{LANG_OPTIONS}}
       </select>
-
-      <button class="btn" type="submit">{{TXT_REFRESH}}</button>
-
-      <button class="btn" formaction="?page=newconv&theme={{THEME}}&lang={{LANG_CODE}}" formmethod="post">{{TXT_NEW_CONV}}</button>
+      <select name="theme">
+        <option value="light" {{THEME_IS_light}}>{{TXT_THEME_LIGHT}}</option>
+        <option value="dark" {{THEME_IS_dark}}>{{TXT_THEME_DARK}}</option>
+      </select>
+      <input type="hidden" name="page" value="main">
+      <button type="submit">{{TXT_APPLY}}</button>
     </form>
   </div>
 </header>
 
-<main class="ui-main" role="main">
+<main>
