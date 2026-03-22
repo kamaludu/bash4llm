@@ -58,8 +58,9 @@ call_groqbash_with_args() {
 # read MODELS_FILE path used by groqbash (best-effort)
 get_models_file() {
   # try canonical location relative to groqbash dir
-  local candidate
-  candidate="$(dirname -- "$GROQBASH_CMD")/groqbash.d/models/models.txt"
+  local candidate groq_dir
+  groq_dir="$(dirname -- "$GROQBASH_CMD" 2>/dev/null || printf '.')"
+  candidate="$groq_dir/groqbash.d/models/models.txt"
   if [[ -f "$candidate" ]]; then
     printf '%s' "$candidate"
     return 0
@@ -184,8 +185,11 @@ handle_post_settings() {
 }
 
 handle_post_main() {
-  local body prompt model provider conv_file output sanitized_output models_file models_list
+  local body prompt model provider conv_file output sanitized_output models_file models_list lang
   body="$(read_post_body)"
+
+  # ensure lang is defined for validation and templates
+  lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
 
   prompt="$(printf '%s' "$body" | parse_form_field "prompt" || printf '')"
 
