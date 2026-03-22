@@ -34,7 +34,7 @@ __GUI_BOOTSTRAP_LOADED=1
 # ---------------------------------------------------------------------------
 # Explicit dependency check (no implicit deps)
 # ---------------------------------------------------------------------------
-for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64 head dd; do
+for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64 head dd grep; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
     return 1 2>/dev/null || exit 1
@@ -307,10 +307,10 @@ print_http_error() {
 }
 
 html_escape() {
-  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
 }
 html_escape_stream() {
-  sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+  sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
 }
 
 # -------------------------
@@ -384,32 +384,127 @@ parse_form_field() {
 }
 
 # -------------------------
-# Template rendering helper
+# Language file helpers (bootstrap-level)
+# - find_lang_conf: locate gui-lang.conf
+# - read_txt_key: read TXT_KEY.lang value
+# -------------------------
+find_lang_conf() {
+  local candidates=(
+    "$CFG_DIR/gui-lang.conf"
+    "$UI_ROOT/gui-lang.conf"
+    "$UI_ROOT/extras/ui/gui-lang.conf"
+    "$SCRIPT_DIR/gui-lang.conf"
+  )
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -r "$c" ]]; then
+      printf '%s' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+read_txt_key() {
+  local key="$1" lang="$2" lang_conf val default_lang
+  lang_conf="$(find_lang_conf || true)"
+  if [[ -z "$lang_conf" ]]; then
+    printf ''
+    return 0
+  fi
+  val="$(sed -n "s/^${key}\.${lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+  if [[ -n "$val" ]]; then
+    printf '%s' "$val"
+    return 0
+  fi
+  default_lang="$(sed -n 's/^DEFAULT_LANG=\(.*\)$/\1/p' "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+  if [[ -n "$default_lang" ]]; then
+    val="$(sed -n "s/^${key}\.${default_lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+    printf '%s' "$val"
+    return 0
+  fi
+  printf ''
+}
+
+# -------------------------
+# Template rendering helper (extended)
 # - supports {{MODEL_OPTIONS}}, {{CONV_LIST}}, {{CURRENT_CONV}}
 # - supports positional placeholders {{1}}, {{2}}, ...
-# - performs simple variable substitution; templates must be trusted
+# - supports runtime placeholders exported in env (LANG_CODE, THEME, PROVIDER_CURRENT, MODEL_CURRENT, LANG_OPTIONS, API_KEY_FIELD, THEME_IS_*, MODEL_WHITELIST_PRESENT, CURRENT_CONV_FILE, CONFIGURED)
+# - supports localization placeholders {{TXT_<KEY>}} by reading gui-lang.conf using the first positional arg as language
+# - performs html escaping for positional and textual replacements; treats MODEL_OPTIONS/CONV_LIST/CURRENT_CONV/LANG_OPTIONS as pre-generated HTML (no double-escape)
+# - templates must be trusted for structure; user input is escaped
 # -------------------------
 render_template() {
   local file="$1"
   shift || true
   if [[ ! -f "$file" ]]; then return 1; fi
+
+  # first positional arg (if any) is expected to be language code (escaped by caller)
+  local lang_arg="${1:-}"
+  # read file content
   local content
   content="$(cat "$file")" || content=""
-  # replace known placeholders with environment variables (may contain newlines)
+
+  # Replace known HTML placeholders (these are pre-generated HTML; do not escape)
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
   content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
-  # replace {{CONFIGURED}} if present (truthy env var)
-  if [[ -n "${CONFIGURED:-}" ]]; then
-    content="${content//\{\{CONFIGURED\}\}/$CONFIGURED}"
+  content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
+
+  # Replace runtime env placeholders if exported (these are escaped by caller where needed)
+  # Use parameter expansion safely
+  if [[ -n "${LANG_CODE:-}" ]]; then content="${content//\{\{LANG_CODE\}\}/$LANG_CODE}"; fi
+  if [[ -n "${THEME:-}" ]]; then content="${content//\{\{THEME\}\}/$THEME}"; fi
+  if [[ -n "${PROVIDER_CURRENT:-}" ]]; then content="${content//\{\{PROVIDER_CURRENT\}\}/$PROVIDER_CURRENT}"; fi
+  if [[ -n "${MODEL_CURRENT:-}" ]]; then content="${content//\{\{MODEL_CURRENT\}\}/$MODEL_CURRENT}"; fi
+  if [[ -n "${API_KEY_FIELD:-}" ]]; then content="${content//\{\{API_KEY_FIELD\}\}/$API_KEY_FIELD}"; fi
+  if [[ -n "${THEME_IS_light:-}" ]]; then content="${content//\{\{THEME_IS_light\}\}/$THEME_IS_light}"; fi
+  if [[ -n "${THEME_IS_dark:-}" ]]; then content="${content//\{\{THEME_IS_dark\}\}/$THEME_IS_dark}"; fi
+  if [[ -n "${MODEL_WHITELIST_PRESENT:-}" ]]; then content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$MODEL_WHITELIST_PRESENT}"; fi
+  if [[ -n "${CURRENT_CONV_FILE:-}" ]]; then content="${content//\{\{CURRENT_CONV_FILE\}\}/$CURRENT_CONV_FILE}"; fi
+  if [[ -n "${CONFIGURED:-}" ]]; then content="${content//\{\{CONFIGURED\}\}/$CONFIGURED}"; fi
+
+  # Replace localization placeholders {{TXT_KEY}} by scanning template for occurrences
+  # Use awk to extract unique TXT_ keys
+  local txt_keys
+  txt_keys="$(awk '{
+    while (match($0,/\{\{TXT_[A-Za-z0-9_]+\}\}/)) {
+      k=substr($0,RSTART+2,RLENGTH-4);
+      print k;
+      $0=substr($0,RSTART+RLENGTH);
+    }
+  }' "$file" | sort -u || true)"
+  if [[ -n "$txt_keys" ]]; then
+    local k val
+    for k in $txt_keys; do
+      # k is like TXT_HOME
+      val=''
+      # prefer environment variable if set (allows server to pre-export specific TXT_*), otherwise read from gui-lang.conf using lang_arg
+      if [[ -n "${!k:-}" ]]; then
+        val="${!k}"
+      else
+        # lang_arg may be escaped; use sanitize_param to be safe
+        local lang_clean
+        lang_clean="$(sanitize_param "$lang_arg")"
+        if [[ -z "$lang_clean" ]]; then lang_clean="$(read_config_or_default "$LANG_CURRENT_FILE" "en"); fi
+        val="$(read_txt_key "$k" "$lang_clean" || true)"
+      fi
+      # escape textual value for safe insertion
+      val="$(html_escape "$val")"
+      content="${content//\{\{$k\}\}/$val}"
+    done
   fi
-  # positional replacements: {{1}}, {{2}}, ...
+
+  # Positional replacements: {{1}}, {{2}}, ...
   local i=1 arg esc
   for arg in "$@"; do
-    # escape slashes not necessary in parameter expansion
-    content="${content//\{\{$i\}\}/$arg}"
+    # escape argument for safe HTML insertion
+    esc="$(html_escape "$arg")"
+    content="${content//\{\{$i\}\}/$esc}"
     i=$((i+1))
   done
+
   printf '%s' "$content"
   return 0
 }
