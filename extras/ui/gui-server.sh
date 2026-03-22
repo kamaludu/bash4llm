@@ -26,7 +26,7 @@ is_configured() {
   local prov model models_file entries
   prov="$(get_default_provider)"
   model="$(get_default_model)"
-  models_file="${UI_ROOT%/}/../groqbash.d/models/models.txt"
+  models_file="$(get_models_file)"
   # provider and api-key
   if [[ -z "$prov" ]]; then
     return 1
@@ -108,6 +108,25 @@ refresh_models_via_groqbash() {
 }
 
 # -------------------------
+# Conversation title helpers
+# -------------------------
+get_title_file_for_conv() {
+  local conv_path="$1"
+  printf '%s' "${conv_path%.txt}.title"
+}
+
+read_conv_title() {
+  local conv_path="$1"
+  local title_file
+  title_file="$(get_title_file_for_conv "$conv_path")"
+  if [[ -r "$title_file" ]]; then
+    sed -n '1p' "$title_file" 2>/dev/null || printf ''
+  else
+    printf ''
+  fi
+}
+
+# -------------------------
 # POST handlers (revised)
 # -------------------------
 handle_post_settings() {
@@ -163,8 +182,17 @@ handle_post_main() {
   body="$(read_post_body)"
 
   prompt="$(printf '%s' "$body" | parse_form_field "prompt" || printf '')"
-  model="$(printf '%s' "$body" | parse_form_field "model" || get_default_model)"
-  provider="$(printf '%s' "$body" | parse_form_field "provider" || get_default_provider)"
+
+  # --- FIX: robust parsing to avoid subshell boolean syntax errors ---
+  model_raw="$(printf '%s' "$body" | parse_form_field "model" || true)"
+  provider_raw="$(printf '%s' "$body" | parse_form_field "provider" || true)"
+
+  model="${model_raw:-$(get_default_model)}"
+  provider="${provider_raw:-$(get_default_provider)}"
+
+  # allow renaming conversation title from main form
+  conv_title_raw="$(printf '%s' "$body" | parse_form_field "conv_title" || true)"
+  conv_title="$(sanitize_param "$conv_title_raw")"
 
   prompt="$(sanitize_param "$prompt")"
   model="$(sanitize_param "$model")"
@@ -188,6 +216,13 @@ handle_post_main() {
 
   # ensure conversation file exists and append user turn
   conv_file="$(get_current_conversation_file)"
+
+  # if user provided a conv title, save it
+  if [[ -n "$conv_title" ]]; then
+    title_file="$(get_title_file_for_conv "$conv_file")"
+    atomic_write "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
+  fi
+
   atomic_append_conv "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
 
   # PRE-CHECKS: do not call groqbash unless configured
@@ -236,7 +271,67 @@ handle_post_main() {
 }
 
 # -------------------------
-# Page renderers (pass CONFIGURED flag)
+# Template helper builders (Solution A)
+# -------------------------
+build_model_options() {
+  local models_file model_cur out m
+  models_file="$(get_models_file)"
+  model_cur="$1"
+  out=''
+  if [[ -f "$models_file" ]]; then
+    while IFS= read -r m; do
+      m="$(sanitize_param "$m")"
+      [ -z "$m" ] && continue
+      if [[ "$m" == "$model_cur" ]]; then
+        out+='<option value="'"$(html_escape "$m")"'" selected>'"$(html_escape "$m")"'</option>'
+      else
+        out+='<option value="'"$(html_escape "$m")"'">'"$(html_escape "$m")"'</option>'
+      fi
+      out+=$'\n'
+    done < <(awk 'NF{print}' "$models_file" 2>/dev/null || true)
+  fi
+  printf '%s' "$out"
+}
+
+build_conv_list() {
+  local out f bn title
+  out=''
+  if [[ -d "$CONV_DIR" ]]; then
+    for f in "$CONV_DIR"/conv-*.txt; do
+      [ -e "$f" ] || continue
+      bn="$(basename -- "$f")"
+      title="$(read_conv_title "$f")"
+      if [[ -n "$title" ]]; then
+        out+="$(html_escape "$bn") — $(html_escape "$title")"$'\n'
+      else
+        out+="$(html_escape "$bn")"$'\n'
+      fi
+    done
+  fi
+  printf '%s' "$out"
+}
+
+build_current_conv_html() {
+  local conv_file cur_title out
+  conv_file="$1"
+  out=''
+  if [[ -f "$conv_file" ]]; then
+    cur_title="$(read_conv_title "$conv_file")"
+    if [[ -n "$cur_title" ]]; then
+      out+="<h2>$(html_escape "$cur_title")</h2>"
+    else
+      out+="<h2>$(html_escape "$(read_config_or_default 'TXT_CURRENT_CONVERSATION' 'Current conversation')")</h2>"
+    fi
+    out+=$'\n'
+    out+='<pre>'$'\n'
+    out+="$(sed -n '1,2000p' "$conv_file" 2>/dev/null | html_escape_stream)"
+    out+=$'\n</pre>'
+  fi
+  printf '%s' "$out"
+}
+
+# -------------------------
+# Page renderers (pass CONFIGURED flag and inject MODEL_OPTIONS/CONV_LIST/CURRENT_CONV)
 # -------------------------
 render_page_main() {
   local lang="$1"
@@ -246,6 +341,13 @@ render_page_main() {
   conv_file="$(get_current_conversation_file)"
   theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
   if is_configured; then configured="true"; else configured="false"; fi
+
+  # build template variables
+  MODEL_OPTIONS="$(build_model_options "$model_cur")"
+  CONV_LIST="$(build_conv_list)"
+  CURRENT_CONV="$(build_current_conv_html "$conv_file")"
+
+  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
 
   [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
   # inject a small banner if not configured (templates can use {{CONFIGURED}})
@@ -258,15 +360,21 @@ render_page_main() {
 
 render_page_settings() {
   local lang="$1"
-  local theme model_cur prov_cur conv_file configured
+  local theme model_cur prov_cur conv_file configured models_file
   model_cur="$(get_default_model)"
   prov_cur="$(get_default_provider)"
   conv_file="$(get_current_conversation_file)"
   theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
   if is_configured; then configured="true"; else configured="false"; fi
 
+  # build template variables
+  MODEL_OPTIONS="$(build_model_options "$model_cur")"
+  CONV_LIST="$(build_conv_list)"
+  CURRENT_CONV="$(build_current_conv_html "$conv_file")"
+
+  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
+
   [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  # settings-content should include fields for provider, api_key (password), refresh button, model select
   [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
   [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
 }
@@ -373,6 +481,8 @@ main() {
           done
           convname="$(printf 'conv-%03d.txt' "$next")"
           atomic_write "$CONV_DIR/$convname" "" || true
+          # create empty title file
+          atomic_write "$CONV_DIR/${convname%.txt}.title" "" || true
           atomic_write "$CURRENT_CONV_FILE" "$convname" || true
           print_http_header
           render_page_main "$lang_code"
