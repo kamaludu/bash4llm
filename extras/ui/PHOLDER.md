@@ -7,7 +7,7 @@
 | **`{{CONFIGURED}}`** | env var `CONFIGURED` | stringa/flag | `true` / `false` | Sostituire solo se esportata; escape se inserita in HTML. |
 | **`{{1}}..{{N}}`** | argomenti posizionali passati a `render_template` | posizionali | `en`, `light`, `gpt-4` | **DEVE** essere `html_escape` prima della sostituzione quando usato in HTML. |
 | **`{{LANG_CODE}}`** | router (`lang_code`) | runtime | `en` / `it` | Validare con regex whitelist; `sanitize_param` + `html_escape`. |
-| **`{{THEME}}`** | router (`theme_code`) | runtime | `light` / `dark` | Validare su `light|dark`; `html_escape`. |
+| **`{{THEME}}`** | router (`theme_code`) | runtime | `light` / `dark` | Validare su `light/dark`; `html_escape`. |
 | **`{{PROVIDER_CURRENT}}`** | `get_default_provider()` | runtime (input value) | `groq` | `sanitize_param` + `html_escape`. **Non** esporre API key. |
 | **`{{MODEL_CURRENT}}`** | `get_default_model()` | runtime (input value) | `gpt-4` | `sanitize_param` + `html_escape`. |
 | **`{{LANG_OPTIONS}}`** | generare da `gui-lang.conf` | HTML `<option>` | `<option value="it">Italiano</option>` | Generare internamente; `html_escape` su value/label; `selected` su `LANG_CODE`. |
