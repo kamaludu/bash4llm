@@ -406,7 +406,6 @@ main() {
 
   ensure_config_defaults
 
-  cleanup_tmp_dir
   log_rotate_if_needed "$SERVER_LOG" 1048576
   log_rotate_if_needed "$ERROR_LOG" 1048576
 
