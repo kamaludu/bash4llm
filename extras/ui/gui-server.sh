@@ -145,14 +145,20 @@ handle_post_settings() {
   api_key="$(sanitize_param "$api_key")"
 
   # validate names
-  if [[ -n "$model" && ! validate_name "$model" ]]; then
-    log_error "GUIIO" "Invalid model name attempted: $model"
-    model=""
+  if [[ -n "$model" ]]; then
+   if ! validate_name "$model"; then
+     log_error "GUIIO" "Invalid model name attempted: $model"
+     model=""
+   fi
   fi
-  if [[ -n "$provider" && ! validate_name "$provider" ]]; then
-    log_error "GUIIO" "Invalid provider name attempted: $provider"
-    provider=""
+
+  if [[ -n "$provider" ]]; then
+   if ! validate_name "$provider"; then
+     log_error "GUIIO" "Invalid provider name attempted: $provider"
+     provider=""
+   fi
   fi
+
   if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
     lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
@@ -204,14 +210,23 @@ handle_post_main() {
     prompt="${prompt:0:MAX_PROMPT_CHARS}"
   fi
 
-  # validate names
-  if [[ -n "$model" && ! validate_name "$model" ]]; then
-    log_error "GUIIO" "Invalid model name attempted: $model"
-    model=""
+  # validate names (fixed: call functions outside [[ ... ]])
+  if [[ -n "$model" ]]; then
+    if ! validate_name "$model"; then
+      log_error "GUIIO" "Invalid model name attempted: $model"
+      model=""
+    fi
   fi
-  if [[ -n "$provider" && ! validate_name "$provider" ]]; then
-    log_error "GUIIO" "Invalid provider name attempted: $provider"
-    provider=""
+
+  if [[ -n "$provider" ]]; then
+    if ! validate_name "$provider"; then
+      log_error "GUIIO" "Invalid provider name attempted: $provider"
+      provider=""
+    fi
+  fi
+
+  if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
+    lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
 
   # ensure conversation file exists and append user turn
