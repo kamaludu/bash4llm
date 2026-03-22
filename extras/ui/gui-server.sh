@@ -128,6 +128,81 @@ read_conv_title() {
 }
 
 # -------------------------
+# Language file helpers (minimal, best-effort)
+# -------------------------
+# Try several likely locations for gui-lang.conf and return first readable path
+find_lang_conf() {
+  local candidates=(
+    "$CFG_DIR/gui-lang.conf"
+    "$UI_ROOT/gui-lang.conf"
+    "$UI_ROOT/extras/ui/gui-lang.conf"
+    "$SCRIPT_DIR/gui-lang.conf"
+  )
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -r "$c" ]]; then
+      printf '%s' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Build LANG_OPTIONS HTML from LANG_NAME.<code>=Label entries in gui-lang.conf
+build_lang_options() {
+  local lang_conf lang_code out code label
+  lang_conf="$(find_lang_conf || true)"
+  lang_code="$1"
+  out=''
+  if [[ -n "$lang_conf" ]]; then
+    # extract LANG_NAME.<code>=value lines
+    while IFS= read -r line; do
+      # skip comments and empty
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+      [[ -z "$line" ]] && continue
+      if [[ "$line" =~ ^LANG_NAME\.([a-zA-Z_-]+)=(.*)$ ]]; then
+        code="${BASH_REMATCH[1]}"
+        label="${BASH_REMATCH[2]}"
+        code="$(sanitize_param "$code")"
+        label="$(sanitize_param "$label")"
+        if [[ "$code" == "$lang_code" ]]; then
+          out+="<option value=\"$(html_escape "$code")\" selected>$(html_escape "$label")</option>"
+        else
+          out+="<option value=\"$(html_escape "$code")\">$(html_escape "$label")</option>"
+        fi
+        out+=$'\n'
+      fi
+    done <"$lang_conf"
+  fi
+  printf '%s' "$out"
+}
+
+# Read a TXT_* key for a given language from gui-lang.conf (fallback empty)
+read_txt_key() {
+  local key="$1" lang="$2" lang_conf val
+  lang_conf="$(find_lang_conf || true)"
+  if [[ -z "$lang_conf" ]]; then
+    printf ''
+    return 0
+  fi
+  # look for KEY.lang=value
+  val="$(sed -n "s/^${key}\.${lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+  if [[ -n "$val" ]]; then
+    printf '%s' "$val"
+    return 0
+  fi
+  # fallback to DEFAULT_LANG if present
+  local default_lang
+  default_lang="$(sed -n 's/^DEFAULT_LANG=\(.*\)$/\1/p' "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+  if [[ -n "$default_lang" ]]; then
+    val="$(sed -n "s/^${key}\.${default_lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+    printf '%s' "$val"
+    return 0
+  fi
+  printf ''
+}
+
+# -------------------------
 # POST handlers (revised)
 # -------------------------
 handle_post_settings() {
@@ -366,15 +441,54 @@ render_page_main() {
   CONV_LIST="$(build_conv_list)"
   CURRENT_CONV="$(build_current_conv_html "$conv_file")"
 
-  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
+  # Build runtime placeholders (pre-escaped where appropriate)
+  # LANG_CODE and THEME are validated earlier in main; here we sanitize and escape
+  LANG_CODE="$(sanitize_param "$lang")"
+  THEME="$(sanitize_param "$theme")"
+  PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
+  MODEL_CURRENT="$(sanitize_param "$model_cur")"
+  # API key field: escaped value for input value
+  API_KEY_FIELD="$(html_escape "$(read_api_key_file)")"
+  # LANG_OPTIONS: build from lang conf
+  LANG_OPTIONS="$(build_lang_options "$LANG_CODE")"
+  # THEME markers
+  if [[ "$THEME" == "light" ]]; then
+    THEME_IS_light="selected"
+    THEME_IS_dark=""
+  else
+    THEME_IS_light=""
+    THEME_IS_dark="selected"
+  fi
+  # model whitelist presence
+  local models_file
+  models_file="$(get_models_file)"
+  if [[ -f "$models_file" && -n "$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)" ]]; then
+    MODEL_WHITELIST_PRESENT="true"
+  else
+    MODEL_WHITELIST_PRESENT="false"
+  fi
+  # current conv basename
+  CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
 
-  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  # export variables that render_template can replace directly
+  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
+  export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
+
+  # pass posizionali already escaped to render_template
+  local esc_lang esc_theme esc_model esc_provider esc_conv
+  esc_lang="$(html_escape "$LANG_CODE")"
+  esc_theme="$(html_escape "$THEME")"
+  esc_model="$(html_escape "$MODEL_CURRENT")"
+  esc_provider="$(html_escape "$PROVIDER_CURRENT")"
+  esc_conv="$(html_escape "$CURRENT_CONV_FILE")"
+
+  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
   # inject a small banner if not configured (templates can use {{CONFIGURED}})
   if [[ "$configured" != "true" ]]; then
     printf '<div class="alert alert-danger">Configuration required: please set provider, API key and model in Settings.</div>\n'
   fi
-  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
 }
 
 render_page_settings() {
@@ -391,11 +505,41 @@ render_page_settings() {
   CONV_LIST="$(build_conv_list)"
   CURRENT_CONV="$(build_current_conv_html "$conv_file")"
 
-  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
+  # Build runtime placeholders (pre-escaped where appropriate)
+  LANG_CODE="$(sanitize_param "$lang")"
+  THEME="$(sanitize_param "$theme")"
+  PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
+  MODEL_CURRENT="$(sanitize_param "$model_cur")"
+  API_KEY_FIELD="$(html_escape "$(read_api_key_file)")"
+  LANG_OPTIONS="$(build_lang_options "$LANG_CODE")"
+  if [[ "$THEME" == "light" ]]; then
+    THEME_IS_light="selected"
+    THEME_IS_dark=""
+  else
+    THEME_IS_light=""
+    THEME_IS_dark="selected"
+  fi
+  models_file="$(get_models_file)"
+  if [[ -f "$models_file" && -n "$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)" ]]; then
+    MODEL_WHITELIST_PRESENT="true"
+  else
+    MODEL_WHITELIST_PRESENT="false"
+  fi
+  CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
 
-  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$lang" "$theme" "$model_cur" "$prov_cur" "$conv_file"
+  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
+  export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
+
+  local esc_lang esc_theme esc_model esc_provider esc_conv
+  esc_lang="$(html_escape "$LANG_CODE")"
+  esc_theme="$(html_escape "$THEME")"
+  esc_model="$(html_escape "$MODEL_CURRENT")"
+  esc_provider="$(html_escape "$PROVIDER_CURRENT")"
+  esc_conv="$(html_escape "$CURRENT_CONV_FILE")"
+
+  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
+  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
 }
 
 # -------------------------
