@@ -34,7 +34,7 @@ __GUI_BOOTSTRAP_LOADED=1
 # ---------------------------------------------------------------------------
 # Explicit dependency check (no implicit deps)
 # ---------------------------------------------------------------------------
-for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64; do
+for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64 head dd; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
     return 1 2>/dev/null || exit 1
@@ -321,7 +321,8 @@ validate_name() {
   [[ -z "$name" ]] && return 1
   [[ "$name" == "." || "$name" == ".." ]] && return 1
   [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]] && return 1
-  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { found=1 } END { exit found }'; then
+  # reject control characters
+  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
     return 1
   fi
   (( ${#name} > MAX_NAME_LEN )) && return 1
@@ -380,6 +381,37 @@ parse_form_field() {
     fi
   done
   return 1
+}
+
+# -------------------------
+# Template rendering helper
+# - supports {{MODEL_OPTIONS}}, {{CONV_LIST}}, {{CURRENT_CONV}}
+# - supports positional placeholders {{1}}, {{2}}, ...
+# - performs simple variable substitution; templates must be trusted
+# -------------------------
+render_template() {
+  local file="$1"
+  shift || true
+  if [[ ! -f "$file" ]]; then return 1; fi
+  local content
+  content="$(cat "$file")" || content=""
+  # replace known placeholders with environment variables (may contain newlines)
+  content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
+  content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
+  content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
+  # replace {{CONFIGURED}} if present (truthy env var)
+  if [[ -n "${CONFIGURED:-}" ]]; then
+    content="${content//\{\{CONFIGURED\}\}/$CONFIGURED}"
+  fi
+  # positional replacements: {{1}}, {{2}}, ...
+  local i=1 arg esc
+  for arg in "$@"; do
+    # escape slashes not necessary in parameter expansion
+    content="${content//\{\{$i\}\}/$arg}"
+    i=$((i+1))
+  done
+  printf '%s' "$content"
+  return 0
 }
 
 # -------------------------
@@ -523,9 +555,12 @@ ensure_config_defaults() {
 
 # -------------------------
 # Ensure groqbash available (search fallbacks)
+# - normalize GROQBASH_CMD to an absolute path when possible
 # -------------------------
 ensure_groqbash_available() {
+  # If GROQBASH_CMD is a command name or path, try to resolve to absolute path
   if command -v "$GROQBASH_CMD" >/dev/null 2>&1; then
+    GROQBASH_CMD="$(command -v "$GROQBASH_CMD")"
     return 0
   fi
   for p in "$UI_ROOT/../groqbash" "$UI_ROOT/../bin/groqbash" "$HOME/groqbash/groqbash" "$HOME/groqbash"; do
@@ -535,6 +570,20 @@ ensure_groqbash_available() {
     fi
   done
   return 1
+}
+
+# -------------------------
+# Termux helper (best-effort)
+# -------------------------
+fix_termux_perms() {
+  # best-effort: ensure directories have safe perms on Termux
+  if [[ -n "${is_termux:-}" && "${is_termux}" == "true" ]]; then
+    chmod 700 "$TMP_DIR" 2>/dev/null || true
+    chmod 700 "$LOG_DIR" 2>/dev/null || true
+    chmod 700 "$CFG_DIR" 2>/dev/null || true
+    chmod 700 "$CONV_DIR" 2>/dev/null || true
+  fi
+  return 0
 }
 
 # Expose key variables for gui-server.sh
