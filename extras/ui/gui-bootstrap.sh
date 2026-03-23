@@ -487,7 +487,7 @@ render_template() {
         # lang_arg may be escaped; use sanitize_param to be safe
         local lang_clean
         lang_clean="$(sanitize_param "$lang_arg")"
-        if [[ -z "$lang_clean" ]]; then lang_clean="$(read_config_or_default "$LANG_CURRENT_FILE" "en"); fi
+        if [[ -z "$lang_clean" ]]; then lang_clean="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"; fi
         val="$(read_txt_key "$k" "$lang_clean" || true)"
       fi
       # escape textual value for safe insertion
