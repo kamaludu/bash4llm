@@ -427,13 +427,7 @@ read_txt_key() {
 }
 
 # -------------------------
-# Template rendering helper (extended)
-# - supports {{MODEL_OPTIONS}}, {{CONV_LIST}}, {{CURRENT_CONV}}
-# - supports positional placeholders {{1}}, {{2}}, ...
-# - supports runtime placeholders exported in env (LANG_CODE, THEME, PROVIDER_CURRENT, MODEL_CURRENT, LANG_OPTIONS, API_KEY_FIELD, THEME_IS_*, MODEL_WHITELIST_PRESENT, CURRENT_CONV_FILE, CONFIGURED)
-# - supports localization placeholders {{TXT_<KEY>}} by reading gui-lang.conf using the first positional arg as language
-# - performs html escaping for positional and textual replacements; treats MODEL_OPTIONS/CONV_LIST/CURRENT_CONV/LANG_OPTIONS as pre-generated HTML (no double-escape)
-# - templates must be trusted for structure; user input is escaped
+# Template rendering helper
 # -------------------------
 render_template() {
   local file="$1"
@@ -452,18 +446,17 @@ render_template() {
   content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
-  # Replace runtime env placeholders if exported (these are escaped by caller where needed)
-  # Use parameter expansion safely
-  if [[ -n "${LANG_CODE:-}" ]]; then content="${content//\{\{LANG_CODE\}\}/$LANG_CODE}"; fi
-  if [[ -n "${THEME:-}" ]]; then content="${content//\{\{THEME\}\}/$THEME}"; fi
-  if [[ -n "${PROVIDER_CURRENT:-}" ]]; then content="${content//\{\{PROVIDER_CURRENT\}\}/$PROVIDER_CURRENT}"; fi
-  if [[ -n "${MODEL_CURRENT:-}" ]]; then content="${content//\{\{MODEL_CURRENT\}\}/$MODEL_CURRENT}"; fi
-  if [[ -n "${API_KEY_FIELD:-}" ]]; then content="${content//\{\{API_KEY_FIELD\}\}/$API_KEY_FIELD}"; fi
-  if [[ -n "${THEME_IS_light:-}" ]]; then content="${content//\{\{THEME_IS_light\}\}/$THEME_IS_light}"; fi
-  if [[ -n "${THEME_IS_dark:-}" ]]; then content="${content//\{\{THEME_IS_dark\}\}/$THEME_IS_dark}"; fi
-  if [[ -n "${MODEL_WHITELIST_PRESENT:-}" ]]; then content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$MODEL_WHITELIST_PRESENT}"; fi
-  if [[ -n "${CURRENT_CONV_FILE:-}" ]]; then content="${content//\{\{CURRENT_CONV_FILE\}\}/$CURRENT_CONV_FILE}"; fi
-  if [[ -n "${CONFIGURED:-}" ]]; then content="${content//\{\{CONFIGURED\}\}/$CONFIGURED}"; fi
+  # Replace runtime env placeholders (perform replacements unconditionally)
+  content="${content//\{\{LANG_CODE\}\}/$LANG_CODE}"
+  content="${content//\{\{THEME\}\}/$THEME}"
+  content="${content//\{\{PROVIDER_CURRENT\}\}/$PROVIDER_CURRENT}"
+  content="${content//\{\{MODEL_CURRENT\}\}/$MODEL_CURRENT}"
+  content="${content//\{\{API_KEY_FIELD\}\}/$API_KEY_FIELD}"
+  content="${content//\{\{THEME_IS_light\}\}/$THEME_IS_light}"
+  content="${content//\{\{THEME_IS_dark\}\}/$THEME_IS_dark}"
+  content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$MODEL_WHITELIST_PRESENT}"
+  content="${content//\{\{CURRENT_CONV_FILE\}\}/$CURRENT_CONV_FILE}"
+  content="${content//\{\{CONFIGURED\}\}/$CONFIGURED}"
 
   # Replace localization placeholders {{TXT_KEY}} by scanning template for occurrences
   # Use awk to extract unique TXT_ keys
@@ -508,6 +501,7 @@ render_template() {
   printf '%s' "$content"
   return 0
 }
+
 
 # -------------------------
 # Config helpers
