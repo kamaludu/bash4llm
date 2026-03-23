@@ -1,7 +1,3 @@
-| **Placeholder** | **Origine** | **Tipo** | **Esempio** | **Sanitizzazione / Note** |
-|---|---:|---|---:|---|
-| **<code>{{MODEL_OPTIONS}}</code>** | `build_model_options()` (gui-server) | HTML `<option>` | `<option value="gpt-4">gpt-4</option>` | <small>Generato internamente; ogni valore `html_escape`; **inserire come HTML pre-sanitizzato** (no double-escape).</small> |
-
 ### Placeholder CGI: elenco completo e specifiche
 
 | **Placeholder** | **Origine** | **Tipo** | **Esempio** | **Sanitizzazione / Note** |
