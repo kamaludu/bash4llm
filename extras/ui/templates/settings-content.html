@@ -1,3 +1,4 @@
+<!-- extras/ui/templates/settings-content.html -->
 <section class="settings-block">
   <form method="post" action="?page=settings&lang={{LANG_CODE}}">
 
@@ -5,7 +6,7 @@
     <input type="text" name="provider" value="{{PROVIDER_CURRENT}}">
 
     <h2>{{TXT_API_KEY}}</h2>
-    <input type="password" name="api_key" value="">
+    <input type="password" name="api_key" value="{{API_KEY_FIELD}}">
 
     <h2>{{TXT_MODEL}}</h2>
     <input type="text" name="model" value="{{MODEL_CURRENT}}">
