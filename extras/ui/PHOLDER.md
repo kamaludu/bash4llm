@@ -1,7 +1,7 @@
 ### Placeholder CGI: elenco completo e specifiche
 
 | **Placeholder** | **Origine** | **Tipo** | **Esempio** | **Sanitizzazione / Note** |
-|---|---:|---|---:|---|
+|:---|:---|---|:---|:---|
 | **`{{MODEL_OPTIONS}}`** | `build_model_options()` (gui-server) | HTML `<option>` | `<option value="gpt-4">gpt-4</option>` | Generato internamente; ogni valore `html_escape`; **inserire come HTML pre-sanitizzato** (no double-escape). |
 | **`{{CONV_LIST}}`** | `build_conv_list()` (gui-server) | HTML/text list | `conv-001.txt — Titolo` | Generato internamente con `html_escape` su nomi e titoli; trattarlo come HTML sicuro. |
 | **`{{CURRENT_CONV}}`** | `build_current_conv_html()` (gui-server) | HTML (title + `<pre>`) | `<h2>Title</h2><pre>USER: ...</pre>` | Contenuto conversazione escapato con `html_escape_stream`; inserire come HTML pre-sanitizzato. |
