@@ -335,6 +335,30 @@ sanitize_param() {
   printf '%s' "$v"
 }
 
+sanitize_model_output() {
+  local v max=10000
+  v="${1:-}"
+  # rimuovi sequenze ANSI/escape
+  v="$(printf '%s' "$v" | sed -r 's/\x1B
+
+\[[0-9;]*[a-zA-Z]//g')"
+  # rimuovi caratteri di controllo (tranne newline e tab), normalizza CRLF
+  v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
+  # sostituisci tab con spazio e collassa spazi multipli
+  v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
+  # trim leading/trailing spaces per riga e poi global trim
+  v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
+  # limita la lunghezza totale
+  if [ "${#v}" -gt "$max" ]; then
+    v="${v:0:max}"
+    v="${v%$'\n'*}"   # evita troncare a metà di una sequenza multibyte newline-safe
+    v="$v\n\n[TRUNCATED]"
+  fi
+  # escape HTML (opzionale, abilitare se output va in HTML)
+  v="$(printf '%s' "$v" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/\"/\&quot;/g' -e "s/'/\&#39;/g")"
+  printf '%s' "$v"
+}
+
 url_decode() {
   local data="${1//+/ }"
   printf '%b' "${data//%/\\x}"
