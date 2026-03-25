@@ -9,6 +9,72 @@
 set -euo pipefail
 umask 077
 
+# --- Termux compatibility: create wrapper + env shim and export GROQBASH_CMD and PATH
+create_termux_compat_bootstrap() {
+  # run only on Termux
+  [[ -d "/data/data/com.termux/files/usr" ]] || return 0
+
+  local bash_path env_path groqbash_path USER_HOME BIN_DIR
+
+  # reliable detection methods
+  bash_path="$(command -v bash 2>/dev/null || true)"
+  if [[ -z "$bash_path" ]]; then
+    bash_path="$(type -P bash 2>/dev/null || true)"
+  fi
+
+  # minimal sensible fallbacks
+  bash_path="${bash_path:-/data/data/com.termux/files/usr/bin/bash}"
+  bash_path="${bash_path:-/system/bin/bash}"
+
+  # ensure executable
+  if [[ ! -x "$bash_path" ]]; then
+    printf 'WARNING: Termux bash not found or not executable at %s; skipping Termux compatibility\n' "$bash_path" >&2
+    return 1
+  fi
+
+  # detect env if available
+  env_path="$(command -v env 2>/dev/null || true)"
+  env_path="${env_path:-/data/data/com.termux/files/usr/bin/env}"
+  [[ -x "$env_path" ]] || env_path=""
+
+  # groqbash path (standard Termux install); non fatal if missing
+  groqbash_path="/data/data/com.termux/files/usr/bin/groqbash"
+  if [[ ! -x "$groqbash_path" ]]; then
+    printf 'WARNING: groqbash not executable at %s; wrapper will still be created\n' "$groqbash_path" >&2
+  fi
+
+  # prepare user bin
+  USER_HOME="${HOME:-/data/data/com.termux/files/home}"
+  BIN_DIR="$USER_HOME/bin"
+  mkdir -p "$BIN_DIR" 2>/dev/null || true
+  chmod 700 "$BIN_DIR" 2>/dev/null || true
+
+  # create wrapper that forces the detected bash to interpret groqbash (bypasses shebang)
+  cat > "$BIN_DIR/groqbash-wrapper" <<EOF
+#!${bash_path}
+exec ${bash_path} ${groqbash_path} "\$@"
+EOF
+  chmod 750 "$BIN_DIR/groqbash-wrapper" 2>/dev/null || true
+  chown "$(id -u):$(id -g)" "$BIN_DIR/groqbash-wrapper" 2>/dev/null || true
+
+  # optional env shim if env found
+  if [[ -n "$env_path" && -x "$env_path" ]]; then
+    cat > "$BIN_DIR/env" <<EOF
+#!${bash_path}
+exec ${env_path} "\$@"
+EOF
+    chmod 750 "$BIN_DIR/env" 2>/dev/null || true
+    chown "$(id -u):$(id -g)" "$BIN_DIR/env" 2>/dev/null || true
+  fi
+
+  # export for use by gui-server and any child processes (CGI)
+  export GROQBASH_CMD="${BIN_DIR}/groqbash-wrapper"
+  export PATH="${BIN_DIR}:/data/data/com.termux/files/usr/bin:/system/bin:/usr/bin:/bin:${PATH:-}"
+
+  return 0
+}
+# --- end Termux compatibility function ---
+
 # Prevent double sourcing
 if [[ "${__GUI_BOOTSTRAP_LOADED:-}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
@@ -24,6 +90,9 @@ __GUI_BOOTSTRAP_LOADED=1
 : "${CONV_DIR:=}"
 : "${FILES_DIR:=}"
 : "${TEMPLATES_DIR:=}"
+
+# call Termux compat so variables/wrapper are ready before any use
+create_termux_compat_bootstrap || printf 'WARNING: create_termux_compat_bootstrap failed\n' >&2
 
 # Limits (can be overridden before sourcing)
 : "${MAX_PROMPT_CHARS:=5000}"
