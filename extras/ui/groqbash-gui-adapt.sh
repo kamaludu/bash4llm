@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# groqbash-gui-adapt.sh
+# =============================================================================
+# File: groqbash-gui-adapt.sh
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Source: https://github.com/kamaludu/groqbash
+# =============================================================================
 # Adapt GroqBash GUI for the current environment (Termux-specific shebang fixes).
 # Hard constraints: only depends on bash, coreutils, findutils, util-linux, gawk, curl, jq.
 # Idempotent, safe to re-run. Operates only inside groqbash/groqbash.d/extras/ui.
