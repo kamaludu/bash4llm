@@ -368,6 +368,47 @@ generate_termux_launcher() {
     err "No Termux bash found; cannot generate launcher"
   fi
 
+  # Practical verification: ensure there is a userland httpd that supports -f
+  # Locate candidate httpd/apachectl in PATH
+  local httpd_path
+  httpd_path="$(command -v httpd 2>/dev/null || true)"
+  if [ -z "$httpd_path" ]; then
+    httpd_path="$(command -v apachectl 2>/dev/null || true)"
+  fi
+
+  if [ -z "$httpd_path" ]; then
+    err "No httpd or apachectl found in PATH; launcher requires a userland httpd available to the Termux user."
+  fi
+
+  # Check that the binary supports -f (help output contains -f)
+  if ! "$httpd_path" -h 2>&1 | grep -q -- '-f'; then
+    err "The httpd/apachectl binary at $httpd_path does not advertise support for -f <config>. Launcher requires a binary that accepts -f to avoid modifying global config."
+  fi
+
+  # Check that the binary is userland (owned by the invoking Termux user or located under Termux data)
+  local owner_uid
+  owner_uid="$(stat -c '%u' "$httpd_path" 2>/dev/null || true)"
+  if [ -n "$owner_uid" ]; then
+    if [ "$owner_uid" -ne "$(id -u)" ]; then
+      case "$httpd_path" in
+        /data/data/*|/data/data/com.termux/*|/data/data/com.termux/files/*)
+          # located under Termux app data; acceptable as userland
+          ;;
+        *)
+          err "httpd at $httpd_path appears not to be a Termux userland binary (owner UID $owner_uid). Launcher requires a httpd that can be started by the Termux user."
+          ;;
+      esac
+    fi
+  else
+    # If stat failed to determine owner, be conservative and require path under Termux data
+    case "$httpd_path" in
+      /data/data/*|/data/data/com.termux/*|/data/data/com.termux/files/*) ;;
+      *)
+        err "Unable to verify ownership of $httpd_path; to be safe, launcher requires a userland httpd located under Termux data."
+        ;;
+    esac
+  fi
+
   local tmplaunch
   tmplaunch="$(portable_mktemp "$UI_ROOT")" || err "Failed to create temp for launcher"
 
@@ -416,6 +457,7 @@ find_httpd() {
   return 1
 }
 
+# Wait helper: check listening with retries
 wait_for_listen() {
   local i max=8
   for i in $(seq 1 $max); do
@@ -478,6 +520,16 @@ main() {
   check_deps
 
   canonicalize_ui_root
+
+  # trap: cleanup temporary files created under UI_ROOT on exit or error
+  cleanup_tmp() {
+    # remove only files that match the portable_mktemp prefixes created by this script
+    # limit depth to avoid accidental wide deletions
+    if [ -d "$UI_ROOT" ]; then
+      find "$UI_ROOT" -maxdepth 3 -type f -name '.tmp.*' -exec rm -f -- {} + 2>/dev/null || true
+    fi
+  }
+  trap 'cleanup_tmp' EXIT INT TERM
 
   # create essential runtime dirs under UI_ROOT
   mkdir -p -- "$UI_ROOT/.tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status"
