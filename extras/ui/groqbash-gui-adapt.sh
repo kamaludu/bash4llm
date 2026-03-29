@@ -360,6 +360,8 @@ DocumentRoot "__WWW_DIR__"
 # Aliases for CGI
 ScriptAlias /cgi-bin/ "__CGI_DIR__/"
 ScriptAlias /groqbash-gui/cgi/ "__CGI_DIR__/"
+# Normalize requests without trailing slash to the canonical CGI base (idempotent redirect)
+RedirectMatch 301 ^/groqbash-gui/cgi$ /groqbash-gui/cgi/
 <Directory "__CGI_DIR__">
     Options +ExecCGI -Indexes
     Require local
