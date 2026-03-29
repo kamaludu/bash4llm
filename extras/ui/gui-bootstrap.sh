@@ -764,5 +764,11 @@ export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
        DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE GROQBASH_CMD
 
+# GUI base path for CGI endpoints (ensure trailing slash)
+: "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
+# normalize to always end with a single slash
+GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
+export GUI_CGI_BASE
+
 # End of bootstrap
 return 0 2>/dev/null || true
