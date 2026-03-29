@@ -179,26 +179,41 @@ build_lang_options() {
 
 # Read a TXT_* key for a given language from gui-lang.conf (fallback empty)
 read_txt_key() {
-  local key="$1" lang="$2" lang_conf val
+  local key="$1" lang="$2" lang_conf val default_lang
   lang_conf="$(find_lang_conf || true)"
   if [[ -z "$lang_conf" ]]; then
     printf ''
     return 0
   fi
+
   # look for KEY.lang=value
-  val="$(sed -n "s/^${key}\.${lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+  val="$(awk -F= -v k="${key}.${lang}" '
+    $1 == k {
+      sub(/^[^=]*=/, "", $0)
+      print $0
+      exit
+    }
+  ' "$lang_conf" 2>/dev/null || true)"
+
   if [[ -n "$val" ]]; then
     printf '%s' "$val"
     return 0
   fi
+
   # fallback to DEFAULT_LANG if present
-  local default_lang
-  default_lang="$(sed -n 's/^DEFAULT_LANG=\(.*\)$/\1/p' "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+  default_lang="$(awk -F= '$1=="DEFAULT_LANG" {print $2; exit}' "$lang_conf" 2>/dev/null || true)"
   if [[ -n "$default_lang" ]]; then
-    val="$(sed -n "s/^${key}\.${default_lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+    val="$(awk -F= -v k="${key}.${default_lang}" '
+      $1 == k {
+        sub(/^[^=]*=/, "", $0)
+        print $0
+        exit
+      }
+    ' "$lang_conf" 2>/dev/null || true)"
     printf '%s' "$val"
     return 0
   fi
+
   printf ''
 }
 
