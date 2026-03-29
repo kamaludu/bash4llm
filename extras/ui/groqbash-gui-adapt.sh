@@ -414,7 +414,6 @@ generate_termux_launcher() {
     err "No Termux bash found; cannot generate launcher"
   fi
 
-  # Practical verification: ensure there is a userland httpd that supports -f
   # Locate candidate httpd/apachectl in PATH
   local httpd_path
   httpd_path="$(command -v httpd 2>/dev/null || true)"
@@ -426,27 +425,19 @@ generate_termux_launcher() {
     err "No httpd or apachectl found in PATH; launcher requires a userland httpd available to the Termux user."
   fi
 
-  # Check that the binary supports -f (help output contains -f)
-  if ! "$httpd_path" -h 2>&1 | grep -q -- '-f'; then
-    err "The httpd/apachectl binary at $httpd_path does not advertise support for -f <config>. Launcher requires a binary that accepts -f to avoid modifying global config."
-  fi
-
-  # Check that the binary is userland (owned by the invoking Termux user or located under Termux data)
+  # Ownership check: prefer userland under Termux data or owned by current uid
   local owner_uid
   owner_uid="$(stat -c '%u' "$httpd_path" 2>/dev/null || true)"
   if [ -n "$owner_uid" ]; then
     if [ "$owner_uid" -ne "$(id -u)" ]; then
       case "$httpd_path" in
-        /data/data/*|/data/data/com.termux/*|/data/data/com.termux/files/*)
-          # located under Termux app data; acceptable as userland
-          ;;
+        /data/data/*|/data/data/com.termux/*|/data/data/com.termux/files/*) ;;
         *)
           err "httpd at $httpd_path appears not to be a Termux userland binary (owner UID $owner_uid). Launcher requires a httpd that can be started by the Termux user."
           ;;
       esac
     fi
   else
-    # If stat failed to determine owner, be conservative and require path under Termux data
     case "$httpd_path" in
       /data/data/*|/data/data/com.termux/*|/data/data/com.termux/files/*) ;;
       *)
@@ -470,7 +461,6 @@ STATUS_DIR="$UI_ROOT/.status"
 URL="http://127.0.0.1:19970/"
 
 TS() { date +%s; }
-
 log() { printf '%s\n' "$*" >&2; }
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
@@ -503,7 +493,6 @@ find_httpd() {
   return 1
 }
 
-# Wait helper: check listening with retries
 wait_for_listen() {
   local i max=8
   for i in $(seq 1 $max); do
@@ -515,27 +504,39 @@ wait_for_listen() {
   return 1
 }
 
-if is_listening; then
-  log "127.0.0.1:19970 already listening; opening browser"
+# avoid duplicate starts by checking for a process using the exact config path
+is_running_with_conf() {
+  pgrep -f -- "$CONF" >/dev/null 2>&1
+}
+
+if is_listening || is_running_with_conf; then
+  log "127.0.0.1:19970 already listening or httpd already started with $CONF; opening browser"
 else
   httpd_bin="$(find_httpd || true)"
   if [ -z "$httpd_bin" ]; then
     err "No httpd/apachectl binary found in PATH; cannot start server"
   fi
 
-  if [ "$httpd_bin" = "httpd" ]; then
-    # Start httpd as the invoking Termux user (no root). This assumes httpd binary runs in userland.
-    "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
-  else
-    if "$httpd_bin" -h 2>&1 | grep -q -- '-f'; then
-      "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
+  # Prefer a safe syntax test before starting
+  if "$httpd_bin" -t -f "$CONF" >/dev/null 2>&1; then
+    # Try to start using -k start if supported
+    if "$httpd_bin" -h 2>/dev/null | grep -q -- '-k'; then
+      "$httpd_bin" -f "$CONF" -k start >/dev/null 2>>"$LOGS/error.log" &
     else
-      err "apachectl does not support -f on this system; to avoid modifying global config, please start httpd manually with the config in $CONF"
+      # fallback: start in background and rely on process detection
+      "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
     fi
+  else
+    # If the -t test failed, capture the diagnostic and attempt a direct start as last resort
+    log "Diagnostic: '$httpd_bin -t -f $CONF' failed; attempting direct start and then checking listen status"
+    "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
   fi
 
   if ! wait_for_listen; then
-    err "Server did not start or is not listening on 127.0.0.1:19970"
+    # provide helpful diagnostics
+    log "Server did not start listening on 127.0.0.1:19970; dumping httpd -t output for debugging"
+    "$httpd_bin" -t -f "$CONF" 2>>"$LOGS/error.log" || true
+    err "Server did not start or is not listening on 127.0.0.1:19970 (see $LOGS/error.log)"
   fi
   log "Started httpd using $httpd_bin (logs: $LOGS)"
 fi
