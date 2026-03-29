@@ -470,25 +470,31 @@ render_page_main() {
   # current conv basename
   CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
 
+  # Ensure GUI_CGI_BASE is defined and normalized (trailing slash)
+  : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
+  GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
+
   # export variables that render_template can replace directly
   export MODEL_OPTIONS CONV_LIST CURRENT_CONV
   export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
+  export GUI_CGI_BASE
 
   # pass posizionali already escaped to render_template
-  local esc_lang esc_theme esc_model esc_provider esc_conv
+  local esc_lang esc_theme esc_model esc_provider esc_conv esc_cgi_base
   esc_lang="$(html_escape "$LANG_CODE")"
   esc_theme="$(html_escape "$THEME")"
   esc_model="$(html_escape "$MODEL_CURRENT")"
   esc_provider="$(html_escape "$PROVIDER_CURRENT")"
   esc_conv="$(html_escape "$CURRENT_CONV_FILE")"
+  esc_cgi_base="$(html_escape "$GUI_CGI_BASE")"
 
-  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
+  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
   # inject a small banner if not configured (templates can use {{CONFIGURED}})
   if [[ "$configured" != "true" ]]; then
     printf '<div class="alert alert-danger">Configuration required: please set provider, API key and model in Settings.</div>\n'
   fi
-  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
+  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
 }
 
 render_page_settings() {
@@ -527,19 +533,25 @@ render_page_settings() {
   fi
   CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
 
+  # Ensure GUI_CGI_BASE is defined and normalized (trailing slash)
+  : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
+  GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
+
   export MODEL_OPTIONS CONV_LIST CURRENT_CONV
   export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
+  export GUI_CGI_BASE
 
-  local esc_lang esc_theme esc_model esc_provider esc_conv
+  local esc_lang esc_theme esc_model esc_provider esc_conv esc_cgi_base
   esc_lang="$(html_escape "$LANG_CODE")"
   esc_theme="$(html_escape "$THEME")"
   esc_model="$(html_escape "$MODEL_CURRENT")"
   esc_provider="$(html_escape "$PROVIDER_CURRENT")"
   esc_conv="$(html_escape "$CURRENT_CONV_FILE")"
+  esc_cgi_base="$(html_escape "$GUI_CGI_BASE")"
 
-  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
-  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv"
+  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
+  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
+  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
 }
 
 # -------------------------
