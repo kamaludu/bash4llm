@@ -496,17 +496,33 @@ read_txt_key() {
     printf ''
     return 0
   fi
-  val="$(sed -n "s/^${key}\.${lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+
+  val="$(awk -F= -v k="${key}.${lang}" '
+    $1 == k {
+      sub(/^[^=]*=/, "", $0)
+      print $0
+      exit
+    }
+  ' "$lang_conf" 2>/dev/null || true)"
+
   if [[ -n "$val" ]]; then
     printf '%s' "$val"
     return 0
   fi
-  default_lang="$(sed -n 's/^DEFAULT_LANG=\(.*\)$/\1/p' "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+
+  default_lang="$(awk -F= '$1=="DEFAULT_LANG" {print $2; exit}' "$lang_conf" 2>/dev/null || true)"
   if [[ -n "$default_lang" ]]; then
-    val="$(sed -n "s/^${key}\.${default_lang}=\\(.*\\)$/\\1/p" "$lang_conf" 2>/dev/null | sed -n '1p' || true)"
+    val="$(awk -F= -v k="${key}.${default_lang}" '
+      $1 == k {
+        sub(/^[^=]*=/, "", $0)
+        print $0
+        exit
+      }
+    ' "$lang_conf" 2>/dev/null || true)"
     printf '%s' "$val"
     return 0
   fi
+
   printf ''
 }
 
