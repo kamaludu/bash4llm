@@ -133,14 +133,16 @@ read_conv_title() {
 # Try several likely locations for gui-lang.conf and return first readable path
 find_lang_conf() {
   local candidates=(
-    "$CFG_DIR/gui-lang.conf"
-    "$UI_ROOT/gui-lang.conf"
-    "$UI_ROOT/extras/ui/gui-lang.conf"
-    "$SCRIPT_DIR/gui-lang.conf"
+    "${CFG_DIR:-/data/data/com.termux/files/home/groqbash/etc}/gui-lang.conf"
+    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/gui-lang.conf"
+    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/extras/ui/gui-lang.conf"
+    "${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}/gui-lang.conf"
+    "$HOME/.config/groqbash/gui-lang.conf"
+    "$UI_ROOT/../gui-lang.conf"
   )
   local c
   for c in "${candidates[@]}"; do
-    if [[ -r "$c" ]]; then
+    if [[ -n "$c" && -r "$c" ]]; then
       printf '%s' "$c"
       return 0
     fi
