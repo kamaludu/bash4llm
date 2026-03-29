@@ -357,14 +357,8 @@ DocumentRoot "__WWW_DIR__"
     Require local
 </Directory>
 
+# Aliases for CGI
 ScriptAlias /cgi-bin/ "__CGI_DIR__/"
-<Directory "__CGI_DIR__">
-    Options +ExecCGI -Indexes
-    Require local
-</Directory>
-
-# Compatibility alias for GroqBash GUI
-# Maps /groqbash-gui/cgi/ to the same CGI directory used by /cgi-bin/
 ScriptAlias /groqbash-gui/cgi/ "__CGI_DIR__/"
 <Directory "__CGI_DIR__">
     Options +ExecCGI -Indexes
