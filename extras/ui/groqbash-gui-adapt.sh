@@ -307,7 +307,7 @@ generate_termux_apache_config() {
   local www_dir="$UI_ROOT/www"
   local cgi_dir="$UI_ROOT/cgi-bin"
 
-  # create dirs with recommended perms
+  # create dirs with recommended perms (ensure existence)
   mkdir -p -- "$logs_dir" "$www_dir" "$cgi_dir"
   chmod 700 -- "$logs_dir" || true
   chmod 755 -- "$www_dir" "$cgi_dir" || true
@@ -341,6 +341,8 @@ generate_termux_apache_config() {
   info "Will include LoadModule for:${loaded_mods}"
 
   # build body (template) without global <RequireAny>
+  # NOTE: this template is written as a complete body and will be concatenated with header
+  # and then atomically written to $conf (overwrite). No appends are performed.
   local tmpconf
   tmpconf="$(portable_mktemp "$UI_ROOT")" || err "Failed to create temp for apache conf"
   cat >"$tmpconf" <<'EOF'
@@ -361,6 +363,14 @@ ScriptAlias /cgi-bin/ "__CGI_DIR__/"
     Require local
 </Directory>
 
+# Compatibility alias for GroqBash GUI
+# Maps /groqbash-gui/cgi/ to the same CGI directory used by /cgi-bin/
+ScriptAlias /groqbash-gui/cgi/ "__CGI_DIR__/"
+<Directory "__CGI_DIR__">
+    Options +ExecCGI -Indexes
+    Require local
+</Directory>
+
 ErrorLog "__LOG_DIR__/error.log"
 CustomLog "__LOG_DIR__/access.log" common
 EOF
@@ -372,6 +382,7 @@ EOF
   esc_log="$(sed_escape_replacement "$logs_dir")"
 
   # concatenate header + body, substitute placeholders, write atomically inside UI_ROOT
+  # This always overwrites $conf atomically (no append), ensuring idempotence.
   finaltmp="$(portable_mktemp "$UI_ROOT")" || err "mktemp failed for final conf"
   cat "$tmpheader" "$tmpconf" | \
     sed -e "s|__WWW_DIR__|${esc_www}|g" \
@@ -389,9 +400,16 @@ EOF
   touch "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
   chmod 600 -- "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
 
-  # enforce recommended perms on existing files
+  # Explicit permissions policy (idempotent enforcement)
+  # Directories
+  chmod 755 -- "$www_dir" "$cgi_dir" || true
+  chmod 700 -- "$logs_dir" || true
+
+  # Files: static assets -> 644; CGI scripts -> 755
   find "$www_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
   find "$cgi_dir" -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
+  # ensure other files in cgi-dir are at least readable
+  find "$cgi_dir" -type f ! -name '*.sh' -exec chmod 644 {} \; 2>/dev/null || true
 
   info "Generated Apache config: $conf"
   info "DocumentRoot: $www_dir"
