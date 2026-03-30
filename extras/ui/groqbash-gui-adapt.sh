@@ -357,13 +357,19 @@ DocumentRoot "__WWW_DIR__"
     Require local
 </Directory>
 
-# Aliases for CGI
-ScriptAlias /cgi-bin/ "__CGI_DIR__/"
-ScriptAlias /groqbash-gui/cgi/ "__CGI_DIR__/"
+# CGI entrypoint: single executable that renders the GUI
+# Map the canonical GUI URL to the gui-server.sh entrypoint inside UI_ROOT
+ScriptAlias /groqbash-gui/cgi/ "__UI_ROOT__/gui-server.sh"
+# Optional backwards-compat alias (commented): map /cgi-bin/ to the same entrypoint if needed
+# ScriptAlias /cgi-bin/ "__UI_ROOT__/gui-server.sh"
+
 # Normalize requests without trailing slash to the canonical CGI base (idempotent redirect)
 RedirectMatch 301 ^/groqbash-gui/cgi$ /groqbash-gui/cgi/
-<Directory "__CGI_DIR__">
+
+# Grant ExecCGI on the application directory (app_bin / UI_ROOT)
+<Directory "__UI_ROOT__">
     Options +ExecCGI -Indexes
+    AllowOverride None
     Require local
 </Directory>
 
@@ -372,10 +378,11 @@ CustomLog "__LOG_DIR__/access.log" common
 EOF
 
   # Escape replacements
-  local esc_www esc_cgi esc_log finaltmp
+  local esc_www esc_cgi esc_log esc_uiroot finaltmp
   esc_www="$(sed_escape_replacement "$www_dir")"
   esc_cgi="$(sed_escape_replacement "$cgi_dir")"
   esc_log="$(sed_escape_replacement "$logs_dir")"
+  esc_uiroot="$(sed_escape_replacement "$UI_ROOT")"
 
   # concatenate header + body, substitute placeholders, write atomically inside UI_ROOT
   # This always overwrites $conf atomically (no append), ensuring idempotence.
@@ -384,6 +391,7 @@ EOF
     sed -e "s|__WWW_DIR__|${esc_www}|g" \
         -e "s|__CGI_DIR__|${esc_cgi}|g" \
         -e "s|__LOG_DIR__|${esc_log}|g" \
+        -e "s|__UI_ROOT__|${esc_uiroot}|g" \
     >"$finaltmp"
 
   atomic_write_in_uiroot "$conf" <"$finaltmp"
