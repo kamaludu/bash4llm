@@ -569,21 +569,23 @@ main() {
     esac
   done
 
+  # If APP_ROOT not provided, derive it deterministically from the script location:
+  # prefer the repository root that contains groqbash/groqbash.d/extras/ui.
   if [[ -z "${APP_ROOT:-}" ]]; then
-    if ui_root="$(pwd)"; then
-      if [[ -f "./groqbash/groqbash.d/extras/ui/gui-server.sh" ]]; then
-        APP_ROOT="$(pwd)"
-      else
-        local d="$PWD"
-        while [[ "$d" != "/" && "$d" != "." ]]; do
-          if [[ -f "$d/groqbash/groqbash.d/extras/ui/gui-server.sh" ]]; then
-            APP_ROOT="$d"; break
-          fi
-          d="$(dirname -- "$d")"
-        done
+    # Start from the directory containing this installer script and walk up until we find groqbash/groqbash.d/extras/ui
+    script_dir="$(cd "$(dirname -- "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd -P || printf '%s' "$PWD")"
+    candidate="$script_dir"
+    while [[ "$candidate" != "/" && "$candidate" != "." ]]; do
+      if [[ -f "$candidate/groqbash/groqbash.d/extras/ui/gui-server.sh" ]]; then
+        APP_ROOT="$candidate"
+        break
       fi
+      candidate="$(dirname -- "$candidate")"
+    done
+    # As a final fallback, if not found, use current working directory
+    if [[ -z "${APP_ROOT:-}" ]]; then
+      APP_ROOT="$PWD"
     fi
-    if [[ -z "${APP_ROOT:-}" ]]; then err "Provide --app-root"; exit 1; fi
   fi
 
   APP_BIN="${APP_ROOT}/groqbash/groqbash.d/extras/ui"
