@@ -45,7 +45,11 @@ create_termux_compat_bootstrap() {
 
   # prepare user bin
   USER_HOME="${HOME:-/data/data/com.termux/files/home}"
-  BIN_DIR="$USER_HOME/bin"
+
+  # Prefer creating wrappers inside UI_ROOT when available to avoid polluting $HOME/bin.
+  # Fall back to $USER_HOME/bin only if UI_ROOT is not set.
+  BIN_DIR="${UI_ROOT:-$USER_HOME}/bin"
+
   mkdir -p "$BIN_DIR" 2>/dev/null || true
   chmod 700 "$BIN_DIR" 2>/dev/null || true
 
@@ -141,6 +145,10 @@ fi
 : "${CONV_DIR:="$UI_ROOT/conversations"}"
 : "${FILES_DIR:="$UI_ROOT/files"}"
 : "${TEMPLATES_DIR:="$UI_ROOT/templates"}"
+
+# Call Termux compat only after UI_ROOT has been resolved so wrappers and shims
+# are created inside the UI tree (avoid creating $HOME/bin outside the UI).
+create_termux_compat_bootstrap || printf 'WARNING: create_termux_compat_bootstrap failed\n' >&2
 
 LOCK_FILE="$TMP_DIR/gui.lock"
 SERVER_LOG="$LOG_DIR/server.log"
