@@ -615,6 +615,18 @@ main() {
   if [[ ! -d "$APP_BIN" ]]; then err "APP_BIN not found: $APP_BIN"; exit 1; fi
   if [[ ! -f "$APP_BIN/gui-server.sh" || ! -f "$APP_BIN/gui-bootstrap.sh" ]]; then err "Required UI scripts missing in $APP_BIN"; exit 1; fi
 
+  # Run UI adaptation early to confine artifacts and fix shebangs
+  # This ensures any wrappers or generated files are created under APP_BIN (UI_ROOT)
+  # before the bootstrap is sourced or any global user paths are touched.
+  if [[ -x "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
+    info "Running UI adapt script to confine artifacts and fix shebangs"
+    # run adapt but do not fail the whole install if adapt returns non-zero;
+    # warn instead so user can inspect logs/errors.
+    "${APP_BIN}/groqbash-gui-adapt.sh" || warn "groqbash-gui-adapt.sh returned non-zero; continuing"
+  else
+    info "No UI adapt script found at ${APP_BIN}/groqbash-gui-adapt.sh; skipping adapt step"
+  fi
+
   mkdir -p "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
   chmod 700 "$APP_RUNTIME_DIR" 2>/dev/null || true
   chmod 700 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
