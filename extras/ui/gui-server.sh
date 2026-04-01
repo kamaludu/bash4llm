@@ -18,6 +18,17 @@ fi
 : "${GROQBASH_CMD:=groqbash}"
 source "$BOOTSTRAP"
 
+# Ensure HOME is defined in CGI environments where it may be unset.
+# Prefer UI_ROOT (exported by bootstrap), otherwise fall back to a safe writable location.
+if [[ -z "${HOME:-}" ]]; then
+  if [[ -n "${UI_ROOT:-}" ]]; then
+    HOME="$UI_ROOT"
+  else
+    HOME="/tmp"
+  fi
+  export HOME
+fi
+
 # -------------------------
 # Helpers (small, focused)
 # -------------------------
