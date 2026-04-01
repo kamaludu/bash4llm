@@ -14,6 +14,12 @@ create_termux_compat_bootstrap() {
   # run only on Termux
   [[ -d "/data/data/com.termux/files/usr" ]] || return 0
 
+  # If UI_ROOT is not yet resolved, do not create user wrappers here.
+  # The bootstrap will call this function again after UI_ROOT is canonicalized.
+  if [[ -z "${UI_ROOT:-}" ]]; then
+    return 0
+  fi
+
   local bash_path env_path groqbash_path USER_HOME BIN_DIR
 
   # reliable detection methods
@@ -95,8 +101,9 @@ __GUI_BOOTSTRAP_LOADED=1
 : "${FILES_DIR:=}"
 : "${TEMPLATES_DIR:=}"
 
-# call Termux compat so variables/wrapper are ready before any use
-create_termux_compat_bootstrap || printf 'WARNING: create_termux_compat_bootstrap failed\n' >&2
+# Termux compatibility will be initialized after UI_ROOT is resolved
+# (create_termux_compat_bootstrap is called later, once UI_ROOT is known,
+# to avoid creating $HOME/bin outside the UI tree).
 
 # Limits (can be overridden before sourcing)
 : "${MAX_PROMPT_CHARS:=5000}"
@@ -107,7 +114,7 @@ create_termux_compat_bootstrap || printf 'WARNING: create_termux_compat_bootstra
 # ---------------------------------------------------------------------------
 # Explicit dependency check (no implicit deps)
 # ---------------------------------------------------------------------------
-for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64 head dd grep; do
+for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64 head grep; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
     return 1 2>/dev/null || exit 1
@@ -415,7 +422,9 @@ sanitize_param() {
 sanitize_model_output() {
   local v max=10000
   v="${1:-}"
-  v="$(printf '%s' "$v" | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g')"
+  v="$(printf '%s' "$v" | sed -r 's/\x1B
+
+\[[0-9;]*[a-zA-Z]//g')"
   v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
   v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
   v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
