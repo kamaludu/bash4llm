@@ -62,6 +62,47 @@ canonicalize_ui_root() {
   CGI_DIR="$UI_ROOT/$CGI_DIR_REL"
 }
 
+# -------- Evita scritture fuori da UI_ROOT (Termux / sicurezza) --------
+# Sposta eventuale $HOME/bin creato per errore dentro UI_ROOT/bin e impedisce
+# la creazione di nuovi wrapper fuori da UI_ROOT.
+enforce_ui_root_only_writes() {
+  local home_bin ui_bin moved=0
+
+  # percorso bin dell'utente (possibile fonte di artefatti indesiderati)
+  home_bin="${HOME:-/data/data/com.termux/files/home}/bin"
+  ui_bin="${UI_ROOT}/bin"
+
+  # Se esiste una home_bin e non è dentro UI_ROOT, spostane il contenuto in UI_ROOT/bin
+  if [ -d "$home_bin" ] && ! path_within_ui_root "$home_bin"; then
+    mkdir -p -- "$ui_bin" 2>/dev/null || true
+    # sposta solo file regolari e non sovrascrive
+    if find "$home_bin" -maxdepth 1 -type f -print0 | grep -q .; then
+      while IFS= read -r -d '' f; do
+        # evita sovrascrivere file già presenti in UI_ROOT/bin
+        if [ ! -e "$ui_bin/$(basename -- "$f")" ]; then
+          mv -n -- "$f" "$ui_bin/" 2>/dev/null || cp -n -- "$f" "$ui_bin/" 2>/dev/null || true
+          moved=1
+        fi
+      done < <(find "$home_bin" -maxdepth 1 -type f -print0 2>/dev/null)
+    fi
+    # se la directory home_bin è ora vuota, rimuovila
+    if [ -d "$home_bin" ] && [ -z "$(ls -A "$home_bin" 2>/dev/null)" ]; then
+      rmdir --ignore-fail-on-non-empty "$home_bin" 2>/dev/null || true
+    fi
+  fi
+
+  # Assicura che ogni codice che crea wrapper usi UI_ROOT/bin: esporta BIN_DIR per i processi figli
+  export BIN_DIR="$ui_bin"
+  mkdir -p -- "$BIN_DIR" 2>/dev/null || true
+  chmod 700 -- "$BIN_DIR" 2>/dev/null || true
+
+  if [ "$moved" -eq 1 ]; then
+    info "Spostati file da $home_bin a $BIN_DIR per confinare gli artefatti nella UI_ROOT"
+  fi
+
+  return 0
+}
+
 # -------- Path safety check: ensure path is inside UI_ROOT (canonicalized) --------
 path_within_ui_root() {
   # $1: candidate path (absolute or relative)
@@ -589,6 +630,7 @@ main() {
   check_deps
 
   canonicalize_ui_root
+  enforce_ui_root_only_writes
 
   # trap: cleanup temporary files created under UI_ROOT on exit or error
   cleanup_tmp() {
