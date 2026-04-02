@@ -716,10 +716,10 @@ EOF
 # -------- Helper: safe remove stale global pid (best-effort) --------
 cleanup_global_stale_pid() {
   local global_pidfile="/data/data/com.termux/files/usr/var/run/apache2/httpd.pid"
-  if [[ -f "$global_pidfile" ]]; then
+  if [ -f "$global_pidfile" ]; then
     local pid
     pid="$(cat "$global_pidfile" 2>/dev/null || true)"
-    if [[ -n "$pid" && ! ps -p "$pid" >/dev/null 2>&1 ]]; then
+    if [ -n "$pid" ] && ! ps -p "$pid" >/dev/null 2>&1; then
       warn "Removing stale global pid file: $global_pidfile (pid $pid not running)"
       rm -f -- "$global_pidfile" 2>/dev/null || true
     fi
