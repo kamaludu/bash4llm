@@ -437,17 +437,42 @@ check_cgi_module() {
 # port_in_use with ss/netstat/dev/tcp
 port_in_use() {
   local p="$1"
+
+  # Try ss if available, but handle permission errors and fall back
   if command -v ss >/dev/null 2>&1; then
-    ss -ltn "( sport = :$p )" >/dev/null 2>&1 && return 0 || return 1
-  elif command -v netstat >/dev/null 2>&1; then
-    if netstat -tln >/dev/null 2>&1; then
-      netstat -tln | awk '{print $4}' | grep -E ":$p\$" >/dev/null 2>&1 && return 0 || return 1
+    local ss_out ss_rc
+    # capture both stdout and stderr
+    ss_out="$(ss -ltn "( sport = :$p )" 2>&1 || true)"
+    ss_rc=$?
+    # If ss returned success and shows the port, treat as in-use
+    if [[ $ss_rc -eq 0 ]] && printf '%s' "$ss_out" | grep -q -E "[:.]${p}([[:space:]]|$)"; then
+      return 0
+    fi
+    # If ss failed due to permission or netlink errors, do not treat as definitive;
+    # fall through to try netstat and /dev/tcp.
+    if printf '%s' "$ss_out" | grep -qiE 'permission denied|cannot open netlink|operation not permitted'; then
+      :
+    else
+      # If ss ran but found nothing, continue to next checks
+      :
     fi
   fi
+
+  # Try netstat if available and usable
+  if command -v netstat >/dev/null 2>&1; then
+    if netstat -tln >/dev/null 2>&1; then
+      if netstat -tln | awk '{print $4}' | grep -E ":${p}\$" >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+  fi
+
+  # Final fallback: attempt to open a TCP connection to localhost:port
   if ( exec 3<>/dev/tcp/127.0.0.1/"$p" ) 2>/dev/null; then
     exec 3>&- 3<&- || true
     return 0
   fi
+
   return 1
 }
 
