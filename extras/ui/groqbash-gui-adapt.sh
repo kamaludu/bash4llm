@@ -306,6 +306,7 @@ atomic_replace_first_line_in_uiroot() {
   }
   {
     printf '%s\n' "$new_shebang"
+    # preserve rest of file, normalizing CRLF
     tail -n +2 -- "$file" | sed -e 's/\r$//'
   } >"$tmp"
   mv -f -- "$tmp" "$file"
@@ -330,6 +331,7 @@ process_target() {
     return 0
   fi
 
+  # Normalize line endings safely in-place using a temp file inside UI_ROOT
   local tmpnorm
   tmpnorm="$(portable_mktemp "$(dirname -- "$file")")" || err "mktemp failed for $(dirname -- "$file")"
   sed -e 's/\r$//' "$file" >"$tmpnorm"
@@ -338,16 +340,27 @@ process_target() {
     err "Post-normalize check failed: $file is outside UI_ROOT"
   fi
 
-  local current_first
+  # Decide action based on file type: shell scripts get shebang patch; others get readable perms
+  local current_first ext target_shebang
   current_first="$(head -n1 -- "$file" || true)"
-  local target_shebang="#!${bash_path}"
+  ext="${file##*.}"
+  target_shebang="#!${bash_path}"
 
+  # If not a shell script (no shebang and not .sh), ensure readable perms and return
+  if [[ "$current_first" != "#!"* && "$ext" != "sh" ]]; then
+    info "Not a shell script; ensuring readable perms: $file"
+    chmod 644 -- "$file" 2>/dev/null || true
+    return 0
+  fi
+
+  # If shebang already matches target, ensure executable and return
   if [ "$current_first" = "$target_shebang" ]; then
     info "Shebang already correct: $file"
     chmod 755 -- "$file" || true
     return 0
   fi
 
+  # Backup and atomically replace first line with the correct shebang
   local backup
   backup="$(backup_file_in_uiroot "$file")" || err "Failed to backup $file"
   info "Backup created: $backup"
@@ -369,11 +382,12 @@ generate_termux_apache_config() {
   local logs_dir="$UI_ROOT/logs"
   local www_dir="$UI_ROOT/www"
   local cgi_dir="$UI_ROOT/cgi-bin"
+  local static_dir="$UI_ROOT/static"
 
   # create dirs with recommended perms (ensure existence)
-  mkdir -p -- "$logs_dir" "$www_dir" "$cgi_dir" "$UI_ROOT/var/run/apache2"
+  mkdir -p -- "$logs_dir" "$www_dir" "$cgi_dir" "$UI_ROOT/var/run/apache2" "$static_dir"
   chmod 700 -- "$logs_dir" || true
-  chmod 755 -- "$www_dir" "$cgi_dir" || true
+  chmod 755 -- "$www_dir" "$cgi_dir" "$static_dir" || true
   chmod 700 -- "$UI_ROOT/var/run/apache2" || true
 
   # Modules to try: name:path
@@ -405,8 +419,6 @@ generate_termux_apache_config() {
   info "Will include LoadModule for:${loaded_mods}"
 
   # build body (template) without global <RequireAny>
-  # NOTE: this template is written as a complete body and will be concatenated with header
-  # and then atomically written to $conf (overwrite). No appends are performed.
   local tmpconf
   tmpconf="$(portable_mktemp "$UI_ROOT")" || err "Failed to create temp for apache conf"
   cat >"$tmpconf" <<'EOF'
@@ -430,6 +442,14 @@ DocumentRoot "__WWW_DIR__"
 ScriptAlias /groqbash-gui/cgi/ "__UI_ROOT__/gui-server.sh"
 # Optional backwards-compat alias (commented): map /cgi-bin/ to the same entrypoint if needed
 # ScriptAlias /cgi-bin/ "__UI_ROOT__/gui-server.sh"
+
+# Serve static assets from dedicated static directory
+Alias /groqbash-gui/static/ "__UI_ROOT__/static/"
+
+<Directory "__UI_ROOT__/static/">
+    Options -Indexes +FollowSymLinks
+    Require local
+</Directory>
 
 # Normalize requests without trailing slash to the canonical CGI base (idempotent redirect)
 RedirectMatch 301 ^/groqbash-gui/cgi$ /groqbash-gui/cgi/
@@ -474,13 +494,15 @@ EOF
 
   # Explicit permissions policy (idempotent enforcement)
   # Directories
-  chmod 755 -- "$www_dir" "$cgi_dir" || true
+  chmod 755 -- "$www_dir" "$cgi_dir" "$static_dir" || true
   chmod 700 -- "$logs_dir" || true
 
   # Files: static assets -> 644; CGI scripts -> 755
+  if [ -d "$static_dir" ]; then
+    find "$static_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+  fi
   find "$www_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
   find "$cgi_dir" -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
-  # ensure other files in cgi-dir are at least readable
   find "$cgi_dir" -type f ! -name '*.sh' -exec chmod 644 {} \; 2>/dev/null || true
 
   # Ensure scoreboard file exists and has safe perms
@@ -490,6 +512,7 @@ EOF
   info "Generated Apache config: $conf"
   info "DocumentRoot: $www_dir"
   info "CGI dir: $cgi_dir"
+  info "Static dir: $static_dir"
   info "Logs: $logs_dir"
 }
 
@@ -499,6 +522,7 @@ generate_termux_launcher() {
   local conf="$UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
   local logs_dir="$UI_ROOT/logs"
   local status_dir="$UI_ROOT/.status"
+  local static_dir="$UI_ROOT/static"
   mkdir -p -- "$status_dir"
   chmod 700 -- "$status_dir" || true
 
@@ -540,7 +564,6 @@ generate_termux_launcher() {
     esac
   fi
 
-  # Warn if pgrep is missing (pgrep is optional at adaptation time; runtime checks will be limited)
   if ! command -v pgrep >/dev/null 2>&1; then
     info "Note: pgrep not found on this system. Generated launcher will still work but runtime process detection may be limited."
   fi
@@ -570,7 +593,6 @@ if [ ! -f "$CONF" ]; then
   err "Apache config not found: $CONF"
 fi
 
-# Robust is_listening: prefer ss/netstat but ignore ss permission errors and fall back to /dev/tcp
 is_listening() {
   if command -v ss >/dev/null 2>&1; then
     ss_out="$(ss -ltn 2>&1 || true)"
@@ -578,7 +600,6 @@ is_listening() {
       return 0
     fi
     if printf '%s' "$ss_out" | grep -qiE 'permission denied|cannot open netlink|operation not permitted'; then
-      # fall through to netstat and /dev/tcp
       :
     fi
   fi
@@ -587,7 +608,6 @@ is_listening() {
       return 0
     fi
   fi
-  # final fallback: try to connect
   if ( exec 3<>/dev/tcp/127.0.0.1/"__PORT__" ) 2>/dev/null; then
     exec 3>&- 3<&- || true
     return 0
@@ -607,7 +627,6 @@ find_httpd() {
   return 1
 }
 
-# Ensure confined pidfile is not stale and try a controlled stop for same config
 ensure_no_stale_pid() {
   PIDFILE="$UI_ROOT/var/run/apache2/httpd.pid"
   if [ -f "$PIDFILE" ]; then
@@ -643,13 +662,11 @@ wait_for_listen() {
   return 1
 }
 
-# avoid duplicate starts by checking for a process using the exact config path
 is_running_with_conf() {
   if command -v pgrep >/dev/null 2>&1; then
     pgrep -f -- "$CONF" >/dev/null 2>&1
     return $?
   fi
-  # fallback: try to detect via ps+grep (less reliable)
   ps aux 2>/dev/null | grep -F -- "$CONF" | grep -v grep >/dev/null 2>&1
   return $?
 }
@@ -662,27 +679,27 @@ else
     err "No httpd/apachectl binary found in PATH; cannot start server"
   fi
 
-  # Ensure runtime dirs exist and have safe perms
-  mkdir -p -- "$UI_ROOT/var/run/apache2" "$LOGS"
+  # Ensure runtime dirs exist and have safe perms, and ensure static dir exists and is traversable
+  mkdir -p -- "$UI_ROOT/var/run/apache2" "$LOGS" "$UI_ROOT/static"
   chmod 700 -- "$UI_ROOT/var/run/apache2" "$LOGS" 2>/dev/null || true
+  chmod 755 -- "$UI_ROOT/static" 2>/dev/null || true
+  # ensure static assets are readable if present
+  if [ -d "$UI_ROOT/static" ]; then
+    find "$UI_ROOT/static" -type f -exec chmod 644 {} \; 2>/dev/null || true
+  fi
 
-  # Prefer a safe syntax test before starting
   if "$httpd_bin" -t -f "$CONF" >/dev/null 2>&1; then
-    # Try to start using -k start if supported
     if "$httpd_bin" -h 2>/dev/null | grep -q -- '-k'; then
       "$httpd_bin" -f "$CONF" -k start >/dev/null 2>>"$LOGS/error.log" &
     else
-      # fallback: start in background and rely on process detection
       "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
     fi
   else
-    # If the -t test failed, capture the diagnostic and attempt a direct start as last resort
     log "Diagnostic: '$httpd_bin -t -f $CONF' failed; attempting direct start and then checking listen status"
     "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
   fi
 
   if ! wait_for_listen; then
-    # provide helpful diagnostics
     log "Server did not start listening on 127.0.0.1:__PORT__; dumping httpd -t output for debugging"
     "$httpd_bin" -t -f "$CONF" 2>>"$LOGS/error.log" || true
     err "Server did not start or is not listening on 127.0.0.1:__PORT__ (see $LOGS/error.log)"
@@ -703,7 +720,6 @@ TSV=$(TS)
 echo "launched_at=$TSV" >"$STATUS_DIR/last-launch.$TSV"
 EOF
 
-  # Replace placeholders and write atomically inside UI_ROOT
   sed -e "s|__TERMUX_BASH__|${termux_bash}|g" \
       -e "s|__UI_ROOT__|${UI_ROOT}|g" \
       -e "s|__PORT__|${DEFAULT_PORT}|g" \
