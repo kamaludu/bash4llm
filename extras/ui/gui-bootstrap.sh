@@ -494,6 +494,7 @@ find_lang_conf() {
     "${CFG_DIR:-/data/data/com.termux/files/home/groqbash/etc}/gui-lang.conf"
     "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/gui-lang.conf"
     "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/extras/ui/gui-lang.conf"
+    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/static/gui-lang.conf"
     "${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}/gui-lang.conf"
     "$HOME/.config/groqbash/gui-lang.conf"
     "$UI_ROOT/../gui-lang.conf"
