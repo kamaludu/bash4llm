@@ -404,7 +404,9 @@ validate_name() {
   local name="$1"
   [[ -z "$name" ]] && return 1
   [[ "$name" == "." || "$name" == ".." ]] && return 1
-  [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]] && return 1
+  # reject path separators and backslash (NUL cannot practically appear in shell vars)
+  [[ "$name" == *"/"* || "$name" == *"\\"* ]] && return 1
+  # reject control characters (0x00-0x1F)
   if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
     return 1
   fi
