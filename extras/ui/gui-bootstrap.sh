@@ -402,19 +402,14 @@ html_escape_stream() {
 # -------------------------
 validate_name() {
   local name="$1"
-  # empty -> invalid
   [[ -z "$name" ]] && return 1
-  # reject literal "." or ".."
   [[ "$name" == "." || "$name" == ".." ]] && return 1
-  # reject path separators and NUL
   [[ "$name" == *"/"* || "$name" == *"\\"* || "$name" == *$'\x00'* ]] && return 1
-  # reject control characters (0x00-0x1F)
   if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
     return 1
   fi
   # allow letters, digits, dot, underscore, hyphen; disallow leading dot (hidden files)
   if [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    # enforce max length
     (( ${#name} <= MAX_NAME_LEN )) || return 1
     return 0
   fi
