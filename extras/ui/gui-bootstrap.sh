@@ -490,9 +490,8 @@ build_current_conv_block() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     # remove accidental template tokens that may come from model output
     line="${line//\{\{CURRENT_CONV\}\}/ }"
-    # decode any double-escaped numeric entities if present (optional safety)
-    # (uses html_unescape if present; safe no-op if not defined)
-    if command -v perl >/dev/null 2>&1 && type html_unescape >/dev/null 2>&1; then
+    # optional: decode double-escaped numeric entities if html_unescape exists
+    if type html_unescape >/dev/null 2>&1; then
       line="$(html_unescape "$line")"
     fi
     # sanitize (remove control chars / ANSI) but do NOT HTML-escape here
