@@ -623,22 +623,20 @@ render_template() {
   shift || true
   if [[ ! -f "$file" ]]; then return 1; fi
 
-  # first positional arg (if any) is expected to be language code (escaped by caller)
   local lang_arg="${1:-}"
-  # read file content
   local content
   content="$(cat "$file")" || content=""
 
-  # Replace known HTML placeholders (these are pre-generated HTML; do not escape)
+  # Pre-generated HTML placeholders (do not escape)
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
 
   # CURRENT_CONV is expected to be pre-built HTML (via build_current_conv_block)
   content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
+
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
-  # Replace runtime env placeholders (perform replacements unconditionally)
-  # Escape values for safe HTML insertion before performing replacements
+  # Runtime placeholders: escape here (but NOT CURRENT_CONV)
   local esc_LANG_CODE esc_THEME esc_PROVIDER_CURRENT esc_MODEL_CURRENT esc_API_KEY_FIELD
   local esc_THEME_IS_light esc_THEME_IS_dark esc_MODEL_WHITELIST_PRESENT esc_CURRENT_CONV_FILE esc_CONFIGURED
 
@@ -664,7 +662,7 @@ render_template() {
   content="${content//\{\{CURRENT_CONV_FILE\}\}/$esc_CURRENT_CONV_FILE}"
   content="${content//\{\{CONFIGURED\}\}/$esc_CONFIGURED}"
 
-  # Replace localization placeholders {{TXT_KEY}} by scanning template for occurrences
+  # Localization placeholders {{TXT_KEY}}
   local txt_keys
   txt_keys="$(awk '{
     while (match($0,/\{\{TXT_[A-Za-z0-9_]+\}\}/)) {
@@ -690,7 +688,7 @@ render_template() {
     done
   fi
 
-  # Positional replacements: {{1}}, {{2}}, ...
+  # Positional replacements
   local i=1 arg esc
   for arg in "$@"; do
     esc="$(html_escape "$arg")"
