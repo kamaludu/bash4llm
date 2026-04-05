@@ -446,22 +446,16 @@ render_page_main() {
   theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
   if is_configured; then configured="true"; else configured="false"; fi
 
-  # build template variables
   MODEL_OPTIONS="$(build_model_options "$model_cur")"
   CONV_LIST="$(build_conv_list)"
-  # Populate CURRENT_CONV as HTML-safe block from plain-text conversation
   build_current_conv_block "$conv_file"
 
-  # Build runtime placeholders (pre-escaped where appropriate)
   LANG_CODE="$(sanitize_param "$lang")"
   THEME="$(sanitize_param "$theme")"
   PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
   MODEL_CURRENT="$(sanitize_param "$model_cur")"
-  # API key field: escaped value for input value
   API_KEY_FIELD="$(html_escape "$(read_api_key_file)")"
-  # LANG_OPTIONS: build from lang conf
   LANG_OPTIONS="$(build_lang_options "$LANG_CODE")"
-  # THEME markers
   if [[ "$THEME" == "light" ]]; then
     THEME_IS_light="selected"
     THEME_IS_dark=""
@@ -469,7 +463,7 @@ render_page_main() {
     THEME_IS_light=""
     THEME_IS_dark="selected"
   fi
-  # model whitelist presence
+
   local models_file
   models_file="$(get_models_file)"
   if [[ -f "$models_file" && -n "$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)" ]]; then
@@ -477,19 +471,15 @@ render_page_main() {
   else
     MODEL_WHITELIST_PRESENT="false"
   fi
-  # current conv basename
   CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
 
-  # Ensure GUI_CGI_BASE is defined and normalized (trailing slash)
   : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
   GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
 
-  # export variables that render_template can replace directly
   export MODEL_OPTIONS CONV_LIST CURRENT_CONV
   export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
   export GUI_CGI_BASE
 
-  # pass posizionali already escaped to render_template
   local esc_lang esc_theme esc_model esc_provider esc_conv esc_cgi_base
   esc_lang="$(html_escape "$LANG_CODE")"
   esc_theme="$(html_escape "$THEME")"
@@ -499,7 +489,6 @@ render_page_main() {
   esc_cgi_base="$(html_escape "$GUI_CGI_BASE")"
 
   [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  # inject a small banner if not configured (templates can use {{CONFIGURED}})
   if [[ "$configured" != "true" ]]; then
     printf '<div class="alert alert-danger">Configuration required: please set provider, API key and model in Settings.</div>\n'
   fi
