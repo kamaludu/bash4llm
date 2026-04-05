@@ -443,7 +443,7 @@ ScriptAlias /groqbash-gui/cgi/ "__UI_ROOT__/gui-server.sh"
 # Optional backwards-compat alias (commented): map /cgi-bin/ to the same entrypoint if needed
 # ScriptAlias /cgi-bin/ "__UI_ROOT__/gui-server.sh"
 
-# Serve static assets from dedicated static directory
+# Serve static assets from dedicated static directory (note trailing slashes)
 Alias /groqbash-gui/static/ "__UI_ROOT__/static/"
 
 <Directory "__UI_ROOT__/static/">
@@ -455,7 +455,7 @@ Alias /groqbash-gui/static/ "__UI_ROOT__/static/"
 RedirectMatch 301 ^/groqbash-gui/cgi$ /groqbash-gui/cgi/
 
 # Grant ExecCGI on the application directory (app_bin / UI_ROOT)
-<Directory "__UI_ROOT__">
+<Directory "__UI_ROOT__/">
     Options +ExecCGI -Indexes
     AllowOverride None
     Require local
