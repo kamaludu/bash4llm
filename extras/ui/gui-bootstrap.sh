@@ -602,16 +602,31 @@ render_template() {
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
   # Replace runtime env placeholders (perform replacements unconditionally)
-  content="${content//\{\{LANG_CODE\}\}/$LANG_CODE}"
-  content="${content//\{\{THEME\}\}/$THEME}"
-  content="${content//\{\{PROVIDER_CURRENT\}\}/$PROVIDER_CURRENT}"
-  content="${content//\{\{MODEL_CURRENT\}\}/$MODEL_CURRENT}"
-  content="${content//\{\{API_KEY_FIELD\}\}/$API_KEY_FIELD}"
-  content="${content//\{\{THEME_IS_light\}\}/$THEME_IS_light}"
-  content="${content//\{\{THEME_IS_dark\}\}/$THEME_IS_dark}"
-  content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$MODEL_WHITELIST_PRESENT}"
-  content="${content//\{\{CURRENT_CONV_FILE\}\}/$CURRENT_CONV_FILE}"
-  content="${content//\{\{CONFIGURED\}\}/$CONFIGURED}"
+  # Escape values for safe HTML insertion before performing replacements
+  local esc_LANG_CODE esc_THEME esc_PROVIDER_CURRENT esc_MODEL_CURRENT esc_API_KEY_FIELD
+  local esc_THEME_IS_light esc_THEME_IS_dark esc_MODEL_WHITELIST_PRESENT esc_CURRENT_CONV_FILE esc_CONFIGURED
+
+  esc_LANG_CODE="$(html_escape "${LANG_CODE:-}")"
+  esc_THEME="$(html_escape "${THEME:-}")"
+  esc_PROVIDER_CURRENT="$(html_escape "${PROVIDER_CURRENT:-}")"
+  esc_MODEL_CURRENT="$(html_escape "${MODEL_CURRENT:-}")"
+  esc_API_KEY_FIELD="$(html_escape "${API_KEY_FIELD:-}")"
+  esc_THEME_IS_light="$(html_escape "${THEME_IS_light:-}")"
+  esc_THEME_IS_dark="$(html_escape "${THEME_IS_dark:-}")"
+  esc_MODEL_WHITELIST_PRESENT="$(html_escape "${MODEL_WHITELIST_PRESENT:-}")"
+  esc_CURRENT_CONV_FILE="$(html_escape "${CURRENT_CONV_FILE:-}")"
+  esc_CONFIGURED="$(html_escape "${CONFIGURED:-}")"
+
+  content="${content//\{\{LANG_CODE\}\}/$esc_LANG_CODE}"
+  content="${content//\{\{THEME\}\}/$esc_THEME}"
+  content="${content//\{\{PROVIDER_CURRENT\}\}/$esc_PROVIDER_CURRENT}"
+  content="${content//\{\{MODEL_CURRENT\}\}/$esc_MODEL_CURRENT}"
+  content="${content//\{\{API_KEY_FIELD\}\}/$esc_API_KEY_FIELD}"
+  content="${content//\{\{THEME_IS_light\}\}/$esc_THEME_IS_light}"
+  content="${content//\{\{THEME_IS_dark\}\}/$esc_THEME_IS_dark}"
+  content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$esc_MODEL_WHITELIST_PRESENT}"
+  content="${content//\{\{CURRENT_CONV_FILE\}\}/$esc_CURRENT_CONV_FILE}"
+  content="${content//\{\{CONFIGURED\}\}/$esc_CONFIGURED}"
 
   # Replace localization placeholders {{TXT_KEY}} by scanning template for occurrences
   # Use awk to extract unique TXT_ keys
@@ -656,7 +671,6 @@ render_template() {
   printf '%s' "$content"
   return 0
 }
-
 
 # -------------------------
 # Config helpers
