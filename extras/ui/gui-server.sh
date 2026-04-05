@@ -434,25 +434,6 @@ build_conv_list() {
   printf '%s' "$out"
 }
 
-build_current_conv_html() {
-  local conv_file cur_title out
-  conv_file="$1"
-  out=''
-  if [[ -f "$conv_file" ]]; then
-    cur_title="$(read_conv_title "$conv_file")"
-    if [[ -n "$cur_title" ]]; then
-      out+="<h2>$(html_escape "$cur_title")</h2>"
-    else
-      out+="<h2>$(html_escape "$(read_config_or_default 'TXT_CURRENT_CONVERSATION' 'Current conversation')")</h2>"
-    fi
-    out+=$'\n'
-    out+='<pre>'$'\n'
-    out+="$(sed -n '1,2000p' "$conv_file" 2>/dev/null | html_escape_stream)"
-    out+=$'\n</pre>'
-  fi
-  printf '%s' "$out"
-}
-
 # -------------------------
 # Page renderers (pass CONFIGURED flag and inject MODEL_OPTIONS/CONV_LIST/CURRENT_CONV)
 # -------------------------
