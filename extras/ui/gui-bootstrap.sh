@@ -631,9 +631,6 @@ render_template() {
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
 
-  # CURRENT_CONV is expected to be pre-built HTML (via build_current_conv_block)
-  content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
-
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
   # Runtime placeholders: escape here (but NOT CURRENT_CONV)
@@ -695,6 +692,10 @@ render_template() {
     content="${content//\{\{$i\}\}/$esc}"
     i=$((i+1))
   done
+
+  # Insert CURRENT_CONV last, after all other replacements, to avoid double-mangling
+  # CURRENT_CONV is expected to be pre-built HTML (via build_current_conv_block)
+  content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
 
   printf '%s' "$content"
   return 0
