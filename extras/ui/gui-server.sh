@@ -389,6 +389,16 @@ handle_post_main() {
 
   # Use a subshell to capture output safely and avoid leaking env changes
   output="$(printf '%s' "$prompt" | call_groqbash_with_args "${groq_args[@]}" 2>>"$ERROR_LOG" || true)"
+
+  # Decode any HTML entities the model may have returned (prevent storing &amp;#39; etc.)
+  if type html_unescape >/dev/null 2>&1; then
+    output="$(html_unescape "$output")"
+  else
+    # fallback: decode common sequences
+    output="$(printf '%s' "$output" | sed -e "s/&amp;#39;/'/g" -e "s/&#39;/'/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g')"
+  fi
+
+  # sanitize (remove control chars/ANSI) but do NOT HTML-escape here; store plain text
   sanitized_output="$(sanitize_model_output "$output")"
   atomic_append_conv "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
 }
