@@ -597,10 +597,13 @@ render_template() {
   local content
   content="$(cat "$file")" || content=""
 
-  # Replace known HTML placeholders (these are pre-generated HTML; do not escape)
+  # Replace known HTML placeholders (MODEL_OPTIONS and CONV_LIST are pre-generated HTML; do not escape)
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
-  content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
+  # CURRENT_CONV contains user/model text: escape it for safe HTML insertion
+  local esc_CURRENT_CONV
+  esc_CURRENT_CONV="$(html_escape "${CURRENT_CONV:-}")"
+  content="${content//\{\{CURRENT_CONV\}\}/$esc_CURRENT_CONV}"
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
   # Replace runtime env placeholders (perform replacements unconditionally)
