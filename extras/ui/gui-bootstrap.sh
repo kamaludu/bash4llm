@@ -475,9 +475,9 @@ sanitize_model_output() {
 
 # Build CURRENT_CONV as safe HTML for insertion into templates.
 # Reads the current conversation file (plain text), sanitizes each line,
+# removes any literal "{{CURRENT_CONV}}" tokens that may appear in model output,
 # escapes HTML entities and preserves newlines by wrapping content in <pre>.
 # Usage: build_current_conv_block [convfile]
-# If convfile omitted, get_current_conversation_file() is used.
 build_current_conv_block() {
   local convfile line out htmlbuf
   convfile="${1:-$(get_current_conversation_file || true)}"
@@ -487,15 +487,21 @@ build_current_conv_block() {
   fi
 
   htmlbuf=""
-  # Read file line by line; sanitize_model_output removes control chars/ANSI but does NOT HTML-escape
   while IFS= read -r line || [[ -n "$line" ]]; do
+    # remove accidental template tokens that may come from model output
+    line="${line//\{\{CURRENT_CONV\}\}/ }"
+    # decode any double-escaped numeric entities if present (optional safety)
+    # (uses html_unescape if present; safe no-op if not defined)
+    if command -v perl >/dev/null 2>&1 && type html_unescape >/dev/null 2>&1; then
+      line="$(html_unescape "$line")"
+    fi
+    # sanitize (remove control chars / ANSI) but do NOT HTML-escape here
     out="$(sanitize_model_output "$line")"
+    # now escape for HTML insertion
     out="$(html_escape "$out")"
-    # accumulate preserving newlines inside a <pre> block
     htmlbuf+="${out}"$'\n'
   done < "$convfile"
 
-  # Wrap in <pre> to preserve formatting; content already HTML-escaped
   CURRENT_CONV="<pre>$(printf '%s' "$htmlbuf")</pre>"
   return 0
 }
