@@ -460,14 +460,16 @@ sanitize_model_output() {
   v="${1:-}"
   # strip ANSI escape sequences (single sed expression)
   v="$(printf '%s' "$v" | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g')"
+  # remove control chars and normalize newlines
   v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
+  # collapse tabs/spaces and trim
   v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
   v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
   if [ "${#v}" -gt "$max" ]; then
     v="${v:0:max}"
     v="$v\n\n[TRUNCATED]"
   fi
-  v="$(printf '%s' "$v" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/\"/\&quot;/g' -e "s/'/&#39;/g")"
+  # IMPORTANT: do NOT HTML-escape here; conversation files must contain plain text.
   printf '%s' "$v"
 }
 
