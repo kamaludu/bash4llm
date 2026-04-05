@@ -427,9 +427,8 @@ sanitize_param() {
 sanitize_model_output() {
   local v max=10000
   v="${1:-}"
-  v="$(printf '%s' "$v" | sed -r 's/\x1B
-
-\[[0-9;]*[a-zA-Z]//g')"
+  # strip ANSI escape sequences (single sed expression)
+  v="$(printf '%s' "$v" | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g')"
   v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
   v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
   v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
