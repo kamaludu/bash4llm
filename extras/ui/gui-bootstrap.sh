@@ -335,6 +335,37 @@ atomic_append_conv() {
   return 0
 }
 
+atomic_append_conv_in_uiroot() {
+  # Usage: atomic_append_conv_in_uiroot <convfile> <<'EOF' ... EOF
+  local convfile="$1"
+  if [[ -z "$convfile" ]]; then
+    return 1
+  fi
+
+  # Ensure destination dir exists
+  local dir tmpf
+  dir="$(dirname -- "$convfile")"
+  mkdir -p -- "$dir" 2>/dev/null || true
+
+  # Create a tmp file in the same directory to preserve filesystem semantics
+  tmpf="${convfile}.tmp.$$"
+
+  # If conversation exists, copy it to tmp (preserve mode if possible)
+  if [[ -f "$convfile" ]]; then
+    cp -a -- "$convfile" "$tmpf" 2>/dev/null || : 
+  else
+    : >"$tmpf"
+  fi
+
+  # Append raw stdin to tmp file (no sed, no substitution)
+  cat >> "$tmpf"
+
+  # Atomically replace the conversation file
+  mv -f -- "$tmpf" "$convfile"
+  chmod 600 "$convfile" || true
+  return 0
+}
+
 # -------------------------
 # flock availability and lock management (fd 9)
 # -------------------------
