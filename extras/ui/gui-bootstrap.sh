@@ -473,23 +473,26 @@ sanitize_model_output() {
   printf '%s' "$v"
 }
 
+# -------------------------
 # Build CURRENT_CONV as safe HTML for insertion into templates.
 # Reads the current conversation file (plain text), sanitizes each line,
 # removes any literal "{{CURRENT_CONV}}" tokens that may appear in model output,
 # escapes HTML entities and preserves newlines by wrapping content in <pre>.
 # Usage: build_current_conv_block [convfile]
 build_current_conv_block() {
-  local convfile line out htmlbuf
+  local convfile line out htmlbuf token
   convfile="${1:-$(get_current_conversation_file || true)}"
   if [[ -z "$convfile" || ! -f "$convfile" ]]; then
     CURRENT_CONV=""
     return 0
   fi
 
+  token='{{CURRENT_CONV}}'
   htmlbuf=""
+
   while IFS= read -r line || [[ -n "$line" ]]; do
     # remove accidental template tokens that may come from model output
-    line="${line//\{\{CURRENT_CONV\}\}/ }"
+    line="${line//${token}/ }"
     # optional: decode double-escaped numeric entities if html_unescape exists
     if type html_unescape >/dev/null 2>&1; then
       line="$(html_unescape "$line")"
@@ -498,9 +501,11 @@ build_current_conv_block() {
     out="$(sanitize_model_output "$line")"
     # now escape for HTML insertion
     out="$(html_escape "$out")"
+    # append with a single newline preserved
     htmlbuf+="${out}"$'\n'
   done < "$convfile"
 
+  # Wrap in <pre> to preserve newlines; CURRENT_CONV must be safe HTML already
   CURRENT_CONV="<pre>$(printf '%s' "$htmlbuf")</pre>"
   return 0
 }
@@ -616,8 +621,9 @@ read_txt_key() {
 }
 
 # -------------------------
-# Template rendering helper
-# -------------------------
+# Template rendering helper (fixed safe insertion of CURRENT_CONV)
+# Replaces placeholders, escapes runtime values, and inserts CURRENT_CONV last
+# using a robust prefix/suffix split that avoids accidental re-substitution.
 render_template() {
   local file="$1"
   shift || true
@@ -630,7 +636,6 @@ render_template() {
   # Pre-generated HTML placeholders (do not escape)
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
-
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
   # Runtime placeholders: escape here (but NOT CURRENT_CONV)
@@ -694,13 +699,13 @@ render_template() {
   done
 
   # Insert CURRENT_CONV last, after all other replacements, using a safe split/concat
-  # This avoids any unexpected re-substitution or mangling of HTML entities inside CURRENT_CONV.
-  if [[ "$content" == *"{{CURRENT_CONV}}"* ]]; then
-    local _before _after
-    _before="${content%%\{\{CURRENT_CONV\}\}*}"
-    _after="${content#*\{\{CURRENT_CONV\}\}}"
-    content="${_before}${CURRENT_CONV}${_after}"
-    unset _before _after
+  local token prefix suffix
+  token='{{CURRENT_CONV}}'
+  if [[ "$content" == *"$token"* ]]; then
+    prefix="${content%%$token*}"
+    suffix="${content#*$token}"
+    content="${prefix}${CURRENT_CONV}${suffix}"
+    unset prefix suffix token
   fi
 
   printf '%s' "$content"
@@ -797,6 +802,39 @@ ensure_dirs() {
   mkdir -p "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR"/input "$FILES_DIR"/output "$TEMPLATES_DIR" 2>/dev/null || true
   chmod 700 "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR" "$FILES_DIR"/input "$FILES_DIR"/output 2>/dev/null || true
   ensure_tmpdir || return 1
+  return 0
+}
+
+# -------------------------
+# Helper: ensure .sh files under UI_ROOT (cgi-bin and top-level) are executable
+# and static assets are readable. Intended to be called by installer (idempotent).
+# Usage: ensure_sh_executables [ui_root]
+ensure_sh_executables() {
+  local ui="${1:-$UI_ROOT}"
+  if [[ -z "$ui" || ! -d "$ui" ]]; then
+    log_warn "PERMS" "ensure_sh_executables: UI_ROOT missing or invalid: $ui"
+    return 0
+  fi
+
+  # Make CGI scripts executable and static files readable (idempotent)
+  if [[ -d "$ui/cgi-bin" ]]; then
+    find "$ui/cgi-bin" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
+  fi
+
+  # Also make any top-level .sh in UI_ROOT executable (some setups place scripts there)
+  find "$ui" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
+
+  # Ensure static assets are readable
+  if [[ -d "$ui/static" ]]; then
+    find "$ui/static" -type f -exec chmod 644 {} \; 2>/dev/null || true
+    # ensure static dir and parents are traversable
+    chmod 755 "$ui/static" 2>/dev/null || true
+  fi
+
+  # Ensure common runtime dirs exist with safe perms
+  mkdir -p "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
+  chmod 700 "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
+
   return 0
 }
 
