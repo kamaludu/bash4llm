@@ -693,9 +693,15 @@ render_template() {
     i=$((i+1))
   done
 
-  # Insert CURRENT_CONV last, after all other replacements, to avoid double-mangling
-  # CURRENT_CONV is expected to be pre-built HTML (via build_current_conv_block)
-  content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
+  # Insert CURRENT_CONV last, after all other replacements, using a safe split/concat
+  # This avoids any unexpected re-substitution or mangling of HTML entities inside CURRENT_CONV.
+  if [[ "$content" == *"{{CURRENT_CONV}}"* ]]; then
+    local _before _after
+    _before="${content%%\{\{CURRENT_CONV\}\}*}"
+    _after="${content#*\{\{CURRENT_CONV\}\}}"
+    content="${_before}${CURRENT_CONV}${_after}"
+    unset _before _after
+  fi
 
   printf '%s' "$content"
   return 0
