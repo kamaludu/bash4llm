@@ -624,13 +624,12 @@ render_template() {
   local content
   content="$(cat "$file")" || content=""
 
-  # Replace known HTML placeholders (MODEL_OPTIONS and CONV_LIST are pre-generated HTML; do not escape)
+  # Replace known HTML placeholders (these are pre-generated HTML; do not escape)
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
-  # CURRENT_CONV contains user/model text: escape it for safe HTML insertion
-  local esc_CURRENT_CONV
-  esc_CURRENT_CONV="$(html_escape "${CURRENT_CONV:-}")"
-  content="${content//\{\{CURRENT_CONV\}\}/$esc_CURRENT_CONV}"
+
+  # CURRENT_CONV is expected to be pre-built HTML (via build_current_conv_block)
+  content="${content//\{\{CURRENT_CONV\}\}/$CURRENT_CONV}"
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
 
   # Replace runtime env placeholders (perform replacements unconditionally)
@@ -661,7 +660,6 @@ render_template() {
   content="${content//\{\{CONFIGURED\}\}/$esc_CONFIGURED}"
 
   # Replace localization placeholders {{TXT_KEY}} by scanning template for occurrences
-  # Use awk to extract unique TXT_ keys
   local txt_keys
   txt_keys="$(awk '{
     while (match($0,/\{\{TXT_[A-Za-z0-9_]+\}\}/)) {
@@ -673,19 +671,15 @@ render_template() {
   if [[ -n "$txt_keys" ]]; then
     local k val
     for k in $txt_keys; do
-      # k is like TXT_HOME
       val=''
-      # prefer environment variable if set (allows server to pre-export specific TXT_*), otherwise read from gui-lang.conf using lang_arg
       if [[ -n "${!k:-}" ]]; then
         val="${!k}"
       else
-        # lang_arg may be escaped; use sanitize_param to be safe
         local lang_clean
         lang_clean="$(sanitize_param "$lang_arg")"
         if [[ -z "$lang_clean" ]]; then lang_clean="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"; fi
         val="$(read_txt_key "$k" "$lang_clean" || true)"
       fi
-      # escape textual value for safe insertion
       val="$(html_escape "$val")"
       content="${content//\{\{$k\}\}/$val}"
     done
@@ -694,7 +688,6 @@ render_template() {
   # Positional replacements: {{1}}, {{2}}, ...
   local i=1 arg esc
   for arg in "$@"; do
-    # escape argument for safe HTML insertion
     esc="$(html_escape "$arg")"
     content="${content//\{\{$i\}\}/$esc}"
     i=$((i+1))
