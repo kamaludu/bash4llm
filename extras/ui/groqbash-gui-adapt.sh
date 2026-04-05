@@ -809,6 +809,8 @@ main() {
         process_target "$f" "$bash_path"
       done
 
+      ensure_sh_executables "$UI_ROOT"
+
       generate_termux_apache_config
       generate_termux_launcher
       ;;
