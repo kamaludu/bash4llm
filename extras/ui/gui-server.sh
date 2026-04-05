@@ -449,10 +449,10 @@ render_page_main() {
   # build template variables
   MODEL_OPTIONS="$(build_model_options "$model_cur")"
   CONV_LIST="$(build_conv_list)"
-  CURRENT_CONV="$(build_current_conv_html "$conv_file")"
+  # Populate CURRENT_CONV as HTML-safe block from plain-text conversation
+  build_current_conv_block "$conv_file"
 
   # Build runtime placeholders (pre-escaped where appropriate)
-  # LANG_CODE and THEME are validated earlier in main; here we sanitize and escape
   LANG_CODE="$(sanitize_param "$lang")"
   THEME="$(sanitize_param "$theme")"
   PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
