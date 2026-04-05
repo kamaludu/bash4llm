@@ -473,6 +473,33 @@ sanitize_model_output() {
   printf '%s' "$v"
 }
 
+# Build CURRENT_CONV as safe HTML for insertion into templates.
+# Reads the current conversation file (plain text), sanitizes each line,
+# escapes HTML entities and preserves newlines by wrapping content in <pre>.
+# Usage: build_current_conv_block [convfile]
+# If convfile omitted, get_current_conversation_file() is used.
+build_current_conv_block() {
+  local convfile line out htmlbuf
+  convfile="${1:-$(get_current_conversation_file || true)}"
+  if [[ -z "$convfile" || ! -f "$convfile" ]]; then
+    CURRENT_CONV=""
+    return 0
+  fi
+
+  htmlbuf=""
+  # Read file line by line; sanitize_model_output removes control chars/ANSI but does NOT HTML-escape
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    out="$(sanitize_model_output "$line")"
+    out="$(html_escape "$out")"
+    # accumulate preserving newlines inside a <pre> block
+    htmlbuf+="${out}"$'\n'
+  done < "$convfile"
+
+  # Wrap in <pre> to preserve formatting; content already HTML-escaped
+  CURRENT_CONV="<pre>$(printf '%s' "$htmlbuf")</pre>"
+  return 0
+}
+
 url_decode() {
   local data="${1//+/ }"
   printf '%b' "${data//%/\\x}"
