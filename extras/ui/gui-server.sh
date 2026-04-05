@@ -505,13 +505,10 @@ render_page_settings() {
   theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
   if is_configured; then configured="true"; else configured="false"; fi
 
-  # build template variables
   MODEL_OPTIONS="$(build_model_options "$model_cur")"
   CONV_LIST="$(build_conv_list)"
-  # Populate CURRENT_CONV as HTML-safe block from plain-text conversation
   build_current_conv_block "$conv_file"
 
-  # Build runtime placeholders (pre-escaped where appropriate)
   LANG_CODE="$(sanitize_param "$lang")"
   THEME="$(sanitize_param "$theme")"
   PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
@@ -533,7 +530,6 @@ render_page_settings() {
   fi
   CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
 
-  # Ensure GUI_CGI_BASE is defined and normalized (trailing slash)
   : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
   GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
 
