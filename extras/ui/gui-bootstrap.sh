@@ -428,6 +428,12 @@ html_escape_stream() {
   sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
 }
 
+# Robust fallback to unescape common HTML entities (used when no html_unescape available)
+# Usage: html_unescape_fallback "some &amp; text"
+html_unescape_fallback() {
+  printf '%s' "$1" | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
+}
+
 # Portable html_unescape: reverses common HTML entities to literal characters
 # Usage: html_unescape "some &amp; text"
 html_unescape() {
