@@ -583,92 +583,8 @@ usage() {
 }
 
 # -------------------------------------------------------------------------
-# Installer helper functions added for robust, idempotent installation
+# Installer helper functions (installer-only)
 # -------------------------------------------------------------------------
-
-# Ensure .sh files are executable and static assets readable under a UI tree (idempotent)
-# Usage: ensure_sh_executables <ui_root>
-ensure_sh_executables() {
-  local ui="${1:-}"
-  if [[ -z "$ui" || ! -d "$ui" ]]; then
-    warn "ensure_sh_executables: invalid UI_ROOT: $ui"
-    return 0
-  fi
-
-  # Replace symlinked scripts with real files only if safe (see remove_unnecessary_symlinks)
-  remove_unnecessary_symlinks "$ui" || true
-
-  # Make CGI scripts executable
-  if [[ -d "$ui/cgi-bin" ]]; then
-    find "$ui/cgi-bin" -maxdepth 1 -type f -name '*.sh' -exec chmod 0755 {} \; 2>/dev/null || true
-  fi
-
-  # Top-level .sh files
-  find "$ui" -maxdepth 1 -type f -name '*.sh' -exec chmod 0755 {} \; 2>/dev/null || true
-
-  # Static assets readable
-  if [[ -d "$ui/static" ]]; then
-    find "$ui/static" -type f -exec chmod 0644 {} \; 2>/dev/null || true
-    chmod 0755 "$ui/static" 2>/dev/null || true
-  fi
-
-  # Ensure runtime dirs exist and have safe perms
-  mkdir -p "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
-  chmod 0700 "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
-
-  return 0
-}
-
-# Make parent directories of a path traversable (add +x) up to a safe root.
-# Usage: ensure_traversable_parents <path> [<stop_at>]
-ensure_traversable_parents() {
-  local path="$1" stop_at="${2:-$HOME}" d
-  if [[ -z "$path" ]]; then return 1; fi
-  # canonicalize
-  path="$(cd "$(dirname -- "$path")" 2>/dev/null && pwd -P || printf '%s' "$path")"
-  stop_at="$(cd "$stop_at" 2>/dev/null && pwd -P || printf '%s' "$stop_at")"
-
-  while [[ -n "$path" && "$path" != "/" && "$path" != "$stop_at" ]]; do
-    if [[ -d "$path" ]]; then
-      # only change perms if owned by current user (avoid touching system dirs)
-      if [[ "$(stat -c '%u' "$path" 2>/dev/null || true)" -eq "$(id -u)" ]]; then
-        # ensure owner has execute bit; keep other bits unchanged
-        chmod u+x "$path" 2>/dev/null || true
-      fi
-    fi
-    path="$(dirname -- "$path")"
-  done
-  return 0
-}
-
-# Replace safe symlinks inside ui_root with real files and remove broken symlinks.
-# Usage: remove_unnecessary_symlinks <ui_root>
-remove_unnecessary_symlinks() {
-  local ui="$1" target realpath link
-  [[ -d "$ui" ]] || return 0
-  while IFS= read -r -d '' link; do
-    target="$(readlink -f "$link" 2>/dev/null || true)"
-    if [[ -z "$target" ]]; then
-      # broken symlink: remove
-      rm -f -- "$link" 2>/dev/null || true
-      continue
-    fi
-    # Only replace symlink if target is inside the same UI tree (avoid copying system files)
-    case "$target" in
-      "$ui"/*)
-        # copy target content over symlink (preserve mode if possible)
-        if [[ -f "$target" ]]; then
-          cp -a -- "$target" "${link}.tmp" 2>/dev/null || continue
-          mv -f -- "${link}.tmp" "$link" 2>/dev/null || { rm -f -- "${link}.tmp" 2>/dev/null || true; continue; }
-        fi
-        ;;
-      *)
-        # leave symlink alone if it points outside UI_ROOT
-        ;;
-    esac
-  done < <(find "$ui" -maxdepth 3 -type l -print0 2>/dev/null)
-  return 0
-}
 
 # Install a generated Apache conf atomically and idempotently.
 # Usage: install_apache_conf_idempotent <staged_tmpfile> <final_path>
@@ -775,18 +691,30 @@ main() {
   # Run UI adaptation early to confine artifacts and fix shebangs
   # This ensures any wrappers or generated files are created under APP_BIN (UI_ROOT)
   # before the bootstrap is sourced or any global user paths are touched.
-  if [[ -x "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
-    info "Running UI adapt script to confine artifacts and fix shebangs"
-    # run adapt but do not fail the whole install if adapt returns non-zero;
-    # warn instead so user can inspect logs/errors.
-    "${APP_BIN}/groqbash-gui-adapt.sh" || warn "groqbash-gui-adapt.sh returned non-zero; continuing"
+  if [[ -f "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
+    info "Found UI adapt script; ensuring executable and running it"
+    chmod 0755 "${APP_BIN}/groqbash-gui-adapt.sh" 2>/dev/null || true
+    if [[ -x "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
+      "${APP_BIN}/groqbash-gui-adapt.sh" || warn "groqbash-gui-adapt.sh returned non-zero; continuing"
+    else
+      warn "groqbash-gui-adapt.sh present but not executable; skipping"
+    fi
   else
     info "No UI adapt script found at ${APP_BIN}/groqbash-gui-adapt.sh; skipping adapt step"
   fi
 
   # Ensure scripts and static assets have correct perms and parents are traversable
-  ensure_sh_executables "$APP_BIN" || warn "ensure_sh_executables failed; continuing"
-  ensure_traversable_parents "$APP_BIN" "$HOME" || warn "ensure_traversable_parents failed; continuing"
+  if type ensure_sh_executables >/dev/null 2>&1; then
+    ensure_sh_executables "$APP_BIN" || warn "ensure_sh_executables failed; continuing"
+  else
+    warn "ensure_sh_executables not available in bootstrap; skipping perms fix"
+  fi
+
+  if type ensure_traversable_parents >/dev/null 2>&1; then
+    ensure_traversable_parents "$APP_BIN" "$HOME" || warn "ensure_traversable_parents failed; continuing"
+  else
+    warn "ensure_traversable_parents not available in bootstrap; skipping traversal fix"
+  fi
 
   mkdir -p "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
   chmod 700 "$APP_RUNTIME_DIR" 2>/dev/null || true
