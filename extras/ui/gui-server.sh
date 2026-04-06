@@ -160,6 +160,12 @@ find_lang_conf() {
   return 1
 }
 
+# Robust fallback to unescape common HTML entities (used when no html_unescape available)
+# Usage: html_unescape_fallback "some &amp; text"
+html_unescape_fallback() {
+  printf '%s' "$1" | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
+}
+
 # Build LANG_OPTIONS HTML from LANG_NAME.<code>=Label entries in gui-lang.conf
 build_lang_options() {
   local lang_conf lang_code out code label
