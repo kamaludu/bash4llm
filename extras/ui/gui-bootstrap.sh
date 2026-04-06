@@ -822,6 +822,29 @@ ensure_dirs() {
   return 0
 }
 
+# Make parent directories of a path traversable (add +x) up to a safe root.
+# Usage: ensure_traversable_parents <path> [<stop_at>]
+ensure_traversable_parents() {
+  local path="$1" stop_at="${2:-$HOME}" d owner uid me
+  if [[ -z "$path" ]]; then return 1; fi
+  # canonicalize inputs
+  path="$(cd "$(dirname -- "$path")" 2>/dev/null && pwd -P || printf '%s' "$path")"
+  stop_at="$(cd "$stop_at" 2>/dev/null && pwd -P || printf '%s' "$stop_at")"
+  me="$(id -u 2>/dev/null || printf '0')"
+
+  while [[ -n "$path" && "$path" != "/" && "$path" != "$stop_at" ]]; do
+    if [[ -d "$path" ]]; then
+      # only change perms if owned by current user (avoid touching system dirs)
+      owner="$(stat -c '%u' "$path" 2>/dev/null || echo '')"
+      if [[ -n "$owner" && "$owner" -eq "$me" ]]; then
+        chmod u+x "$path" 2>/dev/null || true
+      fi
+    fi
+    path="$(dirname -- "$path")"
+  done
+  return 0
+}
+
 # -------------------------
 # Helper: ensure .sh files under UI_ROOT (cgi-bin and top-level) are executable
 # and static assets are readable. Intended to be called by installer (idempotent).
