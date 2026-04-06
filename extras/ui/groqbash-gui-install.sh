@@ -582,6 +582,138 @@ usage() {
   printf 'Usage: %s [--app-root PATH] [--apache-root PATH] [--port PORT] [--non-interactive]\n' "$0"
 }
 
+# -------------------------------------------------------------------------
+# Installer helper functions added for robust, idempotent installation
+# -------------------------------------------------------------------------
+
+# Ensure .sh files are executable and static assets readable under a UI tree (idempotent)
+# Usage: ensure_sh_executables <ui_root>
+ensure_sh_executables() {
+  local ui="${1:-}"
+  if [[ -z "$ui" || ! -d "$ui" ]]; then
+    warn "ensure_sh_executables: invalid UI_ROOT: $ui"
+    return 0
+  fi
+
+  # Replace symlinked scripts with real files only if safe (see remove_unnecessary_symlinks)
+  remove_unnecessary_symlinks "$ui" || true
+
+  # Make CGI scripts executable
+  if [[ -d "$ui/cgi-bin" ]]; then
+    find "$ui/cgi-bin" -maxdepth 1 -type f -name '*.sh' -exec chmod 0755 {} \; 2>/dev/null || true
+  fi
+
+  # Top-level .sh files
+  find "$ui" -maxdepth 1 -type f -name '*.sh' -exec chmod 0755 {} \; 2>/dev/null || true
+
+  # Static assets readable
+  if [[ -d "$ui/static" ]]; then
+    find "$ui/static" -type f -exec chmod 0644 {} \; 2>/dev/null || true
+    chmod 0755 "$ui/static" 2>/dev/null || true
+  fi
+
+  # Ensure runtime dirs exist and have safe perms
+  mkdir -p "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
+  chmod 0700 "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
+
+  return 0
+}
+
+# Make parent directories of a path traversable (add +x) up to a safe root.
+# Usage: ensure_traversable_parents <path> [<stop_at>]
+ensure_traversable_parents() {
+  local path="$1" stop_at="${2:-$HOME}" d
+  if [[ -z "$path" ]]; then return 1; fi
+  # canonicalize
+  path="$(cd "$(dirname -- "$path")" 2>/dev/null && pwd -P || printf '%s' "$path")"
+  stop_at="$(cd "$stop_at" 2>/dev/null && pwd -P || printf '%s' "$stop_at")"
+
+  while [[ -n "$path" && "$path" != "/" && "$path" != "$stop_at" ]]; do
+    if [[ -d "$path" ]]; then
+      # only change perms if owned by current user (avoid touching system dirs)
+      if [[ "$(stat -c '%u' "$path" 2>/dev/null || true)" -eq "$(id -u)" ]]; then
+        # ensure owner has execute bit; keep other bits unchanged
+        chmod u+x "$path" 2>/dev/null || true
+      fi
+    fi
+    path="$(dirname -- "$path")"
+  done
+  return 0
+}
+
+# Replace safe symlinks inside ui_root with real files and remove broken symlinks.
+# Usage: remove_unnecessary_symlinks <ui_root>
+remove_unnecessary_symlinks() {
+  local ui="$1" target realpath link
+  [[ -d "$ui" ]] || return 0
+  while IFS= read -r -d '' link; do
+    target="$(readlink -f "$link" 2>/dev/null || true)"
+    if [[ -z "$target" ]]; then
+      # broken symlink: remove
+      rm -f -- "$link" 2>/dev/null || true
+      continue
+    fi
+    # Only replace symlink if target is inside the same UI tree (avoid copying system files)
+    case "$target" in
+      "$ui"/*)
+        # copy target content over symlink (preserve mode if possible)
+        if [[ -f "$target" ]]; then
+          cp -a -- "$target" "${link}.tmp" 2>/dev/null || continue
+          mv -f -- "${link}.tmp" "$link" 2>/dev/null || { rm -f -- "${link}.tmp" 2>/dev/null || true; continue; }
+        fi
+        ;;
+      *)
+        # leave symlink alone if it points outside UI_ROOT
+        ;;
+    esac
+  done < <(find "$ui" -maxdepth 3 -type l -print0 2>/dev/null)
+  return 0
+}
+
+# Install a generated Apache conf atomically and idempotently.
+# Usage: install_apache_conf_idempotent <staged_tmpfile> <final_path>
+install_apache_conf_idempotent() {
+  local staged="$1" final="$2" bak
+  [[ -f "$staged" ]] || { err "install_apache_conf_idempotent: staged file missing: $staged"; return 1; }
+
+  # If final is a symlink, remove it (we want a real file)
+  if [[ -L "$final" ]]; then
+    rm -f -- "$final" 2>/dev/null || true
+  fi
+
+  # If final exists and is identical, nothing to do
+  if [[ -f "$final" ]] && cmp -s "$staged" "$final"; then
+    rm -f -- "$staged" 2>/dev/null || true
+    info "Config identical; no install needed: $final"
+    return 0
+  fi
+
+  # Backup existing final if present
+  if [[ -f "$final" ]]; then
+    bak="${final}.bak.$(date +%s)"
+    cp -p -- "$final" "$bak" 2>/dev/null || warn "Could not backup $final"
+    info "Backed up existing config to $bak"
+  fi
+
+  # Move staged into place atomically
+  if mv -f -- "$staged" "$final"; then
+    chmod 0600 "$final" 2>/dev/null || true
+    info "Installed config: $final"
+    return 0
+  else
+    # rollback if possible
+    warn "Failed to install config $final; attempting rollback"
+    if [[ -n "$bak" && -f "$bak" ]]; then
+      cp -p -- "$bak" "$final" 2>/dev/null || true
+    fi
+    return 1
+  fi
+}
+
+# -------------------------------------------------------------------------
+# End helper functions
+# -------------------------------------------------------------------------
+
 main() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -652,6 +784,10 @@ main() {
     info "No UI adapt script found at ${APP_BIN}/groqbash-gui-adapt.sh; skipping adapt step"
   fi
 
+  # Ensure scripts and static assets have correct perms and parents are traversable
+  ensure_sh_executables "$APP_BIN" || warn "ensure_sh_executables failed; continuing"
+  ensure_traversable_parents "$APP_BIN" "$HOME" || warn "ensure_traversable_parents failed; continuing"
+
   mkdir -p "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
   chmod 700 "$APP_RUNTIME_DIR" 2>/dev/null || true
   chmod 700 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
@@ -696,20 +832,22 @@ main() {
     case "$ans" in [Yy]) ;; *) info "Aborting"; rm -f -- "$gen_tmp" || true; exit 0 ;; esac
   fi
 
-  if ! mv -f "$gen_tmp" "${FINAL_CONF_PATH}.pending" 2>/dev/null; then
+  # Stage generated config to a temp file and install idempotently
+  staged_tmp="${FINAL_CONF_PATH}.pending"
+  if ! mv -f "$gen_tmp" "$staged_tmp" 2>/dev/null; then
     err "Failed to stage config"; rm -f -- "$gen_tmp" || true; exit 1
   fi
-  TMP_FILES+=("${FINAL_CONF_PATH}.pending")
+  TMP_FILES+=("$staged_tmp")
 
   if ! run_configtest; then
-    rm -f -- "${FINAL_CONF_PATH}.pending" || true
+    rm -f -- "$staged_tmp" || true
     err "apachectl configtest failed after staging; pending file removed"; exit 1
   fi
 
-  if ! mv -f "${FINAL_CONF_PATH}.pending" "$FINAL_CONF_PATH"; then
-    err "Failed to install config"; rm -f -- "${FINAL_CONF_PATH}.pending" || true; exit 1
+  if ! install_apache_conf_idempotent "$staged_tmp" "$FINAL_CONF_PATH"; then
+    err "Failed to install config $FINAL_CONF_PATH"; rm -f -- "$staged_tmp" || true; exit 1
   fi
-  TMP_FILES=("${TMP_FILES[@]/${FINAL_CONF_PATH}.pending}") || true
+  TMP_FILES=("${TMP_FILES[@]/$staged_tmp}") || true
 
   if ! reload_apache; then
     warn "Apache reload failed; config installed at $FINAL_CONF_PATH"
