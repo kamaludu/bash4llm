@@ -820,7 +820,11 @@ main() {
         process_target "$f" "$bash_path"
       done
 
-      ensure_sh_executables "$UI_ROOT"
+      if type ensure_sh_executables >/dev/null 2>&1; then
+        ensure_sh_executables "$UI_ROOT" || info "Warning: ensure_sh_executables failed"
+      else
+        info "Warning: ensure_sh_executables not available in bootstrap; skipping perms fix"
+      fi
 
       generate_termux_apache_config
       generate_termux_launcher
