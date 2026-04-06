@@ -66,25 +66,29 @@ call_groqbash_with_args() {
   "$GROQBASH_CMD" "$@"
 }
 
-# read MODELS_FILE path used by groqbash (best-effort)
+# get_models_file (robusto, senza hardcoded Termux paths)
 get_models_file() {
-  # try canonical location relative to groqbash dir
   local candidate groq_dir
-  groq_dir="$(dirname -- "$GROQBASH_CMD" 2>/dev/null || printf '.')"
-  candidate="$groq_dir/groqbash.d/models/models.txt"
-  if [[ -f "$candidate" ]]; then
+
+  # If GROQBASH_CMD is absolute, prefer its sibling models path
+  if [[ -n "${GROQBASH_CMD:-}" && "${GROQBASH_CMD}" = /* ]]; then
+    groq_dir="$(cd "$(dirname -- "$GROQBASH_CMD")" 2>/dev/null && pwd -P || printf '%s' ".")"
+    candidate="$groq_dir/groqbash.d/models/models.txt"
+    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+  fi
+
+  # Prefer a models file inside UI tree if UI_ROOT is set
+  if [[ -n "${UI_ROOT:-}" ]]; then
+    candidate="$UI_ROOT/../groqbash.d/models/models.txt"
+    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+    candidate="$UI_ROOT/models/models.txt"
     printf '%s' "$candidate"
     return 0
   fi
-  # fallback to UI_ROOT sibling
-  candidate="$UI_ROOT/../groqbash.d/models/models.txt"
-  if [[ -f "$candidate" ]]; then
-    printf '%s' "$candidate"
-    return 0
-  fi
-  # final fallback to UI_ROOT/models
-  candidate="$UI_ROOT/models/models.txt"
-  printf '%s' "$candidate"
+
+  # Fallback: relative to script dir
+  candidate="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)/groqbash.d/models/models.txt"
+  printf '%s' "${candidate:-models/models.txt}"
   return 0
 }
 
