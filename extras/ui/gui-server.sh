@@ -398,8 +398,7 @@ handle_post_main() {
   if type html_unescape >/dev/null 2>&1; then
     output="$(html_unescape "$output")"
   else
-    # fallback: decode common sequences
-    output="$(printf '%s' "$output" | sed -e "s/&amp;#39;/'/g" -e "s/&#39;/'/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g')"
+    output="$(html_unescape_fallback "$output")"
   fi
 
   # sanitize (remove control chars/ANSI) but do NOT HTML-escape here; store plain text
