@@ -145,17 +145,16 @@ read_conv_title() {
 # -------------------------
 # Language file helpers (minimal, best-effort)
 # -------------------------
-# Try several likely locations for gui-lang.conf and return first readable path
+# find_lang_conf (try CFG_DIR, UI_ROOT, SCRIPT_DIR, HOME; no hardcoded Termux-only paths)
 find_lang_conf() {
-  local candidates=(
-    "${CFG_DIR:-/data/data/com.termux/files/home/groqbash/etc}/gui-lang.conf"
-    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/gui-lang.conf"
-    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/extras/ui/gui-lang.conf"
-    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/static/gui-lang.conf"
-    "${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}/gui-lang.conf"
-    "$HOME/.config/groqbash/gui-lang.conf"
-    "$UI_ROOT/../gui-lang.conf"
-  )
+  local candidates=()
+  [[ -n "${CFG_DIR:-}" ]] && candidates+=("$CFG_DIR/gui-lang.conf")
+  [[ -n "${UI_ROOT:-}" ]] && candidates+=("$UI_ROOT/gui-lang.conf" "$UI_ROOT/static/gui-lang.conf" "$UI_ROOT/extras/ui/gui-lang.conf")
+  [[ -n "${SCRIPT_DIR:-}" ]] && candidates+=("$SCRIPT_DIR/gui-lang.conf")
+  [[ -n "${HOME:-}" ]] && candidates+=("$HOME/.config/groqbash/gui-lang.conf")
+  # also try repo sibling
+  [[ -n "${UI_ROOT:-}" ]] && candidates+=("$UI_ROOT/../gui-lang.conf")
+
   local c
   for c in "${candidates[@]}"; do
     if [[ -n "$c" && -r "$c" ]]; then
