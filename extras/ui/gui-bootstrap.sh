@@ -845,6 +845,36 @@ ensure_traversable_parents() {
   return 0
 }
 
+# Replace safe symlinks inside ui_root with real files and remove broken symlinks.
+# Usage: remove_unnecessary_symlinks <ui_root>
+remove_unnecessary_symlinks() {
+  local ui="$1" target link
+  [[ -d "$ui" ]] || return 0
+  # limit depth to avoid scanning entire FS
+  while IFS= read -r -d '' link; do
+    # resolve target; readlink -f may not exist everywhere, fall back to readlink
+    target="$(readlink -f "$link" 2>/dev/null || readlink "$link" 2>/dev/null || true)"
+    if [[ -z "$target" ]]; then
+      # broken symlink: remove
+      rm -f -- "$link" 2>/dev/null || true
+      continue
+    fi
+    # Only replace symlink if target is inside the same UI tree (avoid copying system files)
+    case "$target" in
+      "$ui"/*)
+        if [[ -f "$target" ]]; then
+          cp -a -- "$target" "${link}.tmp" 2>/dev/null || continue
+          mv -f -- "${link}.tmp" "$link" 2>/dev/null || { rm -f -- "${link}.tmp" 2>/dev/null || true; continue; }
+        fi
+        ;;
+      *)
+        # leave symlink alone if it points outside UI_ROOT
+        ;;
+    esac
+  done < <(find "$ui" -maxdepth 3 -type l -print0 2>/dev/null)
+  return 0
+}
+
 # -------------------------
 # Helper: ensure .sh files under UI_ROOT (cgi-bin and top-level) are executable
 # and static assets are readable. Intended to be called by installer (idempotent).
