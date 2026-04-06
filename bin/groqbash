@@ -1624,6 +1624,8 @@ while [ $# -gt 0 ]; do
     --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;
     --list-models) LIST_MODELS=1; shift ;;
     --list-providers) LIST_PROVIDERS=1; shift ;;
+    --list-providers-raw) LIST_PROVIDERS_RAW=1; shift ;;
+    --list-models-raw) LIST_MODELS_RAW=1; shift ;;
     --set-default) SET_DEFAULT_MODEL="${2:-}"; shift 2 ;;
     -m|--model) MODEL="${2:-}"; MODEL_CLI_SET=1; shift 2 ;;
     -f) FILE_INPUTS+=("${2:-}"); shift 2 ;;
@@ -1694,6 +1696,60 @@ done
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
   exit "$GROQBASHERRTMP"
+fi
+
+# Rebuild supported providers array (machine-readable source of truth)
+_supported_providers_arr=()
+_supported_providers_arr+=("groq")
+extras_prov_dir="${PROVIDERS_DIR:-$GROQBASH_EXTRAS_DIR/providers}"
+if [ -d "$extras_prov_dir" ]; then
+  for pf in "$extras_prov_dir"/*.sh; do
+    [ -e "$pf" ] || continue
+    base="$(basename "$pf" .sh)"
+    # skip duplicate embedded name
+    [ "$base" = "groq" ] && continue
+    _supported_providers_arr+=("$base")
+  done
+fi
+SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
+
+# Non-interactive machine-readable provider listing
+if [ "${LIST_PROVIDERS_RAW:-0}" -eq 1 ]; then
+  # If no providers found or providers dir missing -> exit 1
+  if [ "${#_supported_providers_arr[@]}" -eq 0 ]; then
+    exit 1
+  fi
+  # Print one provider name per line, no decoration, no sourcing
+  for p in "${_supported_providers_arr[@]}"; do
+    printf '%s\n' "$p"
+  done
+  exit 0
+fi
+
+# Non-interactive machine-readable models listing (one normalized model name per line)
+if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
+  # If CLI provided a provider override, honor it as context but do NOT source provider modules
+  if [ -n "${PROVIDER_CLI:-}" ]; then
+    PROVIDER="${PROVIDER_CLI}"
+  fi
+
+  # MODELS_FILE is the canonical source of truth
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    # Normalize entries: strip leading "models/" and common provider prefixes, trim whitespace
+    # Keep only non-empty lines; print one model per line, no annotations
+    awk '{
+      g=$0
+      sub(/^models\//,"",g)
+      sub(/^groq[:\/ -]*/,"",g)
+      sub(/^[[:space:]]+/,"",g)
+      sub(/[[:space:]]+$/,"",g)
+      if (g != "") print g
+    }' "$MODELS_FILE"
+    exit 0
+  else
+    # File missing or empty
+    exit 2
+  fi
 fi
 
 # ---------------------------------------------------------------------------
