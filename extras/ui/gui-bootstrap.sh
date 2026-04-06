@@ -428,6 +428,23 @@ html_escape_stream() {
   sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
 }
 
+# Portable html_unescape: reverses common HTML entities to literal characters
+# Usage: html_unescape "some &amp; text"
+html_unescape() {
+  # handle numeric entities and common named entities
+  # first convert numeric hex/dec entities, then named ones
+  printf '%s' "$1" \
+    | sed -E 's/&#x([0-9A-Fa-f]+);/\\x\1/g' \
+    | awk '{
+        gsub(/\\x([0-9A-Fa-f]{2})/,"\\x\\1");
+        printf "%s", $0
+      }' \
+    | sed -e 's/&amp;#([0-9]+);/\\\x\1/g' 2>/dev/null || true
+  # fallback simple replacements (ensure common entities are handled)
+  printf '%s' "$1" \
+    | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
+}
+
 # -------------------------
 # Validation and sanitization
 # -------------------------
