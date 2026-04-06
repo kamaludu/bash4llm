@@ -745,8 +745,19 @@ cleanup_global_stale_pid() {
 # -------- Main --------
 main() {
   check_deps
-
   canonicalize_ui_root
+  
+  # Load shared bootstrap so adapt can call helpers like ensure_sh_executables.
+  BOOTSTRAP="$UI_ROOT/gui-bootstrap.sh"
+  if [[ -f "$BOOTSTRAP" ]]; then
+    # shellcheck disable=SC1090
+    . "$BOOTSTRAP" || {
+      info "Warning: failed to source bootstrap at $BOOTSTRAP; some helpers may be unavailable"
+    }
+  else
+    info "Warning: bootstrap not found at $BOOTSTRAP; adapt will continue without shared helpers"
+  fi
+
   enforce_ui_root_only_writes
 
   # trap: cleanup temporary files created under UI_ROOT on exit or error
