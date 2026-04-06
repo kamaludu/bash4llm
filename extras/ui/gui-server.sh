@@ -92,33 +92,28 @@ get_models_file() {
   return 0
 }
 
-# refresh models via groqbash and atomically write to MODELS_FILE
+# refresh_models_via_groqbash (fix sed usage; robust capture and atomic write)
 refresh_models_via_groqbash() {
   local prov models_file out rc
   prov="$1"
   models_file="$(get_models_file)"
-  # ensure groqbash available
   if ! ensure_groqbash_available; then
     log_error "GUIIO" "groqbash not available for refresh"
     return 1
   fi
-  # export API key for provider if present
   export_api_key_for_provider "$prov" || true
-  # call groqbash --refresh-models and capture stdout
-  if out="$( "$GROQBASH_CMD" --provider "$prov" --refresh-models 2>>"$ERROR_LOG" || true )"; then
-    # sanitize output: keep non-empty lines
-    out="$(printf '%s\n' "$out" | sed -n '/\S/ p')"
-    if [[ -n "$out" ]]; then
-      atomic_write "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
-      log_info "GUIIO" "Models refreshed for provider $prov"
-      return 0
-    else
-      log_warn "GUIIO" "Refresh returned empty list for provider $prov"
-      return 1
-    fi
+
+  # Capture stdout; allow groqbash to return non-zero but still produce output
+  out="$("$GROQBASH_CMD" --provider "$prov" --refresh-models 2>>"$ERROR_LOG" || true)"
+  # Keep only non-empty lines, trim trailing spaces
+  out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
+
+  if [[ -n "$out" ]]; then
+    atomic_write "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
+    log_info "GUIIO" "Models refreshed for provider $prov"
+    return 0
   else
-    rc=$?
-    log_error "GUIIO" "Refresh models failed (rc=$rc)"
+    log_warn "GUIIO" "Refresh returned empty list for provider $prov"
     return 1
   fi
 }
