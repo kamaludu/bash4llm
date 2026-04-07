@@ -15,10 +15,10 @@ create_termux_compat_bootstrap() {
   [[ -n "${UI_ROOT:-}" ]] || return 0
 
   local bash_path env_path groqbash_shadow groqbash_real USER_HOME BIN_DIR
-  local candidate log_dir log_file timestamp size tmp real_hash shadow_hash tmp_shadow
+  local candidate log_dir log_file TMPDIR timestamp size tmp real_hash shadow_hash tmp_shadow
   local lockfile
 
-  # detect bash/env
+  # detect bash/env (assunti presenti)
   bash_path="$(command -v bash 2>/dev/null || true)"
   bash_path="${bash_path:-$(type -P bash 2>/dev/null || true)}"
   bash_path="${bash_path:-/data/data/com.termux/files/usr/bin/bash}"
@@ -31,27 +31,40 @@ create_termux_compat_bootstrap() {
 
   groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
 
-  # logging
+  # logging paths inside UI_ROOT only
   log_dir="${UI_ROOT%/}/extras/ui/logs"
   log_file="${log_dir%/}/bootstrap.log"
   mkdir -p "$log_dir" 2>/dev/null || true
   chmod 700 "$log_dir" 2>/dev/null || true
   timestamp() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-  # flock mandatory
-  lockfile="${log_dir%/}/bootstrap.lock"
+  # enforce local TMPDIR inside UI_ROOT (no /tmp di sistema)
+  TMPDIR="${UI_ROOT%/}/tmp"
+  mkdir -p "$TMPDIR" 2>/dev/null || true
+  chmod 700 "$TMPDIR" 2>/dev/null || true
+  export TMPDIR
+
+  # mandatory flock; lockfile in TMPDIR; timeout to avoid indefinite block
+  lockfile="${TMPDIR%/}/gui.lock"
   if ! command -v flock >/dev/null 2>&1; then
     printf '%s ERROR flock not available; aborting bootstrap\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
     return 1
   fi
   exec 9>"$lockfile" 2>/dev/null || { printf '%s ERROR cannot open lockfile %s\n' "$(timestamp)" "$lockfile" >> "$log_file" 2>/dev/null || true; return 1; }
-  flock -x 9 || { printf '%s ERROR flock failed\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+  # try to acquire exclusive lock for up to 5 seconds
+  if ! flock -x -w 5 9; then
+    printf '%s ERROR lock busy (timeout); aborting bootstrap\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    return 1
+  fi
+  # ensure lock release on exit
+  trap 'flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true' EXIT INT TERM
 
   # rotate/truncate log atomically if >1MB (keep last 512KB)
   if [[ -f "$log_file" ]]; then
     size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
     if (( size > 1048576 )); then
-      tmp="$(mktemp "${TMPDIR:-/tmp}/bootstrap.log.tmp.XXXX" 2>/dev/null || true)"
+      tmp="$(mktemp "${TMPDIR%/}/bootstrap.log.tmp.XXXX" 2>/dev/null || true)"
       if [[ -n "$tmp" ]]; then
         tail -c 524288 "$log_file" > "$tmp" 2>/dev/null || true
         mv -f "$tmp" "$log_file" 2>/dev/null || true
@@ -77,10 +90,13 @@ create_termux_compat_bootstrap() {
       candidate="$(pwd)/$(basename "$candidate")"
       cd - >/dev/null 2>&1 || true
     fi
-    if [[ -x "$candidate" ]]; then groqbash_real="$candidate"; break; fi
+    if [[ -x "$candidate" ]]; then
+      groqbash_real="$candidate"
+      break
+    fi
   done
 
-  # override file (sanitize)
+  # override file (sanitize, no eval)
   if [[ -f "${UI_ROOT%/}/extras/ui/config/groqbash-path" ]]; then
     local override_path
     override_path="$(sed -n '1p' "${UI_ROOT%/}/extras/ui/config/groqbash-path" 2>/dev/null || true)"
@@ -107,12 +123,12 @@ create_termux_compat_bootstrap() {
   compute_hash() {
     local file="$1" tmpf
     [[ -f "$file" ]] || { printf ''; return 0; }
-    tmpf="$(mktemp "${TMPDIR:-/tmp}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
+    tmpf="$(mktemp "${TMPDIR%/}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
     if [[ -n "$tmpf" ]]; then
       tail -n +2 "$file" > "$tmpf" 2>/dev/null || true
       if [[ ! -s "$tmpf" ]]; then
         rm -f -- "$tmpf" 2>/dev/null || true
-        tmpf="$(mktemp "${TMPDIR:-/tmp}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
+        tmpf="$(mktemp "${TMPDIR%/}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
         [[ -n "$tmpf" ]] && cat "$file" > "$tmpf" 2>/dev/null || true
       fi
     fi
@@ -156,7 +172,7 @@ create_termux_compat_bootstrap() {
         printf '%s ERROR failed to create groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
       fi
     elif [[ "$real_hash" != "$shadow_hash" ]]; then
-      tmp_shadow="$(mktemp "${groqbash_shadow}.tmp.XXXX" 2>/dev/null || true)" || tmp_shadow=""
+      tmp_shadow="$(mktemp "${TMPDIR%/}/groqbash-shadow.tmp.XXXX" 2>/dev/null || true)" || tmp_shadow=""
       local retry rc
       retry=0; rc=1
       while (( retry < 2 )) && (( rc != 0 )); do
@@ -179,9 +195,10 @@ create_termux_compat_bootstrap() {
     fi
   fi
 
-  # release lock
+  # release lock and clear trap
   flock -u 9 2>/dev/null || true
   exec 9>&- 2>/dev/null || true
+  trap - EXIT INT TERM
 
   # Ensure shadow executable; if not, degrade: wrapper -> real if possible
   if [[ ! -x "$groqbash_shadow" ]]; then
