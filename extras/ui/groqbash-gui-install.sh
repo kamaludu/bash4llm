@@ -726,7 +726,14 @@ main() {
     info "No UI adapt script found at ${APP_BIN}/groqbash-gui-adapt.sh; skipping adapt step"
   fi
 
-  # Ensure scripts and static assets have correct perms and parents are traversable
+  # --- Ensure bootstrap is loaded early so installer can use its helper functions ---
+  if ! check_groqbash_bootstrap "$APP_BIN"; then
+    err "Bootstrap check failed: ensure $APP_BIN/gui-bootstrap.sh exists and groqbash binary is in allowed locations"
+    err "See ensure_groqbash_available in the bootstrap for allowed locations"
+    exit 1
+  fi
+
+  # Now that bootstrap is sourced, call ensure_sh_executables from it if present
   if type ensure_sh_executables >/dev/null 2>&1; then
     ensure_sh_executables "$APP_BIN" || warn "ensure_sh_executables failed; continuing"
   else
