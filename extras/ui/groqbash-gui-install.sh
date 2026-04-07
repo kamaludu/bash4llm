@@ -308,7 +308,7 @@ check_permissions_and_dirs() {
 check_groqbash_bootstrap() {
   local bootstrap="$1/gui-bootstrap.sh"
   if [[ ! -f "$bootstrap" ]]; then err "Missing $bootstrap"; return 1; fi
-  if ! ( set -euo pipefail; . "$bootstrap"; ensure_groqbash_available ); then
+  if ! { . "$bootstrap"; ensure_groqbash_available; }; then
     err "ensure_groqbash_available failed"; return 1
   fi
   return 0
