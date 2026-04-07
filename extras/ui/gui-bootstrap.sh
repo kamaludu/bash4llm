@@ -773,6 +773,16 @@ ensure_config_defaults() {
 # If not found there, return failure (caller must abort).
 # ---------------------------------------------------------------------------
 ensure_groqbash_available() {
+  # Accept local wrapper inside UI_ROOT/bin as a valid groqbash command
+  if [[ -n "${UI_ROOT:-}" ]]; then
+    local wrapper_path="${UI_ROOT%/}/bin/groqbash-wrapper"
+    if [[ -x "$wrapper_path" ]]; then
+      GROQBASH_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
+      export GROQBASH_CMD
+      return 0
+    fi
+  fi
+
   if [[ "$GROQBASH_CMD" == /* && -x "$GROQBASH_CMD" ]]; then
     case "$GROQBASH_CMD" in
       "$UI_ROOT/../groqbash/groqbash" | "$HOME/groqbash/groqbash")
