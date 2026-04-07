@@ -11,63 +11,202 @@ umask 077
 
 # --- Termux compatibility: create wrapper + env shim and export GROQBASH_CMD and PATH
 create_termux_compat_bootstrap() {
-  # run only on Termux
   [[ -d "/data/data/com.termux/files/usr" ]] || return 0
+  [[ -n "${UI_ROOT:-}" ]] || return 0
 
-  # If UI_ROOT is not yet resolved, do not create user wrappers here.
-  # The bootstrap will call this function again after UI_ROOT is canonicalized.
-  if [[ -z "${UI_ROOT:-}" ]]; then
-    return 0
-  fi
+  local bash_path env_path groqbash_shadow groqbash_real USER_HOME BIN_DIR
+  local candidate log_dir log_file timestamp size tmp real_hash shadow_hash tmp_shadow
+  local lockfile
 
-  local bash_path env_path groqbash_path USER_HOME BIN_DIR
-
-  # reliable detection methods
+  # detect bash/env
   bash_path="$(command -v bash 2>/dev/null || true)"
-  if [[ -z "$bash_path" ]]; then
-    bash_path="$(type -P bash 2>/dev/null || true)"
-  fi
-
-  # minimal sensible fallbacks
+  bash_path="${bash_path:-$(type -P bash 2>/dev/null || true)}"
   bash_path="${bash_path:-/data/data/com.termux/files/usr/bin/bash}"
   bash_path="${bash_path:-/system/bin/bash}"
+  [[ -x "$bash_path" ]] || { printf 'WARNING: Termux bash not found at %s; skipping\n' "$bash_path" >&2; return 1; }
 
-  # ensure executable
-  if [[ ! -x "$bash_path" ]]; then
-    printf 'WARNING: Termux bash not found or not executable at %s; skipping Termux compatibility\n' "$bash_path" >&2
-    return 1
-  fi
-
-  # detect env if available
   env_path="$(command -v env 2>/dev/null || true)"
   env_path="${env_path:-/data/data/com.termux/files/usr/bin/env}"
   [[ -x "$env_path" ]] || env_path=""
 
-  # groqbash path (standard Termux install); non fatal if missing
-  groqbash_path="/data/data/com.termux/files/usr/bin/groqbash"
-  if [[ ! -x "$groqbash_path" ]]; then
-    printf 'WARNING: groqbash not executable at %s; wrapper will still be created\n' "$groqbash_path" >&2
+  groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
+
+  # logging
+  log_dir="${UI_ROOT%/}/extras/ui/logs"
+  log_file="${log_dir%/}/bootstrap.log"
+  mkdir -p "$log_dir" 2>/dev/null || true
+  chmod 700 "$log_dir" 2>/dev/null || true
+  timestamp() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+
+  # flock mandatory
+  lockfile="${log_dir%/}/bootstrap.lock"
+  if ! command -v flock >/dev/null 2>&1; then
+    printf '%s ERROR flock not available; aborting bootstrap\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
+    return 1
+  fi
+  exec 9>"$lockfile" 2>/dev/null || { printf '%s ERROR cannot open lockfile %s\n' "$(timestamp)" "$lockfile" >> "$log_file" 2>/dev/null || true; return 1; }
+  flock -x 9 || { printf '%s ERROR flock failed\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+
+  # rotate/truncate log atomically if >1MB (keep last 512KB)
+  if [[ -f "$log_file" ]]; then
+    size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+    if (( size > 1048576 )); then
+      tmp="$(mktemp "${TMPDIR:-/tmp}/bootstrap.log.tmp.XXXX" 2>/dev/null || true)"
+      if [[ -n "$tmp" ]]; then
+        tail -c 524288 "$log_file" > "$tmp" 2>/dev/null || true
+        mv -f "$tmp" "$log_file" 2>/dev/null || true
+        chmod 600 "$log_file" 2>/dev/null || true
+      fi
+    fi
   fi
 
-  # prepare user bin
+  # Resolve candidate real repo binary paths relative to UI_ROOT
+  local -a candidates
+  candidates=(
+    "${UI_ROOT%/}/../groqbash/groqbash"
+    "${UI_ROOT%/}/../groqbash"
+    "${UI_ROOT%/}/../../groqbash/groqbash"
+    "${UI_ROOT%/}/../../groqbash"
+    "${PWD%/}/groqbash/groqbash"
+    "${PWD%/}/groqbash"
+  )
+
+  groqbash_real=""
+  for candidate in "${candidates[@]}"; do
+    if cd "$(dirname "$candidate")" 2>/dev/null; then
+      candidate="$(pwd)/$(basename "$candidate")"
+      cd - >/dev/null 2>&1 || true
+    fi
+    if [[ -x "$candidate" ]]; then groqbash_real="$candidate"; break; fi
+  done
+
+  # override file (sanitize)
+  if [[ -f "${UI_ROOT%/}/extras/ui/config/groqbash-path" ]]; then
+    local override_path
+    override_path="$(sed -n '1p' "${UI_ROOT%/}/extras/ui/config/groqbash-path" 2>/dev/null || true)"
+    if [[ -n "$override_path" ]]; then
+      if [[ "$override_path" != /* ]]; then
+        printf '%s WARN override not absolute: %s\n' "$(timestamp)" "$override_path" >> "$log_file" 2>/dev/null || true
+      else
+        override_path="$(readlink -f "$override_path" 2>/dev/null || true)"
+        if [[ -n "$override_path" && -x "$override_path" ]]; then
+          groqbash_real="$override_path"
+        else
+          printf '%s WARN override exists but not executable: %s\n' "$(timestamp)" "$override_path" >> "$log_file" 2>/dev/null || true
+        fi
+      fi
+    fi
+  fi
+
+  if [[ -z "$groqbash_real" ]]; then
+    printf '%s WARN no repo groqbash found; falling back to shadow: %s\n' "$(timestamp)" "$groqbash_shadow" >> "$log_file" 2>/dev/null || true
+    groqbash_real="$groqbash_shadow"
+  fi
+
+  # compute_hash: ignore first line (shebang); fallback to whole file if remainder empty
+  compute_hash() {
+    local file="$1" tmpf
+    [[ -f "$file" ]] || { printf ''; return 0; }
+    tmpf="$(mktemp "${TMPDIR:-/tmp}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
+    if [[ -n "$tmpf" ]]; then
+      tail -n +2 "$file" > "$tmpf" 2>/dev/null || true
+      if [[ ! -s "$tmpf" ]]; then
+        rm -f -- "$tmpf" 2>/dev/null || true
+        tmpf="$(mktemp "${TMPDIR:-/tmp}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
+        [[ -n "$tmpf" ]] && cat "$file" > "$tmpf" 2>/dev/null || true
+      fi
+    fi
+    if [[ -n "$tmpf" && -s "$tmpf" ]]; then
+      if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$tmpf" 2>/dev/null | awk '{print $1}'
+      elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$tmpf" 2>/dev/null | awk '{print $1}'
+      elif command -v sha1sum >/dev/null 2>&1; then
+        sha1sum "$tmpf" 2>/dev/null | awk '{print $1}'
+      elif command -v md5sum >/dev/null 2>&1; then
+        md5sum "$tmpf" 2>/dev/null | awk '{print $1}'
+      else
+        stat -c '%s-%Y' "$tmpf" 2>/dev/null || printf ''
+      fi
+      rm -f -- "$tmpf" 2>/dev/null || true
+    else
+      stat -c '%s-%Y' "$file" 2>/dev/null || printf ''
+    fi
+  }
+
+  # If real == shadow skip heavy work
+  if [[ "$groqbash_real" == "$groqbash_shadow" ]]; then
+    printf '%s DEBUG real == shadow, skipping update checks\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
+  else
+    real_hash="$(compute_hash "$groqbash_real")"
+    shadow_hash="$(compute_hash "$groqbash_shadow")"
+
+    if [[ -z "$shadow_hash" ]]; then
+      local retry rc
+      retry=0; rc=1
+      while (( retry < 2 )) && (( rc != 0 )); do
+        cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null && rc=0 || rc=$?
+        (( retry++ )) && sleep 0.1
+      done
+      if (( rc == 0 )); then
+        chmod 750 "$groqbash_shadow" 2>/dev/null || true
+        chown "$(id -u):$(id -g)" "$groqbash_shadow" 2>/dev/null || true
+        printf '%s INFO created groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
+      else
+        printf '%s ERROR failed to create groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
+      fi
+    elif [[ "$real_hash" != "$shadow_hash" ]]; then
+      tmp_shadow="$(mktemp "${groqbash_shadow}.tmp.XXXX" 2>/dev/null || true)" || tmp_shadow=""
+      local retry rc
+      retry=0; rc=1
+      while (( retry < 2 )) && (( rc != 0 )); do
+        if [[ -n "$tmp_shadow" ]]; then
+          cp -f -- "$groqbash_real" "$tmp_shadow" 2>/dev/null && mv -f -- "$tmp_shadow" "$groqbash_shadow" 2>/dev/null && rc=0 || rc=$?
+        else
+          cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null && rc=0 || rc=$?
+        fi
+        (( retry++ )) && sleep 0.1
+      done
+      if (( rc == 0 )); then
+        chmod 750 "$groqbash_shadow" 2>/dev/null || true
+        chown "$(id -u):$(id -g)" "$groqbash_shadow" 2>/dev/null || true
+        printf '%s INFO updated groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
+      else
+        printf '%s ERROR failed to update groqbash shadow at %s\n' "$(timestamp)" "$groqbash_shadow" >> "$log_file" 2>/dev/null || true
+      fi
+    else
+      printf '%s DEBUG groqbash shadow up-to-date at %s\n' "$(timestamp)" "$groqbash_shadow" >> "$log_file" 2>/dev/null || true
+    fi
+  fi
+
+  # release lock
+  flock -u 9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+
+  # Ensure shadow executable; if not, degrade: wrapper -> real if possible
+  if [[ ! -x "$groqbash_shadow" ]]; then
+    if [[ -x "$groqbash_real" && "$groqbash_real" != "$groqbash_shadow" ]]; then
+      printf '%s WARN shadow not executable; wrapper will point to real: %s\n' "$(timestamp)" "$groqbash_real" >> "$log_file" 2>/dev/null || true
+      groqbash_shadow="$groqbash_real"
+    else
+      printf '%s ERROR groqbash shadow not executable and no real available; aborting\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
+      return 1
+    fi
+  fi
+
+  # prepare user bin and wrapper
   USER_HOME="${HOME:-/data/data/com.termux/files/home}"
-
-  # Prefer creating wrappers inside UI_ROOT when available to avoid polluting $HOME/bin.
-  # Fall back to $USER_HOME/bin only if UI_ROOT is not set.
   BIN_DIR="${UI_ROOT:-$USER_HOME}/bin"
-
   mkdir -p "$BIN_DIR" 2>/dev/null || true
   chmod 700 "$BIN_DIR" 2>/dev/null || true
 
-  # create wrapper that forces the detected bash to interpret groqbash (bypasses shebang)
   cat > "$BIN_DIR/groqbash-wrapper" <<EOF
 #!${bash_path}
-exec ${bash_path} ${groqbash_path} "\$@"
+exec ${bash_path} ${groqbash_shadow} "\$@"
 EOF
   chmod 750 "$BIN_DIR/groqbash-wrapper" 2>/dev/null || true
   chown "$(id -u):$(id -g)" "$BIN_DIR/groqbash-wrapper" 2>/dev/null || true
 
-  # optional env shim if env found
   if [[ -n "$env_path" && -x "$env_path" ]]; then
     cat > "$BIN_DIR/env" <<EOF
 #!${bash_path}
@@ -77,9 +216,8 @@ EOF
     chown "$(id -u):$(id -g)" "$BIN_DIR/env" 2>/dev/null || true
   fi
 
-  # export for use by gui-server and any child processes (CGI)
   export GROQBASH_CMD="${BIN_DIR}/groqbash-wrapper"
-  export PATH="${BIN_DIR}:/data/data/com.termux/files/usr/bin:/system/bin:/usr/bin:/bin:${PATH:-}"
+  export PATH="${BIN_DIR}:${PATH:-}"
 
   return 0
 }
