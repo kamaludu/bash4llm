@@ -9,236 +9,24 @@
 set -euo pipefail
 umask 077
 
-# --- Termux compatibility: create wrapper + env shim and export GROQBASH_CMD and PATH
-create_termux_compat_bootstrap() {
-  [[ -d "/data/data/com.termux/files/usr" ]] || return 0
-  [[ -n "${UI_ROOT:-}" ]] || return 0
-
-  local bash_path env_path groqbash_shadow groqbash_real USER_HOME BIN_DIR
-  local candidate log_dir log_file TMPDIR timestamp size tmp real_hash shadow_hash tmp_shadow
-  local lockfile
-
-  # detect bash/env (assunti presenti)
-  bash_path="$(command -v bash 2>/dev/null || true)"
-  bash_path="${bash_path:-$(type -P bash 2>/dev/null || true)}"
-  bash_path="${bash_path:-/data/data/com.termux/files/usr/bin/bash}"
-  bash_path="${bash_path:-/system/bin/bash}"
-  [[ -x "$bash_path" ]] || { printf 'WARNING: Termux bash not found at %s; skipping\n' "$bash_path" >&2; return 1; }
-
-  env_path="$(command -v env 2>/dev/null || true)"
-  env_path="${env_path:-/data/data/com.termux/files/usr/bin/env}"
-  [[ -x "$env_path" ]] || env_path=""
-
-  groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
-
-  # logging paths inside UI_ROOT only
-  log_dir="${UI_ROOT%/}/extras/ui/logs"
-  log_file="${log_dir%/}/bootstrap.log"
-  mkdir -p "$log_dir" 2>/dev/null || true
-  chmod 700 "$log_dir" 2>/dev/null || true
-  timestamp() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
-
-  # enforce local TMPDIR inside UI_ROOT (no /tmp di sistema)
-  TMPDIR="${UI_ROOT%/}/tmp"
-  mkdir -p "$TMPDIR" 2>/dev/null || true
-  chmod 700 "$TMPDIR" 2>/dev/null || true
-  export TMPDIR
-
-  # mandatory flock; lockfile in TMPDIR; timeout to avoid indefinite block
-  lockfile="${TMPDIR%/}/gui.lock"
-  if ! command -v flock >/dev/null 2>&1; then
-    printf '%s ERROR flock not available; aborting bootstrap\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
-    return 1
+# ---------------------------------------------------------------------------
+# Strict dependency check (rigid, only declared requirements)
+# If any required tool is missing, abort immediately with a clear error.
+# ---------------------------------------------------------------------------
+_required_cmds=(bash mv cp chmod rm find flock awk curl jq)
+_missing=()
+for _c in "${_required_cmds[@]}"; do
+  if ! command -v "$_c" >/dev/null 2>&1; then
+    _missing+=("$_c")
   fi
-  exec 9>"$lockfile" 2>/dev/null || { printf '%s ERROR cannot open lockfile %s\n' "$(timestamp)" "$lockfile" >> "$log_file" 2>/dev/null || true; return 1; }
-  # try to acquire exclusive lock for up to 5 seconds
-  if ! flock -x -w 5 9; then
-    printf '%s ERROR lock busy (timeout); aborting bootstrap\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
-    exec 9>&- 2>/dev/null || true
-    return 1
-  fi
-  # ensure lock release on exit
-  trap 'flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true' EXIT INT TERM
+done
 
-  # rotate/truncate log atomically if >1MB (keep last 512KB)
-  if [[ -f "$log_file" ]]; then
-    size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
-    if (( size > 1048576 )); then
-      tmp="$(mktemp "${TMPDIR%/}/bootstrap.log.tmp.XXXX" 2>/dev/null || true)"
-      if [[ -n "$tmp" ]]; then
-        tail -c 524288 "$log_file" > "$tmp" 2>/dev/null || true
-        mv -f "$tmp" "$log_file" 2>/dev/null || true
-        chmod 600 "$log_file" 2>/dev/null || true
-      fi
-    fi
-  fi
-
-  # Resolve candidate real repo binary paths relative to UI_ROOT
-  local -a candidates
-  candidates=(
-    "${UI_ROOT%/}/../groqbash/groqbash"
-    "${UI_ROOT%/}/../groqbash"
-    "${UI_ROOT%/}/../../groqbash/groqbash"
-    "${UI_ROOT%/}/../../groqbash"
-    "${PWD%/}/groqbash/groqbash"
-    "${PWD%/}/groqbash"
-  )
-
-  groqbash_real=""
-  for candidate in "${candidates[@]}"; do
-    if cd "$(dirname "$candidate")" 2>/dev/null; then
-      candidate="$(pwd)/$(basename "$candidate")"
-      cd - >/dev/null 2>&1 || true
-    fi
-    if [[ -x "$candidate" ]]; then
-      groqbash_real="$candidate"
-      break
-    fi
-  done
-
-  # override file (sanitize, no eval)
-  if [[ -f "${UI_ROOT%/}/extras/ui/config/groqbash-path" ]]; then
-    local override_path
-    override_path="$(sed -n '1p' "${UI_ROOT%/}/extras/ui/config/groqbash-path" 2>/dev/null || true)"
-    if [[ -n "$override_path" ]]; then
-      if [[ "$override_path" != /* ]]; then
-        printf '%s WARN override not absolute: %s\n' "$(timestamp)" "$override_path" >> "$log_file" 2>/dev/null || true
-      else
-        override_path="$(readlink -f "$override_path" 2>/dev/null || true)"
-        if [[ -n "$override_path" && -x "$override_path" ]]; then
-          groqbash_real="$override_path"
-        else
-          printf '%s WARN override exists but not executable: %s\n' "$(timestamp)" "$override_path" >> "$log_file" 2>/dev/null || true
-        fi
-      fi
-    fi
-  fi
-
-  if [[ -z "$groqbash_real" ]]; then
-    printf '%s WARN no repo groqbash found; falling back to shadow: %s\n' "$(timestamp)" "$groqbash_shadow" >> "$log_file" 2>/dev/null || true
-    groqbash_real="$groqbash_shadow"
-  fi
-
-  # compute_hash: ignore first line (shebang); fallback to whole file if remainder empty
-  compute_hash() {
-    local file="$1" tmpf
-    [[ -f "$file" ]] || { printf ''; return 0; }
-    tmpf="$(mktemp "${TMPDIR%/}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
-    if [[ -n "$tmpf" ]]; then
-      tail -n +2 "$file" > "$tmpf" 2>/dev/null || true
-      if [[ ! -s "$tmpf" ]]; then
-        rm -f -- "$tmpf" 2>/dev/null || true
-        tmpf="$(mktemp "${TMPDIR%/}/groqbash-hash.XXXX" 2>/dev/null || true)" || tmpf=""
-        [[ -n "$tmpf" ]] && cat "$file" > "$tmpf" 2>/dev/null || true
-      fi
-    fi
-    if [[ -n "$tmpf" && -s "$tmpf" ]]; then
-      if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$tmpf" 2>/dev/null | awk '{print $1}'
-      elif command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$tmpf" 2>/dev/null | awk '{print $1}'
-      elif command -v sha1sum >/dev/null 2>&1; then
-        sha1sum "$tmpf" 2>/dev/null | awk '{print $1}'
-      elif command -v md5sum >/dev/null 2>&1; then
-        md5sum "$tmpf" 2>/dev/null | awk '{print $1}'
-      else
-        stat -c '%s-%Y' "$tmpf" 2>/dev/null || printf ''
-      fi
-      rm -f -- "$tmpf" 2>/dev/null || true
-    else
-      stat -c '%s-%Y' "$file" 2>/dev/null || printf ''
-    fi
-  }
-
-  # If real == shadow skip heavy work
-  if [[ "$groqbash_real" == "$groqbash_shadow" ]]; then
-    printf '%s DEBUG real == shadow, skipping update checks\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
-  else
-    real_hash="$(compute_hash "$groqbash_real")"
-    shadow_hash="$(compute_hash "$groqbash_shadow")"
-
-    if [[ -z "$shadow_hash" ]]; then
-      local retry rc
-      retry=0; rc=1
-      while (( retry < 2 )) && (( rc != 0 )); do
-        cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null && rc=0 || rc=$?
-        (( retry++ )) && sleep 0.1
-      done
-      if (( rc == 0 )); then
-        chmod 750 "$groqbash_shadow" 2>/dev/null || true
-        chown "$(id -u):$(id -g)" "$groqbash_shadow" 2>/dev/null || true
-        printf '%s INFO created groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
-      else
-        printf '%s ERROR failed to create groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
-      fi
-    elif [[ "$real_hash" != "$shadow_hash" ]]; then
-      tmp_shadow="$(mktemp "${TMPDIR%/}/groqbash-shadow.tmp.XXXX" 2>/dev/null || true)" || tmp_shadow=""
-      local retry rc
-      retry=0; rc=1
-      while (( retry < 2 )) && (( rc != 0 )); do
-        if [[ -n "$tmp_shadow" ]]; then
-          cp -f -- "$groqbash_real" "$tmp_shadow" 2>/dev/null && mv -f -- "$tmp_shadow" "$groqbash_shadow" 2>/dev/null && rc=0 || rc=$?
-        else
-          cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null && rc=0 || rc=$?
-        fi
-        (( retry++ )) && sleep 0.1
-      done
-      if (( rc == 0 )); then
-        chmod 750 "$groqbash_shadow" 2>/dev/null || true
-        chown "$(id -u):$(id -g)" "$groqbash_shadow" 2>/dev/null || true
-        printf '%s INFO updated groqbash shadow at %s (from %s)\n' "$(timestamp)" "$groqbash_shadow" "$groqbash_real" >> "$log_file" 2>/dev/null || true
-      else
-        printf '%s ERROR failed to update groqbash shadow at %s\n' "$(timestamp)" "$groqbash_shadow" >> "$log_file" 2>/dev/null || true
-      fi
-    else
-      printf '%s DEBUG groqbash shadow up-to-date at %s\n' "$(timestamp)" "$groqbash_shadow" >> "$log_file" 2>/dev/null || true
-    fi
-  fi
-
-  # release lock and clear trap
-  flock -u 9 2>/dev/null || true
-  exec 9>&- 2>/dev/null || true
-  trap - EXIT INT TERM
-
-  # Ensure shadow executable; if not, degrade: wrapper -> real if possible
-  if [[ ! -x "$groqbash_shadow" ]]; then
-    if [[ -x "$groqbash_real" && "$groqbash_real" != "$groqbash_shadow" ]]; then
-      printf '%s WARN shadow not executable; wrapper will point to real: %s\n' "$(timestamp)" "$groqbash_real" >> "$log_file" 2>/dev/null || true
-      groqbash_shadow="$groqbash_real"
-    else
-      printf '%s ERROR groqbash shadow not executable and no real available; aborting\n' "$(timestamp)" >> "$log_file" 2>/dev/null || true
-      return 1
-    fi
-  fi
-
-  # prepare user bin and wrapper
-  USER_HOME="${HOME:-/data/data/com.termux/files/home}"
-  BIN_DIR="${UI_ROOT:-$USER_HOME}/bin"
-  mkdir -p "$BIN_DIR" 2>/dev/null || true
-  chmod 700 "$BIN_DIR" 2>/dev/null || true
-
-  cat > "$BIN_DIR/groqbash-wrapper" <<EOF
-#!${bash_path}
-exec ${bash_path} ${groqbash_shadow} "\$@"
-EOF
-  chmod 750 "$BIN_DIR/groqbash-wrapper" 2>/dev/null || true
-  chown "$(id -u):$(id -g)" "$BIN_DIR/groqbash-wrapper" 2>/dev/null || true
-
-  if [[ -n "$env_path" && -x "$env_path" ]]; then
-    cat > "$BIN_DIR/env" <<EOF
-#!${bash_path}
-exec ${env_path} "\$@"
-EOF
-    chmod 750 "$BIN_DIR/env" 2>/dev/null || true
-    chown "$(id -u):$(id -g)" "$BIN_DIR/env" 2>/dev/null || true
-  fi
-
-  export GROQBASH_CMD="${BIN_DIR}/groqbash-wrapper"
-  export PATH="${BIN_DIR}:${PATH:-}"
-
-  return 0
-}
-# --- end Termux compatibility function ---
+if [[ ${#_missing[@]} -ne 0 ]]; then
+  printf 'groqbash: ERROR: missing required tools: %s\n' "$(printf '%s ' "${_missing[@]}")" >&2
+  printf 'groqbash: ERROR: required toolset not available; aborting bootstrap\n' >&2
+  exit 1
+fi
+unset _required_cmds _missing _c
 
 # Prevent double sourcing
 if [[ "${__GUI_BOOTSTRAP_LOADED:-}" == "1" ]]; then
@@ -246,38 +34,8 @@ if [[ "${__GUI_BOOTSTRAP_LOADED:-}" == "1" ]]; then
 fi
 __GUI_BOOTSTRAP_LOADED=1
 
-# Allow overrides from environment before sourcing
-: "${GROQBASH_CMD:=groqbash}"
-: "${UI_ROOT:=}"
-: "${TMP_DIR:=}"
-: "${LOG_DIR:=}"
-: "${CFG_DIR:=}"
-: "${CONV_DIR:=}"
-: "${FILES_DIR:=}"
-: "${TEMPLATES_DIR:=}"
-
-# Termux compatibility will be initialized after UI_ROOT is resolved
-# (create_termux_compat_bootstrap is called later, once UI_ROOT is known,
-# to avoid creating $HOME/bin outside the UI tree).
-
-# Limits (can be overridden before sourcing)
-: "${MAX_PROMPT_CHARS:=5000}"
-: "${MAX_MODEL_OUTPUT_CHARS:=20000}"
-: "${VALID_NAME_RE:='^[A-Za-z0-9_-]+$'}"
-: "${MAX_NAME_LEN:=255}"
-
 # ---------------------------------------------------------------------------
-# Explicit dependency check (no implicit deps)
-# ---------------------------------------------------------------------------
-for cmd in awk sed tr df mktemp readlink wc dd cat mv chmod rm printf basename dirname flock base64 head grep; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
-    return 1 2>/dev/null || exit 1
-  fi
-done
-
-# ---------------------------------------------------------------------------
-# Resolve this script's directory reliably
+# Resolve this script's directory reliably and UI_ROOT
 # ---------------------------------------------------------------------------
 _bootstrap_source="${BASH_SOURCE[0]:-}"
 if command -v readlink >/dev/null 2>&1 && [ -L "$_bootstrap_source" ]; then
@@ -291,8 +49,7 @@ if command -v readlink >/dev/null 2>&1 && [ -L "$_bootstrap_source" ]; then
 fi
 BOOTSTRAP_DIR="$(cd "$(dirname -- "$_bootstrap_source")" >/dev/null 2>&1 && pwd -P || printf '%s' "$(dirname "$_bootstrap_source")")"
 
-# If UI_ROOT not provided, assume parent of bootstrap dir (cgi-bin -> ui)
-if [[ -z "$UI_ROOT" ]]; then
+if [[ -z "${UI_ROOT:-}" ]]; then
   if [[ "$(basename "$BOOTSTRAP_DIR")" == "cgi-bin" ]]; then
     UI_ROOT="$(cd "$BOOTSTRAP_DIR/.." && pwd -P)"
   else
@@ -300,7 +57,9 @@ if [[ -z "$UI_ROOT" ]]; then
   fi
 fi
 
-# Default dirs relative to UI_ROOT if not overridden
+# ---------------------------------------------------------------------------
+# Directories (single source of truth)
+# ---------------------------------------------------------------------------
 : "${TMP_DIR:="$UI_ROOT/tmp"}"
 : "${LOG_DIR:="$UI_ROOT/logs"}"
 : "${CFG_DIR:="$UI_ROOT/config"}"
@@ -308,13 +67,28 @@ fi
 : "${FILES_DIR:="$UI_ROOT/files"}"
 : "${TEMPLATES_DIR:="$UI_ROOT/templates"}"
 
-# Call Termux compat only after UI_ROOT has been resolved so wrappers and shims
-# are created inside the UI tree (avoid creating $HOME/bin outside the UI).
-create_termux_compat_bootstrap || printf 'WARNING: create_termux_compat_bootstrap failed\n' >&2
+# Ensure TMP_DIR is the single source of truth; export TMPDIR for compatibility
+mkdir -p "$TMP_DIR"
+chmod 700 "$TMP_DIR"
+export TMPDIR="$TMP_DIR"
 
-LOCK_FILE="$TMP_DIR/gui.lock"
+# Ensure log dir exists and rotate logs (single format)
+mkdir -p "$LOG_DIR"
+chmod 700 "$LOG_DIR"
+
+export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR
+
+# ---------------------------------------------------------------------------
+# Files and defaults
+# ---------------------------------------------------------------------------
+: "${GROQBASH_CMD:=groqbash}"
+: "${GROQBASHGUILOCKTIMEOUT:=10}"
+
+LOCK_FILE="$TMP_DIR/gui.lock"            # CGI lock (conversations)
+BOOTSTRAP_LOCK="$TMP_DIR/bootstrap.lock" # bootstrap lock (wrapper/shadow)
 SERVER_LOG="$LOG_DIR/server.log"
 ERROR_LOG="$LOG_DIR/errors.log"
+BOOTSTRAP_LOG="$LOG_DIR/bootstrap.log"
 
 CURRENT_CONV_FILE="$CFG_DIR/current-conversation"
 LANG_CURRENT_FILE="$CFG_DIR/lang-current"
@@ -325,51 +99,9 @@ API_KEY_FILE="$CFG_DIR/api-key"
 
 LOCK_HELD=0
 
-# Default GUI lock timeout (seconds) - configurable via env
-: "${GROQBASHGUILOCKTIMEOUT:=10}"
-
-# -------------------------
-# Logging and rotation
-# -------------------------
-log_info() {
-  local code msg
-  if [ "$#" -eq 1 ]; then
-    code="INFO"
-    msg="$1"
-  else
-    code="${1:-INFO}"
-    msg="${2:-}"
-  fi
-  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
-  printf 'groqbash: INFO: %s: %s\n' "$code" "$msg" >>"$SERVER_LOG" 2>/dev/null || true
-}
-
-log_warn() {
-  local code msg
-  if [ "$#" -eq 1 ]; then
-    code="WARN"
-    msg="$1"
-  else
-    code="${1:-WARN}"
-    msg="${2:-}"
-  fi
-  mkdir -p "$(dirname "$SERVER_LOG")" 2>/dev/null || true
-  printf 'groqbash: WARN: %s: %s\n' "$code" "$msg" >>"$SERVER_LOG" 2>/dev/null || true
-}
-
-log_error() {
-  local code msg
-  if [ "$#" -eq 1 ]; then
-    code="ERROR"
-    msg="$1"
-  else
-    code="${1:-ERROR}"
-    msg="${2:-}"
-  fi
-  mkdir -p "$(dirname "$ERROR_LOG")" 2>/dev/null || true
-  printf 'groqbash: ERROR: %s: %s\n' "$code" "$msg" >>"$ERROR_LOG" 2>/dev/null || true
-}
-
+# ---------------------------------------------------------------------------
+# Logging helpers (single format: ISO UTC timestamp) and rotation helper
+# ---------------------------------------------------------------------------
 log_rotate_if_needed() {
   local file="$1" max_bytes="${2:-1048576}"
   if [[ -f "$file" ]]; then
@@ -382,60 +114,105 @@ log_rotate_if_needed() {
   fi
 }
 
-# -------------------------
-# Portable mktemp wrapper
-# -------------------------
+log_info() {
+  local code msg
+  if [ "$#" -eq 1 ]; then code="INFO"; msg="$1"; else code="${1:-INFO}"; msg="${2:-}"; fi
+  mkdir -p "$(dirname "$SERVER_LOG")"
+  printf '%s groqbash: INFO: %s: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$code" "$msg" >>"$SERVER_LOG"
+}
+
+log_warn() {
+  local code msg
+  if [ "$#" -eq 1 ]; then code="WARN"; msg="$1"; else code="${1:-WARN}"; msg="${2:-}"; fi
+  mkdir -p "$(dirname "$SERVER_LOG")"
+  printf '%s groqbash: WARN: %s: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$code" "$msg" >>"$SERVER_LOG"
+}
+
+log_error() {
+  local code msg
+  if [ "$#" -eq 1 ]; then code="ERROR"; msg="$1"; else code="${1:-ERROR}"; msg="${2:-}"; fi
+  mkdir -p "$(dirname "$ERROR_LOG")"
+  printf '%s groqbash: ERROR: %s: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$code" "$msg" >>"$ERROR_LOG"
+}
+
+# rotate server and bootstrap logs at startup
+log_rotate_if_needed "$SERVER_LOG" 1048576
+log_rotate_if_needed "$BOOTSTRAP_LOG" 1048576
+
+# ---------------------------------------------------------------------------
+# mktemp_portable (MANDATORY: uses TMP_DIR or provided dir; disallows /tmp)
+# ---------------------------------------------------------------------------
 mktemp_portable() {
+  # Usage: mktemp_portable <dir> <template>
   local dir="$1" template="$2"
-  if [[ -z "$dir" || ! -d "$dir" || ! -w "$dir" ]]; then
+  local dir_real base rand i tmpname candidate
+
+  if [[ -z "$dir" || -z "$template" ]]; then
     return 1
   fi
-  if command -v mktemp >/dev/null 2>&1; then
-    if mktemp --help >/dev/null 2>&1; then
-      if tmp="$(mktemp --tmpdir="$dir" "$template" 2>/dev/null)"; then
-        printf '%s' "$tmp"
-        return 0
-      fi
-    fi
-    if tmp="$(mktemp "$dir/$template" 2>/dev/null)"; then
-      printf '%s' "$tmp"
-      return 0
-    fi
+
+  dir_real="$(cd "$dir" 2>/dev/null && pwd -P || true)"
+  if [[ -z "$dir_real" || ! -d "$dir_real" || ! -w "$dir_real" ]]; then
+    return 1
   fi
-  local i=0 rand base file candidate tmpname
+
+  # Enforce that dir is inside TMP_DIR
+  case "$dir_real" in
+    "$TMP_DIR"/*|"$TMP_DIR") ;;
+    *) return 1 ;;
+  esac
+
   base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
-  while (( i < 100 )); do
+  i=0
+  while (( i < 200 )); do
     rand="${base}.$RANDOM.$$.$i"
     if [[ "$template" == *"XXXXXX"* ]]; then
       tmpname="${template//XXXXXX/$rand}"
     else
       tmpname="${template}.$rand"
     fi
-    candidate="$dir/$tmpname"
-    ( set -C; : >"$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; } || true
+    candidate="$dir_real/$tmpname"
+    ( set -C; : >"$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; }
     i=$((i+1))
   done
-  log_error "GUIIO" "mktemp_portable failed to create temp file in $dir"
+
+  log_error "GUIIO" "mktemp_portable failed to create temp file in $dir_real"
   return 1
 }
 
-# -------------------------
-# same_filesystem
-# -------------------------
+# ---------------------------------------------------------------------------
+# compute_hash (support function moved out of Termux bootstrap)
+# - signature and logic preserved: ignore shebang, hash content
+# ---------------------------------------------------------------------------
+compute_hash() {
+  local file="$1" tmpf
+  [[ -f "$file" ]] || { printf ''; return 0; }
+  tmpf="$(mktemp_portable "$TMP_DIR" "hash.XXXXXX")" || { printf ''; return 0; }
+  # ignore shebang line if present
+  tail -n +2 "$file" >"$tmpf" 2>/dev/null || cat "$file" >"$tmpf" 2>/dev/null || true
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$tmpf" 2>/dev/null | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$tmpf" 2>/dev/null | awk '{print $1}'
+  else
+    stat -c '%s-%Y' "$tmpf" 2>/dev/null || printf ''
+  fi
+  rm -f -- "$tmpf" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Filesystem helpers
+# ---------------------------------------------------------------------------
 same_filesystem() {
   local a="$1" b="$2" da db fa fb
   da="$a"; while [[ ! -e "$da" && "$da" != "/" ]]; do da="$(dirname -- "$da")"; done
   db="$b"; while [[ ! -e "$db" && "$db" != "/" ]]; do db="$(dirname -- "$db")"; done
   if [[ ! -e "$da" || ! -e "$db" ]]; then return 1; fi
-  if ! command -v df >/dev/null 2>&1; then return 1; fi
   fa="$(df -P "$da" 2>/dev/null | awk 'END{print $1}')" || fa=""
   fb="$(df -P "$db" 2>/dev/null | awk 'END{print $1}')" || fb=""
   [[ -n "$fa" && -n "$fb" && "$fa" == "$fb" ]]
 }
 
-# -------------------------
-# ensure tmpdir exists and writable
-# -------------------------
 ensure_tmpdir() {
   if [[ -e "$TMP_DIR" && ! -d "$TMP_DIR" ]]; then
     log_error "GUIIO" "TMP_DIR exists and is not a directory: $TMP_DIR"
@@ -443,8 +220,8 @@ ensure_tmpdir() {
     return 1
   fi
   if [[ ! -d "$TMP_DIR" ]]; then
-    mkdir -p "$TMP_DIR" || { log_error "GUIIO" "Failed to create TMP_DIR $TMP_DIR"; print_http_error "500 Internal Server Error" "Server configuration error: cannot create tmpdir"; return 1; }
-    chmod 700 "$TMP_DIR" || true
+    mkdir -p "$TMP_DIR"
+    chmod 700 "$TMP_DIR"
   fi
   if [[ ! -w "$TMP_DIR" ]]; then
     log_error "GUIIO" "TMP_DIR $TMP_DIR not writable"
@@ -454,17 +231,17 @@ ensure_tmpdir() {
   return 0
 }
 
-# -------------------------
-# Atomic write and append
-# -------------------------
+# ---------------------------------------------------------------------------
+# Atomic write and append (use mktemp_portable and TMP_DIR)
+# ---------------------------------------------------------------------------
 atomic_write() {
   local dest="$1" content="${2:-}" dest_dir tmp
   dest_dir="$(dirname -- "$dest")"
   ensure_tmpdir || return 1
-  if same_filesystem "$TMP_DIR" "$dest_dir" && mktemp_portable "$TMP_DIR" "atomic.XXXXXX" >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_write (tmpdir)"; return 1; }
+  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")"; then
+    :
   else
-    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_write (destdir)"; return 1; }
+    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")"
   fi
   umask 077
   printf '%s' "$content" >"$tmp" || { log_error "GUIIO" "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
@@ -478,10 +255,10 @@ atomic_append_conv() {
   local conv_file="$1" append_text="$2" tmp dest_dir
   if [[ "$LOCK_HELD" -ne 1 ]]; then log_error "GUILOCK" "atomic_append_conv called without lock held"; return 1; fi
   dest_dir="$(dirname -- "$conv_file")"
-  if same_filesystem "$TMP_DIR" "$dest_dir" && mktemp_portable "$TMP_DIR" "conv.XXXXXX" >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_append_conv (tmpdir)"; return 1; }
+  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")"; then
+    :
   else
-    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")" || { log_error "GUIIO" "mktemp failed in atomic_append_conv (destdir)"; return 1; }
+    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")"
   fi
   if [[ -f "$conv_file" ]]; then cat "$conv_file" >"$tmp" || { log_error "GUIIO" "Failed to copy existing conversation to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }; fi
   printf '%s\n' "$append_text" >>"$tmp" || { log_error "GUIIO" "Failed to append text to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
@@ -491,39 +268,27 @@ atomic_append_conv() {
 }
 
 atomic_append_conv_in_uiroot() {
-  # Usage: atomic_append_conv_in_uiroot <convfile> <<'EOF' ... EOF
   local convfile="$1"
-  if [[ -z "$convfile" ]]; then
-    return 1
-  fi
-
-  # Ensure destination dir exists
+  if [[ -z "$convfile" ]]; then return 1; fi
   local dir tmpf
   dir="$(dirname -- "$convfile")"
-  mkdir -p -- "$dir" 2>/dev/null || true
-
-  # Create a tmp file in the same directory to preserve filesystem semantics
-  tmpf="${convfile}.tmp.$$"
-
-  # If conversation exists, copy it to tmp (preserve mode if possible)
+  mkdir -p -- "$dir"
+  # Use mktemp_portable only; if it fails, fail the function
+  tmpf="$(mktemp_portable "$dir" "conv.XXXXXX")" || return 1
   if [[ -f "$convfile" ]]; then
-    cp -a -- "$convfile" "$tmpf" 2>/dev/null || : 
+    cp -a -- "$convfile" "$tmpf" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
   else
     : >"$tmpf"
   fi
-
-  # Append raw stdin to tmp file (no sed, no substitution)
   cat >> "$tmpf"
-
-  # Atomically replace the conversation file
-  mv -f -- "$tmpf" "$convfile"
+  mv -f -- "$tmpf" "$convfile" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
   chmod 600 "$convfile" || true
   return 0
 }
 
-# -------------------------
-# flock availability and lock management (fd 9)
-# -------------------------
+# ---------------------------------------------------------------------------
+# flock availability and CGI lock management (fd 9)
+# ---------------------------------------------------------------------------
 ensure_flock_available() {
   if ! command -v flock >/dev/null 2>&1; then
     log_error "GUILLOCK" "flock not available on this system; cannot guarantee safe concurrency"
@@ -534,7 +299,7 @@ ensure_flock_available() {
 }
 
 acquire_lock() {
-  mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
+  mkdir -p "$(dirname "$LOCK_FILE")"
   exec 9>"$LOCK_FILE"
   if ! flock -x -w "$GROQBASHGUILOCKTIMEOUT" 9; then
     log_error "LOCKTIMEOUT" "could not acquire GUI lock on $LOCK_FILE within ${GROQBASHGUILOCKTIMEOUT}s"
@@ -556,9 +321,9 @@ release_lock() {
   fi
 }
 
-# -------------------------
-# HTTP helpers and escaping
-# -------------------------
+# ---------------------------------------------------------------------------
+# HTTP helpers and escaping/unescaping
+# ---------------------------------------------------------------------------
 print_http_header() {
   printf 'Content-Type: text/html; charset=utf-8\r\n'
   printf 'Cache-Control: no-store\r\n'
@@ -583,17 +348,11 @@ html_escape_stream() {
   sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
 }
 
-# Robust fallback to unescape common HTML entities (used when no html_unescape available)
-# Usage: html_unescape_fallback "some &amp; text"
 html_unescape_fallback() {
   printf '%s' "$1" | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
 }
 
-# Portable html_unescape: reverses common HTML entities to literal characters
-# Usage: html_unescape "some &amp; text"
 html_unescape() {
-  # handle numeric entities and common named entities
-  # first convert numeric hex/dec entities, then named ones
   printf '%s' "$1" \
     | sed -E 's/&#x([0-9A-Fa-f]+);/\\x\1/g' \
     | awk '{
@@ -601,27 +360,21 @@ html_unescape() {
         printf "%s", $0
       }' \
     | sed -e 's/&amp;#([0-9]+);/\\\x\1/g' 2>/dev/null || true
-  # fallback simple replacements (ensure common entities are handled)
   printf '%s' "$1" \
     | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Validation and sanitization
-# -------------------------
+# ---------------------------------------------------------------------------
 validate_name() {
   local name="$1"
-  [[ -z "$name" ]] && return 1
+  [[ -n "$name" ]] || return 1
   [[ "$name" == "." || "$name" == ".." ]] && return 1
-  # reject path separators and backslash (NUL cannot practically appear in shell vars)
   [[ "$name" == *"/"* || "$name" == *"\\"* ]] && return 1
-  # reject control characters (0x00-0x1F)
-  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then
-    return 1
-  fi
-  # allow letters, digits, dot, underscore, hyphen; disallow leading dot (hidden files)
+  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then return 1; fi
   if [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    (( ${#name} <= MAX_NAME_LEN )) || return 1
+    (( ${#name} <= 255 )) || return 1
     return 0
   fi
   return 1
@@ -636,27 +389,22 @@ sanitize_param() {
 sanitize_model_output() {
   local v max=10000
   v="${1:-}"
-  # strip ANSI escape sequences (single sed expression)
-  v="$(printf '%s' "$v" | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g')"
-  # remove control chars and normalize newlines
+  v="$(printf '%s' "$v" | sed -r 's/\x1B
+
+\[[0-9;]*[a-zA-Z]//g')"
   v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
-  # collapse tabs/spaces and trim
   v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
   v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
   if [ "${#v}" -gt "$max" ]; then
     v="${v:0:max}"
     v="$v\n\n[TRUNCATED]"
   fi
-  # IMPORTANT: do NOT HTML-escape here; conversation files must contain plain text.
   printf '%s' "$v"
 }
 
-# -------------------------
-# Build CURRENT_CONV as safe HTML for insertion into templates.
-# Reads the current conversation file (plain text), sanitizes each line,
-# removes any literal "{{CURRENT_CONV}}" tokens that may appear in model output,
-# escapes HTML entities and preserves newlines by wrapping content in <pre>.
-# Usage: build_current_conv_block [convfile]
+# ---------------------------------------------------------------------------
+# Build CURRENT_CONV block
+# ---------------------------------------------------------------------------
 build_current_conv_block() {
   local convfile line out htmlbuf token
   convfile="${1:-$(get_current_conversation_file || true)}"
@@ -664,30 +412,24 @@ build_current_conv_block() {
     CURRENT_CONV=""
     return 0
   fi
-
   token='{{CURRENT_CONV}}'
   htmlbuf=""
-
   while IFS= read -r line || [[ -n "$line" ]]; do
-    # remove accidental template tokens that may come from model output
     line="${line//${token}/ }"
-    # optional: decode double-escaped numeric entities if html_unescape exists
     if type html_unescape >/dev/null 2>&1; then
       line="$(html_unescape "$line")"
     fi
-    # sanitize (remove control chars / ANSI) but do NOT HTML-escape here
     out="$(sanitize_model_output "$line")"
-    # now escape for HTML insertion
     out="$(html_escape "$out")"
-    # append with a single newline preserved
     htmlbuf+="${out}"$'\n'
   done < "$convfile"
-
-  # Wrap in <pre> to preserve newlines; CURRENT_CONV must be safe HTML already
   CURRENT_CONV="<pre>$(printf '%s' "$htmlbuf")</pre>"
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# URL / form helpers
+# ---------------------------------------------------------------------------
 url_decode() {
   local data="${1//+/ }"
   printf '%b' "${data//%/\\x}"
@@ -736,17 +478,15 @@ parse_form_field() {
   return 1
 }
 
-# -------------------------
-# Language file helpers (bootstrap-level)
-# - find_lang_conf: locate gui-lang.conf
-# - read_txt_key: read TXT_KEY.lang value
-# -------------------------
+# ---------------------------------------------------------------------------
+# Language file helpers
+# ---------------------------------------------------------------------------
 find_lang_conf() {
   local candidates=(
-    "${CFG_DIR:-/data/data/com.termux/files/home/groqbash/etc}/gui-lang.conf"
-    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/gui-lang.conf"
-    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/extras/ui/gui-lang.conf"
-    "${UI_ROOT:-/data/data/com.termux/files/home/groqbash/groqbash.d/extras/ui}/static/gui-lang.conf"
+    "${CFG_DIR:-$UI_ROOT/config}/gui-lang.conf"
+    "${UI_ROOT:-}/gui-lang.conf"
+    "${UI_ROOT:-}/extras/ui/gui-lang.conf"
+    "${UI_ROOT:-}/static/gui-lang.conf"
     "${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}/gui-lang.conf"
     "$HOME/.config/groqbash/gui-lang.conf"
     "$UI_ROOT/../gui-lang.conf"
@@ -768,7 +508,6 @@ read_txt_key() {
     printf ''
     return 0
   fi
-
   val="$(awk -F= -v k="${key}.${lang}" '
     $1 == k {
       sub(/^[^=]*=/, "", $0)
@@ -776,12 +515,10 @@ read_txt_key() {
       exit
     }
   ' "$lang_conf" 2>/dev/null || true)"
-
   if [[ -n "$val" ]]; then
     printf '%s' "$val"
     return 0
   fi
-
   default_lang="$(awk -F= '$1=="DEFAULT_LANG" {print $2; exit}' "$lang_conf" 2>/dev/null || true)"
   if [[ -n "$default_lang" ]]; then
     val="$(awk -F= -v k="${key}.${default_lang}" '
@@ -794,32 +531,24 @@ read_txt_key() {
     printf '%s' "$val"
     return 0
   fi
-
   printf ''
 }
 
-# -------------------------
-# Template rendering helper (fixed safe insertion of CURRENT_CONV)
-# Replaces placeholders, escapes runtime values, and inserts CURRENT_CONV last
-# using a robust prefix/suffix split that avoids accidental re-substitution.
+# ---------------------------------------------------------------------------
+# Template rendering helper
+# ---------------------------------------------------------------------------
 render_template() {
   local file="$1"
   shift || true
   if [[ ! -f "$file" ]]; then return 1; fi
-
   local lang_arg="${1:-}"
   local content
   content="$(cat "$file")" || content=""
-
-  # Pre-generated HTML placeholders (do not escape)
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
-
-  # Runtime placeholders: escape here (but NOT CURRENT_CONV)
   local esc_LANG_CODE esc_THEME esc_PROVIDER_CURRENT esc_MODEL_CURRENT esc_API_KEY_FIELD
   local esc_THEME_IS_light esc_THEME_IS_dark esc_MODEL_WHITELIST_PRESENT esc_CURRENT_CONV_FILE esc_CONFIGURED
-
   esc_LANG_CODE="$(html_escape "${LANG_CODE:-}")"
   esc_THEME="$(html_escape "${THEME:-}")"
   esc_PROVIDER_CURRENT="$(html_escape "${PROVIDER_CURRENT:-}")"
@@ -830,7 +559,6 @@ render_template() {
   esc_MODEL_WHITELIST_PRESENT="$(html_escape "${MODEL_WHITELIST_PRESENT:-}")"
   esc_CURRENT_CONV_FILE="$(html_escape "${CURRENT_CONV_FILE:-}")"
   esc_CONFIGURED="$(html_escape "${CONFIGURED:-}")"
-
   content="${content//\{\{LANG_CODE\}\}/$esc_LANG_CODE}"
   content="${content//\{\{THEME\}\}/$esc_THEME}"
   content="${content//\{\{PROVIDER_CURRENT\}\}/$esc_PROVIDER_CURRENT}"
@@ -841,8 +569,6 @@ render_template() {
   content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$esc_MODEL_WHITELIST_PRESENT}"
   content="${content//\{\{CURRENT_CONV_FILE\}\}/$esc_CURRENT_CONV_FILE}"
   content="${content//\{\{CONFIGURED\}\}/$esc_CONFIGURED}"
-
-  # Localization placeholders {{TXT_KEY}}
   local txt_keys
   txt_keys="$(awk '{
     while (match($0,/\{\{TXT_[A-Za-z0-9_]+\}\}/)) {
@@ -867,16 +593,12 @@ render_template() {
       content="${content//\{\{$k\}\}/$val}"
     done
   fi
-
-  # Positional replacements
   local i=1 arg esc
   for arg in "$@"; do
     esc="$(html_escape "$arg")"
     content="${content//\{\{$i\}\}/$esc}"
     i=$((i+1))
   done
-
-  # Insert CURRENT_CONV last, after all other replacements, using a safe split/concat
   local token prefix suffix
   token='{{CURRENT_CONV}}'
   if [[ "$content" == *"$token"* ]]; then
@@ -885,14 +607,13 @@ render_template() {
     content="${prefix}${CURRENT_CONV}${suffix}"
     unset prefix suffix token
   fi
-
   printf '%s' "$content"
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Config helpers
-# -------------------------
+# ---------------------------------------------------------------------------
 read_config_or_default() {
   local file="$1" default="$2"
   if [[ -r "$file" ]]; then
@@ -907,7 +628,6 @@ read_config_or_default() {
   return 0
 }
 
-# Return the current conversation file path; if invalid, fallback to conv-001.txt
 get_current_conversation_file() {
   local conv
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
@@ -920,17 +640,13 @@ get_current_conversation_file() {
   printf '%s/%s\n' "$CONV_DIR" "$conv"
 }
 
-# IMPORTANT: return empty string when no default is set (GUI must treat empty as "not configured")
 get_default_model() { read_config_or_default "$DEFAULT_MODEL_FILE" ""; }
 get_default_provider() { read_config_or_default "$DEFAULT_PROVIDER_FILE" ""; }
 
-# -------------------------
-# API key helpers (secure storage for GUI)
-# - store API key in CFG_DIR/api-key with mode 600
-# - do NOT expose the key to templates or logs
-# -------------------------
+# ---------------------------------------------------------------------------
+# API key helpers
+# ---------------------------------------------------------------------------
 provider_api_env_var_name() {
-  # Uppercase provider and append _API_KEY (e.g. groq -> GROQ_API_KEY)
   local prov="$1"
   if [[ -z "$prov" ]]; then
     printf '%s' "GROQ_API_KEY"
@@ -945,7 +661,7 @@ save_api_key_file() {
     rm -f "$API_KEY_FILE" 2>/dev/null || true
     return 0
   fi
-  mkdir -p "$(dirname "$API_KEY_FILE")" 2>/dev/null || true
+  mkdir -p "$(dirname "$API_KEY_FILE")"
   atomic_write "$API_KEY_FILE" "$key" || return 1
   chmod 600 "$API_KEY_FILE" || true
   return 0
@@ -968,178 +684,209 @@ export_api_key_for_provider() {
   fi
   local envname
   envname="$(provider_api_env_var_name "$prov")"
-  # Export only in current process environment (CGI request)
   export "$envname"="$key"
   return 0
 }
 
-# -------------------------
-# Ensure runtime dirs exist (safe)
-# -------------------------
+# ---------------------------------------------------------------------------
+# Ensure runtime dirs and defaults
+# ---------------------------------------------------------------------------
 ensure_dirs() {
-  mkdir -p "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR"/input "$FILES_DIR"/output "$TEMPLATES_DIR" 2>/dev/null || true
-  chmod 700 "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR" "$FILES_DIR"/input "$FILES_DIR"/output 2>/dev/null || true
+  mkdir -p "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR"/input "$FILES_DIR"/output "$TEMPLATES_DIR"
+  chmod 700 "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR" "$FILES_DIR"/input "$FILES_DIR"/output
   ensure_tmpdir || return 1
   return 0
 }
 
-# Make parent directories of a path traversable (add +x) up to a safe root.
-# Usage: ensure_traversable_parents <path> [<stop_at>]
-ensure_traversable_parents() {
-  local path="$1" stop_at="${2:-$HOME}" d owner uid me
-  if [[ -z "$path" ]]; then return 1; fi
-  # canonicalize inputs
-  path="$(cd "$(dirname -- "$path")" 2>/dev/null && pwd -P || printf '%s' "$path")"
-  stop_at="$(cd "$stop_at" 2>/dev/null && pwd -P || printf '%s' "$stop_at")"
-  me="$(id -u 2>/dev/null || printf '0')"
-
-  while [[ -n "$path" && "$path" != "/" && "$path" != "$stop_at" ]]; do
-    if [[ -d "$path" ]]; then
-      # only change perms if owned by current user (avoid touching system dirs)
-      owner="$(stat -c '%u' "$path" 2>/dev/null || echo '')"
-      if [[ -n "$owner" && "$owner" -eq "$me" ]]; then
-        chmod u+x "$path" 2>/dev/null || true
-      fi
-    fi
-    path="$(dirname -- "$path")"
-  done
-  return 0
-}
-
-# Replace safe symlinks inside ui_root with real files and remove broken symlinks.
-# Usage: remove_unnecessary_symlinks <ui_root>
+# ---------------------------------------------------------------------------
+# Remove unnecessary symlinks inside UI_ROOT (hardened)
+# - If cp or mv fails, return error instead of continuing silently.
+# ---------------------------------------------------------------------------
 remove_unnecessary_symlinks() {
-  local ui="$1" target link
+  local ui="$1" target link rc
   [[ -d "$ui" ]] || return 0
-  # limit depth to avoid scanning entire FS
   while IFS= read -r -d '' link; do
-    # resolve target; readlink -f may not exist everywhere, fall back to readlink
     target="$(readlink -f "$link" 2>/dev/null || readlink "$link" 2>/dev/null || true)"
     if [[ -z "$target" ]]; then
-      # broken symlink: remove
       rm -f -- "$link" 2>/dev/null || true
       continue
     fi
-    # Only replace symlink if target is inside the same UI tree (avoid copying system files)
     case "$target" in
       "$ui"/*)
         if [[ -f "$target" ]]; then
-          cp -a -- "$target" "${link}.tmp" 2>/dev/null || continue
-          mv -f -- "${link}.tmp" "$link" 2>/dev/null || { rm -f -- "${link}.tmp" 2>/dev/null || true; continue; }
+          cp -a -- "$target" "${link}.tmp" || { rm -f -- "${link}.tmp" 2>/dev/null || true; return 1; }
+          mv -f -- "${link}.tmp" "$link" || { rm -f -- "${link}.tmp" 2>/dev/null || true; return 1; }
         fi
         ;;
       *)
-        # leave symlink alone if it points outside UI_ROOT
         ;;
     esac
   done < <(find "$ui" -maxdepth 3 -type l -print0 2>/dev/null)
   return 0
 }
 
-# -------------------------
-# Helper: ensure .sh files under UI_ROOT (cgi-bin and top-level) are executable
-# and static assets are readable. Intended to be called by installer (idempotent).
-# Usage: ensure_sh_executables [ui_root]
+# ---------------------------------------------------------------------------
+# Ensure .sh executables and static perms
+# ---------------------------------------------------------------------------
 ensure_sh_executables() {
   local ui="${1:-$UI_ROOT}"
   if [[ -z "$ui" || ! -d "$ui" ]]; then
     log_warn "PERMS" "ensure_sh_executables: UI_ROOT missing or invalid: $ui"
     return 0
   fi
-
-  # Make CGI scripts executable and static files readable (idempotent)
   if [[ -d "$ui/cgi-bin" ]]; then
     find "$ui/cgi-bin" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
   fi
-
-  # Also make any top-level .sh in UI_ROOT executable (some setups place scripts there)
   find "$ui" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
-
-  # Ensure static assets are readable
   if [[ -d "$ui/static" ]]; then
     find "$ui/static" -type f -exec chmod 644 {} \; 2>/dev/null || true
-    # ensure static dir and parents are traversable
     chmod 755 "$ui/static" 2>/dev/null || true
   fi
-
-  # Ensure common runtime dirs exist with safe perms
   mkdir -p "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
   chmod 700 "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
-
   return 0
 }
 
-# -------------------------
-# Ensure config defaults (REVISED)
-# - Do NOT populate default-model or default-provider with the literal "default".
-# - Leave model/provider files empty if not configured; GUI must treat empty as "not configured".
-# - Still ensure conversation file exists.
-# -------------------------
+# ---------------------------------------------------------------------------
+# Ensure config defaults
+# ---------------------------------------------------------------------------
 ensure_config_defaults() {
   local conv_default="conv-001.txt"
   local lang_default="en"
-
-  if [[ ! -f "$CURRENT_CONV_FILE" ]]; then
-    atomic_write "$CURRENT_CONV_FILE" "$conv_default" || true
-  fi
-  if [[ ! -f "$LANG_CURRENT_FILE" ]]; then
-    atomic_write "$LANG_CURRENT_FILE" "$lang_default" || true
-  fi
-  if [[ ! -f "$THEME_CURRENT_FILE" ]]; then
-    atomic_write "$THEME_CURRENT_FILE" "light" || true
-  fi
-
-  # IMPORTANT: do not write "default" into these files.
-  # Create empty files if missing so GUI can detect "not configured" (empty content).
-  if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then
-    mkdir -p "$(dirname "$DEFAULT_MODEL_FILE")" 2>/dev/null || true
-    : >"$DEFAULT_MODEL_FILE" || true
-    chmod 600 "$DEFAULT_MODEL_FILE" || true
-  fi
-  if [[ ! -f "$DEFAULT_PROVIDER_FILE" ]]; then
-    mkdir -p "$(dirname "$DEFAULT_PROVIDER_FILE")" 2>/dev/null || true
-    : >"$DEFAULT_PROVIDER_FILE" || true
-    chmod 600 "$DEFAULT_PROVIDER_FILE" || true
-  fi
-
-  # Ensure conversation file exists and is valid
+  if [[ ! -f "$CURRENT_CONV_FILE" ]]; then atomic_write "$CURRENT_CONV_FILE" "$conv_default" || true; fi
+  if [[ ! -f "$LANG_CURRENT_FILE" ]]; then atomic_write "$LANG_CURRENT_FILE" "$lang_default" || true; fi
+  if [[ ! -f "$THEME_CURRENT_FILE" ]]; then atomic_write "$THEME_CURRENT_FILE" "light" || true; fi
+  if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then mkdir -p "$(dirname "$DEFAULT_MODEL_FILE")"; : >"$DEFAULT_MODEL_FILE"; chmod 600 "$DEFAULT_MODEL_FILE" || true; fi
+  if [[ ! -f "$DEFAULT_PROVIDER_FILE" ]]; then mkdir -p "$(dirname "$DEFAULT_PROVIDER_FILE")"; : >"$DEFAULT_PROVIDER_FILE"; chmod 600 "$DEFAULT_PROVIDER_FILE" || true; fi
   local conv
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "$conv_default")"
   conv="$(sanitize_param "$conv")"
-  if ! validate_name "$conv"; then
-    conv="$conv_default"
-    atomic_write "$CURRENT_CONV_FILE" "$conv" || true
-  fi
-  if [[ ! -f "$CONV_DIR/$conv" ]]; then
-    atomic_write "$CONV_DIR/$conv" "" || true
-  fi
+  if ! validate_name "$conv"; then conv="$conv_default"; atomic_write "$CURRENT_CONV_FILE" "$conv" || true; fi
+  if [[ ! -f "$CONV_DIR/$conv" ]]; then atomic_write "$CONV_DIR/$conv" "" || true; fi
 }
 
-# -------------------------
-# Ensure groqbash available (search fallbacks)
-# - normalize GROQBASH_CMD to an absolute path when possible
-# -------------------------
+# ---------------------------------------------------------------------------
+# Ensure groqbash available (DETERMINISTIC: only allowed locations)
+# Allowed locations:
+#   $UI_ROOT/../groqbash/groqbash
+#   $HOME/groqbash/groqbash
+# If not found there, return failure (caller must abort).
+# ---------------------------------------------------------------------------
 ensure_groqbash_available() {
-  # If GROQBASH_CMD is a command name or path, try to resolve to absolute path
-  if command -v "$GROQBASH_CMD" >/dev/null 2>&1; then
-    GROQBASH_CMD="$(command -v "$GROQBASH_CMD")"
-    return 0
+  if [[ "$GROQBASH_CMD" == /* && -x "$GROQBASH_CMD" ]]; then
+    case "$GROQBASH_CMD" in
+      "$UI_ROOT/../groqbash/groqbash" | "$HOME/groqbash/groqbash")
+        GROQBASH_CMD="$(readlink -f "$GROQBASH_CMD" 2>/dev/null || printf '%s' "$GROQBASH_CMD")"
+        export GROQBASH_CMD
+        return 0
+        ;;
+      *)
+        return 1
+        ;;
+    esac
   fi
-  for p in "$UI_ROOT/../groqbash" "$UI_ROOT/../bin/groqbash" "$HOME/groqbash/groqbash" "$HOME/groqbash"; do
+
+  local candidates=("$UI_ROOT/../groqbash/groqbash" "$HOME/groqbash/groqbash")
+  for p in "${candidates[@]}"; do
     if [[ -x "$p" ]]; then
       GROQBASH_CMD="$p"
+      export GROQBASH_CMD
       return 0
     fi
   done
+
   return 1
 }
 
-# -------------------------
-# Termux helper (best-effort)
-# -------------------------
+# ---------------------------------------------------------------------------
+# Resolve BASH_PATH once (deterministic for wrapper creation)
+# - Do not use command -v inside the wrapper; resolve once here.
+# - If not resolvable to an executable, leave empty; create_termux_compat_bootstrap will fail.
+# ---------------------------------------------------------------------------
+BASH_PATH="$(command -v bash 2>/dev/null || true)"
+if [[ -n "$BASH_PATH" && ! -x "$BASH_PATH" ]]; then
+  BASH_PATH=""
+fi
+
+# ---------------------------------------------------------------------------
+# Minimal Termux wrapper + shadow update (uses BOOTSTRAP_LOCK; local trap avoided)
+# - Only: determine groqbash_real; update shadow if necessary; create wrapper in UI_ROOT/bin
+# - No global trap changes; no fallback to arbitrary paths.
+# ---------------------------------------------------------------------------
+create_termux_compat_bootstrap() {
+  [[ -d "/data/data/com.termux/files/usr" ]] || return 0
+  [[ -n "${UI_ROOT:-}" ]] || return 0
+
+  ensure_tmpdir || return 1
+  if ! command -v flock >/dev/null 2>&1; then return 1; fi
+
+  local groqbash_real groqbash_shadow BIN_DIR wrapper tmp_shadow rc real_hash shadow_hash
+  groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
+
+  # Deterministic allowed locations
+  local candidates=("$UI_ROOT/../groqbash/groqbash" "$HOME/groqbash/groqbash")
+  groqbash_real=""
+  for p in "${candidates[@]}"; do
+    if [[ -x "$p" ]]; then groqbash_real="$p"; break; fi
+  done
+  if [[ -z "$groqbash_real" ]]; then
+    return 1
+  fi
+
+  # Acquire bootstrap lock (fd 9) local to this function
+  exec 9>"$BOOTSTRAP_LOCK" 2>/dev/null || return 1
+  if ! flock -x -w 5 9; then exec 9>&- 2>/dev/null || return 1; fi
+
+  # Use compute_hash (moved out)
+  real_hash="$(compute_hash "$groqbash_real")"
+  shadow_hash="$(compute_hash "$groqbash_shadow")"
+
+  if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
+    tmp_shadow="$(mktemp_portable "$TMP_DIR" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
+    if [[ -n "$tmp_shadow" ]]; then
+      cp -f -- "$groqbash_real" "$tmp_shadow" || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+      mv -f -- "$tmp_shadow" "$groqbash_shadow" || { rm -f -- "$tmp_shadow" 2>/dev/null || true; flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+      rc=0
+    else
+      cp -f -- "$groqbash_real" "$groqbash_shadow" || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+      rc=$?
+    fi
+    if (( rc != 0 )); then
+      flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+      return 1
+    fi
+    chmod 750 "$groqbash_shadow" 2>/dev/null || true
+  fi
+
+  # Ensure BASH_PATH is resolved and executable before creating wrapper
+  if [[ -z "${BASH_PATH:-}" || ! -x "$BASH_PATH" ]]; then
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    return 1
+  fi
+
+  # Create wrapper in UI_ROOT/bin pointing to shadow using resolved BASH_PATH
+  BIN_DIR="${UI_ROOT%/}/bin"
+  mkdir -p "$BIN_DIR"
+  chmod 700 "$BIN_DIR"
+  wrapper="$BIN_DIR/groqbash-wrapper"
+  printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$wrapper"
+  chmod 750 "$wrapper"
+
+  # release lock
+  flock -u 9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+
+  export GROQBASH_CMD="$wrapper"
+  export PATH="$BIN_DIR:${PATH:-}"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Termux perms best-effort
+# ---------------------------------------------------------------------------
 fix_termux_perms() {
-  # best-effort: ensure directories have safe perms on Termux
-  if [[ -n "${is_termux:-}" && "${is_termux}" == "true" ]]; then
+  if [[ -d "/data/data/com.termux/files/usr" ]]; then
     chmod 700 "$TMP_DIR" 2>/dev/null || true
     chmod 700 "$LOG_DIR" 2>/dev/null || true
     chmod 700 "$CFG_DIR" 2>/dev/null || true
@@ -1148,16 +895,28 @@ fix_termux_perms() {
   return 0
 }
 
-# Expose key variables for gui-server.sh
+# ---------------------------------------------------------------------------
+# Final initialization sequence (strict order)
+# ---------------------------------------------------------------------------
+ensure_dirs || { log_error "INIT" "ensure_dirs failed"; return 1 2>/dev/null || exit 1; }
+ensure_sh_executables "$UI_ROOT" || true
+remove_unnecessary_symlinks "$UI_ROOT" || true
+ensure_config_defaults || true
+fix_termux_perms || true
+
+if ! ensure_groqbash_available; then
+  log_error "GROQ" "groqbash binary not found in allowed locations; aborting"
+  printf 'groqbash: ERROR: groqbash binary not found; aborting\n' >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+# Call Termux compat bootstrap now that UI_ROOT/TMP_DIR are stable
+create_termux_compat_bootstrap || log_warn "BOOTSTRAP" "create_termux_compat_bootstrap failed or not applicable"
+
+# Export key variables for gui-server.sh
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
        DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE GROQBASH_CMD
-
-# GUI base path for CGI endpoints (ensure trailing slash)
-: "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
-# normalize to always end with a single slash
-GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
-export GUI_CGI_BASE
 
 # End of bootstrap
 return 0 2>/dev/null || true
