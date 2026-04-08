@@ -230,10 +230,76 @@ read_txt_key() {
 }
 
 # -------------------------
-# POST handlers (revised)
+# Build provider options (popola PROVIDER_OPTIONS)
+# -------------------------
+build_provider_options() {
+  local cur prov out
+  cur="$1"
+  out=''
+  # call groqbash to list providers (one per line)
+  while IFS= read -r prov; do
+    prov="$(sanitize_param "$prov")"
+    [ -z "$prov" ] && continue
+    if [[ "$prov" == "$cur" ]]; then
+      out+='<option value="'"$(html_escape "$prov")"'" selected>'"$(html_escape "$prov")"'</option>'
+    else
+      out+='<option value="'"$(html_escape "$prov")"'">'"$(html_escape "$prov")"'</option>'
+    fi
+    out+=$'\n'
+  done < <("$GROQBASH_CMD" --list-providers-raw 2>>"$ERROR_LOG" || true)
+  PROVIDER_OPTIONS="$out"
+  return 0
+}
+
+# -------------------------
+# Build model list (textarea content) and select options (popola MODEL_LIST_SCROLL e MODEL_SELECT_OPTIONS)
+# -------------------------
+build_model_list_and_select() {
+  local cur m out_list out_opts models_file
+  cur="$1"
+  out_list=''
+  out_opts=''
+  # Prefer reading from groqbash --list-models-raw (fresh), fallback to models file
+  if ensure_groqbash_available >/dev/null 2>&1; then
+    while IFS= read -r m; do
+      m="$(sanitize_param "$m")"
+      [ -z "$m" ] && continue
+      out_list+="${m}"$'\n'
+      if [[ "$m" == "$cur" ]]; then
+        out_opts+='<option value="'"$(html_escape "$m")"'" selected>'"$(html_escape "$m")"'</option>'
+      else
+        out_opts+='<option value="'"$(html_escape "$m")"'">'"$(html_escape "$m")"'</option>'
+      fi
+      out_opts+=$'\n'
+    done < <("$GROQBASH_CMD" --list-models-raw 2>>"$ERROR_LOG" || true)
+  else
+    models_file="$(get_models_file)"
+    if [[ -f "$models_file" ]]; then
+      while IFS= read -r m; do
+        m="$(sanitize_param "$m")"
+        [ -z "$m" ] && continue
+        out_list+="${m}"$'\n'
+        if [[ "$m" == "$cur" ]]; then
+          out_opts+='<option value="'"$(html_escape "$m")"'" selected>'"$(html_escape "$m")"'</option>'
+        else
+          out_opts+='<option value="'"$(html_escape "$m")"'">'"$(html_escape "$m")"'</option>'
+        fi
+        out_opts+=$'\n'
+      done < <(awk 'NF{print}' "$models_file" 2>/dev/null || true)
+    fi
+  fi
+
+  MODEL_LIST_SCROLL="$out_list"
+  MODEL_SELECT_OPTIONS="$out_opts"
+  return 0
+}
+
+# -------------------------
+# POST handler for Settings (complete replacement)
 # -------------------------
 handle_post_settings() {
-  local body model provider lang api_key action models_file theme
+  local body model provider lang api_key action theme models_file
+
   body="$(read_post_body)"
 
   model="$(printf '%s' "$body" | parse_form_field "model" || printf '')"
@@ -258,43 +324,66 @@ handle_post_settings() {
     fi
   fi
 
-  # validate names
+  # ACTION: refresh_models -> refresh models for selected provider (explicit button)
+  if [[ "$action" == "refresh_models" ]]; then
+    provider="$(printf '%s' "$body" | parse_form_field "provider" || printf '')"
+    provider="$(sanitize_param "$provider")"
+    if [[ -z "$provider" ]]; then
+      log_warn "GUIIO" "Refresh requested but provider empty"
+    else
+      if validate_name "$provider"; then
+        refresh_models_via_groqbash "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
+      else
+        log_warn "GUIIO" "Invalid provider attempted for refresh: $provider"
+      fi
+    fi
+  fi
+
+  # ACTION: set_model -> set selected model as default (explicit button)
+  if [[ "$action" == "set_model" ]]; then
+    model="$(printf '%s' "$body" | parse_form_field "model" || printf '')"
+    model="$(sanitize_param "$model")"
+    if [[ -z "$model" ]]; then
+      log_warn "GUIIO" "Set model requested but model empty"
+    else
+      if validate_name "$model"; then
+        atomic_write "$DEFAULT_MODEL_FILE" "$model" || log_warn "GUIIO" "Failed to write default model"
+      else
+        log_warn "GUIIO" "Invalid model attempted to set: $model"
+      fi
+    fi
+  fi
+
+  # Validate provider/model names for the general save flow
   if [[ -n "$model" ]]; then
-   if ! validate_name "$model"; then
-     log_error "GUIIO" "Invalid model name attempted: $model"
-     model=""
-   fi
+    if ! validate_name "$model"; then
+      log_error "GUIIO" "Invalid model name attempted: $model"
+      model=""
+    fi
   fi
 
   if [[ -n "$provider" ]]; then
-   if ! validate_name "$provider"; then
-     log_error "GUIIO" "Invalid provider name attempted: $provider"
-     provider=""
-   fi
+    if ! validate_name "$provider"; then
+      log_error "GUIIO" "Invalid provider name attempted: $provider"
+      provider=""
+    fi
   fi
 
   if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
     lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
 
-  # persist provider/model/lang (allow empty to indicate "not configured")
-  atomic_write "$DEFAULT_MODEL_FILE" "$model" || log_warn "GUIIO" "Failed to write default model"
+  # Persist provider/lang (allow empty to indicate "not configured")
   atomic_write "$DEFAULT_PROVIDER_FILE" "$provider" || log_warn "GUIIO" "Failed to write default provider"
   atomic_write "$LANG_CURRENT_FILE" "$lang" || true
 
-  # persist API key securely if provided (empty -> remove)
+  # Persist API key securely if provided (empty -> remove)
   if [[ -n "$api_key" ]]; then
     save_api_key_file "$api_key" || log_warn "GUIIO" "Failed to save API key"
   fi
 
-  # handle refresh action
-  if [[ "$action" == "refresh_models" ]]; then
-    if [[ -z "$provider" ]]; then
-      log_error "GUIIO" "Refresh requested but provider empty"
-    else
-      refresh_models_via_groqbash "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
-    fi
-  fi
+  # Note: do not auto-change default model here; use explicit set_model action above.
+  return 0
 }
 
 handle_post_main() {
