@@ -640,7 +640,12 @@ render_page_settings() {
   : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
   GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
 
+    # Build provider options and model list/select for settings page
+  build_provider_options "$prov_cur"
+  build_model_list_and_select "$model_cur"
+
   export MODEL_OPTIONS CONV_LIST CURRENT_CONV
+  export PROVIDER_OPTIONS MODEL_LIST_SCROLL MODEL_SELECT_OPTIONS
   export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
   export GUI_CGI_BASE
 
