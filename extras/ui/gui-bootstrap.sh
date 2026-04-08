@@ -544,9 +544,15 @@ render_template() {
   local lang_arg="${1:-}"
   local content
   content="$(cat "$file")" || content=""
+
+  # Direct HTML fragments (do not HTML-escape these)
+  content="${content//\{\{PROVIDER_OPTIONS\}\}/$PROVIDER_OPTIONS}"
+  content="${content//\{\{MODEL_LIST_SCROLL\}\}/$MODEL_LIST_SCROLL}"
+  content="${content//\{\{MODEL_SELECT_OPTIONS\}\}/$MODEL_SELECT_OPTIONS}"
   content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
   content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
   content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
+
   local esc_LANG_CODE esc_THEME esc_PROVIDER_CURRENT esc_MODEL_CURRENT esc_API_KEY_FIELD
   local esc_THEME_IS_light esc_THEME_IS_dark esc_MODEL_WHITELIST_PRESENT esc_CURRENT_CONV_FILE esc_CONFIGURED
   esc_LANG_CODE="$(html_escape "${LANG_CODE:-}")"
@@ -559,6 +565,7 @@ render_template() {
   esc_MODEL_WHITELIST_PRESENT="$(html_escape "${MODEL_WHITELIST_PRESENT:-}")"
   esc_CURRENT_CONV_FILE="$(html_escape "${CURRENT_CONV_FILE:-}")"
   esc_CONFIGURED="$(html_escape "${CONFIGURED:-}")"
+
   content="${content//\{\{LANG_CODE\}\}/$esc_LANG_CODE}"
   content="${content//\{\{THEME\}\}/$esc_THEME}"
   content="${content//\{\{PROVIDER_CURRENT\}\}/$esc_PROVIDER_CURRENT}"
@@ -569,6 +576,7 @@ render_template() {
   content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$esc_MODEL_WHITELIST_PRESENT}"
   content="${content//\{\{CURRENT_CONV_FILE\}\}/$esc_CURRENT_CONV_FILE}"
   content="${content//\{\{CONFIGURED\}\}/$esc_CONFIGURED}"
+
   local txt_keys
   txt_keys="$(awk '{
     while (match($0,/\{\{TXT_[A-Za-z0-9_]+\}\}/)) {
@@ -593,12 +601,14 @@ render_template() {
       content="${content//\{\{$k\}\}/$val}"
     done
   fi
+
   local i=1 arg esc
   for arg in "$@"; do
     esc="$(html_escape "$arg")"
     content="${content//\{\{$i\}\}/$esc}"
     i=$((i+1))
   done
+
   local token prefix suffix
   token='{{CURRENT_CONV}}'
   if [[ "$content" == *"$token"* ]]; then
@@ -607,6 +617,7 @@ render_template() {
     content="${prefix}${CURRENT_CONV}${suffix}"
     unset prefix suffix token
   fi
+
   printf '%s' "$content"
   return 0
 }
