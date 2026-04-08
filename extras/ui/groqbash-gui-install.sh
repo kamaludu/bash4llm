@@ -685,7 +685,7 @@ main() {
   fi
 
   APP_BIN="${APP_ROOT}/groqbash/groqbash.d/extras/ui"
-  APP_STATIC="$APP_BIN"
+  APP_STATIC="${APP_BIN}/static"
   APP_RUNTIME_DIR="${APP_BIN}/runtime"
   APP_CGI_RUNTIME_DIR="${APP_RUNTIME_DIR}/cgid"
   CGI_SOCK_PATH="${APP_CGI_RUNTIME_DIR}/cgisock"
