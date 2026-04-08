@@ -99,7 +99,7 @@ main {
 /* Current conversation area */
 .conversation-current pre {
   white-space: pre-wrap;
-  background: #ffffff;
+  background: #fffff0;
   padding: 10px;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
