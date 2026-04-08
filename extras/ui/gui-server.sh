@@ -629,6 +629,7 @@ render_page_settings() {
     THEME_IS_light=""
     THEME_IS_dark="selected"
   fi
+
   models_file="$(get_models_file)"
   if [[ -f "$models_file" && -n "$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)" ]]; then
     MODEL_WHITELIST_PRESENT="true"
@@ -640,13 +641,30 @@ render_page_settings() {
   : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
   GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
 
-    # Build provider options and model list/select for settings page
+  # Build provider options and model list/select for settings page
   build_provider_options "$prov_cur"
   build_model_list_and_select "$model_cur"
 
-  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
-  export PROVIDER_OPTIONS MODEL_LIST_SCROLL MODEL_SELECT_OPTIONS
-  export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
+  # Export all template variables BEFORE rendering templates
+  export PROVIDER_OPTIONS
+  export MODEL_LIST_SCROLL
+  export MODEL_SELECT_OPTIONS
+
+  export MODEL_OPTIONS
+  export CONV_LIST
+  export CURRENT_CONV
+
+  export LANG_CODE
+  export THEME
+  export PROVIDER_CURRENT
+  export MODEL_CURRENT
+  export LANG_OPTIONS
+  export THEME_IS_light
+  export THEME_IS_dark
+  export API_KEY_FIELD
+  export MODEL_WHITELIST_PRESENT
+  export CURRENT_CONV_FILE
+  export CONFIGURED
   export GUI_CGI_BASE
 
   local esc_lang esc_theme esc_model esc_provider esc_conv esc_cgi_base
