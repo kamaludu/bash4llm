@@ -529,7 +529,6 @@ EOF
   cat >>"$out" <<EOF
     ScriptAlias ${CGI_URL_PATH} "${app_bin}/gui-server.sh"
     Alias ${STATIC_URL_PATH} "${app_static}"
-    Alias ${EXTRAS_URL_PATH} "${app_bin}"
 
     <Directory "${app_bin}">
         Options +ExecCGI -Indexes
