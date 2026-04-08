@@ -14,7 +14,6 @@ CONF_FILENAME="${PROJECT_NAME}.conf"
 DEFAULT_PORT="19970"
 CGI_URL_PATH="/groqbash-gui/cgi"
 STATIC_URL_PATH="/groqbash-gui/static"
-EXTRAS_URL_PATH="/extras/ui"
 
 # runtime
 APP_ROOT=""
