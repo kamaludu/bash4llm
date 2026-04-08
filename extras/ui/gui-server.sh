@@ -233,7 +233,7 @@ read_txt_key() {
 # POST handlers (revised)
 # -------------------------
 handle_post_settings() {
-  local body model provider lang api_key action models_file
+  local body model provider lang api_key action models_file theme
   body="$(read_post_body)"
 
   model="$(printf '%s' "$body" | parse_form_field "model" || printf '')"
@@ -246,6 +246,17 @@ handle_post_settings() {
   provider="$(sanitize_param "$provider")"
   lang="$(sanitize_param "$lang")"
   api_key="$(sanitize_param "$api_key")"
+
+  # persist theme if provided (light|dark)
+  theme="$(printf '%s' "$body" | parse_form_field "theme" || printf '')"
+  theme="$(sanitize_param "$theme")"
+  if [[ -n "$theme" ]]; then
+    if [[ "$theme" == "light" || "$theme" == "dark" ]]; then
+      atomic_write "$THEME_CURRENT_FILE" "$theme" || log_warn "GUIIO" "Failed to write theme"
+    else
+      log_warn "GUIIO" "Invalid theme value attempted: $theme"
+    fi
+  fi
 
   # validate names
   if [[ -n "$model" ]]; then
