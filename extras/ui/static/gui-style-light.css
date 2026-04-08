@@ -161,3 +161,12 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
   border: 1px solid #ffffff;
   color: #ffffff;
 }
+
+/* GUI Logo */
+.uilogo {
+  font-weight: bold;
+  padding: 0 1px;
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  color: #429e15;
+}
