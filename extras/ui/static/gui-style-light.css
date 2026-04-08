@@ -152,3 +152,12 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
   .prompt-input { clear: both; }
   main::after { content: ""; display: table; clear: both; }
 }
+
+/* GroqBash⁺ Logo */
+.glogo {
+  font-weight: bold;
+  padding: 0 9px;
+  background: #429e15;
+  border: 1px solid #ffffff;
+  color: #ffffff;
+}
