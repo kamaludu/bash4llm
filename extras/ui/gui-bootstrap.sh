@@ -773,7 +773,7 @@ ensure_config_defaults() {
 # If not found there, return failure (caller must abort).
 # ---------------------------------------------------------------------------
 ensure_groqbash_available() {
-  # Accept local wrapper inside UI_ROOT/bin as a valid groqbash command
+  # 1) Prefer a local wrapper inside UI_ROOT/bin if present
   if [[ -n "${UI_ROOT:-}" ]]; then
     local wrapper_path="${UI_ROOT%/}/bin/groqbash-wrapper"
     if [[ -x "$wrapper_path" ]]; then
@@ -783,28 +783,34 @@ ensure_groqbash_available() {
     fi
   fi
 
-  if [[ "$GROQBASH_CMD" == /* && -x "$GROQBASH_CMD" ]]; then
-    case "$GROQBASH_CMD" in
-      "$UI_ROOT/../groqbash/groqbash" | "$HOME/groqbash/groqbash")
-        GROQBASH_CMD="$(readlink -f "$GROQBASH_CMD" 2>/dev/null || printf '%s' "$GROQBASH_CMD")"
-        export GROQBASH_CMD
-        return 0
-        ;;
-      *)
-        return 1
-        ;;
-    esac
+  # 2) If GROQBASH_CMD is already an absolute executable path, accept it
+  if [[ -n "${GROQBASH_CMD:-}" && "${GROQBASH_CMD}" = /* && -x "${GROQBASH_CMD}" ]]; then
+    GROQBASH_CMD="$(readlink -f "$GROQBASH_CMD" 2>/dev/null || printf '%s' "$GROQBASH_CMD")"
+    export GROQBASH_CMD
+    return 0
   fi
 
-  local candidates=("$UI_ROOT/../groqbash/groqbash" "$HOME/groqbash/groqbash")
+  # 3) Common Termux / system locations to try (explicit, ordered)
+  local candidates=(
+    "/data/data/com.termux/files/usr/bin/groqbash"
+    "/usr/local/bin/groqbash"
+    "/usr/bin/groqbash"
+    "$UI_ROOT/../groqbash/groqbash"
+    "$HOME/groqbash/groqbash"
+  )
+
+  local p
   for p in "${candidates[@]}"; do
+    [[ -z "$p" ]] && continue
     if [[ -x "$p" ]]; then
-      GROQBASH_CMD="$p"
+      GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
       export GROQBASH_CMD
       return 0
     fi
   done
 
+  # 4) Not found — log a clear, actionable error for debugging
+  log_error "GUIIO" "groqbash non trovato: imposta GROQBASH_CMD a un path assoluto eseguibile o crea UI_ROOT/bin/groqbash-wrapper."
   return 1
 }
 
