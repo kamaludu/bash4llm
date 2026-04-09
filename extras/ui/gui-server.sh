@@ -24,7 +24,7 @@ if [[ -z "${HOME:-}" ]]; then
   if [[ -n "${UI_ROOT:-}" ]]; then
     HOME="$UI_ROOT"
   else
-    HOME="/tmp"
+    HOME="$PWD"
   fi
   export HOME
 fi
