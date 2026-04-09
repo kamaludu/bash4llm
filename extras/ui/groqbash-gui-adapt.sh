@@ -135,13 +135,25 @@ path_within_ui_root() {
 portable_mktemp() {
   # $1: destdir
   local dir="$1" tmp
+  if [[ -z "$dir" ]]; then return 1; fi
+  mkdir -p -- "$dir" 2>/dev/null || return 1
+
+  # Prefer mktemp -p if available (more portable)
+  if tmp="$(mktemp -p "$dir" ".tmp.XXXXXX" 2>/dev/null)"; then
+    chmod 600 -- "$tmp" 2>/dev/null || true
+    printf '%s' "$tmp"
+    return 0
+  fi
+
+  # Fallback: try mktemp with full path template (some mktemp accept it)
   if tmp="$(mktemp "${dir}/.tmp.XXXXXX" 2>/dev/null)"; then
     chmod 600 -- "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
     return 0
   fi
-  tmp="${dir}/.tmp.$$.$RANDOM.$(date +%s)"
-  mkdir -p -- "$dir"
+
+  # Last-resort deterministic creation inside dir
+  tmp="${dir}/.tmp.$$.$RANDOM.$(date +%s 2>/dev/null || printf '%s' "$RANDOM")"
   ( set -C; : >"$tmp" ) 2>/dev/null || return 1
   chmod 600 -- "$tmp" 2>/dev/null || true
   printf '%s' "$tmp"
