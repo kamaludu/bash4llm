@@ -105,7 +105,7 @@ refresh_models_via_groqbash() {
   export_api_key_for_provider "$prov" || true
 
   # Capture stdout; allow groqbash to return non-zero but still produce output
-  out="$("$GROQBASH_CMD" --provider "$prov" --refresh-models 2>>"$ERROR_LOG" || true)"
+  out="$("$GROQBASH_CMD" --provider "$prov" --refresh-models </dev/null 2>>"$ERROR_LOG" || true)"
   # Keep only non-empty lines, trim trailing spaces
   out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
 
