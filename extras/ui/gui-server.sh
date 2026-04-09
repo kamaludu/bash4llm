@@ -247,7 +247,7 @@ build_provider_options() {
       out+='<option value="'"$(html_escape "$prov")"'">'"$(html_escape "$prov")"'</option>'
     fi
     out+=$'\n'
-  done < <("$GROQBASH_CMD" --list-providers-raw 2>>"$ERROR_LOG" || true)
+  done < <("$GROQBASH_CMD" --list-providers-raw </dev/null 2>>"$ERROR_LOG" || true)
   PROVIDER_OPTIONS="$out"
   return 0
 }
