@@ -88,6 +88,34 @@ chmod 700 "$LOG_DIR"
 
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR
 
+# --- Ensure HOME is defined in non-interactive/CGI environments
+if [[ -z "${HOME:-}" ]]; then
+  if [[ -n "${UI_ROOT:-}" ]]; then
+    HOME="$UI_ROOT"
+  else
+    HOME="$PWD"
+  fi
+  export HOME
+fi
+
+# --- Template variables defaults (avoid unbound variable under set -u) ---
+: "${PROVIDER_OPTIONS:=''}"
+: "${MODEL_LIST_SCROLL:=''}"
+: "${MODEL_SELECT_OPTIONS:=''}"
+: "${MODEL_OPTIONS:=''}"
+: "${CONV_LIST:=''}"
+: "${LANG_OPTIONS:=''}"
+: "${API_KEY_FIELD:=''}"
+: "${PROVIDER_CURRENT:=''}"
+: "${MODEL_CURRENT:=''}"
+: "${LANG_CODE:=''}"
+: "${THEME:=''}"
+: "${THEME_IS_light:=''}"
+: "${THEME_IS_dark:=''}"
+: "${MODEL_WHITELIST_PRESENT:=''}"
+: "${CURRENT_CONV_FILE:=''}"
+: "${CONFIGURED:=''}"
+
 # ---------------------------------------------------------------------------
 # Files and defaults
 # ---------------------------------------------------------------------------
