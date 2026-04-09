@@ -584,12 +584,12 @@ render_template() {
   content="$(cat "$file")" || content=""
 
   # Direct HTML fragments (do not HTML-escape these)
-  content="${content//\{\{PROVIDER_OPTIONS\}\}/$PROVIDER_OPTIONS}"
-  content="${content//\{\{MODEL_LIST_SCROLL\}\}/$MODEL_LIST_SCROLL}"
-  content="${content//\{\{MODEL_SELECT_OPTIONS\}\}/$MODEL_SELECT_OPTIONS}"
-  content="${content//\{\{MODEL_OPTIONS\}\}/$MODEL_OPTIONS}"
-  content="${content//\{\{CONV_LIST\}\}/$CONV_LIST}"
-  content="${content//\{\{LANG_OPTIONS\}\}/$LANG_OPTIONS}"
+  content="${content//\{\{PROVIDER_OPTIONS\}\}/${PROVIDER_OPTIONS:-}}"
+  content="${content//\{\{MODEL_LIST_SCROLL\}\}/${MODEL_LIST_SCROLL:-}}"
+  content="${content//\{\{MODEL_SELECT_OPTIONS\}\}/${MODEL_SELECT_OPTIONS:-}}"
+  content="${content//\{\{MODEL_OPTIONS\}\}/${MODEL_OPTIONS:-}}"
+  content="${content//\{\{CONV_LIST\}\}/${CONV_LIST:-}}"
+  content="${content//\{\{LANG_OPTIONS\}\}/${LANG_OPTIONS:-}}"
 
   local esc_LANG_CODE esc_THEME esc_PROVIDER_CURRENT esc_MODEL_CURRENT esc_API_KEY_FIELD
   local esc_THEME_IS_light esc_THEME_IS_dark esc_MODEL_WHITELIST_PRESENT esc_CURRENT_CONV_FILE esc_CONFIGURED
