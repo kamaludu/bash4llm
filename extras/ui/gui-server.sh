@@ -62,8 +62,9 @@ is_configured() {
 # safe wrapper to call groqbash; assumes env key exported already
 call_groqbash_with_args() {
   # $@ are args to groqbash
-  # read prompt from stdin and pipe to groqbash, capture stdout
-  "$GROQBASH_CMD" "$@"
+  # Ensure groqbash cannot block waiting on stdin; close stdin explicitly.
+  # Use TMP_DIR for any temporary capture in callers; do not use /tmp.
+  "$GROQBASH_CMD" "$@" </dev/null
 }
 
 # get_models_file (robusto, senza hardcoded Termux paths)
