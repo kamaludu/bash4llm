@@ -324,7 +324,13 @@ uncomment_loadmodule_cgi_if_present() {
     # nothing to do
     return 2
   fi
-  tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "uncomment-cgi.XXXXXX")" || tmp="$(mktemp)"
+  tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "uncomment-cgi.XXXXXX")" || \
+  tmp="$(mktemp -p "$(dirname -- "$conf")" "uncomment-cgi.XXXXXX" 2>/dev/null || true)"
+  if [[ -z "$tmp" ]]; then
+    stamp="$(date +%s%N 2>/dev/null || printf '%s' "$RANDOM")"
+    tmp="$(dirname -- "$conf")/uncomment-cgi.$$.$stamp"
+    : >"$tmp"
+  fi
   # Uncomment the first matching commented LoadModule cgi_module line only
   awk '
     BEGIN { done=0 }
