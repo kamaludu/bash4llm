@@ -34,11 +34,13 @@ Per istruzioni dettagliate di installazione, consulta anche:
 ui/
   gui-server.sh          ← entrypoint CGI
   gui-bootstrap.sh       ← bootstrap portabile (ambiente, percorsi, atomic_write, lock, ecc.)
-  gui-lang.conf
-  gui-style-light.css
-  gui-style-dark.css
-  README.md
-  INSTALL.md
+  groqbash-gui-adapt.sh
+  groqbash-gui-install.sh
+  
+  static/
+    gui-lang.conf
+    gui-style-light.css
+    gui-style-dark.css
 
   templates/
     header.html
