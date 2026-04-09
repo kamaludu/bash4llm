@@ -58,14 +58,8 @@ if [[ -z "${UI_ROOT:-}" ]]; then
   fi
 fi
 
-if [[ -z "${HOME:-}" ]]; then
-  if [[ -n "${UI_ROOT:-}" ]]; then
-    HOME="$UI_ROOT"
-  else
-    HOME="$PWD"
-  fi
-  export HOME
-fi
+: "${HOME:=${UI_ROOT:-$PWD}}"
+export HOME
 
 # ---------------------------------------------------------------------------
 # Directories (single source of truth)
