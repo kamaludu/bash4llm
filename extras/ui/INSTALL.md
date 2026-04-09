@@ -22,8 +22,7 @@ groqbash/
         gui-server.sh
         gui-bootstrap.sh
         templates/
-        assets/
-        runtime/
+        static/
 ```
 
 ### ✔️ Installazione tramite GroqBash
