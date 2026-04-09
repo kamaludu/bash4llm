@@ -272,7 +272,7 @@ build_model_list_and_select() {
         out_opts+='<option value="'"$(html_escape "$m")"'">'"$(html_escape "$m")"'</option>'
       fi
       out_opts+=$'\n'
-    done < <("$GROQBASH_CMD" --list-models-raw 2>>"$ERROR_LOG" || true)
+    done < <("$GROQBASH_CMD" --list-models-raw </dev/null 2>>"$ERROR_LOG" || true)
   else
     models_file="$(get_models_file)"
     if [[ -f "$models_file" ]]; then
