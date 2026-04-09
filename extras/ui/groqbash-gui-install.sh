@@ -731,6 +731,31 @@ main() {
     exit 1
   fi
 
+  # Persist groqbash path for GUI bootstrap (future-proof)
+  GROQBASH_PATH_FILE="${APP_BIN}/config/groqbash-path"
+  mkdir -p "$(dirname "$GROQBASH_PATH_FILE")" 2>/dev/null || true
+  resolved=""
+  if command -v groqbash >/dev/null 2>&1; then
+    resolved="$(command -v groqbash 2>/dev/null || true)"
+  fi
+  if [[ -z "$resolved" ]]; then
+    for p in \
+      "${PREFIX:-/data/data/com.termux/files/usr}/bin/groqbash" \
+      "$HOME/groqbash/groqbash" \
+      "$HOME/repo-groqbash/bin/groqbash" \
+      "$APP_ROOT/groqbash/groqbash.d/groqbash"; do
+      [[ -x "$p" ]] && { resolved="$p"; break; }
+    done
+  fi
+  if [[ -n "$resolved" ]]; then
+    resolved="$(readlink -f "$resolved" 2>/dev/null || printf '%s' "$resolved")"
+    printf '%s\n' "$resolved" >"$GROQBASH_PATH_FILE"
+    chmod 600 "$GROQBASH_PATH_FILE" 2>/dev/null || true
+    info "Wrote groqbash path to $GROQBASH_PATH_FILE: $resolved"
+  else
+    warn "Could not auto-detect groqbash path; GUI bootstrap will attempt discovery at runtime"
+  fi
+
   # Now that bootstrap is sourced, call ensure_sh_executables from it if present
   if type ensure_sh_executables >/dev/null 2>&1; then
     ensure_sh_executables "$APP_BIN" || warn "ensure_sh_executables failed; continuing"
