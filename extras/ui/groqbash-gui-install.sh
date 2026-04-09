@@ -362,7 +362,13 @@ force_mpm_prefork_on_termux() {
   fi
 
   # Prepare temp file
-  tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "mpm-edit.XXXXXX")" || tmp="$(mktemp)"
+  tmp="$(safe_mktemp_in_dir "$(dirname -- "$conf")" "mpm-edit.XXXXXX")" || \
+  tmp="$(mktemp -p "$(dirname -- "$conf")" "mpm-edit.XXXXXX" 2>/dev/null || true)"
+  if [[ -z "$tmp" ]]; then
+    stamp="$(date +%s%N 2>/dev/null || printf '%s' "$RANDOM")"
+    tmp="$(dirname -- "$conf")/mpm-edit.$$.$stamp"
+    : >"$tmp"
+  fi
   TMP_FILES+=("$tmp")
 
   # Transform:
