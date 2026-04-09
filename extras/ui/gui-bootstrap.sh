@@ -47,6 +47,7 @@ if command -v readlink >/dev/null 2>&1 && [ -L "$_bootstrap_source" ]; then
     esac
   fi
 fi
+
 BOOTSTRAP_DIR="$(cd "$(dirname -- "$_bootstrap_source")" >/dev/null 2>&1 && pwd -P || printf '%s' "$(dirname "$_bootstrap_source")")"
 
 if [[ -z "${UI_ROOT:-}" ]]; then
@@ -55,6 +56,15 @@ if [[ -z "${UI_ROOT:-}" ]]; then
   else
     UI_ROOT="$BOOTSTRAP_DIR"
   fi
+fi
+
+if [[ -z "${HOME:-}" ]]; then
+  if [[ -n "${UI_ROOT:-}" ]]; then
+    HOME="$UI_ROOT"
+  else
+    HOME="$PWD"
+  fi
+  export HOME
 fi
 
 # ---------------------------------------------------------------------------
