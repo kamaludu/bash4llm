@@ -265,12 +265,30 @@ build_provider_options() {
 # Build model list (textarea content) and select options (popola MODEL_LIST_SCROLL e MODEL_SELECT_OPTIONS)
 # -------------------------
 build_model_list_and_select() {
-  local cur m out_list out_opts models_file
+  local cur m out_list out_opts models_file provider
   cur="$1"
   out_list=''
   out_opts=''
-  # Prefer reading from groqbash --list-models-raw (fresh), fallback to models file
-  if ensure_groqbash_available >/dev/null 2>&1; then
+  provider="${2:-}"
+
+  # If provider not passed, use default provider
+  if [[ -z "$provider" ]]; then
+    provider="$(read_config_or_default "$DEFAULT_PROVIDER_FILE" "")"
+  fi
+
+  # If we have a provider, refresh its models cache and read from CFG_DIR
+  if [[ -n "$provider" ]]; then
+    ensure_model_cache_fresh "$provider"
+    models_file="${CFG_DIR%/}/models.${provider}.txt"
+    # fallback to legacy models file if cache missing
+    if [[ ! -f "$models_file" ]]; then
+      models_file="$(get_models_file)"
+    fi
+  else
+    models_file="$(get_models_file)"
+  fi
+
+  if [[ -f "$models_file" ]]; then
     while IFS= read -r m; do
       m="$(sanitize_param "$m")"
       [ -z "$m" ] && continue
@@ -281,22 +299,9 @@ build_model_list_and_select() {
         out_opts+='<option value="'"$(html_escape "$m")"'">'"$(html_escape "$m")"'</option>'
       fi
       out_opts+=$'\n'
-    done < <("$GROQBASH_CMD" --list-models-raw </dev/null 2>>"$ERROR_LOG" || true)
+    done < <(awk 'NF{print}' "$models_file" 2>/dev/null || true)
   else
-    models_file="$(get_models_file)"
-    if [[ -f "$models_file" ]]; then
-      while IFS= read -r m; do
-        m="$(sanitize_param "$m")"
-        [ -z "$m" ] && continue
-        out_list+="${m}"$'\n'
-        if [[ "$m" == "$cur" ]]; then
-          out_opts+='<option value="'"$(html_escape "$m")"'" selected>'"$(html_escape "$m")"'</option>'
-        else
-          out_opts+='<option value="'"$(html_escape "$m")"'">'"$(html_escape "$m")"'</option>'
-        fi
-        out_opts+=$'\n'
-      done < <(awk 'NF{print}' "$models_file" 2>/dev/null || true)
-    fi
+    log_warn "MODEL" "models file missing for provider '$provider'"
   fi
 
   MODEL_LIST_SCROLL="$out_list"
