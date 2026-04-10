@@ -1,6 +1,6 @@
 [![GroqBash⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
 
-### CGI Placeholder List: complete and updated
+### CGI Placeholder List: complete and updated.  [🇮🇹](PHOLDER.md) 🇬🇧
 
 | **Placeholder** | **Source** | **Type** | **Example** | **Sanitization / Notes** |
 |:---|:---|---|:---|:---|
