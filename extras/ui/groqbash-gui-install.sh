@@ -780,28 +780,27 @@ main() {
   else
     warn "ensure_traversable_parents not available in bootstrap; skipping traversal fix"
   fi
-  # Optional: pre-warm provider/model caches so Settings shows data immediately after install.
-  # This is best-effort and non-fatal: failures are logged but do not abort install.
+  
+  # Pre-warm provider/model caches (best-effort)
   if type ensure_provider_cache_fresh >/dev/null 2>&1; then
     # Ensure config dir exists and is writable for the GUI runtime
     mkdir -p "${APP_BIN}/config" 2>/dev/null || true
     chmod 700 "${APP_BIN}/config" 2>/dev/null || true
 
-    # Source bootstrap helpers in the installer context (already sourced earlier via check_groqbash_bootstrap)
-    # Refresh providers cache
+    # Refresh providers cache (best-effort)
     if ! ( cd "$APP_BIN" && ensure_provider_cache_fresh ); then
       warn "Pre-warm: ensure_provider_cache_fresh failed; continuing"
     fi
+  fi
 
-    # If a default provider is present, refresh its models cache
-    default_provider_file="${APP_BIN}/config/default-provider"
-    if [[ -f "$default_provider_file" ]]; then
-      dp="$(sed -n '1p' "$default_provider_file" 2>/dev/null || true)"
-      dp="$(printf '%s' "$dp" | tr -d '\r\n')"
-      if [[ -n "$dp" && type ensure_model_cache_fresh >/dev/null 2>&1 ]]; then
-        if ! ( cd "$APP_BIN" && ensure_model_cache_fresh "$dp" ); then
-          warn "Pre-warm: ensure_model_cache_fresh failed for $dp; continuing"
-        fi
+  default_provider_file="${APP_BIN}/config/default-provider"
+  if [[ -f "$default_provider_file" ]]; then
+    dp="$(sed -n '1p' "$default_provider_file" 2>/dev/null || true)"
+    dp="$(printf '%s' "$dp" | tr -d '\r\n')"
+    # Check dp non-empty first, then check availability of ensure_model_cache_fresh as a separate command
+    if [[ -n "$dp" ]] && type ensure_model_cache_fresh >/dev/null 2>&1; then
+      if ! ( cd "$APP_BIN" && ensure_model_cache_fresh "$dp" ); then
+        warn "Pre-warm: ensure_model_cache_fresh failed for $dp; continuing"
       fi
     fi
   fi
