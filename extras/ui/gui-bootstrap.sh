@@ -977,6 +977,108 @@ fix_termux_perms() {
 }
 
 # ---------------------------------------------------------------------------
+# Cache refresh helpers (deterministic, single-shot per invocation)
+# - No /tmp, no eval. Use BOOTSTRAP_LOCK and atomic_write for safety.
+# - These functions DO NOT render HTML; they only produce files under CFG_DIR.
+# ---------------------------------------------------------------------------
+
+ensure_provider_cache_fresh() {
+  local providers_file="${CFG_DIR%/}/providers.txt"
+  local lockfd=9 lockfile="${BOOTSTRAP_LOCK:-$TMP_DIR/bootstrap.lock}" tmpf out rc
+
+  mkdir -p "$(dirname -- "$providers_file")" 2>/dev/null || true
+
+  # Acquire bootstrap lock to serialize refreshes
+  exec {lockfd}>"$lockfile" 2>/dev/null || return 1
+  if ! flock -x -w 5 "$lockfd"; then
+    # Could not acquire lock quickly; another process likely updating — return success (use existing cache)
+    exec {lockfd}>&- 2>/dev/null || true
+    return 0
+  fi
+
+  # If GROQBASH_CMD not set or not executable, release lock and return
+  if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
+    flock -u "$lockfd" 2>/dev/null || true
+    exec {lockfd}>&- 2>/dev/null || true
+    log_warn "PROV" "ensure_provider_cache_fresh: groqbash not available"
+    return 0
+  fi
+
+  # Generate into a temp file inside TMP_DIR (mktemp_portable enforces TMP_DIR)
+  tmpf="$(mktemp_portable "$TMP_DIR" "providers.XXXXXX")" || tmpf=""
+  if [[ -n "$tmpf" ]]; then
+    # Run groqbash; filter empty lines; ensure deterministic permissions via atomic_write
+    "${GROQBASH_CMD}" --list-providers-raw 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
+    if [[ -s "$tmpf" ]]; then
+      # Use atomic_write to move into place with safe perms
+      atomic_write "$providers_file" "$(cat "$tmpf")" || true
+      chmod 644 "$providers_file" 2>/dev/null || true
+      log_info "PROV" "Providers cache refreshed: $providers_file"
+    else
+      # no output: do not overwrite existing cache; remove tmp
+      rm -f -- "$tmpf" 2>/dev/null || true
+      log_warn "PROV" "Providers refresh produced no data; keeping existing cache"
+    fi
+  else
+    log_warn "PROV" "Could not create tmp file for providers refresh"
+  fi
+
+  flock -u "$lockfd" 2>/dev/null || true
+  exec {lockfd}>&- 2>/dev/null || true
+  return 0
+}
+
+ensure_model_cache_fresh() {
+  local provider="$1"
+  if [[ -z "$provider" ]]; then
+    log_warn "MODEL" "ensure_model_cache_fresh called without provider"
+    return 1
+  fi
+  if ! validate_name "$provider"; then
+    log_warn "MODEL" "Invalid provider name: $provider"
+    return 1
+  fi
+
+  local models_file="${CFG_DIR%/}/models.${provider}.txt"
+  local lockfd=9 lockfile="${BOOTSTRAP_LOCK:-$TMP_DIR/bootstrap.lock}" tmpf rc
+
+  mkdir -p "$(dirname -- "$models_file")" 2>/dev/null || true
+
+  # Acquire same bootstrap lock to serialize model refreshes with provider refresh
+  exec {lockfd}>"$lockfile" 2>/dev/null || return 1
+  if ! flock -x -w 5 "$lockfd"; then
+    exec {lockfd}>&- 2>/dev/null || true
+    return 0
+  fi
+
+  if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
+    flock -u "$lockfd" 2>/dev/null || true
+    exec {lockfd}>&- 2>/dev/null || true
+    log_warn "MODEL" "ensure_model_cache_fresh: groqbash not available"
+    return 0
+  fi
+
+  tmpf="$(mktemp_portable "$TMP_DIR" "models.${provider}.XXXXXX")" || tmpf=""
+  if [[ -n "$tmpf" ]]; then
+    "${GROQBASH_CMD}" --list-models-raw --provider "$provider" 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
+    if [[ -s "$tmpf" ]]; then
+      atomic_write "$models_file" "$(cat "$tmpf")" || true
+      chmod 644 "$models_file" 2>/dev/null || true
+      log_info "MODEL" "Models cache refreshed for provider '$provider': $models_file"
+    else
+      rm -f -- "$tmpf" 2>/dev/null || true
+      log_warn "MODEL" "Models refresh for '$provider' produced no data; keeping existing cache"
+    fi
+  else
+    log_warn "MODEL" "Could not create tmp file for models refresh for '$provider'"
+  fi
+
+  flock -u "$lockfd" 2>/dev/null || true
+  exec {lockfd}>&- 2>/dev/null || true
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Final initialization sequence (strict order)
 # ---------------------------------------------------------------------------
 ensure_dirs || { log_error "INIT" "ensure_dirs failed"; return 1 2>/dev/null || exit 1; }
