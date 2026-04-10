@@ -658,7 +658,7 @@ render_page_settings() {
 
   # Build provider options and model list/select for settings page
   build_provider_options "$prov_cur"
-  build_model_list_and_select "$model_cur"
+  build_model_list_and_select "$model_cur" "$prov_cur"
 
   # Export all template variables BEFORE rendering templates
   export PROVIDER_OPTIONS
