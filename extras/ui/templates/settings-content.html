@@ -1,17 +1,19 @@
 <!-- extras/ui/templates/settings-content.html -->
 <section class="settings-block">
-  <form method="post" action="?page=settings&lang={{LANG_CODE}}">
 
+  <!-- FORM 1: provider + refresh (invia solo provider e action=refresh_models) -->
+  <form method="post" action="?page=settings&lang={{LANG_CODE}}">
     <h2>{{TXT_PROVIDER}}</h2>
     <select name="provider">
       {{PROVIDER_OPTIONS}}
     </select>
-    <button type="submit" name="action" value="refresh_models">
-      {{TXT_REFRESH}}
-    </button>
+    <button type="submit" name="action" value="refresh_models">{{TXT_REFRESH}}</button>
+  </form>
 
+  <!-- FORM 2: API key, modelli, lingua, tema, salvataggio generale -->
+  <form method="post" action="?page=settings&lang={{LANG_CODE}}">
     <h2>{{TXT_API_KEY}}</h2>
-    <input type="password" name="api_key" value="{{API_KEY_FIELD}}">
+    <input type="password" name="api_key" autocomplete="new-password" value="{{API_KEY_FIELD}}">
 
     <h2>{{TXT_MODELS_AVAILABLE}}</h2>
     <textarea rows="5" cols="60" readonly>{{MODEL_LIST_SCROLL}}</textarea>
@@ -20,9 +22,7 @@
     <select name="model">
       {{MODEL_SELECT_OPTIONS}}
     </select>
-    <button type="submit" name="action" value="set_model">
-      {{TXT_SET_MODEL}}
-    </button>
+    <button type="submit" name="action" value="set_model">{{TXT_SET_MODEL}}</button>
 
     <h2>{{TXT_LANGUAGE}}</h2>
     <select name="lang">
@@ -36,6 +36,7 @@
     </select>
 
     <br><br>
-    <button type="submit">{{TXT_SAVE}}</button>
+    <button type="submit" name="action" value="save">{{TXT_SAVE}}</button>
   </form>
+
 </section>
