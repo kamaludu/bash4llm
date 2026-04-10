@@ -43,7 +43,7 @@ body {
 }
 
 button, input[type="submit"] {
-  background: #0073e6;
+  background: #a1e600;
   color: #fff;
   border: none;
   padding: 6px 10px;
@@ -53,7 +53,7 @@ button, input[type="submit"] {
 }
 
 button:hover {
-  background: #005bb5;
+  background: #7fb307;
 }
 
 main {
