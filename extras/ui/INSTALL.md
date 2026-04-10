@@ -88,7 +88,7 @@ Apri il browser e visita l’URL indicato.
 
 ## 2.2 Installazione manuale della GroqBash GUI (senza installer)
 
-Questa procedura è allineata alla versione aggiornata di ```groqbash-gui-install.sh```  
+Questa procedura è allineata alla versione aggiornata di §groqbash-gui-install.sh§  
 ed è pensata per:
 
 - integrazione in VirtualHost esistenti  
@@ -145,6 +145,7 @@ Apache deve poter:
 - attraversare le directory fino alla UI  
 - eseguire gli script  
 - leggere gli asset statici  
+- permettere la scrittura nella directory §config§ per cache provider/modelli
 
 ```sh
 chmod u+x <APP_ROOT>
@@ -156,6 +157,11 @@ chmod u+x <APP_ROOT>/groqbash/groqbash.d/extras/ui
 find <APP_ROOT>/groqbash/groqbash.d/extras/ui -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \;
 find <APP_ROOT>/groqbash/groqbash.d/extras/ui/static -type f -exec chmod 644 {} \;
 chmod 755 <APP_ROOT>/groqbash/groqbash.d/extras/ui/static
+
+# Permessi runtime e cache
+chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime
+chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime/cgid
+chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
 ```
 
 ---
@@ -212,8 +218,9 @@ http://localhost/groqbash-gui/cgi
 ### Requisiti minimi
 
 - Supporto CGI  
-- Possibilità di eseguire ```.sh``` come CGI  
+- Possibilità di eseguire §.sh§ come CGI  
 - Permessi corretti su UI_ROOT  
+- Directory §config§ scrivibile per cache provider/modelli
 
 ### Passi
 
@@ -236,6 +243,7 @@ Alias /groqbash-gui/static /path/to/ui
 chmod 755 /path/to/ui/*.sh
 chmod 644 /path/to/ui/static/*
 chmod 755 /path/to/ui/static
+chmod 700 /path/to/ui/config
 ```
 
 ### 4. Directory runtime
@@ -386,19 +394,20 @@ URL: http://localhost:19970/groqbash-gui/cgi
 Open the URL in your browser.
 
 ---
+
 ## 2.2 Manual installation of the GroqBash GUI (without installer)
 
-This procedure matches the updated ```groqbash-gui-install.sh```  
+This procedure matches the updated §groqbash-gui-install.sh§  
 and is intended for:
 
-- integrating into existing VirtualHosts  
-- non‑standard Apache layouts  
+- integration into existing VirtualHosts  
+- non‑standard servers  
 - containers, embedded systems, chroot  
-- setups where you do NOT want the automatic installer  
+- installations where you do NOT want to use the automatic installer  
 
 ---
 
-## 1. Enable CGI
+### 1. Enable CGI
 
 On Debian/Ubuntu:
 
@@ -416,7 +425,7 @@ sudo systemctl restart apache2
 
 ---
 
-## 2. Locate the UI directory
+### 2. Locate the UI directory
 
 The UI lives here:
 
@@ -424,7 +433,7 @@ The UI lives here:
 <APP_ROOT>/groqbash/groqbash.d/extras/ui
 ```
 
-Main CGI script:
+The main CGI is:
 
 ```
 <APP_ROOT>/groqbash/groqbash.d/extras/ui/gui-server.sh
@@ -438,13 +447,14 @@ chmod 755 gui-server.sh gui-bootstrap.sh
 
 ---
 
-## 3. Permissions and traversal (mandatory)
+### 3. Permissions and traversal (mandatory)
 
 Apache must be able to:
 
 - traverse directories down to the UI  
 - execute the scripts  
 - read static assets  
+- write into the §config§ directory (provider/model cache)
 
 ```sh
 chmod u+x <APP_ROOT>
@@ -456,11 +466,16 @@ chmod u+x <APP_ROOT>/groqbash/groqbash.d/extras/ui
 find <APP_ROOT>/groqbash/groqbash.d/extras/ui -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \;
 find <APP_ROOT>/groqbash/groqbash.d/extras/ui/static -type f -exec chmod 644 {} \;
 chmod 755 <APP_ROOT>/groqbash/groqbash.d/extras/ui/static
+
+# Runtime and cache permissions
+chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime
+chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime/cgid
+chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
 ```
 
 ---
 
-## 4. Modern VirtualHost (matching the installer)
+### 4. Modern VirtualHost (aligned with the installer)
 
 ```apache
 <VirtualHost *:80>
@@ -490,7 +505,7 @@ Replace:
 
 ---
 
-## 5. Enable the site
+### 5. Enable the site
 
 ```sh
 sudo a2ensite groqbash
@@ -499,7 +514,7 @@ sudo systemctl reload apache2
 
 ---
 
-## 6. Open the GUI
+### 6. Open the GUI
 
 ```
 http://localhost/groqbash-gui/cgi
@@ -507,13 +522,14 @@ http://localhost/groqbash-gui/cgi
 
 ---
 
-## 2.3 Generic manual installation (any CGI-capable server)
+## 2.3 Generic manual installation (any CGI server)
 
 ### Minimum requirements
 
 - CGI support  
-- Ability to run ```.sh``` as CGI  
+- Ability to run §.sh§ as CGI  
 - Correct permissions on UI_ROOT  
+- Writable §config§ directory for provider/model cache
 
 ### Steps
 
@@ -536,6 +552,7 @@ Alias /groqbash-gui/static /path/to/ui
 chmod 755 /path/to/ui/*.sh
 chmod 644 /path/to/ui/static/*
 chmod 755 /path/to/ui/static
+chmod 700 /path/to/ui/config
 ```
 
 ### 4. Runtime directories
