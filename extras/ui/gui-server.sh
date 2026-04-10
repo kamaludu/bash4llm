@@ -390,6 +390,10 @@ handle_post_settings() {
 
   # Persist provider/lang (allow empty to indicate "not configured")
   atomic_write "$DEFAULT_PROVIDER_FILE" "$provider" || log_warn "GUIIO" "Failed to write default provider"
+  # Refresh models cache for the newly selected provider so Settings shows up-to-date list
+  if [[ -n "$provider" ]]; then
+    ensure_model_cache_fresh "$provider" || log_warn "MODEL" "ensure_model_cache_fresh failed for $provider"
+  fi
   atomic_write "$LANG_CURRENT_FILE" "$lang" || true
 
   # Persist API key securely if provided (empty -> remove)
