@@ -234,20 +234,29 @@ read_txt_key() {
 # Build provider options (popola PROVIDER_OPTIONS)
 # -------------------------
 build_provider_options() {
-  local cur prov out
+  local cur prov out providers_file
   cur="$1"
   out=''
-  # call groqbash to list providers (one per line)
-  while IFS= read -r prov; do
-    prov="$(sanitize_param "$prov")"
-    [ -z "$prov" ] && continue
-    if [[ "$prov" == "$cur" ]]; then
-      out+='<option value="'"$(html_escape "$prov")"'" selected>'"$(html_escape "$prov")"'</option>'
-    else
-      out+='<option value="'"$(html_escape "$prov")"'">'"$(html_escape "$prov")"'</option>'
-    fi
-    out+=$'\n'
-  done < <("$GROQBASH_CMD" --list-providers-raw </dev/null 2>>"$ERROR_LOG" || true)
+  providers_file="${CFG_DIR%/}/providers.txt"
+
+  # Ensure providers cache is fresh for this GUI invocation
+  ensure_provider_cache_fresh
+
+  if [[ -f "$providers_file" ]]; then
+    while IFS= read -r prov; do
+      prov="$(sanitize_param "$prov")"
+      [ -z "$prov" ] && continue
+      if [[ "$prov" == "$cur" ]]; then
+        out+='<option value="'"$(html_escape "$prov")"'" selected>'"$(html_escape "$prov")"'</option>'
+      else
+        out+='<option value="'"$(html_escape "$prov")"'">'"$(html_escape "$prov")"'</option>'
+      fi
+      out+=$'\n'
+    done < <(awk 'NF{print}' "$providers_file" 2>/dev/null || true)
+  else
+    log_warn "PROV" "providers cache missing; provider list empty"
+  fi
+
   PROVIDER_OPTIONS="$out"
   return 0
 }
