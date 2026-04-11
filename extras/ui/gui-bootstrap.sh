@@ -1016,19 +1016,45 @@ fi
 # ---------------------------------------------------------------------------
 # Final initialization sequence (strict order)
 # ---------------------------------------------------------------------------
+
+# Caricamento obbligatorio del layer ambiente (assume $UI_ROOT già risolto)
+if [[ -n "${UI_ROOT:-}" && -f "${UI_ROOT%/}/gui-env.sh" ]]; then
+  # shellcheck source=/dev/null
+  . "${UI_ROOT%/}/gui-env.sh"
+else
+  printf 'groqbash: ERROR: required file gui-env.sh missing in UI_ROOT (%s); aborting\n' "${UI_ROOT:-<unset>}" >&2
+  log_error "INIT" "Missing gui-env.sh in UI_ROOT; aborting bootstrap"
+  return 1 2>/dev/null || exit 1
+fi
+
+# 1) detect (no side effects)
+env_detect || { log_warn "ENV" "env_detect returned non-zero"; }
+
+# 2) core setup (must succeed)
 ensure_dirs || { log_error "INIT" "ensure_dirs failed"; return 1 2>/dev/null || exit 1; }
+
+# 3) perms / static executables (best-effort)
 ensure_sh_executables "$UI_ROOT" || true
 remove_unnecessary_symlinks "$UI_ROOT" || true
 ensure_config_defaults || true
+
+# 4) optional best-effort perms (kept for compatibility)
 fix_termux_perms || true
 
+# 5) environment-specific runtime preparation (must run before resolving groqbash)
+env_prepare_runtime || log_warn "ENV" "env_prepare_runtime returned non-zero"
+
+# 6) resolve groqbash deterministically (must succeed)
 if ! ensure_groqbash_available; then
   log_error "GROQ" "groqbash binary not found in allowed locations; aborting"
   printf 'groqbash: ERROR: groqbash binary not found; aborting\n' >&2
   return 1 2>/dev/null || exit 1
 fi
 
-# Export key variables for gui-server.sh
+# 7) post-resolution environment hook
+env_after_groqbash_resolved || log_warn "ENV" "env_after_groqbash_resolved returned non-zero"
+
+# 8) Export key variables for gui-server.sh (do this after groqbash resolved)
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
        DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE GROQBASH_CMD
