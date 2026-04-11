@@ -300,6 +300,7 @@ check_permissions_and_dirs() {
   done
   chmod 755 "$app_bin/gui-server.sh" 2>/dev/null || warn "Could not set 755 on gui-server.sh"
   chmod 755 "$app_bin/gui-bootstrap.sh" 2>/dev/null || warn "Could not set 755 on gui-bootstrap.sh"
+  chmod 755 "$app_bin/gui-env.sh" 2>/dev/null || warn "Could not set 755 on gui-env.sh"
   [[ -d "$app_bin/templates" ]] && find "$app_bin/templates" -type f -exec chmod 644 {} \; 2>/dev/null || true
   [[ -d "$app_bin/config" ]] && find "$app_bin/config" -maxdepth 1 -type f -exec chmod 600 {} \; 2>/dev/null || true
 }
