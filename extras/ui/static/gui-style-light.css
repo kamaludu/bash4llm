@@ -149,7 +149,7 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
 @media (min-width: 900px) {
   .conversation-list { width: 28%; float: left; margin-right: 4%; }
   .conversation-current { width: 68%; float: left; }
-  .prompt-input { clear: both; }
+  .prompt-input, .settings-block { clear: both; width: 100%; /* Forza l'elemento a prendersi tutta la riga sotto */ }
   main::after { content: ""; display: table; clear: both; }
 }
 
