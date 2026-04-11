@@ -918,25 +918,57 @@ create_termux_compat_bootstrap() {
   exec 9>"$BOOTSTRAP_LOCK" 2>/dev/null || return 1
   if ! flock -x -w 5 9; then exec 9>&- 2>/dev/null || return 1; fi
 
-  # Use compute_hash (moved out)
+  # Compute hashes to decide whether to update shadow
   real_hash="$(compute_hash "$groqbash_real")"
   shadow_hash="$(compute_hash "$groqbash_shadow")"
 
   if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
+    # Create a temporary copy first (atomic move into place)
     tmp_shadow="$(mktemp_portable "$TMP_DIR" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
     if [[ -n "$tmp_shadow" ]]; then
-      cp -f -- "$groqbash_real" "$tmp_shadow" || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
-      mv -f -- "$tmp_shadow" "$groqbash_shadow" || { rm -f -- "$tmp_shadow" 2>/dev/null || true; flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+      # Copy the real binary into the temp file
+      if ! cp -f -- "$groqbash_real" "$tmp_shadow" 2>/dev/null; then
+        rm -f -- "$tmp_shadow" 2>/dev/null || true
+        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1
+      fi
+
+      # If we have a resolved BASH_PATH, ensure the shadow's shebang is compatible with Termux
+      # Only patch if BASH_PATH is non-empty and the current first line is not already the desired shebang
+      if [[ -n "${BASH_PATH:-}" && -x "$BASH_PATH" ]]; then
+        # Read current shebang (if any) and replace /usr/bin/env style with resolved BASH_PATH
+        # Use a safe sed in-place replacement; tolerate non-text binaries by ignoring failures
+        if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
+          # Replace common /usr/bin/env shebangs or any env-based shebang with the resolved BASH_PATH
+          sed -i '1s|^#! */usr/bin/env[[:space:]]\+bash.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
+          # Also replace generic /usr/bin/env without args (defensive)
+          sed -i '1s|^#! */usr/bin/env.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
+          # If the first line is not the desired shebang but is a different interpreter, do not force-change it
+        fi
+      fi
+
+      # Move the temp shadow into place atomically
+      if ! mv -f -- "$tmp_shadow" "$groqbash_shadow" 2>/dev/null; then
+        rm -f -- "$tmp_shadow" 2>/dev/null || true
+        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1
+      fi
       rc=0
     else
-      cp -f -- "$groqbash_real" "$groqbash_shadow" || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+      # Fallback: direct copy if mktemp failed
+      if ! cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null; then
+        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1
+      fi
       rc=$?
     fi
+
     if (( rc != 0 )); then
-      flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
-      return 1
+      flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1
     fi
+
+    # Ensure restrictive but usable permissions on the shadow binary
     chmod 750 "$groqbash_shadow" 2>/dev/null || true
+
+    # Recompute shadow_hash after potential shebang patch to keep hashes consistent
+    shadow_hash="$(compute_hash "$groqbash_shadow")" || shadow_hash=""
   fi
 
   # Ensure BASH_PATH is resolved and executable before creating wrapper
@@ -948,16 +980,18 @@ create_termux_compat_bootstrap() {
 
   # Create wrapper in UI_ROOT/bin pointing to shadow using resolved BASH_PATH
   BIN_DIR="${UI_ROOT%/}/bin"
-  mkdir -p "$BIN_DIR"
-  chmod 700 "$BIN_DIR"
+  mkdir -p "$BIN_DIR" 2>/dev/null || true
+  chmod 700 "$BIN_DIR" 2>/dev/null || true
   wrapper="$BIN_DIR/groqbash-wrapper"
-  printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$wrapper"
-  chmod 750 "$wrapper"
+  # Write a minimal wrapper that uses the resolved BASH_PATH and execs the shadow
+  printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$wrapper" 2>/dev/null || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; return 1; }
+  chmod 750 "$wrapper" 2>/dev/null || true
 
   # release lock
   flock -u 9 2>/dev/null || true
   exec 9>&- 2>/dev/null || true
 
+  # Export the wrapper path so gui-server.sh will prefer it
   export GROQBASH_CMD="$wrapper"
   export PATH="$BIN_DIR:${PATH:-}"
   return 0
