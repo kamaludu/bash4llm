@@ -1112,6 +1112,16 @@ ensure_model_cache_fresh() {
   return 0
 }
 
+# Load environment-specific layer REQUIRED (must exist in $UI_ROOT/gui-env.sh)
+if [[ -n "${UI_ROOT:-}" && -f "${UI_ROOT%/}/gui-env.sh" ]]; then
+  # shellcheck source=/dev/null
+  . "${UI_ROOT%/}/gui-env.sh"
+else
+  printf 'groqbash: ERROR: required file gui-env.sh missing in UI_ROOT (%s); aborting\n' "${UI_ROOT:-<unset>}" >&2
+  log_error "INIT" "Missing gui-env.sh in UI_ROOT; aborting bootstrap"
+  return 1 2>/dev/null || exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Final initialization sequence (strict order)
 # ---------------------------------------------------------------------------
