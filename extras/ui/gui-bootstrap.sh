@@ -809,16 +809,15 @@ ensure_config_defaults() {
 }
 
 # ---------------------------------------------------------------------------
-# Ensure groqbash available (DETERMINISTIC: only allowed locations)
-# Allowed locations:
-#   $UI_ROOT/../groqbash/groqbash
-#   $HOME/groqbash/groqbash
-# If not found there, return failure (caller must abort).
+# Ensure groqbash available (DETERMINISTIC: discovery-only)
+# - Only discover allowed/existing executables and set GROQBASH_CMD.
+# - Do NOT create wrappers or modify system binaries here.
+# - Persist discovered path only into CFG_DIR/groqbash-path if writable.
 # ---------------------------------------------------------------------------
 ensure_groqbash_available() {
   # 0) prefer persisted path written by installer
   if [[ -n "${UI_ROOT:-}" ]]; then
-    local cfg="$CFG_DIR/groqbash-path"
+    local cfg="${CFG_DIR%/}/groqbash-path"
     if [[ -f "$cfg" ]]; then
       local p
       p="$(sed -n '1p' "$cfg" 2>/dev/null || true)"
@@ -832,7 +831,7 @@ ensure_groqbash_available() {
     fi
   fi
 
-  # 1) Prefer a local wrapper inside UI_ROOT/bin if present
+  # 1) Prefer a local wrapper inside UI_ROOT/bin if present (discovery only)
   if [[ -n "${UI_ROOT:-}" ]]; then
     local wrapper_path="${UI_ROOT%/}/bin/groqbash-wrapper"
     if [[ -x "$wrapper_path" ]]; then
@@ -849,7 +848,7 @@ ensure_groqbash_available() {
     return 0
   fi
 
-  # 3) Try common locations (PREFIX-aware) and repo locations
+  # 3) Try common allowed locations (discovery only)
   local candidates=(
     "${PREFIX:-/data/data/com.termux/files/usr}/bin/groqbash"
     "/data/data/com.termux/files/usr/bin/groqbash"
@@ -865,7 +864,7 @@ ensure_groqbash_available() {
     if [[ -x "$p" ]]; then
       GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
       export GROQBASH_CMD
-      # persist discovered path for future runs if config dir writable
+      # persist discovered path for future runs only if CFG_DIR writable
       if [[ -n "${CFG_DIR:-}" && -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" ]]; then
         printf '%s\n' "$GROQBASH_CMD" >"${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
         chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
@@ -875,7 +874,7 @@ ensure_groqbash_available() {
   done
 
   # 4) Not found — log clear actionable error
-  log_error "GUIIO" "groqbash non trovato: imposta GROQBASH_CMD a un path assoluto eseguibile o crea UI_ROOT/bin/groqbash-wrapper. Controlla installer per aggiornare $CFG_DIR/groqbash-path."
+  log_error "GUIIO" "groqbash not found: set GROQBASH_CMD to an absolute executable path or create UI_ROOT/bin/groqbash-wrapper."
   return 1
 }
 
