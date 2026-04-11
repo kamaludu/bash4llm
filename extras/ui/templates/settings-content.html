@@ -15,19 +15,12 @@
     <h2>{{TXT_API_KEY}}</h2>
     <input type="password" name="api_key" autocomplete="new-password" value="{{API_KEY_FIELD}}">
 
-    <h2>{{TXT_MODELS_AVAILABLE}}</h2>
-    <textarea rows="5" cols="60" readonly>{{MODEL_LIST_SCROLL}}</textarea>
-
     <h2>{{TXT_MODEL}}</h2>
-    <select name="model">
-      {{MODEL_SELECT_OPTIONS}}
+    <select name="model" size="5" required>
+        {{MODEL_SELECT_OPTIONS}}
     </select>
-    <button type="submit" name="action" value="set_model">{{TXT_SET_MODEL}}</button>
 
-    <h2>{{TXT_LANGUAGE}}</h2>
-    <select name="lang">
-      {{LANG_OPTIONS}}
-    </select>
+    <button type="submit" name="action" value="set_model">{{TXT_SET_MODEL}}</button>
 
     <h2>{{TXT_THEME}}</h2>
     <select name="theme">
