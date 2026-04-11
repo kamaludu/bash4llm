@@ -113,9 +113,11 @@ ensure_api_key_for_provider() {
     export GROQ_API_KEY="$input_key"
   fi
 
+  printf '\n--------------------------------------\n' >&2
   printf '\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\n' >&2
   printf '\n export %s="%s"\n' "$envvar" "$input_key" >&2
   printf '\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\n' >&2
+  printf '\n--------------------------------------\n' >&2
 
   return 0
 }
