@@ -1971,13 +1971,6 @@ is_tty_out() {
   [ -t 1 ]
 }
 
-provider_api_env_var_name() {
-  local prov="$1"
-  local prov_upper
-  prov_upper="$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
-  printf '%s' "${prov_upper}_API_KEY"
-}
-
 ensure_api_key_for_provider() {
   local prov="$1"
   local envvar current_key input_key custom_var custom_env
