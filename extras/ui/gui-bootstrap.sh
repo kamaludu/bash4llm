@@ -882,7 +882,6 @@ ensure_groqbash_available() {
 # ---------------------------------------------------------------------------
 # Resolve BASH_PATH once (deterministic for wrapper creation)
 # - Do not use command -v inside the wrapper; resolve once here.
-# - If not resolvable to an executable, leave empty; create_termux_compat_bootstrap will fail.
 # ---------------------------------------------------------------------------
 BASH_PATH="$(command -v bash 2>/dev/null || true)"
 if [[ -n "$BASH_PATH" && ! -x "$BASH_PATH" ]]; then
@@ -1028,9 +1027,6 @@ if ! ensure_groqbash_available; then
   printf 'groqbash: ERROR: groqbash binary not found; aborting\n' >&2
   return 1 2>/dev/null || exit 1
 fi
-
-# Call Termux compat bootstrap now that UI_ROOT/TMP_DIR are stable
-create_termux_compat_bootstrap || log_warn "BOOTSTRAP" "create_termux_compat_bootstrap failed or not applicable"
 
 # Export key variables for gui-server.sh
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
