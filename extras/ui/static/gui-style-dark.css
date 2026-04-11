@@ -161,15 +161,15 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; color: #e6e6e6; }
   font-weight: bold;
   padding: 0 10px;
   background: #429e15;
-  border: 1px solid #ffffff;
-  color: #ffffff;
+  border: 1px solid #001f00;
+  color: #001f00;
 }
 
 /* GUI Logo */
 .uilogo {
   font-weight: bold;
   padding: 0 3px;
-  background: #ffffff;
-  border: 1px solid #ffffff;
+  background: #001f00;
+  border: 1px solid #001f00;
   color: #429e15;
 }
