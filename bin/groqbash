@@ -1971,55 +1971,6 @@ is_tty_out() {
   [ -t 1 ]
 }
 
-ensure_api_key_for_provider() {
-  local prov="$1"
-  local envvar current_key input_key custom_var custom_env
-  [ -n "$prov" ] || return 1
-  envvar="$(provider_api_env_var_name "$prov")"
-  custom_var="PROVIDER_API_ENV_${prov}"
-  custom_env="${!custom_var:-}"
-  if [ -n "$custom_env" ]; then
-    envvar="$custom_env"
-  fi
-  current_key="${!envvar:-}"
-  if [ -n "$current_key" ]; then
-    # If provider is groq and envvar differs, sync GROQ_API_KEY for backward compatibility
-    if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
-      export GROQ_API_KEY="$current_key"
-    fi
-    return 0
-  fi
-
-  # If not interactive, fail with error code
-  if [ ! -t 0 ]; then
-    printf 'groqbash: ERROR: API key for provider %s not set (env %s). Run interactively or export the variable.\n' "$prov" "$envvar" >&2
-    return "$GROQBASHERRNOAPIKEY"
-  fi
-
-  # Prompt user for key
-  printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
-  if ! IFS= read -r input_key; then
-    printf '\ngroqbash: ERROR: no input received. Aborting.\n' >&2
-    return "$GROQBASHERRNOAPIKEY"
-  fi
-  input_key="$(printf '%s' "$input_key" | tr -d '\r\n')"
-  if [ -z "$input_key" ]; then
-    printf 'groqbash: ERROR: API key required. Aborting.\n' >&2
-    return "$GROQBASHERRNOAPIKEY"
-  fi
-
-  export "$envvar"="$input_key"
-  if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
-    export GROQ_API_KEY="$input_key"
-  fi
-
-  printf '\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\n' >&2
-  printf '\n export %s="%s"\n' "$envvar" "$input_key" >&2
-  printf '\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\n' >&2
-
-  return 0
-}
-
 # ---------------------------------------------------------------------------
 # Provider discovery and loading (keeps behavior compatible)
 # ---------------------------------------------------------------------------
