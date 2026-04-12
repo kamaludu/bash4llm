@@ -14,6 +14,7 @@ umask 077
 # -------- Configuration --------
 UI_ROOT_DEFAULT="${HOME:-$PWD}/groqbash/groqbash.d/extras/ui"
 UI_ROOT="${UI_ROOT:-$UI_ROOT_DEFAULT}"
+: "${INSTALL_MODE:=0}"   # 0 = runtime/adapt default (no system writes), 1 = explicit install/update mode
 
 # TARGET_FILES will be normalized after canonicalizing UI_ROOT
 TARGET_FILES_REL=(
@@ -759,6 +760,158 @@ cleanup_global_stale_pid() {
   fi
 }
 
+# -------- Termux: install/update shadow + wrapper + persist groqbash-path (idempotent) --------
+install_termux_shadow_wrapper() {
+  # Only run when INSTALL_MODE=1 and in Termux environment
+  if [ "${INSTALL_MODE:-0}" -ne 1 ]; then
+    info "INSTALL_MODE != 1; skipping Termux shadow/wrapper installation"
+    return 0
+  fi
+
+  # Determine groqbash_real candidates (prefer repo-local)
+  local candidates=(
+    "${UI_ROOT%/}/../groqbash/groqbash"
+    "${UI_ROOT%/}/../../groqbash/groqbash"
+    "${PWD%/}/groqbash"
+    "${HOME%/}/groqbash/groqbash"
+    "/data/data/com.termux/files/home/groqbash/groqbash"
+  )
+  local groqbash_real=""
+  for cand in "${candidates[@]}"; do
+    if [ -x "$cand" ]; then
+      groqbash_real="$cand"
+      break
+    fi
+  done
+
+  if [ -z "$groqbash_real" ]; then
+    info "No local groqbash binary found among candidates; cannot install Termux shadow/wrapper"
+    return 0
+  fi
+
+  local groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
+  local tmpdir="$UI_ROOT/.tmp"
+  mkdir -p -- "$tmpdir" 2>/dev/null || true
+  chmod 700 -- "$tmpdir" 2>/dev/null || true
+
+  # Ensure portable mktemp available and use lock to avoid races
+  if ! portable_mktemp "$tmpdir" >/dev/null 2>&1; then
+    err "portable_mktemp unavailable or failing; aborting Termux shadow/wrapper install"
+  fi
+  local lockfile="$tmpdir/bootstrap.lock"
+  exec 9>"$lockfile" 2>/dev/null || err "Cannot open lockfile $lockfile"
+  if ! flock -x -w 5 9; then
+    exec 9>&- 2>/dev/null || true
+    err "Could not acquire lock for Termux shadow/wrapper install"
+  fi
+
+  # Create tmp shadow and move atomically
+  local tmp_shadow
+  tmp_shadow="$(mktemp -p "$tmpdir" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
+  if [ -z "$tmp_shadow" ]; then
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    err "Failed to create tmp shadow in $tmpdir"
+  fi
+
+  if ! cp -f -- "$groqbash_real" "$tmp_shadow"; then
+    rm -f -- "$tmp_shadow" 2>/dev/null || true
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    err "Failed to copy groqbash_real to tmp shadow"
+  fi
+
+  # Patch shebang to Termux bash if available
+  local termux_bash
+  termux_bash="$(find_termux_bash || true)"
+  if [ -n "$termux_bash" ] && [ -x "$termux_bash" ]; then
+    if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
+      sed -i '1s|^#!.*|#!'"$termux_bash"'|' "$tmp_shadow" 2>/dev/null || true
+    fi
+  fi
+
+  if ! mv -f -- "$tmp_shadow" "$groqbash_shadow"; then
+    rm -f -- "$tmp_shadow" 2>/dev/null || true
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    err "Failed to move tmp shadow into place at $groqbash_shadow"
+  fi
+  chmod 750 -- "$groqbash_shadow" 2>/dev/null || true
+  info "Installed Termux shadow: $groqbash_shadow"
+
+  # Create wrapper in UI_ROOT/bin pointing to shadow
+  local BIN_DIR="$UI_ROOT/bin"
+  mkdir -p -- "$BIN_DIR" 2>/dev/null || true
+  chmod 700 -- "$BIN_DIR" 2>/dev/null || true
+  local wrapper="$BIN_DIR/groqbash-wrapper"
+  local tmp_wrapper
+  tmp_wrapper="$(mktemp -p "$tmpdir" "wrapper.XXXXXX")" || tmp_wrapper=""
+  if [ -z "$tmp_wrapper" ]; then
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    err "Failed to create tmp wrapper in $tmpdir"
+  fi
+
+  printf '%s\n' "#!${termux_bash:-/data/data/com.termux/files/usr/bin/bash}" "exec \"${termux_bash:-/data/data/com.termux/files/usr/bin/bash}\" \"$groqbash_shadow\" \"\$@\"" >"$tmp_wrapper" || {
+    rm -f -- "$tmp_wrapper" 2>/dev/null || true
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    err "Failed to write tmp wrapper"
+  }
+
+  if [ -f "$wrapper" ]; then
+    # compare size as cheap idempotence check; if different, replace
+    if [ "$(stat -c%s "$tmp_wrapper" 2>/dev/null || true)" != "$(stat -c%s "$wrapper" 2>/dev/null || true)" ]; then
+      mv -f -- "$tmp_wrapper" "$wrapper" || {
+        rm -f -- "$tmp_wrapper" 2>/dev/null || true
+        flock -u 9 2>/dev/null || true
+        exec 9>&- 2>/dev/null || true
+        err "Failed to move new wrapper into place"
+      }
+    else
+      rm -f -- "$tmp_wrapper" 2>/dev/null || true
+    fi
+  else
+    mv -f -- "$tmp_wrapper" "$wrapper" || {
+      rm -f -- "$tmp_wrapper" 2>/dev/null || true
+      flock -u 9 2>/dev/null || true
+      exec 9>&- 2>/dev/null || true
+      err "Failed to move wrapper into place"
+    }
+  fi
+  chmod 750 -- "$wrapper" 2>/dev/null || true
+  info "Installed Termux wrapper: $wrapper"
+
+  # Persist groqbash-path inside UI_ROOT/config atomically
+  local cfg_dir="$UI_ROOT/config"
+  mkdir -p -- "$cfg_dir" 2>/dev/null || true
+  chmod 700 -- "$cfg_dir" 2>/dev/null || true
+  local tmp_path
+  tmp_path="$(portable_mktemp "$cfg_dir")" || tmp_path="${cfg_dir}/groqbash-path.tmp"
+  if printf '%s\n' "$wrapper" >"$tmp_path"; then
+    # ensure exactly one non-empty line
+    local line_count
+    line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
+    if [ "$line_count" -eq 1 ]; then
+      mv -f -- "$tmp_path" "${cfg_dir%/}/groqbash-path"
+      chmod 600 -- "${cfg_dir%/}/groqbash-path" 2>/dev/null || true
+      info "Persisted groqbash-path -> ${cfg_dir%/}/groqbash-path -> $wrapper"
+    else
+      rm -f -- "$tmp_path" 2>/dev/null || true
+      info "Refusing to persist groqbash-path: temp file contains ${line_count} non-empty lines"
+    fi
+  else
+    rm -f -- "$tmp_path" 2>/dev/null || true
+    info "Failed to write temporary groqbash-path; skipping persist"
+  fi
+
+  # release lock
+  flock -u 9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+
+  return 0
+}
+
 # -------- Main --------
 main() {
   check_deps
@@ -845,6 +998,9 @@ main() {
 
       generate_termux_apache_config
       generate_termux_launcher
+
+      # Install/update Termux shadow/wrapper/path only when explicitly requested
+      install_termux_shadow_wrapper
       ;;
     linux|macos|wsl|cygwin|unknown)
       info "No adaptation required for environment: $env_type"
