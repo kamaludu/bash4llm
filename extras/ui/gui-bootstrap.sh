@@ -815,16 +815,24 @@ ensure_config_defaults() {
 # - Persist discovered path only into CFG_DIR/groqbash-path if writable.
 # ---------------------------------------------------------------------------
 ensure_groqbash_available() {
-  # 0) prefer persisted path written by installer
-  if [[ -n "${UI_ROOT:-}" ]]; then
+  # 0) prefer persisted path written by installer (only accept safe wrapper/repo paths)
+  if [[ -n "${UI_ROOT:-}" && -n "${CFG_DIR:-}" ]]; then
     local cfg="${CFG_DIR%/}/groqbash-path"
     if [[ -f "$cfg" ]]; then
       local p
       p="$(sed -n '1p' "$cfg" 2>/dev/null || true)"
       if [[ -n "$p" && -x "$p" ]]; then
-        GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
-        export GROQBASH_CMD
-        return 0
+        # Accept persisted only if it points to UI wrapper or repo-local path
+        case "$p" in
+          "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"* )
+            GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
+            export GROQBASH_CMD
+            return 0
+            ;;
+          *)
+            log_warn "GUIIO" "Persisted groqbash-path '$p' is not a UI wrapper/repo path; ignoring"
+            ;;
+        esac
       else
         log_warn "GUIIO" "Configured groqbash path '$p' not executable; will attempt discovery"
       fi
@@ -841,14 +849,14 @@ ensure_groqbash_available() {
     fi
   fi
 
-  # 2) If GROQBASH_CMD already absolute and executable, accept it
+  # 2) If GROQBASH_CMD already absolute and executable, accept it (but persist only if safe)
   if [[ -n "${GROQBASH_CMD:-}" && "${GROQBASH_CMD}" = /* && -x "${GROQBASH_CMD}" ]]; then
     GROQBASH_CMD="$(readlink -f "$GROQBASH_CMD" 2>/dev/null || printf '%s' "$GROQBASH_CMD")"
     export GROQBASH_CMD
     return 0
   fi
 
-  # 3) Try common allowed locations (discovery only)
+  # 3) Try common allowed locations (discovery only). Persist only safe wrapper/repo paths.
   local candidates=(
     "${PREFIX:-/data/data/com.termux/files/usr}/bin/groqbash"
     "/data/data/com.termux/files/usr/bin/groqbash"
@@ -857,6 +865,7 @@ ensure_groqbash_available() {
     "$UI_ROOT/../groqbash/groqbash"
     "$HOME/groqbash/groqbash"
     "$HOME/repo-groqbash/bin/groqbash"
+    "$PWD/groqbash"
   )
   local p
   for p in "${candidates[@]}"; do
@@ -864,11 +873,21 @@ ensure_groqbash_available() {
     if [[ -x "$p" ]]; then
       GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
       export GROQBASH_CMD
-      # persist discovered path for future runs only if CFG_DIR writable
+
+      # Persist discovered path only if it is a safe wrapper/repo path and CFG_DIR writable
       if [[ -n "${CFG_DIR:-}" && -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" ]]; then
-        printf '%s\n' "$GROQBASH_CMD" >"${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
-        chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
+        case "$GROQBASH_CMD" in
+          "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"* )
+            printf '%s\n' "$GROQBASH_CMD" >"${CFG_DIR%/}/groqbash-path.tmp" 2>/dev/null && mv -f "${CFG_DIR%/}/groqbash-path.tmp" "${CFG_DIR%/}/groqbash-path"
+            chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
+            log_info "GUIIO" "Persisted groqbash-path: ${CFG_DIR%/}/groqbash-path -> $GROQBASH_CMD"
+            ;;
+          *)
+            log_info "GUIIO" "Discovered groqbash at $GROQBASH_CMD but not persisting (not a wrapper/repo path)"
+            ;;
+        esac
       fi
+
       return 0
     fi
   done
