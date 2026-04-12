@@ -815,14 +815,14 @@ ensure_config_defaults() {
 # - Persist discovered path only into CFG_DIR/groqbash-path if writable.
 # ---------------------------------------------------------------------------
 ensure_groqbash_available() {
-  # 0) prefer persisted path written by installer (only accept safe wrapper/repo paths)
+  # Deterministic discovery-only routine. NEVER write to disk here.
+  # 0) Prefer persisted path if present and safe (read-only acceptance).
   if [[ -n "${UI_ROOT:-}" && -n "${CFG_DIR:-}" ]]; then
     local cfg="${CFG_DIR%/}/groqbash-path"
     if [[ -f "$cfg" ]]; then
       local p
       p="$(sed -n '1p' "$cfg" 2>/dev/null || true)"
       if [[ -n "$p" && -x "$p" ]]; then
-        # Accept persisted only if it points to UI wrapper or repo-local path
         case "$p" in
           "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"* )
             GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
@@ -849,14 +849,14 @@ ensure_groqbash_available() {
     fi
   fi
 
-  # 2) If GROQBASH_CMD already absolute and executable, accept it (but persist only if safe)
+  # 2) If GROQBASH_CMD already absolute and executable, accept it (discovery-only)
   if [[ -n "${GROQBASH_CMD:-}" && "${GROQBASH_CMD}" = /* && -x "${GROQBASH_CMD}" ]]; then
     GROQBASH_CMD="$(readlink -f "$GROQBASH_CMD" 2>/dev/null || printf '%s' "$GROQBASH_CMD")"
     export GROQBASH_CMD
     return 0
   fi
 
-  # 3) Try common allowed locations (discovery only). Persist only safe wrapper/repo paths.
+  # 3) Try common allowed locations (discovery only). Do NOT persist here.
   local candidates=(
     "${PREFIX:-/data/data/com.termux/files/usr}/bin/groqbash"
     "/data/data/com.termux/files/usr/bin/groqbash"
@@ -873,21 +873,7 @@ ensure_groqbash_available() {
     if [[ -x "$p" ]]; then
       GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
       export GROQBASH_CMD
-
-      # Persist discovered path only if it is a safe wrapper/repo path and CFG_DIR writable
-      if [[ -n "${CFG_DIR:-}" && -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" ]]; then
-        case "$GROQBASH_CMD" in
-          "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"* )
-            printf '%s\n' "$GROQBASH_CMD" >"${CFG_DIR%/}/groqbash-path.tmp" 2>/dev/null && mv -f "${CFG_DIR%/}/groqbash-path.tmp" "${CFG_DIR%/}/groqbash-path"
-            chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
-            log_info "GUIIO" "Persisted groqbash-path: ${CFG_DIR%/}/groqbash-path -> $GROQBASH_CMD"
-            ;;
-          *)
-            log_info "GUIIO" "Discovered groqbash at $GROQBASH_CMD but not persisting (not a wrapper/repo path)"
-            ;;
-        esac
-      fi
-
+      log_info "GUIIO" "Discovered groqbash at $GROQBASH_CMD (discovery-only; not persisting)"
       return 0
     fi
   done
@@ -1034,17 +1020,6 @@ fi
 # ---------------------------------------------------------------------------
 # Final initialization sequence (strict order)
 # ---------------------------------------------------------------------------
-
-# Caricamento obbligatorio del layer ambiente (assume $UI_ROOT già risolto)
-if [[ -n "${UI_ROOT:-}" && -f "${UI_ROOT%/}/gui-env.sh" ]]; then
-  # shellcheck source=/dev/null
-  . "${UI_ROOT%/}/gui-env.sh"
-else
-  printf 'groqbash: ERROR: required file gui-env.sh missing in UI_ROOT (%s); aborting\n' "${UI_ROOT:-<unset>}" >&2
-  log_error "INIT" "Missing gui-env.sh in UI_ROOT; aborting bootstrap"
-  return 1 2>/dev/null || exit 1
-fi
-
 # 1) detect (no side effects)
 env_detect || { log_warn "ENV" "env_detect returned non-zero"; }
 
