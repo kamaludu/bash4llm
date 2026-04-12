@@ -57,22 +57,41 @@ env_prepare_runtime() {
   : "${BOOTSTRAP_LOCK:=${TMP_DIR%/}/bootstrap.lock}"
   : "${BASH_PATH:=$(command -v bash 2>/dev/null || true)}"
 
-  # Only Termux has shadow/wrapper responsibilities here
+  # Termux-specific flow only
   if [[ "${IS_TERMUX:-0}" -ne 1 ]]; then
     return 0
   fi
 
-  # Ensure runtime directories exist and have safe perms (idempotent)
+  # Ensure runtime dirs exist and safe perms (idempotent)
   mkdir -p "${TMP_DIR%/}" "${CFG_DIR%/}" "${UI_ROOT%/}/bin" 2>/dev/null || true
   chmod 700 "${TMP_DIR%/}" "${CFG_DIR%/}" "${UI_ROOT%/}/bin" 2>/dev/null || true
 
-  # Determine candidate real groqbash locations
+  # Log ownership for debugging if CGI runs as different user
+  if command -v stat >/dev/null 2>&1; then
+    _tmp_owner="$(stat -c '%U:%G' "${TMP_DIR%/}" 2>/dev/null || true)"
+    _cfg_owner="$(stat -c '%U:%G' "${CFG_DIR%/}" 2>/dev/null || true)"
+    log_info "ENV" "TMP_DIR owner: ${_tmp_owner:-<unknown>}, CFG_DIR owner: ${_cfg_owner:-<unknown>}"
+  fi
+
+  # Determine deterministic real binary locations (robust list)
   local groqbash_real groqbash_shadow BIN_DIR wrapper tmp_shadow rc real_hash shadow_hash
   groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
-  local candidates=("$UI_ROOT/../groqbash/groqbash" "$HOME/groqbash/groqbash")
+
+  local candidates=(
+    "${UI_ROOT%/}/../groqbash/groqbash"
+    "${UI_ROOT%/}/../../groqbash/groqbash"
+    "${PWD%/}/groqbash"
+    "${HOME%/}/groqbash/groqbash"
+    "/data/data/com.termux/files/home/groqbash/groqbash"
+  )
+
   groqbash_real=""
-  for groqbash_real in "${candidates[@]}"; do
-    if [[ -x "$groqbash_real" ]]; then break; else groqbash_real=""; fi
+  for cand in "${candidates[@]}"; do
+    if [[ -x "$cand" ]]; then
+      groqbash_real="$cand"
+      log_info "ENV" "Found local groqbash candidate: $groqbash_real"
+      break
+    fi
   done
 
   # Nothing to do if no real binary found
@@ -96,9 +115,18 @@ env_prepare_runtime() {
     return 0
   fi
 
-  # Compute hashes to decide whether to update shadow
+  # Helper to release lock before any early return
+  _release_lock() {
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+  }
+
+  # Compute hashes once to decide whether to update shadow
   real_hash="$(compute_hash "$groqbash_real" 2>/dev/null || true)"
   shadow_hash="$(compute_hash "$groqbash_shadow" 2>/dev/null || true)"
+
+  # Initialize rc defensively
+  rc=1
 
   if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
     tmp_shadow="$(mktemp_portable "$TMP_DIR" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
@@ -106,29 +134,29 @@ env_prepare_runtime() {
       if ! cp -f -- "$groqbash_real" "$tmp_shadow" 2>/dev/null; then
         log_warn "ENV" "Failed to copy real groqbash to tmp shadow"
         rm -f -- "$tmp_shadow" 2>/dev/null || true
-        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+        _release_lock
         return 0
       fi
 
       # Patch shebang defensively if BASH_PATH resolved and executable
       if [[ -n "${BASH_PATH:-}" && -x "$BASH_PATH" ]]; then
         if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
-          sed -i '1s|^#! */usr/bin/env[[:space:]]\+bash.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
-          sed -i '1s|^#! */usr/bin/env.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
+          sed -i '1s|^#!.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
         fi
       fi
 
       if ! mv -f -- "$tmp_shadow" "$groqbash_shadow" 2>/dev/null; then
         log_warn "ENV" "Failed to move tmp shadow into place"
         rm -f -- "$tmp_shadow" 2>/dev/null || true
-        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+        _release_lock
         return 0
       fi
       rc=0
     else
+      # If mktemp_portable failed, attempt direct copy (best-effort)
       if ! cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null; then
         log_warn "ENV" "Fallback copy to shadow failed"
-        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+        _release_lock
         return 0
       fi
       rc=$?
@@ -136,7 +164,7 @@ env_prepare_runtime() {
 
     if (( rc != 0 )); then
       log_warn "ENV" "Shadow update returned non-zero rc"
-      flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+      _release_lock
       return 0
     fi
 
@@ -147,8 +175,7 @@ env_prepare_runtime() {
 
   # Ensure BASH_PATH resolved and executable before creating wrapper
   if [[ -z "${BASH_PATH:-}" || ! -x "$BASH_PATH" ]]; then
-    flock -u 9 2>/dev/null || true
-    exec 9>&- 2>/dev/null || true
+    _release_lock
     log_warn "ENV" "BASH_PATH not resolved or not executable; skipping wrapper creation"
     return 0
   fi
@@ -160,13 +187,13 @@ env_prepare_runtime() {
   wrapper="$BIN_DIR/groqbash-wrapper"
 
   # Write wrapper atomically into TMP_DIR, then move only if different
-  local tmp_wrapper new_wrapper_hash existing_wrapper_hash
+  local tmp_wrapper new_wrapper_hash existing_wrapper_hash wrapper_hash
   tmp_wrapper="$(mktemp_portable "$TMP_DIR" "wrapper.XXXXXX")" || tmp_wrapper=""
   if [[ -n "$tmp_wrapper" ]]; then
     printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$tmp_wrapper" 2>/dev/null || {
       log_warn "ENV" "Failed to write tmp wrapper"
       rm -f -- "$tmp_wrapper" 2>/dev/null || true
-      flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+      _release_lock
       return 0
     }
 
@@ -181,7 +208,7 @@ env_prepare_runtime() {
         if ! mv -f -- "$tmp_wrapper" "$wrapper" 2>/dev/null; then
           log_warn "ENV" "Failed to move new wrapper into place"
           rm -f -- "$tmp_wrapper" 2>/dev/null || true
-          flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+          _release_lock
           return 0
         fi
         rc=0
@@ -190,7 +217,7 @@ env_prepare_runtime() {
       if ! mv -f -- "$tmp_wrapper" "$wrapper" 2>/dev/null; then
         log_warn "ENV" "Failed to move wrapper into place"
         rm -f -- "$tmp_wrapper" 2>/dev/null || true
-        flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+        _release_lock
         return 0
       fi
       rc=0
@@ -199,7 +226,7 @@ env_prepare_runtime() {
     # fallback direct write (best-effort)
     printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$wrapper" 2>/dev/null || {
       log_warn "ENV" "Failed to write wrapper directly"
-      flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
+      _release_lock
       return 0
     }
     rc=0
@@ -207,9 +234,11 @@ env_prepare_runtime() {
 
   chmod 750 "$wrapper" 2>/dev/null || true
 
+  # compute wrapper hash once for later use
+  wrapper_hash="$(compute_hash "$wrapper" 2>/dev/null || true)"
+
   # release lock
-  flock -u 9 2>/dev/null || true
-  exec 9>&- 2>/dev/null || true
+  _release_lock
 
   # Export wrapper preference for runtime if executable
   if [[ -x "$wrapper" ]]; then
@@ -217,7 +246,7 @@ env_prepare_runtime() {
     export GROQBASH_CMD
     PATH="$BIN_DIR:${PATH:-}"
     export PATH
-    log_info "ENV" "Termux wrapper ensured at $wrapper"
+    log_info "ENV" "Termux wrapper ensured at $wrapper (hash: ${wrapper_hash:-<none>})"
   else
     log_warn "ENV" "Wrapper not executable; GROQBASH_CMD not set to wrapper"
   fi
@@ -225,14 +254,12 @@ env_prepare_runtime() {
   # Persist groqbash-path into CFG_DIR atomically; ensure CFG_DIR exists
   if [[ -n "${CFG_DIR:-}" ]]; then
     mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
-    if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" ]]; then
-      atomic_write "${CFG_DIR%/}/groqbash-path" "$wrapper" || {
-        printf '%s\n' "$wrapper" >"${CFG_DIR%/}/groqbash-path.tmp" 2>/dev/null && mv -f "${CFG_DIR%/}/groqbash-path.tmp" "${CFG_DIR%/}/groqbash-path"
-      }
+    if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" && -x "$wrapper" ]]; then
+      printf '%s\n' "$wrapper" >"${CFG_DIR%/}/groqbash-path.tmp" 2>/dev/null && mv -f "${CFG_DIR%/}/groqbash-path.tmp" "${CFG_DIR%/}/groqbash-path"
       chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
-      log_info "ENV" "Persisted groqbash-path to ${CFG_DIR%/}/groqbash-path"
+      log_info "ENV" "Persisted groqbash-path to ${CFG_DIR%/}/groqbash-path -> $wrapper"
     else
-      log_warn "ENV" "CFG_DIR not writable or wrapper unset; skipping persist of groqbash-path"
+      log_warn "ENV" "CFG_DIR not writable or wrapper unset/not executable; skipping persist of groqbash-path"
     fi
   fi
 
