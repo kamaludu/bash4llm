@@ -18,6 +18,34 @@ fi
 : "${GROQBASH_CMD:=groqbash}"
 source "$BOOTSTRAP"
 
+# Prefer persisted groqbash-path only if it points to a UI wrapper or repo-local path
+if [[ -n "${CFG_DIR:-}" ]]; then
+  cfg="${CFG_DIR%/}/groqbash-path"
+  if [[ -f "$cfg" ]]; then
+    read -r p <"$cfg" 2>/dev/null || p=''
+    if [[ -n "$p" && -x "$p" ]]; then
+      case "$p" in
+        "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"*)
+          GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || realpath "$p" 2>/dev/null || printf '%s' "$p")"
+          export GROQBASH_CMD
+          if [[ -n "${UI_ROOT:-}" ]]; then
+            case ":${PATH:-}:" in
+              *":${UI_ROOT%/}/bin:"*) ;;
+              *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
+            esac
+          fi
+          log_info "GUI" "Using persisted GROQBASH_CMD: $GROQBASH_CMD"
+          ;;
+        *)
+          log_info "GUI" "Ignoring persisted groqbash-path (not a wrapper/repo path): $p"
+          ;;
+      esac
+    else
+      log_info "GUI" "Persisted groqbash-path missing or not executable: ${p:-<empty>}"
+    fi
+  fi
+fi
+
 # Ensure HOME is defined in CGI environments where it may be unset.
 # Prefer UI_ROOT (exported by bootstrap), otherwise fall back to a safe writable location.
 if [[ -z "${HOME:-}" ]]; then
