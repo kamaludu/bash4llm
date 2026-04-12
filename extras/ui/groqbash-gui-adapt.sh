@@ -732,9 +732,14 @@ TSV=$(TS)
 echo "launched_at=$TSV" >"$STATUS_DIR/last-launch.$TSV"
 EOF
 
-  sed -e "s|__TERMUX_BASH__|${termux_bash}|g" \
-      -e "s|__UI_ROOT__|${UI_ROOT}|g" \
-      -e "s|__PORT__|${DEFAULT_PORT}|g" \
+  # Use escaped replacements to avoid sed corruption when paths contain special chars
+  esc_termux_bash="$(sed_escape_replacement "$termux_bash")"
+  esc_uiroot="$(sed_escape_replacement "$UI_ROOT")"
+  esc_port="$(sed_escape_replacement "$DEFAULT_PORT")"
+
+  sed -e "s|__TERMUX_BASH__|${esc_termux_bash}|g" \
+      -e "s|__UI_ROOT__|${esc_uiroot}|g" \
+      -e "s|__PORT__|${esc_port}|g" \
       "$tmplaunch" | atomic_write_in_uiroot "$launcher"
   rm -f -- "$tmplaunch" || true
   chmod 750 -- "$launcher" || true
