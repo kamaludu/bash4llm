@@ -6,14 +6,10 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Obligatory: defines env_detect, env_prepare_runtime, env_after_groqbash_resolved
-# Constraints: idempotent, no exit, no eval, no /tmp, use only bootstrap helpers:
-#   mktemp_portable, compute_hash, atomic_write, ensure_tmpdir, log_info, log_warn, log_error
 
 # ---------------------------------------------------------------------------
 # env_detect
 # - sets flags: IS_TERMUX, IS_LINUX, IS_MAC, IS_WSL, IS_CYGWIN
-# - no side-effects (no PATH/file/perm changes)
 # ---------------------------------------------------------------------------
 env_detect() {
   IS_TERMUX=0
@@ -46,9 +42,6 @@ env_detect() {
 # ---------------------------------------------------------------------------
 # env_prepare_runtime
 # - performs environment-specific runtime preparation BEFORE ensure_groqbash_available
-# - migrates Termux shadow/wrapper logic here
-# - idempotent, no exit, no eval, uses TMP_DIR only for temporaries
-# - may set GROQBASH_CMD and persist groqbash-path into CFG_DIR atomically
 # ---------------------------------------------------------------------------
 env_prepare_runtime() {
   : "${UI_ROOT:=${PWD}}"
@@ -153,9 +146,10 @@ env_prepare_runtime() {
       fi
       rc=0
     else
-      # If mktemp_portable failed, attempt direct copy (best-effort)
+      # portable_mktemp failed: log explicit reason and attempt best-effort direct copy
+      log_warn "ENV" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; falling back to direct copy to $groqbash_shadow"
       if ! cp -f -- "$groqbash_real" "$groqbash_shadow" 2>/dev/null; then
-        log_warn "ENV" "Fallback copy to shadow failed"
+        log_warn "ENV" "Fallback direct copy to shadow failed"
         _release_lock
         return 0
       fi
@@ -224,6 +218,7 @@ env_prepare_runtime() {
     fi
   else
     # fallback direct write (best-effort)
+    log_warn "ENV" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; writing wrapper directly to $wrapper"
     printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$wrapper" 2>/dev/null || {
       log_warn "ENV" "Failed to write wrapper directly"
       _release_lock
@@ -255,9 +250,23 @@ env_prepare_runtime() {
   if [[ -n "${CFG_DIR:-}" ]]; then
     mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
     if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" && -x "$wrapper" ]]; then
-      printf '%s\n' "$wrapper" >"${CFG_DIR%/}/groqbash-path.tmp" 2>/dev/null && mv -f "${CFG_DIR%/}/groqbash-path.tmp" "${CFG_DIR%/}/groqbash-path"
-      chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
-      log_info "ENV" "Persisted groqbash-path to ${CFG_DIR%/}/groqbash-path -> $wrapper"
+      # write into a temp file inside CFG_DIR and validate it contains exactly one non-empty line
+      tmp_path="$(portable_mktemp "${CFG_DIR%/}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
+      if printf '%s\n' "$wrapper" >"$tmp_path" 2>/dev/null; then
+        # normalize and count non-empty lines
+        line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
+        if [[ "$line_count" -eq 1 ]]; then
+          mv -f -- "$tmp_path" "${CFG_DIR%/}/groqbash-path"
+          chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
+          log_info "ENV" "Persisted groqbash-path to ${CFG_DIR%/}/groqbash-path -> $wrapper"
+        else
+          log_warn "ENV" "Refusing to persist groqbash-path: temp file contains ${line_count} non-empty lines (expected 1); tmp: $tmp_path"
+          rm -f -- "$tmp_path" 2>/dev/null || true
+        fi
+      else
+        log_warn "ENV" "Failed to write temporary groqbash-path at $tmp_path; skipping persist"
+        rm -f -- "$tmp_path" 2>/dev/null || true
+      fi
     else
       log_warn "ENV" "CFG_DIR not writable or wrapper unset/not executable; skipping persist of groqbash-path"
     fi
@@ -269,7 +278,6 @@ env_prepare_runtime() {
 # ---------------------------------------------------------------------------
 # env_after_groqbash_resolved
 # - operations that require GROQBASH_CMD already resolved
-# - idempotent, no exit
 # ---------------------------------------------------------------------------
 env_after_groqbash_resolved() {
   if [[ -n "${GROQBASH_CMD:-}" && -x "${GROQBASH_CMD}" ]]; then
