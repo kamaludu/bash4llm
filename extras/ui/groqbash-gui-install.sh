@@ -726,10 +726,11 @@ main() {
   # This ensures any wrappers or generated files are created under APP_BIN (UI_ROOT)
   # before the bootstrap is sourced or any global user paths are touched.
   if [[ -f "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
-    info "Found UI adapt script; ensuring executable and running it"
+    info "Found UI adapt script; ensuring executable and running it (install mode)"
     chmod 0755 "${APP_BIN}/groqbash-gui-adapt.sh" 2>/dev/null || true
     if [[ -x "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
-      "${APP_BIN}/groqbash-gui-adapt.sh" || warn "groqbash-gui-adapt.sh returned non-zero; continuing"
+      INSTALL_MODE=1 "${APP_BIN}/groqbash-gui-adapt.sh" || warn "groqbash-gui-adapt.sh returned non-zero; continuing"
+      info "Delegated groqbash shadow/wrapper/groqbash-path persistence to groqbash-gui-adapt.sh (INSTALL_MODE=1)"
     else
       warn "groqbash-gui-adapt.sh present but not executable; skipping"
     fi
@@ -742,31 +743,6 @@ main() {
     err "Bootstrap check failed: ensure $APP_BIN/gui-bootstrap.sh exists and groqbash binary is in allowed locations"
     err "See ensure_groqbash_available in the bootstrap for allowed locations"
     exit 1
-  fi
-
-  # Persist groqbash path for GUI bootstrap (future-proof)
-  GROQBASH_PATH_FILE="${APP_BIN}/config/groqbash-path"
-  mkdir -p "$(dirname "$GROQBASH_PATH_FILE")" 2>/dev/null || true
-  resolved=""
-  if command -v groqbash >/dev/null 2>&1; then
-    resolved="$(command -v groqbash 2>/dev/null || true)"
-  fi
-  if [[ -z "$resolved" ]]; then
-    for p in \
-      "${PREFIX:-/data/data/com.termux/files/usr}/bin/groqbash" \
-      "$HOME/groqbash/groqbash" \
-      "$HOME/repo-groqbash/bin/groqbash" \
-      "$APP_ROOT/groqbash/groqbash.d/groqbash"; do
-      [[ -x "$p" ]] && { resolved="$p"; break; }
-    done
-  fi
-  if [[ -n "$resolved" ]]; then
-    resolved="$(readlink -f "$resolved" 2>/dev/null || printf '%s' "$resolved")"
-    printf '%s\n' "$resolved" >"$GROQBASH_PATH_FILE"
-    chmod 600 "$GROQBASH_PATH_FILE" 2>/dev/null || true
-    info "Wrote groqbash path to $GROQBASH_PATH_FILE: $resolved"
-  else
-    warn "Could not auto-detect groqbash path; GUI bootstrap will attempt discovery at runtime"
   fi
 
   # Now that bootstrap is sourced, call ensure_sh_executables from it if present
@@ -868,13 +844,11 @@ main() {
   TMP_FILES=("${TMP_FILES[@]/$staged_tmp}") || true
 
   if ! reload_apache; then
-    warn "Apache reload failed; config installed at $FINAL_CONF_PATH"
-    summarize; exit 2
+    warn "Apache reload failed; config installed"
   fi
 
-  info "Installation completed"
   summarize
-  exit 0
+  info "Installation complete"
 }
 
 main "$@"
