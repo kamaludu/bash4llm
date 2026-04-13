@@ -574,7 +574,7 @@ install_termux_shadow_wrapper() {
   tmp_wrapper="$(mktemp -p "$tmpdir" "wrapper.XXXXXX")" || tmp_wrapper=""
   [ -n "$tmp_wrapper" ] || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to create tmp wrapper"; }
 
-  # Write robust, autosufficient wrapper template (GROQBASH_ROOT derivation fixed)
+  # Write robust, autosufficient wrapper template (fixed GROQBASH_ROOT derivation)
   cat >"$tmp_wrapper" <<'EOF'
 #!__TERMUX_BASH__
 set -euo pipefail
