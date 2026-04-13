@@ -40,9 +40,35 @@ if [[ -z "${CFG_DIR:-}" ]]; then
 fi
 export CFG_DIR
 
+# If a persisted groqbash-path exists, prefer it (resolve to absolute if possible)
+if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
+  read -r _p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || _p=''
+  if [[ -n "$_p" ]]; then
+    if command -v readlink >/dev/null 2>&1; then
+      _p="$(readlink -f -- "$_p" 2>/dev/null || printf '%s' "$_p")"
+    fi
+    if [[ -x "$_p" ]]; then
+      GROQBASH_CMD="$_p"
+      export GROQBASH_CMD
+      # ensure UI_ROOT/bin is in PATH so wrapper helpers are found
+      if [[ -n "${UI_ROOT:-}" ]]; then
+        case ":${PATH:-}:" in *":${UI_ROOT%/}/bin:"*) ;; *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;; esac
+      fi
+      log_info "GUI" "Using persisted GROQBASH_CMD from groqbash-path: $GROQBASH_CMD"
+    else
+      log_warn "GUI" "Persisted groqbash-path not executable: ${_p}"
+    fi
+  fi
+fi
+
 # Ensure GROQBASH_ROOT/GROQBASH_DIR consistent with UI_ROOT if not set
 if [[ -z "${GROQBASH_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
+  # UI layout: .../groqbash/groqbash.d/extras/ui -> repo root is 3 levels up
   GROQBASH_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
+  # if we accidentally landed on groqbash.d, move up one level
+  if [[ "${GROQBASH_ROOT##*/}" == "groqbash.d" ]]; then
+    GROQBASH_ROOT="$(cd "$GROQBASH_ROOT/.." 2>/dev/null && pwd -P || true)"
+  fi
 fi
 : "${GROQBASH_ROOT:=${GROQBASH_ROOT:-}}"
 : "${GROQBASH_DIR:=${GROQBASH_DIR:-${GROQBASH_ROOT%/}/groqbash.d}}"
@@ -63,8 +89,8 @@ if [[ -n "${UI_ROOT:-}" && -x "${UI_ROOT%/}/bin/groqbash-wrapper" ]]; then
   esac
   log_info "GUI" "Forcing GROQBASH_CMD -> wrapper: $GROQBASH_CMD"
 else
-  # If wrapper not present, try persisted groqbash-path in CFG_DIR (legacy)
-  if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
+  # If wrapper not present and GROQBASH_CMD not already set from groqbash-path, try persisted groqbash-path in CFG_DIR (legacy)
+  if [[ -z "${GROQBASH_CMD:-}" && -f "${CFG_DIR%/}/groqbash-path" ]]; then
     read -r p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || p=''
     if [[ -n "$p" && -x "$p" ]]; then
       GROQBASH_CMD="$p"
