@@ -13,6 +13,19 @@
     <a href="?page=main&lang={{LANG_CODE}}"><span class="glogo">GroqBash⁺</span><span class="uilogo">GUI</span> &nbsp; {{TXT_HOME}}</a> |
     <a href="?page=settings&lang={{LANG_CODE}}">{{TXT_SETTINGS}}</a>
   </nav>
+  <div class="lang-theme">
+    <form method="get">
+      <select name="lang">
+        {{LANG_OPTIONS}}
+      </select>
+      <select name="theme">
+        <option value="light" {{THEME_IS_light}}>{{TXT_THEME_LIGHT}}</option>
+        <option value="dark" {{THEME_IS_dark}}>{{TXT_THEME_DARK}}</option>
+      </select>
+      <input type="hidden" name="page" value="settings">
+      <button type="submit">{{TXT_APPLY}}</button>
+    </form>
+  </div>
 </header>
 
 <main>
