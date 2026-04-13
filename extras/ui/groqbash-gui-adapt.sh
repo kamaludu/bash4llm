@@ -633,6 +633,15 @@ case ":$PATH:" in *":${_newpath}:"*) :;; *) _newpath="${_newpath}:$PATH";; esac
 if [ -n "$BIN_DIR" ] && [ "$BIN_DIR" != "${UI_ROOT%/}/bin" ]; then
   case ":$_newpath:" in *":${BIN_DIR}:"*) :;; *) _newpath="${BIN_DIR}:$_newpath";; esac
 fi
+
+# Ensure minimal system bins are always present (handles env -i / minimal CGI env)
+case ":$_newpath:" in *":/data/data/com.termux/files/usr/bin:"*) :;; *) _newpath="${_newpath}:/data/data/com.termux/files/usr/bin";; esac
+case ":$_newpath:" in *":/bin:"*) :;; *) _newpath="${_newpath}:/bin";; esac
+
+# Trim possible leading/trailing colons
+_newpath="${_newpath#:}"
+_newpath="${_newpath%:}"
+
 export PATH="$_newpath"
 
 # Export additional runtime dirs used by core
