@@ -18,36 +18,72 @@ fi
 : "${GROQBASH_CMD:=groqbash}"
 source "$BOOTSTRAP"
 
-# Prefer persisted groqbash-path only if it points to a UI wrapper or repo-local path
-if [[ -n "${CFG_DIR:-}" ]]; then
-  cfg="${CFG_DIR%/}/groqbash-path"
-  if [[ -f "$cfg" ]]; then
-    read -r p <"$cfg" 2>/dev/null || p=''
+# -------------------------
+# Environment normalization and wrapper enforcement
+# -------------------------
+# Ensure CFG_DIR / GROQBASH_* / PROVIDERS_DIR are consistent with wrapper/adapt expectations.
+# This block must run after sourcing bootstrap so UI_ROOT and helpers are available.
+
+# Normalize UI_ROOT if not set (bootstrap may have set it)
+: "${UI_ROOT:=${UI_ROOT:-}}"
+
+# Prefer GROQBASH_CONFIG_DIR if present; otherwise derive CFG_DIR from UI_ROOT
+: "${GROQBASH_CONFIG_DIR:=${GROQBASH_CONFIG_DIR:-}}"
+if [[ -z "${CFG_DIR:-}" ]]; then
+  if [[ -n "${GROQBASH_CONFIG_DIR:-}" ]]; then
+    CFG_DIR="$GROQBASH_CONFIG_DIR"
+  elif [[ -n "${UI_ROOT:-}" ]]; then
+    CFG_DIR="${UI_ROOT%/}/config"
+  else
+    CFG_DIR="${PWD%/}/config"
+  fi
+fi
+export CFG_DIR
+
+# Ensure GROQBASH_ROOT/GROQBASH_DIR consistent with UI_ROOT if not set
+if [[ -z "${GROQBASH_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
+  GROQBASH_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
+fi
+: "${GROQBASH_ROOT:=${GROQBASH_ROOT:-}}"
+: "${GROQBASH_DIR:=${GROQBASH_DIR:-${GROQBASH_ROOT%/}/groqbash.d}}"
+export GROQBASH_ROOT GROQBASH_DIR
+
+# PROVIDERS_DIR fallback (ensure exported so groqbash sees it even if wrapper not used)
+: "${PROVIDERS_DIR:=${PROVIDERS_DIR:-${GROQBASH_DIR%/}/extras/providers}}"
+export PROVIDERS_DIR
+
+# Force use of UI_ROOT/bin/groqbash-wrapper when present and executable.
+# This guarantees the environment exported by the wrapper is applied to groqbash invocations.
+if [[ -n "${UI_ROOT:-}" && -x "${UI_ROOT%/}/bin/groqbash-wrapper" ]]; then
+  GROQBASH_CMD="${UI_ROOT%/}/bin/groqbash-wrapper"
+  export GROQBASH_CMD
+  case ":${PATH:-}:" in
+    *":${UI_ROOT%/}/bin:"*) ;;
+    *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
+  esac
+  log_info "GUI" "Forcing GROQBASH_CMD -> wrapper: $GROQBASH_CMD"
+else
+  # If wrapper not present, try persisted groqbash-path in CFG_DIR (legacy)
+  if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
+    read -r p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || p=''
     if [[ -n "$p" && -x "$p" ]]; then
-      case "$p" in
-        "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"*)
-          GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || realpath "$p" 2>/dev/null || printf '%s' "$p")"
-          export GROQBASH_CMD
-          if [[ -n "${UI_ROOT:-}" ]]; then
-            case ":${PATH:-}:" in
-              *":${UI_ROOT%/}/bin:"*) ;;
-              *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
-            esac
-          fi
-          log_info "GUI" "Using persisted GROQBASH_CMD: $GROQBASH_CMD"
-          ;;
-        *)
-          log_info "GUI" "Ignoring persisted groqbash-path (not a wrapper/repo path): $p"
-          ;;
+      GROQBASH_CMD="$p"
+      export GROQBASH_CMD
+      case ":${PATH:-}:" in
+        *":${UI_ROOT%/}/bin:"*) ;;
+        *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
       esac
+      log_info "GUI" "Using persisted GROQBASH_CMD: $GROQBASH_CMD"
     else
       log_info "GUI" "Persisted groqbash-path missing or not executable: ${p:-<empty>}"
     fi
   fi
 fi
 
+# -------------------------
 # Ensure HOME is defined in CGI environments where it may be unset.
 # Prefer UI_ROOT (exported by bootstrap), otherwise fall back to a safe writable location.
+# -------------------------
 if [[ -z "${HOME:-}" ]]; then
   if [[ -n "${UI_ROOT:-}" ]]; then
     HOME="$UI_ROOT"
