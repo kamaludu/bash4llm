@@ -123,7 +123,15 @@ ensure_api_key_for_provider() {
 }
 
 SCRIPTDIR="$(resolve_script_dir)"
-GROQBASH_DIR="${GROQBASH_DIR:-$SCRIPTDIR/groqbash.d}"
+# Allow external override of repository root via GROQBASH_ROOT.
+# Priority: existing GROQBASH_DIR env > GROQBASH_ROOT env > SCRIPTDIR-derived default.
+if [ -n "${GROQBASH_DIR:-}" ]; then
+  : # keep explicit GROQBASH_DIR from environment
+elif [ -n "${GROQBASH_ROOT:-}" ]; then
+  GROQBASH_DIR="${GROQBASH_ROOT%/}/groqbash.d"
+else
+  GROQBASH_DIR="$SCRIPTDIR/groqbash.d"
+fi
 
 # Canonical runtime destination for extras (always under groqbash.d)
 CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
