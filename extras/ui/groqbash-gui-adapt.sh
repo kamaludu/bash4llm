@@ -574,7 +574,7 @@ install_termux_shadow_wrapper() {
   tmp_wrapper="$(mktemp -p "$tmpdir" "wrapper.XXXXXX")" || tmp_wrapper=""
   [ -n "$tmp_wrapper" ] || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to create tmp wrapper"; }
 
-  # Write robust, autosufficient wrapper template
+  # Write robust, autosufficient wrapper template (GROQBASH_ROOT derivation fixed)
   cat >"$tmp_wrapper" <<'EOF'
 #!__TERMUX_BASH__
 set -euo pipefail
@@ -595,12 +595,23 @@ if [ -z "${UI_ROOT:-}" ]; then
 fi
 : "${UI_ROOT:=__UI_ROOT__}"
 
-# GROQBASH_ROOT fallback: try derivation from wrapper location independent of UI_ROOT
+# GROQBASH_ROOT fallback: robust derivation from wrapper location (reach repo root)
+# Start from bin -> ui -> extras -> groqbash.d -> groqbash (repo root)
 if [ -z "${GROQBASH_ROOT:-}" ]; then
   if [ -n "$_wrppath" ]; then
-    GROQBASH_ROOT="$(cd "$_wrppath/../../.." 2>/dev/null && pwd -P || true)"
+    GROQBASH_ROOT="$(cd "$_wrppath/../../../.." 2>/dev/null && pwd -P || true)"
   fi
 fi
+
+# If derivation landed on groqbash.d, move up one level to repo root
+if [ -n "${GROQBASH_ROOT:-}" ]; then
+  case "${GROQBASH_ROOT##*/}" in
+    groqbash.d)
+      GROQBASH_ROOT="$(cd "$GROQBASH_ROOT/.." 2>/dev/null && pwd -P || true)"
+      ;;
+  esac
+fi
+
 : "${GROQBASH_ROOT:=__GROQBASH_ROOT__}"
 
 # GROQBASH_DIR and extras/providers
