@@ -51,7 +51,16 @@ env_prepare_runtime() {
   : "${CFG_DIR:=${UI_ROOT%/}/config}"
   : "${BOOTSTRAP_LOCK:=${TMP_DIR%/}/bootstrap.lock}"
   : "${BASH_PATH:=$(command -v bash 2>/dev/null || true)}"
-  : "${INSTALL_MODE:=0}"   # 0 = normal runtime (no writes), 1 = install/adapt (allowed writes)
+  : "${INSTALL_MODE:=0}"   # 0 = normal runtime (no writes), 1 = install/adapt (allowed writes)"
+
+  # --- Safe defaults for GUI runtime (single source of truth) ---
+  : "${MAX_PROMPT_CHARS:=4096}"
+  : "${MAX_RESPONSE_CHARS:=8192}"
+  : "${MAX_TOKENS:=2048}"
+  : "${PROVIDER_CACHE_FILE:=${CFG_DIR%/}/providers.txt}"
+  : "${PROVIDER_MODELS_DIR:=${CFG_DIR%/}/models}"
+  export MAX_PROMPT_CHARS MAX_RESPONSE_CHARS MAX_TOKENS PROVIDER_CACHE_FILE PROVIDER_MODELS_DIR
+  # ----------------------------------------------------------------
 
   # Ensure runtime dirs exist and safe perms (idempotent)
   mkdir -p "${TMP_DIR%/}" "${CFG_DIR%/}" "${UI_ROOT%/}/bin" 2>/dev/null || true
