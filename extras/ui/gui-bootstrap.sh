@@ -483,15 +483,27 @@ get_query_param() {
 }
 
 read_post_body() {
-  local len="${CONTENT_LENGTH:-0}"
-  if ! [[ "$len" =~ ^[0-9]+$ ]]; then len=0; fi
-  if (( len > 0 )); then
+  local len="${CONTENT_LENGTH:-}"
+  # Normalize len
+  if [[ -n "$len" && "$len" =~ ^[0-9]+$ && "$len" -gt 0 ]]; then
     if command -v head >/dev/null 2>&1; then
       head -c "$len"
     else
       dd bs=1 count="$len" 2>/dev/null || true
     fi
+    return 0
   fi
+
+  # CONTENT_LENGTH missing or zero: best-effort fallback
+  # Log for diagnostics (non-verbose)
+  if [[ -n "${ERROR_LOG:-}" ]]; then
+    printf '%s groqbash: WARN: GUIIO: CONTENT_LENGTH missing or zero for POST; falling back to read-all\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >>"${ERROR_LOG}"
+  fi
+
+  # Read until EOF (safe for typical form submissions); may block if server misconfigured
+  # Use cat as fallback; caller must ensure CGI provides body
+  cat
+  return 0
 }
 
 parse_form_field() {
