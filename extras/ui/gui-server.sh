@@ -247,7 +247,12 @@ call_groqbash_with_args() {
     run_if_func log_error "GUIIO" "GROQBASH_CMD not set or not executable: ${GROQBASH_CMD:-<unset>}"
     return 1
   fi
-  "$GROQBASH_CMD" "$@" </dev/null
+  # Capture stdout and preserve stderr into ERROR_LOG
+  local out rc
+  out="$("${GROQBASH_CMD}" "$@" </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
+  rc=$?
+  printf '%s' "$out"
+  return $rc
 }
 
 get_models_file() {
