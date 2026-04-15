@@ -774,6 +774,11 @@ EOF
 main() {
   check_deps
   canonicalize_ui_root
+  
+  # Ensure UI_ROOT is writable (portable_mktemp will fail otherwise)
+  if [ ! -w "$UI_ROOT" ]; then
+    err "UI_ROOT not writable: $UI_ROOT"
+  fi
 
   BOOTSTRAP="$UI_ROOT/gui-bootstrap.sh"
   if [[ -f "$BOOTSTRAP" ]]; then
