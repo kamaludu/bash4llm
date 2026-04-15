@@ -10,6 +10,17 @@ set -euo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Ensure UI_ROOT is defined early for minimal/stripped CGI envs to avoid "unbound variable"
+: "${UI_ROOT:=${UI_ROOT:-}}"
+if [[ -z "${UI_ROOT:-}" ]]; then
+  if [[ "$(basename "$SCRIPT_DIR")" == "cgi-bin" ]]; then
+    UI_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P || printf '%s' "$PWD")"
+  else
+    UI_ROOT="$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P || printf '%s' "$PWD")"
+  fi
+fi
+export UI_ROOT
+
 BOOTSTRAP="$SCRIPT_DIR/gui-bootstrap.sh"
 if [[ ! -f "$BOOTSTRAP" ]]; then
   printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nBootstrap missing: %s\n' "$BOOTSTRAP"
