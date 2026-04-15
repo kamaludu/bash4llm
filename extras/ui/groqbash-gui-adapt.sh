@@ -162,7 +162,7 @@ atomic_append_conv_in_uiroot() {
 
 # -------- Dependency check (strict) --------
 check_deps() {
-  local deps=(bash sed awk grep uname mktemp mv cp chmod date printf test head tail find curl jq readlink flock)
+  local deps=(bash sed awk grep uname mktemp mv cp chmod date printf head tail find curl jq readlink flock)
   local miss=()
   for d in "${deps[@]}"; do
     if ! command -v "$d" >/dev/null 2>&1; then miss+=("$d"); fi
