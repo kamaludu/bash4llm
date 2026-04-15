@@ -147,19 +147,6 @@ API_KEY_FILE="${API_KEY_FILE:-${CFG_DIR%/}/api-key}"
 LOCK_HELD=0
 
 # ---------------------------------------------------------------------------
-# Filesystem helpers
-# ---------------------------------------------------------------------------
-same_filesystem() {
-  local a="$1" b="$2" da db fa fb
-  da="$a"; while [[ ! -e "$da" && "$da" != "/" ]]; do da="$(dirname -- "$da")"; done
-  db="$b"; while [[ ! -e "$db" && "$db" != "/" ]]; do db="$(dirname -- "$db")"; done
-  if [[ ! -e "$da" || ! -e "$db" ]]; then return 1; fi
-  fa="$(df -P "$da" 2>/dev/null | awk 'END{print $1}')" || fa=""
-  fb="$(df -P "$db" 2>/dev/null | awk 'END{print $1}')" || fb=""
-  [[ -n "$fa" && -n "$fb" && "$fa" == "$fb" ]]
-}
-
-# ---------------------------------------------------------------------------
 # flock availability and CGI lock management (fd 9)
 # ---------------------------------------------------------------------------
 ensure_flock_available() {
