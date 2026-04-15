@@ -464,7 +464,18 @@ build_model_list_and_select() {
 }
 
 handle_post_settings() {
-  local body model provider lang api_key action theme
+  local body model provider lang api_key action theme ct
+  # Reject unsupported content types early
+  ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
+  case "$ct" in
+    application/x-www-form-urlencoded*|multipart/form-data*) ;;
+    *)
+      run_if_func log_error "GUIIO" "Unsupported Content-Type for POST in settings: ${ct:-<unset>}"
+      print_http_error "415 Unsupported Media Type" "Unsupported content type: ${ct:-<unset>}"
+      return 1
+      ;;
+  esac
+
   body="$(read_post_body)"
   model="$(printf '%s' "$body" | parse_form_field "model" || printf '')"
   provider="$(printf '%s' "$body" | parse_form_field "provider" || printf '')"
@@ -541,7 +552,18 @@ handle_post_settings() {
 }
 
 handle_post_main() {
-  local body prompt model provider conv_file output sanitized_output models_file lang
+  local body prompt model provider conv_file output sanitized_output models_file lang model_raw provider_raw conv_title_raw conv_title _max_prompt ct
+  # Reject unsupported content types early
+  ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
+  case "$ct" in
+    application/x-www-form-urlencoded*|multipart/form-data*) ;;
+    *)
+      run_if_func log_error "GUIIO" "Unsupported Content-Type for POST in main: ${ct:-<unset>}"
+      print_http_error "415 Unsupported Media Type" "Unsupported content type: ${ct:-<unset>}"
+      return 1
+      ;;
+  esac
+
   body="$(read_post_body)"
   lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   prompt="$(printf '%s' "$body" | parse_form_field "prompt" || printf '')"
