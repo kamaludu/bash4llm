@@ -36,7 +36,7 @@ else
   exit 1
 fi
 
-# Source bootstrap helpers (mktemp_portable, compute_hash, ensure_tmpdir, ecc.)
+# Source bootstrap helpers (functions not centralized in gui-env)
 BOOTSTRAP="$SCRIPT_DIR/gui-bootstrap.sh"
 if [[ ! -f "$BOOTSTRAP" ]]; then
   cgi_fatal 1 "Bootstrap missing: $BOOTSTRAP"
@@ -61,7 +61,7 @@ run_if_func() {
 }
 
 # -------------------------
-# Safe atomic write/append wrappers (kept here because not provided by gui-env)
+# Safe atomic write/append wrappers (prefer central implementations)
 # -------------------------
 atomic_write_safe() {
   # atomic_write_safe <path> <content>
@@ -438,6 +438,9 @@ build_model_list_and_select() {
   return 0
 }
 
+# -------------------------
+# POST handlers and rendering (unchanged)
+# -------------------------
 handle_post_settings() {
   local body model provider lang api_key action theme ct
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
@@ -759,7 +762,7 @@ render_page_settings() {
 # -------------------------
 main() {
   run_if_func ensure_dirs
-  if [[ "${is_termux:-}" = "true" ]]; then
+  if [[ "${IS_TERMUX:-0}" = "1" ]]; then
     run_if_func fix_termux_perms || true
   fi
   run_if_func ensure_config_defaults
@@ -824,7 +827,8 @@ main() {
           cgi_fatal 1 "settings handler failed"
         fi
       else
-        print_http_header "200 OK" "text/html; charset=utf-8"
+        printf 'Status: 200 OK\r\n'
+        print_http_header
         render_page_settings "$lang_code"
       fi
       ;;
@@ -836,12 +840,14 @@ main() {
           cgi_fatal 1 "main handler failed"
         fi
       else
-        print_http_header "200 OK" "text/html; charset=utf-8"
+        printf 'Status: 200 OK\r\n'
+        print_http_header
         render_page_main "$lang_code"
       fi
       ;;
     *)
-      print_http_header "200 OK" "text/html; charset=utf-8"
+      printf 'Status: 200 OK\r\n'
+      print_http_header
       render_page_main "$lang_code"
       ;;
   esac
