@@ -777,7 +777,12 @@ main() {
 
   BOOTSTRAP="$UI_ROOT/gui-bootstrap.sh"
   if [[ -f "$BOOTSTRAP" ]]; then
-    . "$BOOTSTRAP" || info "Warning: failed to source bootstrap at $BOOTSTRAP"
+    # Temporarily disable nounset to avoid unbound-variable failures while sourcing bootstrap/env
+    set +u
+    if ! . "$BOOTSTRAP"; then
+      info "Warning: failed to source bootstrap at $BOOTSTRAP"
+    fi
+    set -u
   else
     info "Warning: bootstrap not found at $BOOTSTRAP; continuing"
   fi
