@@ -178,60 +178,6 @@ same_filesystem() {
 }
 
 # ---------------------------------------------------------------------------
-# Atomic write and append (use mktemp_portable and TMP_DIR)
-# ---------------------------------------------------------------------------
-atomic_write() {
-  local dest="$1" content="${2:-}" dest_dir tmp
-  dest_dir="$(dirname -- "$dest")"
-  ensure_tmpdir || return 1
-  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")"; then
-    :
-  else
-    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")"
-  fi
-  umask 077
-  printf '%s' "$content" >"$tmp" || { log_error "GUIIO" "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  if command -v sync >/dev/null 2>&1; then sync || true; fi
-  mv -f "$tmp" "$dest" || { log_error "GUIIO" "mv failed in atomic_write from $tmp to $dest"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  chmod 600 "$dest" || true
-  return 0
-}
-
-atomic_append_conv() {
-  local conv_file="$1" append_text="$2" tmp dest_dir
-  if [[ "$LOCK_HELD" -ne 1 ]]; then log_error "GUILOCK" "atomic_append_conv called without lock held"; return 1; fi
-  dest_dir="$(dirname -- "$conv_file")"
-  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")"; then
-    :
-  else
-    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")"
-  fi
-  if [[ -f "$conv_file" ]]; then cat "$conv_file" >"$tmp" || { log_error "GUIIO" "Failed to copy existing conversation to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }; fi
-  printf '%s\n' "$append_text" >>"$tmp" || { log_error "GUIIO" "Failed to append text to tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  mv -f "$tmp" "$conv_file" || { log_error "GUIIO" "mv failed in atomic_append_conv"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  chmod 600 "$conv_file" || true
-  return 0
-}
-
-atomic_append_conv_in_uiroot() {
-  local convfile="$1"
-  if [[ -z "$convfile" ]]; then return 1; fi
-  local dir tmpf
-  dir="$(dirname -- "$convfile")"
-  mkdir -p -- "$dir" 2>/dev/null || true
-  tmpf="$(mktemp_portable "$dir" "conv.XXXXXX")" || return 1
-  if [[ -f "$convfile" ]]; then
-    cp -a -- "$convfile" "$tmpf" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
-  else
-    : >"$tmpf"
-  fi
-  cat >> "$tmpf"
-  mv -f -- "$tmpf" "$convfile" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
-  chmod 600 "$convfile" || true
-  return 0
-}
-
-# ---------------------------------------------------------------------------
 # flock availability and CGI lock management (fd 9)
 # ---------------------------------------------------------------------------
 ensure_flock_available() {
