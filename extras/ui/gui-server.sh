@@ -82,6 +82,7 @@ atomic_write_safe() {
   local path="$1"; shift
   local content="$*"
   if [[ -z "${path:-}" ]]; then
+    log_error "GUIIO" "atomic_write_safe called without path"
     return 1
   fi
 
@@ -99,25 +100,22 @@ atomic_write_safe() {
   mkdir -p -- "${TMP_DIR%/}" 2>/dev/null || true
 
   local tmp
-  # Try mktemp inside TMP_DIR; do NOT fall back to system tmp
-  tmp="$(mktemp "${TMP_DIR%/}/.tmp.XXXXXX" 2>/dev/null || true)"
-
-  # If mktemp failed, create a safe predictable temp file inside TMP_DIR
-  if [[ -z "$tmp" ]]; then
-    tmp="${TMP_DIR%/}/.tmp.$RANDOM.$$"
-    : >"$tmp" 2>/dev/null || { tmp=''; }
+  # Use mktemp_portable (enforces TMP_DIR and safe creation)
+  if declare -f mktemp_portable >/dev/null 2>&1; then
+    tmp="$(mktemp_portable "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"
+  else
+    tmp=""
   fi
 
-  # If still no tmp, attempt direct write to target (best-effort)
   if [[ -z "$tmp" ]]; then
-    printf '%s' "$content" > "$path" 2>/dev/null || return 1
-    return 0
+    log_error "GUIIO" "atomic_write_safe: mktemp_portable failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform non-atomic write"
+    return 1
   fi
 
   # Write to temp, set restrictive perms, then move atomically
-  printf '%s' "$content" >"$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+  printf '%s' "$content" >"$tmp" 2>/dev/null || { log_error "GUIIO" "atomic_write_safe: failed to write to temp $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
   chmod 600 "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$path" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || return 1; }
+  mv -f "$tmp" "$path" 2>/dev/null || { log_error "GUIIO" "atomic_write_safe: mv failed from $tmp to $path"; rm -f "$tmp" 2>/dev/null || return 1; }
 
   return 0
 }
