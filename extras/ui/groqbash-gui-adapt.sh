@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
+# Adapt GroqBash GUI for the current environment (Termux-specific shebang fixes)
 # File: groqbash-gui-adapt.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-# Adapt GroqBash GUI for the current environment (Termux-specific shebang fixes).
 # Constraints: only depends on bash, coreutils, findutils, util-linux, gawk, curl, jq.
 # No use of system /tmp; no eval; idempotent; confined writes under UI_ROOT.
 set -euo pipefail
@@ -87,7 +87,8 @@ enforce_ui_root_only_writes() {
 path_within_ui_root() {
   local p="$1"
   [ -n "$p" ] || return 1
-  if [ "${p#/}" = "$p" ]; then return 0; fi
+  # Require absolute path
+  if [ "${p#/}" = "$p" ]; then return 1; fi
   local cand_dir real_dir
   cand_dir="$(dirname -- "$p")"
   if ! real_dir="$(cd -- "$cand_dir" 2>/dev/null && pwd -P)"; then return 1; fi
@@ -161,7 +162,7 @@ atomic_append_conv_in_uiroot() {
 
 # -------- Dependency check (strict) --------
 check_deps() {
-  local deps=(bash sed awk grep uname mktemp mv cp chmod date printf test head tail find curl jq readlink)
+  local deps=(bash sed awk grep uname mktemp mv cp chmod date printf test head tail find curl jq readlink flock)
   local miss=()
   for d in "${deps[@]}"; do
     if ! command -v "$d" >/dev/null 2>&1; then miss+=("$d"); fi
@@ -204,6 +205,7 @@ backup_file_in_uiroot() {
   chmod 700 -- "$bdir" || true
   b="${f}.bak.${ts}"
   cp -- "$f" "$b"
+  chmod 600 -- "$b" 2>/dev/null || true
   printf '%s' "$b"
 }
 
@@ -217,6 +219,7 @@ atomic_replace_first_line_in_uiroot() {
     tail -n +2 -- "$file" | sed -e 's/\r$//'
   } >"$tmp"
   mv -f -- "$tmp" "$file"
+  chmod 755 -- "$file" 2>/dev/null || true
   if ! path_within_ui_root "$file"; then err "Post-replace check failed: $file is outside UI_ROOT"; fi
 }
 
@@ -546,13 +549,40 @@ install_termux_shadow_wrapper() {
   portable_mktemp "$tmpdir" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
   local lockfile="$tmpdir/bootstrap.lock"
   exec 9>"$lockfile" 2>/dev/null || err "Cannot open lockfile $lockfile"
-  if ! flock -x -w 5 9; then exec 9>&- 2>/dev/null || true; err "Could not acquire lock"; fi
+
+  # Save existing traps and install local cleanup trap
+  _old_trap_return="$(trap -p RETURN 2>/dev/null || true)"
+  _old_trap_exit="$(trap -p EXIT 2>/dev/null || true)"
+  _old_trap_int="$(trap -p INT 2>/dev/null || true)"
+  _old_trap_term="$(trap -p TERM 2>/dev/null || true)"
+
+  _release_lock_and_restore() {
+    flock -u 9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    # restore previous traps if any
+    if [ -n "${_old_trap_return:-}" ]; then eval "$_old_trap_return" 2>/dev/null || true; fi
+    if [ -n "${_old_trap_exit:-}" ]; then eval "$_old_trap_exit" 2>/dev/null || true; fi
+    if [ -n "${_old_trap_int:-}" ]; then eval "$_old_trap_int" 2>/dev/null || true; fi
+    if [ -n "${_old_trap_term:-}" ]; then eval "$_old_trap_term" 2>/dev/null || true; fi
+    unset _old_trap_return _old_trap_exit _old_trap_int _old_trap_term
+  }
+
+  trap '_release_lock_and_restore' RETURN EXIT INT TERM
+
+  if ! flock -x -w 5 9; then
+    _release_lock_and_restore
+    err "Could not acquire lock"
+  fi
 
   local tmp_shadow
-  tmp_shadow="$(mktemp -p "$tmpdir" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
-  [ -n "$tmp_shadow" ] || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to create tmp shadow"; }
+  tmp_shadow="$(portable_mktemp "$tmpdir")" || tmp_shadow=""
+  [ -n "$tmp_shadow" ] || { _release_lock_and_restore; err "Failed to create tmp shadow"; }
 
-  if ! cp -f -- "$groqbash_real" "$tmp_shadow"; then rm -f -- "$tmp_shadow" 2>/dev/null || true; flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to copy groqbash_real to tmp shadow"; fi
+  if ! cp -f -- "$groqbash_real" "$tmp_shadow"; then
+    rm -f -- "$tmp_shadow" 2>/dev/null || true
+    _release_lock_and_restore
+    err "Failed to copy groqbash_real to tmp shadow"
+  fi
 
   local termux_bash
   termux_bash="$(find_termux_bash || true)"
@@ -562,7 +592,11 @@ install_termux_shadow_wrapper() {
     fi
   fi
 
-  if ! mv -f -- "$tmp_shadow" "$groqbash_shadow"; then rm -f -- "$tmp_shadow" 2>/dev/null || true; flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to move tmp shadow into place"; fi
+  if ! mv -f -- "$tmp_shadow" "$groqbash_shadow"; then
+    rm -f -- "$tmp_shadow" 2>/dev/null || true
+    _release_lock_and_restore
+    err "Failed to move tmp shadow into place"
+  fi
   chmod 750 -- "$groqbash_shadow" 2>/dev/null || true
   info "Installed Termux shadow: $groqbash_shadow"
 
@@ -571,8 +605,8 @@ install_termux_shadow_wrapper() {
   chmod 700 -- "$BIN_DIR" 2>/dev/null || true
   local wrapper="$BIN_DIR/groqbash-wrapper"
   local tmp_wrapper
-  tmp_wrapper="$(mktemp -p "$tmpdir" "wrapper.XXXXXX")" || tmp_wrapper=""
-  [ -n "$tmp_wrapper" ] || { flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to create tmp wrapper"; }
+  tmp_wrapper="$(portable_mktemp "$tmpdir")" || tmp_wrapper=""
+  [ -n "$tmp_wrapper" ] || { _release_lock_and_restore; err "Failed to create tmp wrapper"; }
 
   # Write robust, autosufficient wrapper template (fixed GROQBASH_ROOT derivation)
   cat >"$tmp_wrapper" <<'EOF'
@@ -699,12 +733,12 @@ EOF
 
   if [ -f "$wrapper" ]; then
     if ! cmp -s "$tmp_wrapper" "$wrapper"; then
-      mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to move new wrapper into place"; }
+      mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move new wrapper into place"; }
     else
       rm -f -- "$tmp_wrapper" 2>/dev/null || true
     fi
   else
-    mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true; err "Failed to move wrapper into place"; }
+    mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move wrapper into place"; }
   fi
   chmod 750 -- "$wrapper" 2>/dev/null || true
   info "Installed Termux wrapper: $wrapper"
@@ -730,8 +764,9 @@ EOF
     info "Failed to write temporary groqbash-path; skipping persist"
   fi
 
-  flock -u 9 2>/dev/null || true
-  exec 9>&- 2>/dev/null || true
+  # release lock and restore traps
+  _release_lock_and_restore
+
   return 0
 }
 
