@@ -147,24 +147,6 @@ API_KEY_FILE="${API_KEY_FILE:-${CFG_DIR%/}/api-key}"
 LOCK_HELD=0
 
 # ---------------------------------------------------------------------------
-# compute_hash (support function)
-# ---------------------------------------------------------------------------
-compute_hash() {
-  local file="$1" tmpf
-  [[ -f "$file" ]] || { printf ''; return 0; }
-  tmpf="$(mktemp_portable "$TMP_DIR" "hash.XXXXXX")" || { printf ''; return 0; }
-  tail -n +2 "$file" >"$tmpf" 2>/dev/null || cat "$file" >"$tmpf" 2>/dev/null || true
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$tmpf" 2>/dev/null | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$tmpf" 2>/dev/null | awk '{print $1}'
-  else
-    stat -c '%s-%Y' "$tmpf" 2>/dev/null || printf ''
-  fi
-  rm -f -- "$tmpf" 2>/dev/null || true
-}
-
-# ---------------------------------------------------------------------------
 # Filesystem helpers
 # ---------------------------------------------------------------------------
 same_filesystem() {
