@@ -180,18 +180,23 @@ mktemp_portable() {
   local dir_real base rand i tmpname candidate
 
   if [[ -z "$dir" || -z "$template" ]]; then
+    log_error "GUIIO" "mktemp_portable called with empty dir or template"
     return 1
   fi
 
   dir_real="$(cd "$dir" 2>/dev/null && pwd -P || true)"
   if [[ -z "$dir_real" || ! -d "$dir_real" || ! -w "$dir_real" ]]; then
+    log_error "GUIIO" "mktemp_portable: dir invalid or not writable: ${dir:-<unset>} -> ${dir_real:-<unresolved>}"
     return 1
   fi
 
   # Enforce that dir is inside TMP_DIR
   case "$dir_real" in
     "$TMP_DIR"/*|"$TMP_DIR") ;;
-    *) return 1 ;;
+    *)
+      log_error "GUIIO" "mktemp_portable: dir ${dir_real} is not inside TMP_DIR (${TMP_DIR:-<unset>})"
+      return 1
+      ;;
   esac
 
   base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
