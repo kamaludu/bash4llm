@@ -10,7 +10,8 @@ set -euo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# Ensure UI_ROOT is defined early for minimal/stripped CGI envs to avoid "unbound variable"
+
+# Deriva UI_ROOT in ambienti CGI/minimali se non fornito
 : "${UI_ROOT:=${UI_ROOT:-}}"
 if [[ -z "${UI_ROOT:-}" ]]; then
   if [[ "$(basename "$SCRIPT_DIR")" == "cgi-bin" ]]; then
@@ -21,41 +22,27 @@ if [[ -z "${UI_ROOT:-}" ]]; then
 fi
 export UI_ROOT
 
-BOOTSTRAP="$SCRIPT_DIR/gui-bootstrap.sh"
-if [[ ! -f "$BOOTSTRAP" ]]; then
-  printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nBootstrap missing: %s\n' "$BOOTSTRAP"
+# Source central environment (logging, traps, canonicalize, gui_env_init)
+if [[ -f "${UI_ROOT%/}/gui-env.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "${UI_ROOT%/}/gui-env.sh"
+  gui_env_init cgi
+elif [[ -f "$SCRIPT_DIR/gui-env.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/gui-env.sh"
+  gui_env_init cgi
+else
+  printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nMissing gui-env.sh: %s\n' "${UI_ROOT%/}/gui-env.sh"
   exit 1
 fi
-: "${GROQBASH_CMD:=groqbash}"
+
+# Source bootstrap helpers (mktemp_portable, compute_hash, ensure_tmpdir, ecc.)
+BOOTSTRAP="$SCRIPT_DIR/gui-bootstrap.sh"
+if [[ ! -f "$BOOTSTRAP" ]]; then
+  cgi_fatal 1 "Bootstrap missing: $BOOTSTRAP"
+fi
 # shellcheck source=/dev/null
 source "$BOOTSTRAP"
-
-# -------------------------
-# Ensure environment layer is initialized (non-negotiable)
-# -------------------------
-# gui-env.sh defines UI_ROOT, CFG_DIR, TMP_DIR and the safe defaults.
-# Must run after bootstrap so helpers are available.
-if [[ -f "$SCRIPT_DIR/gui-env.sh" ]]; then
-  # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/gui-env.sh" || true
-  # initialize runtime environment (idempotent)
-  if declare -f env_prepare_runtime >/dev/null 2>&1; then
-    env_prepare_runtime || true
-  fi
-fi
-
-# Ensure minimal runtime defaults (do not override gui-env.sh single source of truth)
-: "${UI_ROOT:=${UI_ROOT:-}}"
-: "${CFG_DIR:=${CFG_DIR:-${PWD%/}/config}}"
-: "${TMP_DIR:=${TMP_DIR:-${UI_ROOT:-$PWD}/tmp}}"
-: "${ERROR_LOG:=${ERROR_LOG:-${CFG_DIR%/}/error.log}}"
-: "${SERVER_LOG:=${SERVER_LOG:-${CFG_DIR%/}/server.log}}"
-export UI_ROOT CFG_DIR TMP_DIR ERROR_LOG SERVER_LOG
-
-# Ensure log files directory exists and is writable where possible
-if [[ -n "${CFG_DIR:-}" && ! -d "${CFG_DIR%/}" ]]; then
-  mkdir -p -- "${CFG_DIR%/}" 2>/dev/null || true
-fi
 
 # -------------------------
 # Small helper: call function if exists (avoid set -u crashes)
@@ -66,7 +53,6 @@ run_if_func() {
     "$fn" "$@"
     return $?
   else
-    # log_warn may not exist early; guard
     if declare -f log_warn >/dev/null 2>&1; then
       log_warn "INIT" "Function $fn not defined; skipping"
     fi
@@ -75,7 +61,7 @@ run_if_func() {
 }
 
 # -------------------------
-# Safe atomic write/append wrappers (hardening)
+# Safe atomic write/append wrappers (kept here because not provided by gui-env)
 # -------------------------
 atomic_write_safe() {
   # atomic_write_safe <path> <content>
@@ -86,21 +72,17 @@ atomic_write_safe() {
     return 1
   fi
 
-  # Ensure parent dir exists
   mkdir -p -- "$(dirname -- "$path")" 2>/dev/null || true
 
-  # Prefer existing atomic_write implementation if available
   if declare -f atomic_write >/dev/null 2>&1; then
     atomic_write "$path" "$content"
     return $?
   fi
 
-  # Ensure TMP_DIR exists and use it exclusively (never system /tmp)
   : "${TMP_DIR:=${TMP_DIR:-${UI_ROOT:-$PWD}/tmp}}"
   mkdir -p -- "${TMP_DIR%/}" 2>/dev/null || true
 
   local tmp
-  # Use mktemp_portable (enforces TMP_DIR and safe creation)
   if declare -f mktemp_portable >/dev/null 2>&1; then
     tmp="$(mktemp_portable "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"
   else
@@ -112,7 +94,6 @@ atomic_write_safe() {
     return 1
   fi
 
-  # Write to temp, set restrictive perms, then move atomically
   printf '%s' "$content" >"$tmp" 2>/dev/null || { log_error "GUIIO" "atomic_write_safe: failed to write to temp $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
   chmod 600 "$tmp" 2>/dev/null || true
   mv -f "$tmp" "$path" 2>/dev/null || { log_error "GUIIO" "atomic_write_safe: mv failed from $tmp to $path"; rm -f "$tmp" 2>/dev/null || return 1; }
@@ -132,7 +113,6 @@ atomic_append_conv_safe() {
     atomic_append_conv "$conv" "$line"
     return $?
   fi
-  # Fallback append with locking if flock available
   if command -v flock >/dev/null 2>&1; then
     (
       flock -x 200
@@ -146,7 +126,7 @@ atomic_append_conv_safe() {
 }
 
 # -------------------------
-# Environment normalization and wrapper enforcement
+# Environment normalization and wrapper enforcement (non-duplicative)
 # -------------------------
 : "${GROQBASH_CONFIG_DIR:=${GROQBASH_CONFIG_DIR:-}}"
 if [[ -z "${CFG_DIR:-}" ]]; then
@@ -160,12 +140,11 @@ if [[ -z "${CFG_DIR:-}" ]]; then
 fi
 export CFG_DIR
 
-# PROVIDER cache/file defaults (ensure variables exist even if gui-env.sh not present)
 : "${PROVIDER_CACHE_FILE:=${CFG_DIR%/}/providers.txt}"
 : "${PROVIDER_MODELS_DIR:=${CFG_DIR%/}/models}"
 export PROVIDER_CACHE_FILE PROVIDER_MODELS_DIR
 
-# If a persisted groqbash-path exists, prefer it (resolve to absolute if possible)
+# Prefer persisted groqbash-path if present and valid
 if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
   read -r _p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || _p=''
   if [[ -n "$_p" ]]; then
@@ -178,14 +157,13 @@ if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
       if [[ -n "${UI_ROOT:-}" ]]; then
         case ":${PATH:-}:" in *":${UI_ROOT%/}/bin:"*) ;; *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;; esac
       fi
-      run_if_func log_info "GUI" "Using persisted GROQBASH_CMD from groqbash-path: $GROQBASH_CMD"
+      log_info "GUI" "Using persisted GROQBASH_CMD from groqbash-path: $GROQBASH_CMD"
     else
-      run_if_func log_warn "GUI" "Persisted groqbash-path not executable: ${_p}"
+      log_warn "GUI" "Persisted groqbash-path not executable: ${_p:-<empty>}"
     fi
   fi
 fi
 
-# Ensure GROQBASH_ROOT/GROQBASH_DIR consistent with UI_ROOT if not set
 if [[ -z "${GROQBASH_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
   GROQBASH_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
   if [[ "${GROQBASH_ROOT##*/}" == "groqbash.d" ]]; then
@@ -207,7 +185,7 @@ if [[ -n "${UI_ROOT:-}" && -x "${UI_ROOT%/}/bin/groqbash-wrapper" ]]; then
     *":${UI_ROOT%/}/bin:"*) ;;
     *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
   esac
-  run_if_func log_info "GUI" "Forcing GROQBASH_CMD -> wrapper: $GROQBASH_CMD"
+  log_info "GUI" "Forcing GROQBASH_CMD -> wrapper: $GROQBASH_CMD"
 else
   if [[ -z "${GROQBASH_CMD:-}" && -f "${CFG_DIR%/}/groqbash-path" ]]; then
     read -r p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || p=''
@@ -218,9 +196,9 @@ else
         *":${UI_ROOT%/}/bin:"*) ;;
         *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
       esac
-      run_if_func log_info "GUI" "Using persisted GROQBASH_CMD: $GROQBASH_CMD"
+      log_info "GUI" "Using persisted GROQBASH_CMD: $GROQBASH_CMD"
     else
-      run_if_func log_info "GUI" "Persisted groqbash-path missing or not executable: ${p:-<empty>}"
+      log_info "GUI" "Persisted groqbash-path missing or not executable: ${p:-<empty>}"
     fi
   fi
 fi
@@ -253,10 +231,9 @@ is_configured() {
 
 call_groqbash_with_args() {
   if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
-    run_if_func log_error "GUIIO" "GROQBASH_CMD not set or not executable: ${GROQBASH_CMD:-<unset>}"
+    log_error "GUIIO" "GROQBASH_CMD not set or not executable: ${GROQBASH_CMD:-<unset>}"
     return 1
   fi
-  # Capture stdout and preserve stderr into ERROR_LOG
   local out rc
   out="$("${GROQBASH_CMD}" "$@" </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
   rc=$?
@@ -292,18 +269,18 @@ refresh_models_via_groqbash() {
   prov="$1"
   models_file="$(get_models_file)"
   if ! (declare -f ensure_groqbash_available >/dev/null 2>&1 && ensure_groqbash_available); then
-    run_if_func log_error "GUIIO" "groqbash not available for refresh"
+    log_error "GUIIO" "groqbash not available for refresh"
     return 1
   fi
   export_api_key_for_provider "$prov" || true
   out="$("$GROQBASH_CMD" --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
   out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
   if [[ -n "$out" ]]; then
-    atomic_write_safe "$models_file" "$out" || { run_if_func log_error "GUIIO" "Failed to write models file"; return 1; }
-    run_if_func log_info "GUIIO" "Models refreshed for provider $prov"
+    atomic_write_safe "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
+    log_info "GUIIO" "Models refreshed for provider $prov"
     return 0
   else
-    run_if_func log_warn "GUIIO" "Refresh returned empty list for provider $prov"
+    log_warn "GUIIO" "Refresh returned empty list for provider $prov"
     return 1
   fi
 }
@@ -417,7 +394,7 @@ build_provider_options() {
       out+=$'\n'
     done < <(awk 'NF{print}' "$providers_file" 2>/dev/null || true)
   else
-    run_if_func log_warn "PROV" "providers cache missing; provider list empty"
+    log_warn "PROV" "providers cache missing; provider list empty"
   fi
   PROVIDER_OPTIONS="$out"
   return 0
@@ -454,7 +431,7 @@ build_model_list_and_select() {
       out_opts+=$'\n'
     done < <(awk 'NF{print}' "$models_file" 2>/dev/null || true)
   else
-    run_if_func log_warn "MODEL" "models file missing for provider '$provider'"
+    log_warn "MODEL" "models file missing for provider '$provider'"
   fi
   MODEL_LIST_SCROLL="$out_list"
   MODEL_SELECT_OPTIONS="$out_opts"
@@ -463,12 +440,11 @@ build_model_list_and_select() {
 
 handle_post_settings() {
   local body model provider lang api_key action theme ct
-  # Reject unsupported content types early
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
   case "$ct" in
     application/x-www-form-urlencoded*|multipart/form-data*) ;;
     *)
-      run_if_func log_error "GUIIO" "Unsupported Content-Type for POST in settings: ${ct:-<unset>}"
+      log_error "GUIIO" "Unsupported Content-Type for POST in settings: ${ct:-<unset>}"
       print_http_error "415 Unsupported Media Type" "Unsupported content type: ${ct:-<unset>}"
       return 1
       ;;
@@ -488,21 +464,21 @@ handle_post_settings() {
   theme="$(sanitize_param "$theme")"
   if [[ -n "$theme" ]]; then
     if [[ "$theme" == "light" || "$theme" == "dark" ]]; then
-      atomic_write_safe "$THEME_CURRENT_FILE" "$theme" || run_if_func log_warn "GUIIO" "Failed to write theme"
+      atomic_write_safe "$THEME_CURRENT_FILE" "$theme" || log_warn "GUIIO" "Failed to write theme"
     else
-      run_if_func log_warn "GUIIO" "Invalid theme value attempted: $theme"
+      log_warn "GUIIO" "Invalid theme value attempted: $theme"
     fi
   fi
   if [[ "$action" == "refresh_models" ]]; then
     provider="$(printf '%s' "$body" | parse_form_field "provider" || printf '')"
     provider="$(sanitize_param "$provider")"
     if [[ -z "$provider" ]]; then
-      run_if_func log_warn "GUIIO" "Refresh requested but provider empty"
+      log_warn "GUIIO" "Refresh requested but provider empty"
     else
       if validate_name "$provider"; then
-        refresh_models_via_groqbash "$provider" || run_if_func log_error "GUIIO" "Refresh models failed for $provider"
+        refresh_models_via_groqbash "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
       else
-        run_if_func log_warn "GUIIO" "Invalid provider attempted for refresh: $provider"
+        log_warn "GUIIO" "Invalid provider attempted for refresh: $provider"
       fi
     fi
   fi
@@ -510,24 +486,24 @@ handle_post_settings() {
     model="$(printf '%s' "$body" | parse_form_field "model" || printf '')"
     model="$(sanitize_param "$model")"
     if [[ -z "$model" ]]; then
-      run_if_func log_warn "GUIIO" "Set model requested but model empty"
+      log_warn "GUIIO" "Set model requested but model empty"
     else
       if validate_name "$model"; then
-        atomic_write_safe "$DEFAULT_MODEL_FILE" "$model" || run_if_func log_warn "GUIIO" "Failed to write default model"
+        atomic_write_safe "$DEFAULT_MODEL_FILE" "$model" || log_warn "GUIIO" "Failed to write default model"
       else
-        run_if_func log_warn "GUIIO" "Invalid model attempted to set: $model"
+        log_warn "GUIIO" "Invalid model attempted to set: $model"
       fi
     fi
   fi
   if [[ -n "$model" ]]; then
     if ! validate_name "$model"; then
-      run_if_func log_error "GUIIO" "Invalid model name attempted: $model"
+      log_error "GUIIO" "Invalid model name attempted: $model"
       model=""
     fi
   fi
   if [[ -n "$provider" ]]; then
     if ! validate_name "$provider"; then
-      run_if_func log_error "GUIIO" "Invalid provider name attempted: $provider"
+      log_error "GUIIO" "Invalid provider name attempted: $provider"
       provider=""
     fi
   fi
@@ -535,28 +511,27 @@ handle_post_settings() {
     lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
   if [[ -z "${CFG_DIR:-}" || ! -d "${CFG_DIR%/}" || ! -w "${CFG_DIR%/}" ]]; then
-    run_if_func log_warn "GUIIO" "CFG_DIR not writable or unset; cannot persist provider/lang"
+    log_warn "GUIIO" "CFG_DIR not writable or unset; cannot persist provider/lang"
   else
-    atomic_write_safe "$DEFAULT_PROVIDER_FILE" "$provider" || run_if_func log_warn "GUIIO" "Failed to write default provider"
+    atomic_write_safe "$DEFAULT_PROVIDER_FILE" "$provider" || log_warn "GUIIO" "Failed to write default provider"
     if [[ -n "$provider" ]]; then
-      run_if_func ensure_model_cache_fresh "$provider" || run_if_func log_warn "MODEL" "ensure_model_cache_fresh failed for $provider"
+      ensure_model_cache_fresh "$provider" || log_warn "MODEL" "ensure_model_cache_fresh failed for $provider"
     fi
     atomic_write_safe "$LANG_CURRENT_FILE" "$lang" || true
   fi
   if [[ -n "$api_key" ]]; then
-    save_api_key_file "$api_key" || run_if_func log_warn "GUIIO" "Failed to save API key"
+    save_api_key_file "$api_key" || log_warn "GUIIO" "Failed to save API key"
   fi
   return 0
 }
 
 handle_post_main() {
   local body prompt model provider conv_file output sanitized_output models_file lang model_raw provider_raw conv_title_raw conv_title _max_prompt ct
-  # Reject unsupported content types early
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
   case "$ct" in
     application/x-www-form-urlencoded*|multipart/form-data*) ;;
     *)
-      run_if_func log_error "GUIIO" "Unsupported Content-Type for POST in main: ${ct:-<unset>}"
+      log_error "GUIIO" "Unsupported Content-Type for POST in main: ${ct:-<unset>}"
       print_http_error "415 Unsupported Media Type" "Unsupported content type: ${ct:-<unset>}"
       return 1
       ;;
@@ -576,19 +551,19 @@ handle_post_main() {
   provider="$(sanitize_param "$provider")"
   _max_prompt=${MAX_PROMPT_CHARS:-4096}
   if (( ${#prompt} > _max_prompt )); then
-    run_if_func log_error "GUIIO" "Prompt truncated from ${#prompt} to ${_max_prompt} chars"
+    log_warn "GUIIO" "Prompt truncated from ${#prompt} to ${_max_prompt} chars"
     prompt="${prompt:0:_max_prompt}"
   fi
   unset _max_prompt
   if [[ -n "$model" ]]; then
     if ! validate_name "$model"; then
-      run_if_func log_error "GUIIO" "Invalid model name attempted: $model"
+      log_error "GUIIO" "Invalid model name attempted: $model"
       model=""
     fi
   fi
   if [[ -n "$provider" ]]; then
     if ! validate_name "$provider"; then
-      run_if_func log_error "GUIIO" "Invalid provider name attempted: $provider"
+      log_error "GUIIO" "Invalid provider name attempted: $provider"
       provider=""
     fi
   fi
@@ -598,16 +573,16 @@ handle_post_main() {
   conv_file="$(get_current_conversation_file)"
   if [[ -n "$conv_title" ]]; then
     title_file="$(get_title_file_for_conv "$conv_file")"
-    atomic_write_safe "$title_file" "$conv_title" || run_if_func log_warn "GUIIO" "Failed to write conversation title"
+    atomic_write_safe "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
   fi
-  atomic_append_conv_safe "$conv_file" "USER: $prompt" || run_if_func log_error "GUIIO" "Failed to append USER to conversation"
+  atomic_append_conv_safe "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
   if ! is_configured; then
-    run_if_func log_error "GUIIO" "Attempt to call groqbash while GUI not configured"
+    log_error "GUIIO" "Attempt to call groqbash while GUI not configured"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
     return 0
   fi
   if ! (declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"); then
-    run_if_func log_error "GUIIO" "API key missing for provider $provider"
+    log_error "GUIIO" "API key missing for provider $provider"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
     return 0
   fi
@@ -615,7 +590,7 @@ handle_post_main() {
   if [[ -f "$models_file" ]]; then
     if [[ -n "$model" ]]; then
       if ! grep -Fxq "$model" "$models_file" 2>/dev/null; then
-        run_if_func log_error "GUIIO" "Model $model not in whitelist"
+        log_error "GUIIO" "Model $model not in whitelist"
         atomic_append_conv_safe "$conv_file" "AI: ERROR: Selected model not in whitelist. Please refresh models or choose another model." || true
         return 0
       fi
@@ -632,7 +607,7 @@ handle_post_main() {
   if [[ -n "$provider" ]]; then groq_args+=(--provider "$provider"); fi
   if [[ -n "$model" ]]; then groq_args+=(--model "$model"); fi
   if ! output="$(printf '%s' "$prompt" | call_groqbash_with_args "${groq_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
-    run_if_func log_error "GUIIO" "groqbash invocation failed"
+    log_error "GUIIO" "groqbash invocation failed"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: groqbash invocation failed. Check server logs." || true
     return 0
   fi
@@ -642,7 +617,7 @@ handle_post_main() {
     output="$(html_unescape_fallback "$output")"
   fi
   sanitized_output="$(sanitize_model_output "$output")"
-  atomic_append_conv_safe "$conv_file" "AI: $sanitized_output" || run_if_func log_error "GUIIO" "Failed to append AI to conversation"
+  atomic_append_conv_safe "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
 }
 
 build_model_options() {
@@ -788,30 +763,32 @@ main() {
     run_if_func fix_termux_perms || true
   fi
   run_if_func ensure_config_defaults
-  log_rotate_if_needed "${SERVER_LOG:-/dev/null}" 1048576
-  log_rotate_if_needed "${ERROR_LOG:-/dev/null}" 1048576
+  run_if_func log_rotate_if_needed "${SERVER_LOG:-/dev/null}" 1048576 || true
+  run_if_func log_rotate_if_needed "${ERROR_LOG:-/dev/null}" 1048576 || true
+
   if ! (declare -f ensure_flock_available >/dev/null 2>&1 && ensure_flock_available); then
-    run_if_func log_error "GUILOCK" "flock missing"
-    print_http_error "500 Internal Server Error" "Server misconfiguration: flock not available"
-    exit 1
+    log_error "GUILOCK" "flock missing"
+    cgi_fatal 1 "Server misconfiguration: flock not available"
   fi
   if ! (declare -f ensure_groqbash_available >/dev/null 2>&1 && ensure_groqbash_available); then
-    run_if_func log_error "GUIIO" "groqbash not found: ${GROQBASH_CMD:-<unset>}"
-    print_http_error "500 Internal Server Error" "groqbash not found on server. Contact administrator."
-    exit 1
+    log_error "GUIIO" "groqbash not found: ${GROQBASH_CMD:-<unset>}"
+    cgi_fatal 1 "groqbash not found on server. Contact administrator."
   fi
   if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
-    run_if_func log_error "GUILOCK" "Failed to acquire lock"
-    exit 1
+    log_error "GUILOCK" "Failed to acquire lock"
+    cgi_fatal 1 "Server busy"
   fi
+
   local method="${REQUEST_METHOD:-}"
   method="$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')"
   if [[ -z "$method" ]]; then
     method="${1:-GET}"
     method="$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')"
   fi
+
   QUERY_STRING="${QUERY_STRING:-}"
   QUERY_STRING="$(printf '%s' "$QUERY_STRING" | tr -d '\000-\037')"
+
   local lang_code
   lang_code="$(get_query_param "lang" 2>/dev/null || printf '')"
   if [[ -n "$lang_code" ]]; then
@@ -824,6 +801,7 @@ main() {
   else
     lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
+
   local theme_code
   theme_code="$(get_query_param "theme" 2>/dev/null || printf '')"
   if [[ -n "$theme_code" ]]; then
@@ -836,11 +814,15 @@ main() {
   else
     theme_code="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
   fi
+
   case "${REQUEST_URI:-${QUERY_STRING:-}} " in
     *page=settings*|*page=settings\&*|*page=settings\?*)
       if [[ "$method" == "POST" ]]; then
-        handle_post_settings
-        print_http_redirect "${GUI_CGI_BASE:-/groqbash-gui/cgi/}?page=settings"
+        if handle_post_settings; then
+          print_http_redirect "${GUI_CGI_BASE:-/groqbash-gui/cgi/}?page=settings"
+        else
+          cgi_fatal 1 "settings handler failed"
+        fi
       else
         print_http_header "200 OK" "text/html; charset=utf-8"
         render_page_settings "$lang_code"
@@ -848,8 +830,11 @@ main() {
       ;;
     *page=main*|*page=main\&*|*page=main\?*|*page=*)
       if [[ "$method" == "POST" ]]; then
-        handle_post_main
-        print_http_redirect "${GUI_CGI_BASE:-/groqbash-gui/cgi/}?page=main"
+        if handle_post_main; then
+          print_http_redirect "${GUI_CGI_BASE:-/groqbash-gui/cgi/}?page=main"
+        else
+          cgi_fatal 1 "main handler failed"
+        fi
       else
         print_http_header "200 OK" "text/html; charset=utf-8"
         render_page_main "$lang_code"
@@ -862,4 +847,5 @@ main() {
   esac
   return 0
 }
+
 main "$@"
