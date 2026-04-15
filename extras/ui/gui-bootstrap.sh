@@ -147,52 +147,6 @@ API_KEY_FILE="${API_KEY_FILE:-${CFG_DIR%/}/api-key}"
 LOCK_HELD=0
 
 # ---------------------------------------------------------------------------
-# mktemp_portable (MANDATORY: uses TMP_DIR or provided dir; disallows /tmp)
-# ---------------------------------------------------------------------------
-mktemp_portable() {
-  # Usage: mktemp_portable <dir> <template>
-  local dir="$1" template="$2"
-  local dir_real base rand i tmpname candidate
-
-  if [[ -z "$dir" || -z "$template" ]]; then
-    log_error "GUIIO" "mktemp_portable called with empty dir or template"
-    return 1
-  fi
-
-  dir_real="$(cd "$dir" 2>/dev/null && pwd -P || true)"
-  if [[ -z "$dir_real" || ! -d "$dir_real" || ! -w "$dir_real" ]]; then
-    log_error "GUIIO" "mktemp_portable: dir invalid or not writable: ${dir:-<unset>} -> ${dir_real:-<unresolved>}"
-    return 1
-  fi
-
-  # Enforce that dir is inside TMP_DIR
-  case "$dir_real" in
-    "$TMP_DIR"/*|"$TMP_DIR") ;;
-    *)
-      log_error "GUIIO" "mktemp_portable: dir ${dir_real} is not inside TMP_DIR (${TMP_DIR:-<unset>})"
-      return 1
-      ;;
-  esac
-
-  base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
-  i=0
-  while (( i < 200 )); do
-    rand="${base}.$RANDOM.$$.$i"
-    if [[ "$template" == *"XXXXXX"* ]]; then
-      tmpname="${template//XXXXXX/$rand}"
-    else
-      tmpname="${template}.$rand"
-    fi
-    candidate="$dir_real/$tmpname"
-    ( set -C; : >"$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; }
-    i=$((i+1))
-  done
-
-  log_error "GUIIO" "mktemp_portable failed to create temp file in $dir_real"
-  return 1
-}
-
-# ---------------------------------------------------------------------------
 # compute_hash (support function)
 # ---------------------------------------------------------------------------
 compute_hash() {
