@@ -827,7 +827,7 @@ main() {
           cgi_fatal 1 "settings handler failed"
         fi
       else
-        printf 'Status: 200 OK\r\n'
+        print_http_header "200 OK" "text/html; charset=utf-8"
         print_http_header
         render_page_settings "$lang_code"
       fi
@@ -840,13 +840,13 @@ main() {
           cgi_fatal 1 "main handler failed"
         fi
       else
-        printf 'Status: 200 OK\r\n'
+        print_http_header "200 OK" "text/html; charset=utf-8"
         print_http_header
         render_page_main "$lang_code"
       fi
       ;;
     *)
-      printf 'Status: 200 OK\r\n'
+      print_http_header "200 OK" "text/html; charset=utf-8"
       print_http_header
       render_page_main "$lang_code"
       ;;
