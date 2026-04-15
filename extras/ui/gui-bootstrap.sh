@@ -223,22 +223,6 @@ same_filesystem() {
   [[ -n "$fa" && -n "$fb" && "$fa" == "$fb" ]]
 }
 
-ensure_tmpdir() {
-  if [[ -e "$TMP_DIR" && ! -d "$TMP_DIR" ]]; then
-    log_error "GUIIO" "TMP_DIR exists and is not a directory: $TMP_DIR"
-    return 1
-  fi
-  if [[ ! -d "$TMP_DIR" ]]; then
-    mkdir -p "$TMP_DIR" 2>/dev/null || true
-    chmod 700 "$TMP_DIR" 2>/dev/null || true
-  fi
-  if [[ ! -w "$TMP_DIR" ]]; then
-    log_error "GUIIO" "TMP_DIR $TMP_DIR not writable"
-    return 1
-  fi
-  return 0
-}
-
 # ---------------------------------------------------------------------------
 # Atomic write and append (use mktemp_portable and TMP_DIR)
 # ---------------------------------------------------------------------------
