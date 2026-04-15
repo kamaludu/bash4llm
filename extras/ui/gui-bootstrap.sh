@@ -147,21 +147,6 @@ API_KEY_FILE="${API_KEY_FILE:-${CFG_DIR%/}/api-key}"
 LOCK_HELD=0
 
 # ---------------------------------------------------------------------------
-# Rotate logs helper (kept local; uses centralized logging functions)
-# ---------------------------------------------------------------------------
-log_rotate_if_needed() {
-  local file="$1" max_bytes="${2:-1048576}"
-  if [[ -f "$file" ]]; then
-    local size
-    size="$(wc -c <"$file" 2>/dev/null || echo 0)"
-    if (( size > max_bytes )); then
-      mv -f "$file" "${file}.old" 2>/dev/null || true
-      : >"$file"
-    fi
-  fi
-}
-
-# ---------------------------------------------------------------------------
 # mktemp_portable (MANDATORY: uses TMP_DIR or provided dir; disallows /tmp)
 # ---------------------------------------------------------------------------
 mktemp_portable() {
