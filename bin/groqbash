@@ -124,7 +124,7 @@ ensure_api_key_for_provider() {
 
 SCRIPTDIR="$(resolve_script_dir)"
 # Allow external override of repository root via GROQBASH_ROOT.
-# Priority: existing GROQBASH_DIR env > GROQBASH_ROOT env > SCRIPTDIR-derived default.
+# Priority: explicit GROQBASH_DIR env > GROQBASH_ROOT env > SCRIPTDIR-derived default.
 if [ -n "${GROQBASH_DIR:-}" ]; then
   : # keep explicit GROQBASH_DIR from environment
 elif [ -n "${GROQBASH_ROOT:-}" ]; then
@@ -135,14 +135,14 @@ fi
 
 # Canonical runtime destination for extras (always under groqbash.d)
 CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
-# Historical/legacy candidate (extras shipped next to script in older layouts)
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 
-# Export canonical extras and providers dirs (GROQBASH_EXTRAS_DIR is the single runtime destination)
+# Export canonical extras and providers dirs
 GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 PROVIDERS_DIR="${GROQBASH_EXTRAS_DIR%/}/providers"
 export GROQBASH_EXTRAS_DIR PROVIDERS_DIR
 
+# Standard directories (derived from GROQBASH_DIR, overridable via env)
 GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
 GROQBASH_MODELS_DIR="${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}"
 GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
@@ -150,6 +150,15 @@ GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 MAX_MODELS="${MAX_MODELS:-200}"
+
+# Ensure essential directories exist with strict perms
+mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
+mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || true
+chmod 700 "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" 2>/dev/null || true
+# Ensure session dir exists and has strict perms
+SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
+mkdir -p "$SESSION_DIR" 2>/dev/null || true
+chmod 700 "$SESSION_DIR" 2>/dev/null || true
 
 umask 077
 mkdir -p "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$GROQBASH_EXTRAS_DIR/providers" 2>/dev/null || true
@@ -793,19 +802,27 @@ session_append() {
 
 ensure_run_tmpdir() {
   # Create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
-  # The payload file is intentionally neutral (no extension); providers decide format.
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     return 0
   fi
 
-  RUN_TMPDIR="$(make_tmpdir)" || { log_error "TMPFAIL" "cannot create RUN_TMPDIR in $GROQBASH_TMPDIR"; exit "$GROQBASHERRTMP"; }
+  # Ensure base tmpdir exists
+  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { log_error "TMPFAIL" "cannot create base tmpdir $GROQBASH_TMPDIR"; return 1; }
+
+  # Prefer mktemp under GROQBASH_TMPDIR; fallback to make_tmpdir if necessary
+  RUN_TMPDIR="$(mktemp -d "${GROQBASH_TMPDIR%/}/run.XXXXXX" 2>/dev/null || true)"
+  if [ -z "$RUN_TMPDIR" ] || [ ! -d "$RUN_TMPDIR" ]; then
+    RUN_TMPDIR="$(make_tmpdir 2>/dev/null || true)"
+  fi
+  [ -n "$RUN_TMPDIR" ] && [ -d "$RUN_TMPDIR" ] || { log_error "TMPFAIL" "cannot create RUN_TMPDIR in $GROQBASH_TMPDIR"; return 1; }
+
+  chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
 
   # Provider-agnostic payload path (no imposed extension or semantics)
   PAYLOAD="${PAYLOAD:-$RUN_TMPDIR/payload}"
   RESP="${RESP:-$RUN_TMPDIR/resp.json}"
   ERRF="${ERRF:-$RUN_TMPDIR/err.log}"
 
-  # Ensure response and error files exist with strict perms
   : > "$RESP" 2>/dev/null || true
   chmod 600 "$RESP" 2>/dev/null || true
   : > "$ERRF" 2>/dev/null || true
@@ -814,6 +831,7 @@ ensure_run_tmpdir() {
   # Cleanup trap: remove run dir unless debugging is enabled
   trap 'if [ "${GROQBASH_DEBUG:-0}" -eq 0 ]; then cleanup_tmp; else log_info "TMPDEBUG" "preserving RUN_TMPDIR=$RUN_TMPDIR"; fi' EXIT INT TERM
 
+  export RUN_TMPDIR PAYLOAD RESP ERRF
   log_info "TMPCREATE" "Created RUN_TMPDIR: $RUN_TMPDIR"
   return 0
 }
@@ -983,19 +1001,33 @@ _mktemp_in_dir() {
 # ---------------------------------------------------------------------------
 buildpayload_groq() {
   # Build provider payload for Groq and stage it as a base64 file.
-  # Ensure $PAYLOAD points to a .b64 staged file so caller can reliably detect/decodify.
-  local workdir tmp_payload tmp_b64 dest_b64 model_in_file model_to_use user_prompt stream_json
+  local workdir tmp_payload tmp_b64 dest_b64 model_in_file model_to_use user_prompt stream_json MESSAGES_JSON
 
+  # Ensure we have a run tmpdir to stage payloads
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
   workdir="${RUN_TMPDIR:-}"
-  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
-    workdir="$(make_tmpdir 2>/dev/null || true)"
-  fi
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
 
   tmp_payload="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
   umask 077
 
   if is_truthy "${STREAM_MODE:-0}"; then stream_json=true; else stream_json=false; fi
+
+  # Helper: resolve messages JSON (use BUILD_MESSAGES_FILE if non-empty, otherwise fallback to current content)
+  resolve_messages_json() {
+    local fallback_content="$1" file="${2:-}"
+    if [ -n "${file:-}" ] && [ -f "$file" ]; then
+      local len
+      len="$(jq '.messages | length' "$file" 2>/dev/null || echo 0)"
+      if [ "${len:-0}" -gt 0 ]; then
+        jq -c '.messages' "$file" 2>/dev/null || printf '[]'
+        return 0
+      fi
+    fi
+    # fallback: single user message from provided content
+    jq -c -n --arg role "user" --arg content "$fallback_content" '[{role:$role,content:$content}]'
+    return 0
+  }
 
   # If JSON_INPUT provided, prefer it (supports both messages and prompt shapes)
   if [ -n "${JSON_INPUT:-}" ]; then
@@ -1006,18 +1038,15 @@ buildpayload_groq() {
       PAYLOAD="$dest_b64"
       return 0
     fi
+
     if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
       user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
       model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
       model_to_use="${model_in_file:-$MODEL}"
-      if [ -n "${BUILD_MESSAGES_FILE:-}" ] && [ -f "${BUILD_MESSAGES_FILE:-}" ]; then
-        jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
-           --argjson messages "$(jq -c '.messages' "$BUILD_MESSAGES_FILE")" \
-           '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-      else
-        jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --arg user "$user_prompt" \
-           '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
-      fi
+      MESSAGES_JSON="$(resolve_messages_json "$user_prompt" "${BUILD_MESSAGES_FILE:-}")"
+      jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
+         --argjson messages "$MESSAGES_JSON" \
+         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
       b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
       dest_b64="${PAYLOAD:-$workdir/payload}.b64"
       mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
@@ -1034,25 +1063,16 @@ buildpayload_groq() {
   fi
 
   # Build payload from CONTENT / SYSTEM_PROMPT
+  model_to_use="${MODEL}"
   if [ -n "${SYSTEM_PROMPT:-}" ]; then
-    if [ -n "${BUILD_MESSAGES_FILE:-}" ] && [ -f "${BUILD_MESSAGES_FILE:-}" ]; then
-      jq -n --arg model "$MODEL" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
-         --argjson messages "$(jq -c '.messages' "$BUILD_MESSAGES_FILE")" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-    else
-      jq -n --arg model "$MODEL" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --arg system "$SYSTEM_PROMPT" --arg user "$CONTENT" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"system",content:$system},{role:"user",content:$user}] }' >"$tmp_payload"
-    fi
+    MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
   else
-    if [ -n "${BUILD_MESSAGES_FILE:-}" ] && [ -f "${BUILD_MESSAGES_FILE:-}" ]; then
-      jq -n --arg model "$MODEL" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
-         --argjson messages "$(jq -c '.messages' "$BUILD_MESSAGES_FILE")" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-    else
-      jq -n --arg model "$MODEL" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --arg user "$CONTENT" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' >"$tmp_payload"
-    fi
+    MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
   fi
+
+  jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
+     --argjson messages "$MESSAGES_JSON" \
+     '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
 
   b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
 
@@ -2659,6 +2679,11 @@ if [ -n "$BATCH_FILE" ]; then
       session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
       export BUILD_MESSAGES_FILE
     fi
+
+    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
+    BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
+    export BUILD_MESSAGES_FILE
+    session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
 
     # Now build payload (provider will honor BUILD_MESSAGES_FILE if present)
     build_payload_from_vars
