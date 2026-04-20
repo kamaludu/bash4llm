@@ -184,6 +184,71 @@ External provider (if installed):
 - Saved files with 600 permissions.  
 - With `--out` GroqBash creates the directory if possible.
 
+
+---
+
+# 🟦 How contextual memory works in GroqBash
+GroqBash **does not keep memory on its own**.  
+Memory exists **only if you enable a session** via `--session`.
+
+Each session creates a persistent NDJSON file:
+
+```
+$GROQBASH_HISTORY_DIR/sessions/<session_id>.ndjson
+```
+
+Every message is **appended** there, and on subsequent invocations GroqBash reads the last N lines and resends them to the model as `messages`.
+
+---
+
+### 🟩 Correct use of `--session`
+Enable a persistent session:
+
+```sh
+./groqbash --session chat1 "Hello"
+```
+
+Effect:
+- creates/uses `sessions/chat1.ndjson`
+- saves the message
+- on subsequent invocations retrieves the contextual window
+
+---
+
+### 🟩 Correct use of `--session-window`
+Controls **how many previous messages** are resent to the model:
+
+```sh
+./groqbash --session chat1 --session-window 10 "continue"
+```
+
+Meaning:
+- read the **last 10 messages**
+- build `BUILD_MESSAGES_FILE`
+- the model sees the previous conversation
+
+If omitted → default **10**  
+If >20 → GroqBash warns (but accepts)
+
+---
+
+### 🟧 Fundamental rule
+To have contextual memory you **must always** include `--session <id>` in every invocation of the same conversation.
+
+Correct example:
+
+```sh
+./groqbash --session chat1 "Hello"
+./groqbash --session chat1 "Summarize what I said"
+```
+
+Incorrect example (loses memory):
+
+```sh
+./groqbash "Hello"
+./groqbash "Summarize what I said"
+```
+
 ---
 
 ## Advanced extras
