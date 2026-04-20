@@ -186,6 +186,70 @@ Provider esterno (se installato):
 
 ---
 
+# 🟦 Come funziona la memoria contestuale in GroqBash
+GroqBash **non mantiene memoria da solo**.  
+La memoria esiste **solo se attivi una sessione** tramite `--session`.
+
+Ogni sessione crea un file NDJSON persistente:
+
+```
+$GROQBASH_HISTORY_DIR/sessions/<session_id>.ndjson
+```
+
+Ogni messaggio viene **appendato** lì, e alle invocazioni successive GroqBash legge le ultime N righe e le reinvia al modello come `messages`.
+
+---
+
+### 🟩 Uso corretto di `--session`
+Attiva una sessione persistente:
+
+```sh
+./groqbash --session chat1 "Ciao"
+```
+
+Effetto:
+- crea/usa `sessions/chat1.ndjson`
+- salva il messaggio
+- alle invocazioni successive recupera la finestra contestuale
+
+---
+
+### 🟩 Uso corretto di `--session-window`
+Controlla **quanti messaggi precedenti** vengono reinviati al modello:
+
+```sh
+./groqbash --session chat1 --session-window 10 "continua"
+```
+
+Significa:
+- leggi **ultimi 10 messaggi**
+- costruisci `BUILD_MESSAGES_FILE`
+- il modello vede la conversazione precedente
+
+Se omesso → default **10**  
+Se >20 → GroqBash avvisa (ma accetta)
+
+---
+
+### 🟧 Regola fondamentale
+Per avere memoria contestuale **devi sempre** includere `--session <id>` in ogni invocazione della stessa conversazione.
+
+Esempio corretto:
+
+```sh
+./groqbash --session chat1 "Ciao"
+./groqbash --session chat1 "Riassumi ciò che ho detto"
+```
+
+Esempio sbagliato (perde memoria):
+
+```sh
+./groqbash "Ciao"
+./groqbash "Riassumi ciò che ho detto"
+```
+
+---
+
 ## Extras avanzati
 
 Gli extras non modificano il core.
