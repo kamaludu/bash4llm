@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_NAME="groqbash"
 SCRIPT_VERSION="2.0.0"
-SCRIPT_DATE="2026-03-16"
+SCRIPT_DATE="2026-04-21"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
@@ -232,14 +232,66 @@ lock_exec() {
   fi
   shift
   mkdir -p "$(dirname "$lockfile")" 2>/dev/null || { log_error "LOCKFAIL" "cannot create lockfile dir: $(dirname "$lockfile")"; return 2; }
-  (
-    if ! flock -x -w "$timeout" 200; then
-      printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
-      exit 124
+
+  # Prefer flock if available
+  if command -v flock >/dev/null 2>&1; then
+    (
+      if ! flock -x -w "$timeout" 200; then
+        printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
+        exit 124
+      fi
+      "$@"
+    ) 200>"$lockfile"
+    return $?
+  fi
+
+  # Fallback: mkdir-based lock (portable)
+  local lockdir="${lockfile}.lockdir"
+  local start_ts now pidfile ownerpid
+  start_ts="$(date +%s)"
+  while :; do
+    if mkdir "$lockdir" 2>/dev/null; then
+      # we own the lockdir; write metadata
+      printf '%s\n' "$$" > "${lockdir}/owner.pid" 2>/dev/null || true
+      printf '%s\n' "$(date +%s)" > "${lockdir}/owner.ts" 2>/dev/null || true
+      chmod 700 "$lockdir" 2>/dev/null || true
+      # execute the command in a subshell; capture exit code
+      (
+        "$@"
+      )
+      local rc=$?
+      # release lock
+      rm -f -- "${lockdir}/owner.pid" "${lockdir}/owner.ts" 2>/dev/null || true
+      rmdir "$lockdir" 2>/dev/null || true
+      return $rc
+    else
+      # check for stale lock
+      if [ -f "${lockdir}/owner.pid" ]; then
+        ownerpid="$(cat "${lockdir}/owner.pid" 2>/dev/null || true)"
+        if [ -n "$ownerpid" ] && ! kill -0 "$ownerpid" 2>/dev/null; then
+          # owner process not alive -> check timestamp
+          if [ -f "${lockdir}/owner.ts" ]; then
+            now="$(date +%s)"
+            ts="$(cat "${lockdir}/owner.ts" 2>/dev/null || echo 0)"
+            # If lock older than TTL (default 300s), break it
+            if [ $((now - ts)) -ge "${GROQBASH_LOCK_TTL:-300}" ]; then
+              log_warn "LOCK" "stale lock detected for $lockfile (ownerpid $ownerpid, age $((now - ts))s); taking over"
+              rm -f -- "${lockdir}/owner.pid" "${lockdir}/owner.ts" 2>/dev/null || true
+              rmdir "$lockdir" 2>/dev/null || true
+              continue
+            fi
+          fi
+        fi
+      fi
+      # timeout?
+      now="$(date +%s)"
+      if [ $((now - start_ts)) -ge "$timeout" ]; then
+        printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
+        return 124
+      fi
+      sleep 0.1
     fi
-    "$@"
-  ) 200>"$lockfile"
-  return $?
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -304,7 +356,8 @@ b64_atomic_write() {
   local destdir tmp lockfile
   destdir="$(dirname -- "$dest")"
   mkdir -p "$destdir" 2>/dev/null || { log_error "B64FAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
-  lockfile="$MODELS_LOCK"
+  # Use a lock specific to the destination directory to avoid global contention
+  lockfile="${destdir%/}/.groqbash.lock"
   tmp="$(mktemp -p "$destdir" .groq-b64.XXXXXX 2>/dev/null || true)"
   [ -n "$tmp" ] || tmp="$destdir/.groq-b64.$$.$RANDOM"
   if ! b64encode > "$tmp"; then
@@ -435,8 +488,13 @@ save_to_history() {
   filename="$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
   mkdir -p "$GROQBASH_HISTORY_DIR" 2>/dev/null || true
   local tmpf dest lockfile
-  tmpf="$(mktemp -p "$GROQBASH_TMPDIR" groq-out.XXXX 2>/dev/null || true)"
-  [ -n "$tmpf" ] || { log_error "HISTORYFAIL" "save_to_history: cannot create tmp file"; return "$GROQBASHERRTMP"; }
+  # Create tmp file in history dir to ensure same-filesystem atomic mv
+  tmpf="$(mktemp -p "$GROQBASH_HISTORY_DIR" groq-out.XXXX 2>/dev/null || true)"
+  [ -n "$tmpf" ] || tmpf="$GROQBASH_HISTORY_DIR/.groq-out.$$.$RANDOM"
+  if ! : > "$tmpf" 2>/dev/null; then
+    log_error "HISTORYFAIL" "save_to_history: cannot create tmp file in $GROQBASH_HISTORY_DIR"
+    return "$GROQBASHERRTMP"
+  fi
   printf '%s\n' "$content" > "$tmpf"
   dest="$GROQBASH_HISTORY_DIR/$filename"
   lockfile="$HISTORY_LOCK"
@@ -485,49 +543,27 @@ manifest_add_part() {
   local manifest="$1" name="$2" file_path="$3" mime="$4" timeout="${5:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
   [ -f "$file_path" ] || { log_error "MANIFESTFAIL" "manifest_add_part: file not found: $file_path"; return 1; }
   mkdir -p "$(dirname "$manifest")" 2>/dev/null || true
-  lock_exec "$lockfile" "$timeout" -- sh -c '
-   set -e
-   manifest="$1"
-   part_b64="$2"
-   name="$3"
-   mime="$4"
-   tmp="$(mktemp -p "$(dirname "$manifest")" manifest.edit.XXXX)"
-   if [ -f "${manifest}.b64" ]; then
-     # decode base64 staging to tmp using exported decode opt
-     base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
-   elif [ -f "$manifest" ]; then
-     cp -f "$manifest" "$tmp"
-   else
-     printf "%s" "{\"parts\":[]}" > "$tmp"
-   fi
-   jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
-      '.parts += [{name:$name, path:$path, encoding:$enc, type:$type}]' "$tmp" > "${tmp}.new"
-   mv -f "${tmp}.new" "$tmp"
-   # write back both manifest and base64 staging atomically
-   if [ -n "${B64_WRAP_OPT:-}" ]; then
-     base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
-   else
-     base64 "$tmp" | tr -d "\n" > "${manifest}.b64"
-   fi
-   cp -f "$tmp" "$manifest"
-   chmod 600 "$manifest" 2>/dev/null || true
-   rm -f "$tmp" 2>/dev/null || true
- ' _ "$manifest" "$part_b64" "$name" "$mime"
 
-  local destdir part_b64 tmpstamp
+  # Ensure a lockfile specific to this manifest (avoid global contention)
+  lockfile="${manifest}.lock"
+
+  # First, stage the part as a base64 file in the manifest directory (atomic in destdir)
+  local destdir part_b64 tmpstamp tmp_part
   destdir="$(dirname "$manifest")"
   tmpstamp="$(date +%s)-$$"
   part_b64="$destdir/parts-$(basename "$file_path").${tmpstamp}.b64"
-  # write base64 staging atomically
-  if ! b64encode < "$file_path" > "$GROQBASH_TMPDIR/part.tmp.$$"; then
-    rm -f "$GROQBASH_TMPDIR/part.tmp.$$" 2>/dev/null || true
+  tmp_part="$GROQBASH_TMPDIR/part.tmp.$$"
+
+  # write base64 staging atomically into RUN tmp then move into destdir
+  if ! b64encode < "$file_path" > "$tmp_part"; then
+    rm -f "$tmp_part" 2>/dev/null || true
     log_error "B64FAIL" "manifest_add_part: b64 encode failed"
     return 1
   fi
-  mv -f "$GROQBASH_TMPDIR/part.tmp.$$" "$part_b64"
+  mv -f "$tmp_part" "$part_b64" 2>/dev/null || { rm -f "$tmp_part" 2>/dev/null || true; log_error "MANIFESTFAIL" "cannot move staged part to $part_b64"; return 1; }
   chmod 600 "$part_b64" 2>/dev/null || true
+
   # Now update manifest atomically under lock using jq --arg
-  lockfile="${manifest}.lock"
   lock_exec "$lockfile" "$timeout" -- sh -c '
     set -e
     manifest="$1"
@@ -536,21 +572,27 @@ manifest_add_part() {
     mime="$4"
     tmp="$(mktemp -p "$(dirname "$manifest")" manifest.edit.XXXX)"
     if [ -f "${manifest}.b64" ]; then
-      b64decode < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
+      # decode base64 staging to tmp using exported decode opt
+      base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
     elif [ -f "$manifest" ]; then
       cp -f "$manifest" "$tmp"
     else
       printf "%s" "{\"parts\":[]}" > "$tmp"
     fi
     jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
-       '.parts += [{name:$name, path:$path, encoding:$enc, type:$type}]' "$tmp" > "${tmp}.new"
+       ".parts += [{name:\$name, path:\$path, encoding:\$enc, type:\$type}]" "$tmp" > "${tmp}.new"
     mv -f "${tmp}.new" "$tmp"
     # write back both manifest and base64 staging atomically
-    b64encode < "$tmp" > "${manifest}.b64"
+    if [ -n "${B64_WRAP_OPT:-}" ]; then
+      base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
+    else
+      base64 "$tmp" | tr -d "\n" > "${manifest}.b64"
+    fi
     cp -f "$tmp" "$manifest"
     chmod 600 "$manifest" 2>/dev/null || true
     rm -f "$tmp" 2>/dev/null || true
   ' _ "$manifest" "$part_b64" "$name" "$mime" || { log_error "MANIFESTFAIL" "manifest_add_part: update failed"; return 1; }
+
   log_info "MANIFEST_ADD" "added part $name -> $part_b64"
   return 0
 }
@@ -698,20 +740,21 @@ session_read_window() {
   : > "$tmpf" 2>/dev/null || { [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window: cannot create tmpf %s\n' "$tmpf" >&2; return 1; }
 
   # Extract last N records robustly (records separated by blank line)
-    if [ -f "$session_file" ]; then
-    # Decide format: se ci sono righe vuote, trattiamo i record come separati da blank line (pretty JSON)
-    if grep -q '^$' "$session_file" 2>/dev/null; then
-      # Records separated by blank lines: use awk RS="" to get last N records
-      awk -v n="$n" 'BEGIN{RS=""; ORS=RS} {rec[++c]=$0} END{start=c-n+1; if(start<1) start=1; for(i=start;i<=c;i++) print rec[i]}' "$session_file" > "$tmpf" 2>/dev/null || {
-        # fallback: copy whole file
-        cp -f "$session_file" "$tmpf" 2>/dev/null || true
-      }
-    else
-      # No blank lines: assume NDJSON one-record-per-line — use tail to get last N lines
-      if ! tail -n "$n" "$session_file" 2>/dev/null > "$tmpf"; then
-        cp -f "$session_file" "$tmpf" 2>/dev/null || true
+  if [ -f "$session_file" ]; then
+    # Acquire a short lock on the session file to avoid partial reads during concurrent append
+    lock_exec "${session_file}.lock" 5 -- sh -c '
+      set -e
+      session_file="$1"
+      n="$2"
+      tmpf="$3"
+      if grep -q "^$" "$session_file" 2>/dev/null; then
+        awk -v n="$n" "BEGIN{RS=\"\"; ORS=RS} {rec[++c]=\$0} END{start=c-n+1; if(start<1) start=1; for(i=start;i<=c;i++) print rec[i]}" "$session_file" > "$tmpf" 2>/dev/null || cp -f "$session_file" "$tmpf" 2>/dev/null || true
+      else
+        if ! tail -n "$n" "$session_file" 2>/dev/null > "$tmpf"; then
+          cp -f "$session_file" "$tmpf" 2>/dev/null || true
+        fi
       fi
-    fi
+    ' _ "$session_file" "$n" "$tmpf"
   else
     [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window: session file not found: %s\n' "$session_file" >&2
   fi
@@ -793,8 +836,17 @@ session_append() {
     fi
   fi
 
-  marker="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-$$-${message_id}.done"
-  if [ -f "$marker" ]; then
+  # Use an atomic marker directory to avoid duplicate appends across processes
+  marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-${message_id}.lockdir"
+  created_marker=0
+  if mkdir "$marker_dir" 2>/dev/null; then
+    # we created the marker and own it
+    printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
+    printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
+    chmod 700 "$marker_dir" 2>/dev/null || true
+    created_marker=1
+  else
+    # someone else already created marker -> skip append
     log_info "SESSION" "append skipped: marker exists for message_id $message_id"
     return 0
   fi
@@ -838,10 +890,30 @@ session_append() {
 
   # Append under flock (fd 200)
   if ! printf "%s\n" "$line" >> "$session_file" 2>/dev/null; then
+    # If append failed, try to reinitialize file safely
     : > "$session_file" 2>/dev/null || true
-    printf "%s\n" "$line" >> "$session_file" 2>/dev/null || true
+    if ! printf "%s\n" "$line" >> "$session_file" 2>/dev/null; then
+      # Append definitively failed: cleanup marker if we created it
+      if [ "${created_marker:-0}" -eq 1 ]; then
+        rm -rf -- "$marker_dir" 2>/dev/null || true
+      fi
+      flock -u 200 2>/dev/null || true
+      exec 200>&- 2>/dev/null || true
+      rm -f "$tmpf" 2>/dev/null || true
+      log_error "SESSION" "failed to append message to $session_file"
+      return 1
+    fi
   fi
   chmod 600 "$session_file" 2>/dev/null || true
+
+  flock -u 200 2>/dev/null || true
+  exec 200>&- 2>/dev/null || true
+
+  rm -f "$tmpf" 2>/dev/null || true
+  # Leave marker in place to prevent future duplicates (marker_dir indicates done)
+  touch "${marker_dir}/done" 2>/dev/null || true
+  log_info "SESSION" "appended message id $message_id to $session_file"
+  return 0
 
   flock -u 200 2>/dev/null || true
   exec 200>&- 2>/dev/null || true
@@ -1216,10 +1288,24 @@ call_api_groq() {
 
   if [ "$try_decoded" -eq 1 ]; then
     # send decoded JSON
-    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    # Write response to a tmp file in workdir first, then atomically move to RESP
+    local resp_tmp="${workdir%/}/resp.tmp.$$"
+    rm -f "$resp_tmp" 2>/dev/null || true
+    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$resp_tmp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       rc=$?
     else
       rc=0
+    fi
+    # Atomically move tmp response to RESP
+    if [ -s "$resp_tmp" ]; then
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+      else
+        mv -f "$resp_tmp" "$RESP" 2>/dev/null || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+      fi
+      chmod 600 "$RESP" 2>/dev/null || true
+    else
+      rm -f "$resp_tmp" 2>/dev/null || true
     fi
     rm -f "$decoded_payload" 2>/dev/null || true
   else
@@ -1234,11 +1320,26 @@ call_api_groq() {
       return "$GROQBASHERRTMP"
     fi
 
-    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$PAYLOAD" -o "$RESP" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    # Write response to a tmp file in workdir first, then atomically move to RESP
+    local resp_tmp="${workdir%/}/resp.tmp.$$"
+    rm -f "$resp_tmp" 2>/dev/null || true
+    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$resp_tmp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
       rc=$?
     else
       rc=0
     fi
+    # Atomically move tmp response to RESP
+    if [ -s "$resp_tmp" ]; then
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+      else
+        mv -f "$resp_tmp" "$RESP" 2>/dev/null || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+      fi
+      chmod 600 "$RESP" 2>/dev/null || true
+    else
+      rm -f "$resp_tmp" 2>/dev/null || true
+    fi
+    rm -f "$decoded_payload" 2>/dev/null || true
   fi
 
   read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
@@ -1274,9 +1375,22 @@ call_api_streaming_groq() {
 
   decoded_payload="$RUN_TMPDIR/payload.dec.$$"
   if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
-    b64decode < "$PAYLOAD" > "$decoded_payload" || { rm -f "$decoded_payload" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    if ! b64decode < "$PAYLOAD" > "$decoded_payload" 2>"$ERRF"; then
+      log_error "B64DECODE" "base64 decode failed for payload; see $ERRF"
+      rm -f "$decoded_payload" 2>/dev/null || true
+      return "$GROQBASHERRTMP"
+    fi
   else
     cp -f "$PAYLOAD" "$decoded_payload" 2>/dev/null || true
+  fi
+
+  # Validate decoded payload is valid JSON before streaming
+  if ! jq -e . "$decoded_payload" >/dev/null 2>&1; then
+    log_error "PAYLOAD" "decoded payload is not valid JSON; aborting streaming call"
+    printf 'groqbash: INFO: decoded payload (head 200 bytes):\n' >&2
+    head -c 200 "$decoded_payload" >&2 || true
+    rm -f "$decoded_payload" 2>/dev/null || true
+    return "$GROQBASHERRTMP"
   fi
 
   local CURL_CMD
