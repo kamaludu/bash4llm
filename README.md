@@ -100,7 +100,7 @@ Prompt diretto:
 
 `./groqbash "scrivi una breve poesia in italiano"`
 
-Se multilinea:
+Prompt multilinea:
 
 ```sh
 ./groqbash <<'EOF'
