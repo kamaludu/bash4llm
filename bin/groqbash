@@ -669,13 +669,15 @@ session_sanitize_cmd() {
 session_read_window() {
   # Usage: session_read_window <session_id> <N> <out_file>
   local sid="$1" n="${2:-10}" out="$3"
-  local session_file="$GROQBASH_HISTORY_DIR/sessions/${sid}.ndjson"
-  local tmpf line role content role_norm lockfile timeout fd role_json content_json
+  local history_dir="${GROQBASH_HISTORY_DIR:-$PWD/groqbash.d/history}"
+  local session_file="$history_dir/sessions/${sid}.ndjson"
+  local tmpf line role content role_norm lockfile timeout role_json content_json
 
   [ -n "$sid" ] || return 1
   [ -n "$out" ] || return 1
-  mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
-  chmod 700 "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
+
+  mkdir -p "${history_dir%/}/sessions" 2>/dev/null || true
+  chmod 700 "${history_dir%/}/sessions" 2>/dev/null || true
 
   if ! printf '%s' "$n" | grep -qE '^[0-9]+$'; then n=10; fi
   if [ "$n" -le 0 ]; then n=10; fi
@@ -695,9 +697,15 @@ session_read_window() {
       tail -n "$n" "$session_file" 2>/dev/null > "$tmpf" || true
     fi
     exec 200>&- 2>/dev/null || true
+  else
+    log_debug "SESSION" "session file not found: $session_file"
   fi
 
-  printf '%s' '{"messages":[' > "$out"
+  mkdir -p "$(dirname "$out")" 2>/dev/null || true
+  : > "$out"
+  chmod 600 "$out" 2>/dev/null || true
+
+  printf '%s' '{"messages":[' >> "$out"
   local first=1
   while IFS= read -r line || [ -n "$line" ]; do
     if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
@@ -2688,6 +2696,7 @@ if [ -n "$BATCH_FILE" ]; then
 
       # Primary attempt: let session_read_window populate BUILD_MESSAGES_FILE
       session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+      : > "${BUILD_MESSAGES_FILE:-${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json}"; chmod 600 "${BUILD_MESSAGES_FILE}" 2>/dev/null || true
 
       # If session_read_window produced empty/invalid messages, try reconstructing from NDJSON tail
       if [ ! -f "${BUILD_MESSAGES_FILE:-}" ] || [ "$(jq -r '.messages | length' "$BUILD_MESSAGES_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
@@ -2758,6 +2767,7 @@ if [ "$CHAT_MODE" -eq 1 ]; then
       ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
       BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
       session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+      : > "${BUILD_MESSAGES_FILE:-${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json}"; chmod 600 "${BUILD_MESSAGES_FILE}" 2>/dev/null || true
       export BUILD_MESSAGES_FILE
     fi
 
@@ -2795,6 +2805,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
     ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
     session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+    : > "${BUILD_MESSAGES_FILE:-${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json}"; chmod 600 "${BUILD_MESSAGES_FILE}" 2>/dev/null || true
     export BUILD_MESSAGES_FILE
   fi
 
@@ -2836,6 +2847,7 @@ else
     ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
     session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+    : > "${BUILD_MESSAGES_FILE:-${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json}"; chmod 600 "${BUILD_MESSAGES_FILE}" 2>/dev/null || true
     export BUILD_MESSAGES_FILE
   fi
 
