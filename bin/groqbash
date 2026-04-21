@@ -670,39 +670,44 @@ session_read_window() {
   # Usage: session_read_window <session_id> <N> <out_file>
   local sid="$1" n="${2:-10}" out="$3"
   local session_file="$GROQBASH_HISTORY_DIR/sessions/${sid}.ndjson"
-  local tmpf lines role content meta line json role_norm
+  local tmpf line role content role_norm lockfile timeout fd role_json content_json
+
   [ -n "$sid" ] || return 1
   [ -n "$out" ] || return 1
   mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
   chmod 700 "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
 
-  # Default N limit safety
   if ! printf '%s' "$n" | grep -qE '^[0-9]+$'; then n=10; fi
   if [ "$n" -le 0 ]; then n=10; fi
 
-  # Under lock, read last N lines (if file exists)
   tmpf="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.read.XXXX 2>/dev/null || true)"
   : > "$tmpf"
+
+  lockfile="${session_file}.lock"
+  timeout="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
+
   if [ -f "$session_file" ]; then
-    lock_exec "${session_file}.lock" "${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}" -- sh -c '
-      tail -n "$1" "$2" 2>/dev/null || true
-    ' _ "$n" "$session_file" > "$tmpf" || true
+    exec 200>"$lockfile" 2>/dev/null || true
+    if flock -x -w "$timeout" 200 2>/dev/null; then
+      tail -n "$n" "$session_file" 2>/dev/null > "$tmpf" || true
+      flock -u 200 2>/dev/null || true
+    else
+      tail -n "$n" "$session_file" 2>/dev/null > "$tmpf" || true
+    fi
+    exec 200>&- 2>/dev/null || true
   fi
 
-  # Build messages array (normalize role)
   printf '%s' '{"messages":[' > "$out"
   local first=1
   while IFS= read -r line || [ -n "$line" ]; do
-    # parse JSON line safely with jq; fallback to skip invalid lines
     if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
       role="$(printf '%s' "$line" | jq -r '.role // "user"')"
       case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
       content="$(printf '%s' "$line" | jq -r '.content // ""')"
-      # Escape content as JSON string via jq -R --slurp
+      role_json="$(printf '%s' "$role_norm" | jq -R -c '.')"
       content_json="$(printf '%s' "$content" | jq -R -s '.')"
       if [ "$first" -eq 0 ]; then printf ',' >> "$out"; fi
-      # role_norm is a simple token (user/assistant/system) — emit as JSON string
-      printf '%s' "{\"role\":$(jq -R -c <<<"$role_norm"),\"content\":${content_json}}" >> "$out" 2>/dev/null || true
+      printf '%s' "{\"role\":${role_json},\"content\":${content_json}}" >> "$out" 2>/dev/null || true
       first=0
     fi
   done < "$tmpf"
@@ -717,26 +722,22 @@ session_append() {
   local sid="$1" role="$2" content="$3" meta_json="$4"
   local session_file="$GROQBASH_HISTORY_DIR/sessions/${sid}.ndjson"
   local lockfile="${session_file}.lock"
-  local invocation_ts message_id marker
+  local invocation_ts message_id marker normalized rand tmpf found=0 role_norm line timeout
+
   [ -n "$sid" ] || return 1
   [ -n "$content" ] || content=""
 
-  # Generate invocation_ts and message_id if not provided in meta
   invocation_ts="$(session_now_ts)"
-  # If meta_json contains id, use it
   message_id="$(printf '%s' "$meta_json" | jq -r '.id // empty' 2>/dev/null || true)"
   if [ -z "$message_id" ]; then
-    # normalized content: trim and normalize LF
     normalized="$(printf '%s' "$content" | sed -e 's/\r$//' -e 's/\r\n/\n/g' | awk '{$1=$1; print}')"
-    # small random 16-bit hex
     rand="$(printf '%04x' $((RANDOM & 0xFFFF)))"
-    # compute sha256 if available
     if command -v sha256sum >/dev/null 2>&1; then
-      message_id="$(printf '%s|%s|%s' "$normalized" "$invocation_ts" "$rand" | sha256sum | awk '{print substr($1,1,16)}')"
+      message_id="$(printf '%s|%s|%s' "$normalized" "$invocation_ts" "$rand" | sha256sum | cut -c1-16)"
     elif command -v openssl >/dev/null 2>&1; then
-      message_id="$(printf '%s|%s|%s' "$normalized" "$invocation_ts" "$rand" | openssl dgst -sha256 | awk '{print substr($2,1,16)}')"
+      message_id="$(printf '%s|%s|%s' "$normalized" "$invocation_ts" "$rand" | openssl dgst -sha256 | awk '{print $2}' | cut -c1-16)"
     else
-      message_id="$(printf '%s' "$rand")"
+      message_id="$rand"
     fi
   fi
 
@@ -746,24 +747,24 @@ session_append() {
     return 0
   fi
 
-  # Under lock, check last LAST_CHECK_LINES for existing meta.id or identical content
-  local last_lines tmpf found=0
   tmpf="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.append.XXXX 2>/dev/null || true)"
   : > "$tmpf"
   mkdir -p "$(dirname "$session_file")" 2>/dev/null || true
   chmod 700 "$(dirname "$session_file")" 2>/dev/null || true
 
-  lock_exec "$lockfile" "${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}" -- sh -c '
-    tail -n "$1" "$2" 2>/dev/null || true
-  ' _ "${LAST_CHECK_LINES:-50}" "$session_file" > "$tmpf" || true
+  timeout="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
+  exec 200>"$lockfile" 2>/dev/null || true
+  if flock -x -w "$timeout" 200 2>/dev/null; then
+    tail -n "${LAST_CHECK_LINES:-50}" "$session_file" 2>/dev/null > "$tmpf" || true
+  else
+    tail -n "${LAST_CHECK_LINES:-50}" "$session_file" 2>/dev/null > "$tmpf" || true
+  fi
 
-  # Search for existing id
   if [ -s "$tmpf" ]; then
     if grep -F "\"id\":\"$message_id\"" "$tmpf" >/dev/null 2>&1; then
       found=1
     else
-      # fallback: compare normalized content with last lines
-      normalized="$(printf "%s" "$content" | sed -e "s/\r$//" -e "s/\r\n/\n/g" | awk '{$1=$1; print}')"
+      normalized="$(printf '%s' "$content" | sed -e 's/\r$//' -e 's/\r\n/\n/g' | awk '{$1=$1; print}')"
       if printf '%s\n' "$(tail -n "${LAST_CHECK_LINES:-50}" "$tmpf" 2>/dev/null || true)" | jq -r '.content // empty' 2>/dev/null | grep -F -- "$normalized" >/dev/null 2>&1; then
         found=1
       fi
@@ -773,23 +774,25 @@ session_append() {
   if [ "$found" -eq 1 ]; then
     rm -f "$tmpf" 2>/dev/null || true
     touch "$marker" 2>/dev/null || true
+    flock -u 200 2>/dev/null || true
+    exec 200>&- 2>/dev/null || true
     log_info "SESSION" "append skipped: duplicate detected for message_id $message_id"
     return 0
   fi
 
-  # Build NDJSON line
   meta_json="$(printf '%s' "$meta_json" | jq -c '.' 2>/dev/null || printf '%s' '{}' )"
-  # Ensure role normalization
   case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
-  # Build JSON line safely
   line="$(jq -n --arg ts "$invocation_ts" --arg role "$role_norm" --arg content "$content" --argjson meta "$meta_json" '{ts:$ts, role:$role, content:$content, meta:$meta}')"
 
-  # Append under lock (atomic append) using positional args to avoid here-doc inside single-quoted sh -c
-  lock_exec "$lockfile" "${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}" -- sh -c '
-    set -e
-    printf "%s\n" "$1" >> "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$line" "$session_file" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
+  # Append under flock (fd 200)
+  if ! printf "%s\n" "$line" >> "$session_file" 2>/dev/null; then
+    : > "$session_file" 2>/dev/null || true
+    printf "%s\n" "$line" >> "$session_file" 2>/dev/null || true
+  fi
+  chmod 600 "$session_file" 2>/dev/null || true
+
+  flock -u 200 2>/dev/null || true
+  exec 200>&- 2>/dev/null || true
 
   rm -f "$tmpf" 2>/dev/null || true
   touch "$marker" 2>/dev/null || true
@@ -828,8 +831,14 @@ ensure_run_tmpdir() {
   : > "$ERRF" 2>/dev/null || true
   chmod 600 "$ERRF" 2>/dev/null || true
 
-  # Cleanup trap: remove run dir unless debugging is enabled
-  trap 'if [ "${GROQBASH_DEBUG:-0}" -eq 0 ]; then cleanup_tmp; else log_info "TMPDEBUG" "preserving RUN_TMPDIR=$RUN_TMPDIR"; fi' EXIT INT TERM
+  cleanup_run_tmp_on_exit() {
+    if [ "${GROQBASH_DEBUG:-0}" -eq 0 ]; then
+      cleanup_tmp
+    else
+      log_info "TMPDEBUG" "preserving RUN_TMPDIR=$RUN_TMPDIR"
+    fi
+  }
+  trap cleanup_run_tmp_on_exit EXIT INT TERM
 
   export RUN_TMPDIR PAYLOAD RESP ERRF
   log_info "TMPCREATE" "Created RUN_TMPDIR: $RUN_TMPDIR"
@@ -2672,25 +2681,43 @@ if [ -n "$BATCH_FILE" ]; then
         log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
       fi
 
-      # Prepare messages JSON file under RUN_TMPDIR
+      # Prepare messages JSON file under RUN_TMPDIR and populate it (atomic)
       ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
-      BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
-      # Read last N messages into BUILD_MESSAGES_FILE (atomic)
-      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+      BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
       export BUILD_MESSAGES_FILE
-    fi
 
-    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
-    BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
-    export BUILD_MESSAGES_FILE
-    session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+      # Primary attempt: let session_read_window populate BUILD_MESSAGES_FILE
+      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+
+      # If session_read_window produced empty/invalid messages, try reconstructing from NDJSON tail
+      if [ ! -f "${BUILD_MESSAGES_FILE:-}" ] || [ "$(jq -r '.messages | length' "$BUILD_MESSAGES_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
+        SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
+        if [ -f "${SESSION_DIR%/}/${SESSION_ID}.ndjson" ]; then
+          tail -n "${SESSION_WINDOW:-10}" "${SESSION_DIR%/}/${SESSION_ID}.ndjson" \
+            | jq -s '{messages: map(.message // .)}' > "${BUILD_MESSAGES_FILE}" 2>/dev/null || true
+        fi
+      fi
+
+      # Final fallback: ensure at least the current user message is present so API never receives messages:[]
+      if [ ! -f "${BUILD_MESSAGES_FILE:-}" ] || [ "$(jq -r '.messages | length' "$BUILD_MESSAGES_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
+        jq -n --arg role "user" --arg content "${CONTENT:-}" '{messages:[{role:$role,content:$content}] }' > "${BUILD_MESSAGES_FILE}"
+      fi
+    fi
 
     # Now build payload (provider will honor BUILD_MESSAGES_FILE if present)
     build_payload_from_vars
 
-    if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting batch item."; continue; fi
-    if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || log_error "CALL" "Error during streaming call."
-    else perform_request_once || true; fi
+    if ! ensure_api_key_for_provider "$PROVIDER"; then
+      log_error "APIKEY" "missing API key; aborting batch item."
+      continue
+    fi
+
+    if [ "$STREAM_MODE" -eq 1 ]; then
+      call_api_streaming || log_error "CALL" "Error during streaming call."
+    else
+      perform_request_once || true
+    fi
+
     printf '\n----\n'
   done < "$BATCH_FILE"
   exit 0
