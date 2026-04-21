@@ -631,7 +631,7 @@ make_tmpdir() {
 }
 
 # ---------------------------------------------------------------------------
-# Session helpers (MVP)
+# Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
 # - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ
 # - session_messages_tmp_path <session_id> -> prints path under RUN_TMPDIR
