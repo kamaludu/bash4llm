@@ -102,10 +102,12 @@ Prompt diretto:
 
 Se multilinea:
 
-`./groqbash <<'EOF'
+```sh
+./groqbash <<'EOF'
 > scrivi una breve poesia
 > in italiano
-> EOF`
+> EOF
+```
 
 
 Input da file:
