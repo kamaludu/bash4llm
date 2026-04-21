@@ -632,12 +632,42 @@ _get_owner() {
 }
 
 _get_file_signature() {
-  local path="$1" sig=""
+  local path="$1"
+  local sig="" hash="" dev="" inode="" size="" ctime="" mtime="" uid="" gid="" mode=""
+  # Return empty if not a regular file
+  [ -f "$path" ] || { printf ''; return 0; }
+
+  # Decide whether to compute content hash (default 1)
+  local use_hash="${GROQBASH_SIG_HASH:-1}"
+
+  # Compute SHA256 if requested and available (coreutils sha256sum)
+  if [ "${use_hash}" != "0" ] && command -v sha256sum >/dev/null 2>&1; then
+    hash="$(sha256sum "$path" 2>/dev/null | awk '{print $1}' || true)"
+  else
+    hash=""
+  fi
+
   case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin) sig="$(stat -f '%Sp|%Su|%Sg|%z|%m' "$path" 2>/dev/null || true)" ;;
-    *) if command -v stat >/dev/null 2>&1; then sig="$(stat -c '%A|%U|%G|%s|%Y' "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then sig="$(find "$path" -maxdepth 0 -printf '%M|%u|%g|%s|%T@' 2>/dev/null || true)"; fi ;;
+    Darwin)
+      # BSD/macOS stat -f: %d device, %i inode, %z size, %c ctime, %m mtime, %u uid, %g gid, %p mode
+      if stat -f '%d %i %z %c %m %u %g %p' "$path" >/dev/null 2>&1; then
+        read -r dev inode size ctime mtime uid gid mode < <(stat -f '%d %i %z %c %m %u %g %p' "$path" 2>/dev/null || true)
+      else
+        dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
+      fi
+      ;;
+    *)
+      # GNU stat (util-linux): %d device, %i inode, %s size, %Z ctime, %Y mtime, %u uid, %g gid, %a mode
+      if stat -c '%d %i %s %Z %Y %u %g %a' "$path" >/dev/null 2>&1; then
+        read -r dev inode size ctime mtime uid gid mode < <(stat -c '%d %i %s %Z %Y %u %g %a' "$path" 2>/dev/null || true)
+      else
+        dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
+      fi
+      ;;
   esac
-  printf '%s' "$sig"
+
+  printf 'sha256:%s|dev:%s:%s|size:%s|ctime:%s|mtime:%s|uid:%s|gid:%s|mode:%s' \
+    "${hash:-}" "${dev:-}" "${inode:-}" "${size:-}" "${ctime:-}" "${mtime:-}" "${uid:-}" "${gid:-}" "${mode:-}"
 }
 getfile_signature() { _get_file_signature "$1"; }
 
