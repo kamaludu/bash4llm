@@ -231,9 +231,10 @@ lock_exec() {
     return 2
   fi
   shift
+
   mkdir -p "$(dirname "$lockfile")" 2>/dev/null || { log_error "LOCKFAIL" "cannot create lockfile dir: $(dirname "$lockfile")"; return 2; }
 
-  # Prefer flock if available
+  # Prefer flock; fail fast if not available (flock is a declared prerequisite)
   if command -v flock >/dev/null 2>&1; then
     (
       if ! flock -x -w "$timeout" 200; then
@@ -245,53 +246,9 @@ lock_exec() {
     return $?
   fi
 
-  # Fallback: mkdir-based lock (portable)
-  local lockdir="${lockfile}.lockdir"
-  local start_ts now pidfile ownerpid
-  start_ts="$(date +%s)"
-  while :; do
-    if mkdir "$lockdir" 2>/dev/null; then
-      # we own the lockdir; write metadata
-      printf '%s\n' "$$" > "${lockdir}/owner.pid" 2>/dev/null || true
-      printf '%s\n' "$(date +%s)" > "${lockdir}/owner.ts" 2>/dev/null || true
-      chmod 700 "$lockdir" 2>/dev/null || true
-      # execute the command in a subshell; capture exit code
-      (
-        "$@"
-      )
-      local rc=$?
-      # release lock
-      rm -f -- "${lockdir}/owner.pid" "${lockdir}/owner.ts" 2>/dev/null || true
-      rmdir "$lockdir" 2>/dev/null || true
-      return $rc
-    else
-      # check for stale lock
-      if [ -f "${lockdir}/owner.pid" ]; then
-        ownerpid="$(cat "${lockdir}/owner.pid" 2>/dev/null || true)"
-        if [ -n "$ownerpid" ] && ! kill -0 "$ownerpid" 2>/dev/null; then
-          # owner process not alive -> check timestamp
-          if [ -f "${lockdir}/owner.ts" ]; then
-            now="$(date +%s)"
-            ts="$(cat "${lockdir}/owner.ts" 2>/dev/null || echo 0)"
-            # If lock older than TTL (default 300s), break it
-            if [ $((now - ts)) -ge "${GROQBASH_LOCK_TTL:-300}" ]; then
-              log_warn "LOCK" "stale lock detected for $lockfile (ownerpid $ownerpid, age $((now - ts))s); taking over"
-              rm -f -- "${lockdir}/owner.pid" "${lockdir}/owner.ts" 2>/dev/null || true
-              rmdir "$lockdir" 2>/dev/null || true
-              continue
-            fi
-          fi
-        fi
-      fi
-      # timeout?
-      now="$(date +%s)"
-      if [ $((now - start_ts)) -ge "$timeout" ]; then
-        printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
-        return 124
-      fi
-      sleep 0.1
-    fi
-  done
+  # flock missing: fail with clear message (avoid complex fallback)
+  log_error "LOCK" "flock not available; cannot acquire lock on $lockfile. Install util-linux/coreutils or run on supported platform."
+  return 2
 }
 
 # ---------------------------------------------------------------------------
@@ -848,6 +805,7 @@ session_append() {
   local session_file="$GROQBASH_HISTORY_DIR/sessions/${sid}.ndjson"
   local lockfile="${session_file}.lock"
   local invocation_ts message_id marker normalized rand tmpf found=0 role_norm line timeout
+  local marker_dir created_marker=0
 
   [ -n "$sid" ] || return 1
   [ -n "$content" ] || content=""
@@ -866,59 +824,67 @@ session_append() {
     fi
   fi
 
-  # Use an atomic marker directory to avoid duplicate appends across processes
-  marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-${message_id}.lockdir"
-  created_marker=0
-  if mkdir "$marker_dir" 2>/dev/null; then
-    # we created the marker and own it
+  # Create session dir if missing
+  mkdir -p "$(dirname "$session_file")" 2>/dev/null || true
+  chmod 700 "$(dirname "$session_file")" 2>/dev/null || true
+
+  # Marker: prefer message_id-based idempotency (cross-process). Fallback: run-unique marker to avoid duplicate append from same process.
+  if [ -n "${message_id:-}" ]; then
+    marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/session-msg-${message_id}.lockdir"
+    if mkdir "$marker_dir" 2>/dev/null; then
+      printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
+      printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
+      chmod 700 "$marker_dir" 2>/dev/null || true
+      created_marker=1
+    else
+      log_info "SESSION" "append skipped: marker exists for message_id $message_id"
+      return 0
+    fi
+  else
+    marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-$$-${RANDOM}.lockdir"
+    mkdir -p "$marker_dir" 2>/dev/null || true
     printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
     printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
     chmod 700 "$marker_dir" 2>/dev/null || true
     created_marker=1
-  else
-    # someone else already created marker -> skip append
-    log_info "SESSION" "append skipped: marker exists for message_id $message_id"
-    return 0
   fi
 
+  # Prepare tmp file for any transient checks (kept minimal)
   tmpf="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.append.XXXX 2>/dev/null || true)"
-  : > "$tmpf"
-  mkdir -p "$(dirname "$session_file")" 2>/dev/null || true
-  chmod 700 "$(dirname "$session_file")" 2>/dev/null || true
+  : > "$tmpf" 2>/dev/null || true
 
   timeout="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
+
+  # Acquire exclusive lock on session file
   exec 200>"$lockfile" 2>/dev/null || true
-  if flock -x -w "$timeout" 200 2>/dev/null; then
-    tail -n "${LAST_CHECK_LINES:-50}" "$session_file" 2>/dev/null > "$tmpf" || true
-  else
-    tail -n "${LAST_CHECK_LINES:-50}" "$session_file" 2>/dev/null > "$tmpf" || true
+  if ! flock -x -w "$timeout" 200 2>/dev/null; then
+    # Could not acquire lock: cleanup marker if we created it
+    if [ "${created_marker:-0}" -eq 1 ]; then rm -rf -- "$marker_dir" 2>/dev/null || true; fi
+    exec 200>&- 2>/dev/null || true
+    rm -f "$tmpf" 2>/dev/null || true
+    log_error "SESSION" "could not acquire session lock for append"
+    return 1
   fi
 
-  if [ -s "$tmpf" ]; then
-    if grep -F "\"id\":\"$message_id\"" "$tmpf" >/dev/null 2>&1; then
-      found=1
-    else
-      normalized="$(printf '%s' "$content" | sed -e 's/\r$//' -e 's/\r\n/\n/g' | awk '{$1=$1; print}')"
-      if printf '%s\n' "$(tail -n "${LAST_CHECK_LINES:-50}" "$tmpf" 2>/dev/null || true)" | jq -r '.content // empty' 2>/dev/null | grep -F -- "$normalized" >/dev/null 2>&1; then
-        found=1
-      fi
+  # If message_id present, do a quick existence check under lock by searching for the id token.
+  if [ -n "${message_id:-}" ] && [ -f "$session_file" ]; then
+    # Only search for the id field; this is cheap and avoids content-based heuristics
+    if grep -F "\"id\":\"$message_id\"" "$session_file" >/dev/null 2>&1; then
+      # duplicate detected: release lock and keep marker (treat as done)
+      flock -u 200 2>/dev/null || true
+      exec 200>&- 2>/dev/null || true
+      rm -f "$tmpf" 2>/dev/null || true
+      log_info "SESSION" "append skipped: duplicate detected for message_id $message_id"
+      return 0
     fi
   fi
 
-  if [ "$found" -eq 1 ]; then
-    rm -f "$tmpf" 2>/dev/null || true
-    touch "$marker" 2>/dev/null || true
-    flock -u 200 2>/dev/null || true
-    exec 200>&- 2>/dev/null || true
-    log_info "SESSION" "append skipped: duplicate detected for message_id $message_id"
-    return 0
-  fi
-
+  # Normalize role and meta, build line
   meta_json="$(printf '%s' "$meta_json" | jq -c '.' 2>/dev/null || printf '%s' '{}' )"
   case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
   line="$(jq -n --arg ts "$invocation_ts" --arg role "$role_norm" --arg content "$content" --argjson meta "$meta_json" '{ts:$ts, role:$role, content:$content, meta:$meta}')"
 
-  # Append under flock (fd 200)
+  # Perform append (we already hold the lock)
   if ! printf "%s\n" "$line" >> "$session_file" 2>/dev/null; then
     # If append failed, try to reinitialize file safely
     : > "$session_file" 2>/dev/null || true
@@ -934,23 +900,18 @@ session_append() {
       return 1
     fi
   fi
+
   chmod 600 "$session_file" 2>/dev/null || true
 
+  # Release lock
   flock -u 200 2>/dev/null || true
   exec 200>&- 2>/dev/null || true
 
   rm -f "$tmpf" 2>/dev/null || true
-  # Leave marker in place to prevent future duplicates (marker_dir indicates done)
+
+  # Leave marker in place to indicate completion (used for idempotency if message_id present)
   touch "${marker_dir}/done" 2>/dev/null || true
-  log_info "SESSION" "appended message id $message_id to $session_file"
-  return 0
-
-  flock -u 200 2>/dev/null || true
-  exec 200>&- 2>/dev/null || true
-
-  rm -f "$tmpf" 2>/dev/null || true
-  touch "$marker" 2>/dev/null || true
-  log_info "SESSION" "appended message id $message_id to $session_file"
+  log_info "SESSION" "appended message id ${message_id:-<no-id>} to $session_file"
   return 0
 }
 
@@ -1256,7 +1217,6 @@ buildpayloadgroq() { buildpayload_groq "$@"; }
 # ---------------------------------------------------------------------------
 call_api_groq() {
   # Send payload to Groq API. Robustly detect and decode base64-staged payloads
-  # even if the filename lacks a .b64 extension. Validate decoded JSON before sending.
   if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
   if [ -z "${PAYLOAD:-}" ] || [ ! -s "${PAYLOAD:-}" ]; then log_error "PAYLOAD" "payload file missing or empty: ${PAYLOAD:-<unset>}"; return "$GROQBASHERRTMP"; fi
   if is_truthy "${DRY_RUN:-0}"; then log_info "DRYRUN" "DRY-RUN: skipping HTTP call"; return 0; fi
@@ -1265,7 +1225,7 @@ call_api_groq() {
   ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
   RESP="${RESP:-$RUN_TMPDIR/resp.json}"
 
-  local workdir tmpout http_code _time_total api_url rc decoded_payload try_decoded
+  local workdir tmpout http_code _time_total api_url rc decoded_payload try_decoded send_payload
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
   tmpout="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
@@ -1284,7 +1244,6 @@ call_api_groq() {
       if jq -e . "$decoded_payload" >/dev/null 2>&1; then
         try_decoded=1
       else
-        # decoded but not valid JSON
         log_error "PAYLOAD" "decoded payload is not valid JSON; aborting HTTP call"
         printf 'groqbash: INFO: decoded payload (head 200 bytes):\n' >&2
         head -c 200 "$decoded_payload" >&2 || true
@@ -1316,61 +1275,54 @@ call_api_groq() {
     fi
   fi
 
+  # Determine which file to send
   if [ "$try_decoded" -eq 1 ]; then
-    # send decoded JSON
-    # Write response to a tmp file in workdir first, then atomically move to RESP
-    local resp_tmp="${workdir%/}/resp.tmp.$$"
-    rm -f "$resp_tmp" 2>/dev/null || true
-    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$resp_tmp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-      rc=$?
-    else
-      rc=0
-    fi
-    # Atomically move tmp response to RESP
-    if [ -s "$resp_tmp" ]; then
-      if type atomic_write >/dev/null 2>&1; then
-        cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
-      else
-        mv -f "$resp_tmp" "$RESP" 2>/dev/null || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
-      fi
-      chmod 600 "$RESP" 2>/dev/null || true
-    else
-      rm -f "$resp_tmp" 2>/dev/null || true
-    fi
-    rm -f "$decoded_payload" 2>/dev/null || true
+    send_payload="$decoded_payload"
   else
-    # treat PAYLOAD as raw JSON file; validate before sending
-    if ! jq -e . "$PAYLOAD" >/dev/null 2>&1; then
-      log_error "PAYLOAD" "payload is not valid JSON and not decodable as base64; aborting HTTP call"
-      printf 'groqbash: INFO: payload (head 200 bytes):\n' >&2
-      head -c 200 "$PAYLOAD" >&2 || true
-      printf '\ngroqbash: INFO: curl stderr (head):\n' >&2
-      head -n 200 "$ERRF" >&2 || true
-      rm -f "$tmpout" 2>/dev/null || true
-      return "$GROQBASHERRTMP"
-    fi
-
-    # Write response to a tmp file in workdir first, then atomically move to RESP
-    local resp_tmp="${workdir%/}/resp.tmp.$$"
-    rm -f "$resp_tmp" 2>/dev/null || true
-    if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" -o "$resp_tmp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-      rc=$?
-    else
-      rc=0
-    fi
-    # Atomically move tmp response to RESP
-    if [ -s "$resp_tmp" ]; then
-      if type atomic_write >/dev/null 2>&1; then
-        cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
-      else
-        mv -f "$resp_tmp" "$RESP" 2>/dev/null || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
-      fi
-      chmod 600 "$RESP" 2>/dev/null || true
-    else
-      rm -f "$resp_tmp" 2>/dev/null || true
-    fi
-    rm -f "$decoded_payload" 2>/dev/null || true
+    send_payload="$PAYLOAD"
   fi
+
+  # Validate send_payload exists and is valid JSON before sending
+  if [ ! -f "$send_payload" ] || [ ! -s "$send_payload" ]; then
+    log_error "PAYLOAD" "payload file missing or empty: $send_payload"
+    rm -f "$decoded_payload" 2>/dev/null || true
+    rm -f "$tmpout" 2>/dev/null || true
+    return "$GROQBASHERRTMP"
+  fi
+
+  if ! jq -e . "$send_payload" >/dev/null 2>&1; then
+    log_error "PAYLOAD" "payload is not valid JSON and not decodable as base64; aborting HTTP call"
+    printf 'groqbash: INFO: payload (head 200 bytes):\n' >&2
+    head -c 200 "$send_payload" >&2 || true
+    printf '\ngroqbash: INFO: curl stderr (head):\n' >&2
+    head -n 200 "$ERRF" >&2 || true
+    rm -f "$decoded_payload" 2>/dev/null || true
+    rm -f "$tmpout" 2>/dev/null || true
+    return "$GROQBASHERRTMP"
+  fi
+
+  # Write response to a tmp file in workdir first, then atomically move to RESP
+  local resp_tmp="${workdir%/}/resp.tmp.$$"
+  rm -f "$resp_tmp" 2>/dev/null || true
+  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$send_payload" -o "$resp_tmp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
+    rc=$?
+  else
+    rc=0
+  fi
+
+  # Atomically move tmp response to RESP
+  if [ -s "$resp_tmp" ]; then
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+    else
+      mv -f "$resp_tmp" "$RESP" 2>/dev/null || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+    fi
+    chmod 600 "$RESP" 2>/dev/null || true
+  else
+    rm -f "$resp_tmp" 2>/dev/null || true
+  fi
+
+  rm -f "$decoded_payload" 2>/dev/null || true
 
   read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
   rm -f "$tmpout" 2>/dev/null || true
