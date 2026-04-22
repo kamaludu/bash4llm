@@ -802,10 +802,12 @@ session_read_window() {
 session_append() {
   # Usage: session_append <session_id> <role> <content> <meta_json>
   local sid="$1" role="$2" content="$3" meta_json="$4"
-  local session_file="$GROQBASH_HISTORY_DIR/sessions/${sid}.ndjson"
+  # Prefer SESSION_DIR (set during init), then GROQBASH_HISTORY_DIR, then local fallback
+  local base_sessions_dir="${SESSION_DIR:-${GROQBASH_HISTORY_DIR:-./groqbash.d}/sessions}"
+  local session_file="${base_sessions_dir%/}/${sid}.ndjson"
   local lockfile="${session_file}.lock"
   local invocation_ts message_id marker normalized rand tmpf found=0 role_norm line timeout
-  local marker_dir created_marker=0
+  local marker_dir created_marker=0 sess_dir tmp_init
 
   [ -n "$sid" ] || return 1
   [ -n "$content" ] || content=""
@@ -824,9 +826,22 @@ session_append() {
     fi
   fi
 
-  # Create session dir if missing
-  mkdir -p "$(dirname "$session_file")" 2>/dev/null || true
-  chmod 700 "$(dirname "$session_file")" 2>/dev/null || true
+  # Ensure session directory and file exist before creating marker/lock (race-safe init)
+  sess_dir="$(dirname "$session_file")"
+  if ! mkdir -p "$sess_dir" 2>/dev/null; then
+    log_error "SESSION" "cannot create session directory: $sess_dir"
+    return 1
+  fi
+  chmod 700 "$sess_dir" 2>/dev/null || true
+
+  if [ ! -f "$session_file" ]; then
+    tmp_init="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/session.init.$$"
+    : > "$tmp_init" 2>/dev/null || true
+    if ! mv -f "$tmp_init" "$session_file" 2>/dev/null; then
+      cp -f "$tmp_init" "$session_file" 2>/dev/null || true
+    fi
+    chmod 600 "$session_file" 2>/dev/null || true
+  fi
 
   # Marker: prefer message_id-based idempotency (cross-process). Fallback: run-unique marker to avoid duplicate append from same process.
   if [ -n "${message_id:-}" ]; then
@@ -1155,14 +1170,36 @@ buildpayload_groq() {
 
   # If JSON_INPUT provided, prefer it (supports both messages and prompt shapes)
   if [ -n "${JSON_INPUT:-}" ]; then
+    # If JSON_INPUT is '-', capture stdin once into a temp file and reuse it.
+    local json_input_file=""
+    if [ "${JSON_INPUT:-}" = "-" ]; then
+      json_input_file="${workdir%/}/json_input.$$"
+      : > "$json_input_file"
+      if ! cat - > "$json_input_file" 2>/dev/null; then
+        rm -f "$json_input_file" 2>/dev/null || true
+        log_error "PAYLOAD" "failed to read JSON input from stdin"
+        return "$GROQBASHERRTMP"
+      fi
+      # Use the temp file for subsequent operations
+      JSON_INPUT="$json_input_file"
+    fi
+
+    # Now JSON_INPUT points to a file (either original path or the temp file)
+    # 1) If it already contains messages[], stage it as-is
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      if ! b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT"; then
+        rm -f "$tmp_payload.b64" 2>/dev/null || true
+        [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+        return "$GROQBASHERRTMP"
+      fi
       dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
       PAYLOAD="$dest_b64"
+      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
       return 0
     fi
 
+    # 2) If it contains prompt, build payload from prompt + BUILD_MESSAGES_FILE
     if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
       user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
       model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
@@ -1171,18 +1208,50 @@ buildpayload_groq() {
       jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
          --argjson messages "$MESSAGES_JSON" \
          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-      b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      if ! b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload"; then
+        rm -f "$tmp_payload.b64" 2>/dev/null || true
+        [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+        return "$GROQBASHERRTMP"
+      fi
       dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
       PAYLOAD="$dest_b64"
+      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
       return 0
     fi
 
-    # Otherwise stage the raw JSON_INPUT
-    b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    # 3) NEW: If JSON_INPUT is a single message object {role,content,...}, wrap into messages array and build full payload
+    if jq -e 'type=="object" and has("role") and has("content")' "$JSON_INPUT" >/dev/null 2>&1; then
+      # allow optional model override inside the message object
+      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
+      model_to_use="${model_in_file:-$MODEL}"
+      # build messages array from the single object
+      MESSAGES_JSON="$(jq -c -n --arg role "$(jq -r '.role' "$JSON_INPUT" 2>/dev/null || echo user)" --arg content "$(jq -r '.content' "$JSON_INPUT" 2>/dev/null || echo '')" '[{role:$role,content:$content}]')"
+      jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
+         --argjson messages "$MESSAGES_JSON" \
+         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
+      if ! b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload"; then
+        rm -f "$tmp_payload.b64" 2>/dev/null || true
+        [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+        return "$GROQBASHERRTMP"
+      fi
+      dest_b64="${PAYLOAD:-$workdir/payload}.b64"
+      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      PAYLOAD="$dest_b64"
+      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+      return 0
+    fi
+
+    # 4) Otherwise stage the raw JSON_INPUT (now a file)
+    if ! b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT"; then
+      rm -f "$tmp_payload.b64" 2>/dev/null || true
+      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+      return "$GROQBASHERRTMP"
+    fi
     dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-    mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
     PAYLOAD="$dest_b64"
+    [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
     return 0
   fi
 
@@ -1310,8 +1379,8 @@ call_api_groq() {
     rc=0
   fi
 
-  # Atomically move tmp response to RESP
-  if [ -s "$resp_tmp" ]; then
+  # Atomically move tmp response to RESP only if curl succeeded (rc == 0)
+  if [ "$rc" -eq 0 ] && [ -s "$resp_tmp" ]; then
     if type atomic_write >/dev/null 2>&1; then
       cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
     else
@@ -1319,6 +1388,7 @@ call_api_groq() {
     fi
     chmod 600 "$RESP" 2>/dev/null || true
   else
+    # curl failed or resp_tmp empty: remove tmp and keep RESP untouched
     rm -f "$resp_tmp" 2>/dev/null || true
   fi
 
@@ -2723,7 +2793,11 @@ fi
 
 MODEL="$final_model"
 
-STDIN_CONTENT=""; [ ! -t 0 ] && STDIN_CONTENT="$(cat - 2>/dev/null || true)"
+# Read stdin only when JSON_INPUT is not explicitly requested.
+STDIN_CONTENT=""
+if [ -z "${JSON_INPUT:-}" ] && [ ! -t 0 ]; then
+  STDIN_CONTENT="$(cat - 2>/dev/null || true)"
+fi
 
 assemble_content() {
   CONTENT="${CONTENT:-}"
