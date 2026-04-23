@@ -6,281 +6,74 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =====================================
-#
-# This help file documents the exact runtime behaviour, configuration files,
-# invocation patterns, provider interface, security constraints and exit codes
-# implemented by the GroqBash single-file script (bin/groqbash).
-#
-# The content below is a faithful reflection of the script logic and runtime
-# layout. Use it as a reference for automation, integration and auditing.
-#
-# Requirements (no fallbacks)
-# ------------------------------------
-# The following commands MUST be available in PATH. GroqBash will exit if any
-# are missing:
-#   bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf
-#
-# Supported platforms
-# ------------------------------------
-# • GNU/Linux
-# • macOS (GNU tools via Homebrew acceptable)
-# • BusyBox/Alpine (POSIX-only feature set)
-# • WSL, Cygwin (Windows)
-# • Termux (Android)
-#
-# Invocation
-# ------------------------------------
-# GroqBash is a single script CLI. Typical invocations:
-#   groqbash "prompt text"
-#   bash groqbash "prompt text"
-#   echo "prompt" | groqbash
-#   groqbash -f input.txt
-#   groqbash --batch batchfile.txt
-#
-# Input sources (priority / behaviour)
-#  - CLI positional args (ARGS array)
-#  - Files via -f (FILE_INPUTS)
-#  - stdin (when not a TTY)
-#  - --template <name> (templates live in groqbash.d/templates and must contain {{CONTENT}})
-#  - --json-input <file> (when provided, CONTENT is ignored and JSON payload is used)
-#  - --chat (interactive chat mode; requires TTY)
-#
-# Exit codes (canonical)
-# ------------------------------------
-# GroqBash uses fixed numeric exit codes for programmatic handling:
-#   10  GROQBASH_ERR_NO_API_KEY     API key missing for provider (non-interactive)
-#   11  GROQBASH_ERR_BAD_MODEL      No valid model selected / model invalid
-#   12  GROQBASH_ERR_CURL_FAILED    Network / curl failure
-#   13  GROQBASH_ERR_INVALID_JSON   Invalid JSON response or parsing failure
-#   14  GROQBASH_ERR_NO_PROMPT      No prompt provided
-#   15  GROQBASH_ERR_TMP            Temporary directory / file error
-#   16  GROQBASH_ERR_API            HTTP/API error from provider
-#
-# All error and warning messages are written to stderr prefixed with:
-#   groqbash: groqbash: <CODE>: <message>
-#
-# Main options
-# ------------------------------------
-#   -m, --model <name>         Select model (CLI selection; highest precedence)
-#   -f <file>                  Use file as input (can be repeated)
-#   --json-input <file>        Use raw JSON payload from file (CONTENT ignored)
-#   --template <name>          Use template from groqbash.d/templates; replace {{CONTENT}}
-#   --batch <file>             Process each non-empty line as a separate prompt
-#   --system <text>            Set system prompt (provider-specific payload field)
-#   --ture, --temperature <n>  Temperature (numeric; default 1.0)
-#   --max <n>                  Max tokens (numeric; default 4096)
-#
-#   --provider <name>          Select provider (persisted to groqbash.d/config/provider)
-#   --provider                 Interactive provider selection (TTY)
-#   --refresh-models           Refresh model whitelist using provider API (provider module required)
-#   --list-models              Print local models whitelist (groqbash.d/models/models.txt)
-#   --list-providers           List available providers (embedded + installed)
-#   --set-default <model>      Persist default model for active provider
-#
-#   --stream                   Use streaming (SSE) if provider implements streaming call
-#   --no-stream                Disable streaming
-#   --json                     Output raw JSON (stdout)
-#   --pretty                   Pretty-print JSON (stdout)
-#   --text                     Output text (default)
-#   --raw                      Output raw text without newline
-#
-#   --save                     Force save textual output to history
-#   --nosave                   Force do not save output
-#   --out <path>               Save output to file or directory
-#   --threshold <bytes>        Auto-save threshold in bytes (default 1000)
-#
-#   --dry-run                  Print payload preview and skip HTTP call
-#   --quiet                    Minimal runtime messages
-#   --debug                    Verbose debug logging and preserve tmpdir
-#   --show-config              Print active configuration and exit
-#   --diagnostics              Run diagnostics (permissions, provider, model) and exit
-#   --install-extras [<src>]   Install extras from repository source into runtime extras dir
-#   --version                  Print version and exit
-#   -h, --help                 Show this help
-#
-# Provider model and interface
-# ------------------------------------
-# • Embedded provider: "groq" (always available).
-# • External providers: scripts installed under GROQBASH_EXTRAS_DIR/providers/*.sh
-#   (runtime providers dir: groqbash.d/extras/providers).
-#
-# Provider discovery and selection
-#  - Supported providers list is built from embedded "groq" plus any *.sh in providers dir.
-#  - Provider selection precedence:
-#      1) CLI --provider
-#      2) persisted file groqbash.d/config/provider (first line)
-#      3) default "groq"
-#  - When provider is changed, the local MODELS_FILE is removed to avoid cross-provider mismatch.
-#
-# Provider module requirements
-#  - Provider module MUST NOT be a symlink.
-#  - Provider file must pass `bash -n` syntax check before being sourced.
-#  - Provider file must define at least:
-#      buildpayload_<prov>()    # build payload and write to PAYLOAD (provider-specific)
-#      call_api_<prov>()       # perform HTTP call and write response to RESP
-#  - Optional functions:
-#      call_api_streaming_<prov>()
-#      refresh_models_<prov>()
-#      validate_model_<prov>()
-#      auto_select_model_<prov>()
-#  - Provider file is sourced into the current shell; GroqBash validates presence of required functions.
-#  - Provider file ownership and permissions are checked: not world-writable, owned by current user preferred.
-#
-# API key handling
-# ------------------------------------
-# • Canonical env var: <PROVIDER_UPPER>_API_KEY (e.g., GROQ_API_KEY).
-# • Override: PROVIDER_API_ENV_<prov> can specify a custom env var name to use.
-# • ensure_api_key_for_provider <prov>:
-#     - If env var present: success (for groq, syncs GROQ_API_KEY if needed).
-#     - If not present and stdin is a TTY: prompts user to enter key, exports it for session.
-#     - If not present and non-interactive: fails with exit code 10 and error on stderr.
-# • For non-interactive integrations, ALWAYS export the provider API key before invoking GroqBash.
-#
-# Models, whitelist and selection
-# ------------------------------------
-# • MODELS_FILE default: groqbash.d/models/models.txt
-# • load_whitelist normalizes entries (strips leading "models/") and populates ALLOWED_MODELS.
-# • Selection precedence for final model:
-#     1) CLI -m/--model (if provided)
-#     2) groqbash.d/config/model.<provider> (persisted default)
-#     3) provider auto_select_model_<prov>() (if implemented)
-#     4) first supported entry in MODELS_FILE
-#     5) MODEL key in groqbash.d/config
-#     6) first supported entry in ALLOWED_MODELS
-# • validate_model_core:
-#     - If MODELS_FILE exists and non-empty, model must be present (exact or normalized match).
-#     - is_supported_model rejects obvious multimodal/audio/image/embedding models by name patterns.
-#     - If validation fails, GroqBash exits with code 11.
-# • --refresh-models calls provider's refresh_models_<prov>() after provider module is loaded.
-#
-# Payload, request and response flow
-# ------------------------------------
-# • buildpayload_<prov>() is responsible for creating the payload file at $PAYLOAD.
-# • ensure_run_tmpdir creates a run-specific tmpdir under groqbash.d/tmp and sets:
-#     PAYLOAD (payload path), RESP (response path), ERRF (error log path).
-# • call_api_<prov>() must perform HTTP call (curl) and write response to RESP.
-# • call_api_streaming_<prov>() may implement SSE streaming; GroqBash will call it when --stream is set.
-# • perform_request_once handles retries (MAX_RETRIES, default 3), extracts text via jq and finalizes output.
-# • DRY-RUN prints payload head and skips HTTP call.
-#
-# Output handling and history
-# ------------------------------------
-# • OUTPUT_MODE: json | pretty | text | raw
-# • finalize_and_output prints response according to OUTPUT_MODE.
-# • Text/raw outputs longer than THRESHOLD (default 1000 bytes) are saved to groqbash.d/history unless FORCE_SAVE_MODE=nosave.
-# • save_to_history writes atomically and triggers rotate_history if GROQBASH_ROTATE_HISTORY=1.
-# • rotate_history enforces GROQBASH_HISTORY_MAX_FILES, GROQBASH_HISTORY_MAX_BYTES and GROQBASH_HISTORY_KEEP_DAYS.
-#
-# Temporary files and atomic operations
-# ------------------------------------
-# • No use of /tmp. All temporary files are created under groqbash.d/tmp with umask 077.
-# • make_tmpdir and ensure_run_tmpdir create per-run directories with chmod 700.
-# • atomic_write and b64_atomic_write implement atomic writes using mktemp and flock.
-# • Locks:
-#     - MODELS_LOCK: groqbash.d/models/models.lock
-#     - HISTORY_LOCK: groqbash.d/history/history.lock
-#     - TMP_LOCK: groqbash.d/tmp/tmp.lock
-#   lock_exec uses flock -x -w <timeout> to avoid races.
-#
-# Security and permissions
-# ------------------------------------
-# • groqbash.d/ and all runtime subdirs are created with perms 700; files are 600 when written.
-# • Provider files must not be symlinks and must not be group/world writable.
-# • Provider directory must not be world-writable.
-# • Legacy ./extras in repository root is only a source for --install-extras; runtime extras live under groqbash.d/extras.
-# • GroqBash never uses eval and never executes model-generated code.
-#
-# --install-extras behaviour
-# ------------------------------------
-# • Copies files from a source extras directory (default: SCRIPTDIR/extras) into GROQBASH_EXTRAS_DIR (groqbash.d/extras).
-# • Validates source is not a symlink and not inside destination (to avoid nested copies).
-# • Validates ownership of source files (must be owned by current user).
-# • Copies files atomically preserving relative layout and sets strict perms (600 for files, 700 for dirs).
-# • After install, provider scripts are syntax-checked with `bash -n`.
-#
-# Diagnostics and show-config
-# ------------------------------------
-# • --show-config prints active provider, model, paths and flags.
-# • --diagnostics prints directory checks, provider function presence, model whitelist status and API key presence.
-#
-# Interactive modes
-# ------------------------------------
-# • --provider (no arg) enters interactive provider selection (TTY required).
-# • --chat enters interactive chat loop (TTY required). Conversation state is kept in-memory for the session.
-# • In interactive modes GroqBash may prompt for API keys if missing.
-#
-# Streaming
-# ------------------------------------
-# • --stream enables streaming mode. Provider must implement call_api_streaming_<prov>().
-# • --stream is incompatible with --json and --pretty.
-#
-# Integration checklist for external applications
-# ------------------------------------
-# Before invoking GroqBash (non-interactive):
-#  1) Ensure required commands are in PATH.
-#  2) Ensure provider is installed or use embedded "groq".
-#  3) Export provider API key: export GROQ_API_KEY="..."
-#  4) If using a specific model and MODELS_FILE exists, ensure model is present in groqbash.d/models/models.txt.
-#  5) Prepare prompt via argument, -f file, stdin pipe, or --template.
-#
-# Invocation examples
-# ------------------------------------
-#  # Single prompt (text output)
-#  groqbash "Write a short summary of the following text"
-#
-#  # From a file
-#  groqbash -f prompt.txt
-#
-#  # Pipe
-#  echo "Summarize this" | groqbash --model my-text-model
-#
-#  # Streaming (provider must support streaming)
-#  groqbash --stream -m my-model "Generate code"
-#
-#  # Dry-run (show payload only)
-#  groqbash --dry-run "Show me the payload"
-#
-#  # Install extras from repo source
-#  groqbash --install-extras /path/to/repo/extras
-#
-#  # Refresh models (provider module must be available and API key set)
-#  groqbash --refresh-models
-#
-# Error handling for integrators
-# ------------------------------------
-# • Check process exit code and stderr for structured messages.
-# • Common responses:
-#     - Exit 10: missing API key (set env var before calling in non-interactive contexts)
-#     - Exit 11: bad or missing model (inspect groqbash.d/models/models.txt or use --refresh-models)
-#     - Exit 14: no prompt provided (supply stdin, -f, or positional prompt)
-#     - Exit 12/16: network/API errors (inspect RESP file printed to stderr)
-# • For programmatic parsing, rely on exit codes and parse stderr lines prefixed with "groqbash:".
-#
-# Implementation notes (for auditors / integrators)
-# ------------------------------------
-# • All runtime state is under GROQBASH_DIR (default: SCRIPTDIR/groqbash.d).
-# • No runtime reads from repository ./extras/ — that path is only a source for --install-extras.
-# • All writes use atomic helpers and flock to avoid races.
-# • Model name validation rejects obvious multimodal/audio/image/embedding models by pattern matching.
-#
-# Troubleshooting
-# ------------------------------------
-# • If GroqBash exits immediately: verify required commands in PATH.
-# • If provider not found: install provider script under groqbash.d/extras/providers/<prov>.sh or use --install-extras.
-# • If API calls fail in CI: ensure GROQ_API_KEY (or <PROV>_API_KEY) is exported in the CI environment.
-# • If history not saved: check GROQBASH_ROTATE_HISTORY, THRESHOLD and permissions on groqbash.d/history.
-#
-# Minimal quickstart
-# ------------------------------------
-#   chmod +x groqbash
-#   export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
-#   groqbash "Write a polite thank-you email"
-#
-# Full example (non-interactive)
-# ------------------------------------
-#   export GROQ_API_KEY="gsk_xxx"
-#   groqbash -m my-text-model --json "Summarize the following document"
-#
+
+GroqBash 2.0.0 — Bash-first wrapper for the Groq API
+--------------------------------------
+  --version            Groqbash version
+  -h, --help           This Help
+
+Usage:
+  groqbash "prompt"
+  echo "text" | groqbash
+  groqbash -f file.txt
+  groqbash --batch batch.txt
+
+Options:
+
+Input:
+  -f <file>            Use file as input (repeatable)
+  --json-input <file>  Direct JSON payload (use "-" for stdin)
+  --template <name>    Template from groqbash.d/templates (requires {{CONTENT}})
+  --batch <file>       One prompt per non-empty line
+
+Output:
+  --text               Text output (default)
+  --raw                Raw output without newline
+  --json               Raw JSON output
+  --pretty             Pretty-print JSON
+  --out <path>         Save output to file or directory
+  --save / --nosave    Force save / disable save
+  --threshold <n>      Autosave threshold (default 1000)
+
+Streaming:
+  --stream             Enable SSE streaming (provider must support it)
+  --no-stream          Disable streaming
+
+Provider & Model:
+  --provider <name>    Select provider
+  --provider           Interactive provider selection (TTY)
+  -m, --model <name>   Select model
+  --refresh-models     Refresh provider model list
+
+Sessions:
+  --session <id>       Enable persistent session
+  --session-window <n> Number of messages to include (default 10)
+
+Generation parameters:
+  --system <text>      System prompt
+  --temperature <n>    Temperature (alias: --ture)
+  --max <n>            Max tokens
+
+General:
+  --dry-run            Show payload, skip API call
+  --quiet              Reduce output
+  --debug              Extended logging, preserve tmpdir
+
+Immediate Actions:
+  --list-models        List local models
+  --list-providers     List available providers
+  --set-default <m>    Set default model
+  --install-extras     Install extras into runtime
+  --show-config        Show active configuration
+  --diagnostics        Run diagnostics
+
+Examples:
+  groqbash "Summarize this text"
+  echo "hello" | groqbash --model mixtral-8x7b
+  groqbash -f prompt.txt --json
+  groqbash --stream "Generate streaming text"
+  groqbash --session chat1 "Continue conversation"
+
 # =====================================
 # End of help.txt
 # =====================================
