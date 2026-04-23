@@ -1,3 +1,4 @@
+--------------------------------------
 GroqBash 2.0.0 — Bash-first wrapper for the Groq API
 --------------------------------------
   --version            Groqbash version
@@ -64,3 +65,4 @@ Examples:
   groqbash -f prompt.txt --json
   groqbash --stream "Generate streaming text"
   groqbash --session chat1 "Continue conversation"
+--------------------------------------
