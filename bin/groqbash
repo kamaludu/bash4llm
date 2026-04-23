@@ -897,7 +897,16 @@ session_append() {
   # Normalize role and meta, build line
   meta_json="$(printf '%s' "$meta_json" | jq -c '.' 2>/dev/null || printf '%s' '{}' )"
   case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
-  line="$(jq -n --arg ts "$invocation_ts" --arg role "$role_norm" --arg content "$content" --argjson meta "$meta_json" '{ts:$ts, role:$role, content:$content, meta:$meta}')"
+
+  # Build a compact single-line NDJSON record for the session
+  # Use jq -c -n to produce compact JSON (one line)
+  # Ensure meta_json is valid JSON (it was normalized earlier in the function)
+  line="$(jq -c -n \
+    --arg ts "$invocation_ts" \
+    --arg role "$role_norm" \
+    --arg content "$content" \
+    --argjson meta "$meta_json" \
+    '{ts:$ts, role:$role, content:$content, meta:$meta}')"
 
   # Perform append (we already hold the lock)
   if ! printf "%s\n" "$line" >> "$session_file" 2>/dev/null; then
@@ -3021,17 +3030,56 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   fi
 
   build_payload_from_vars
-  if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting."; exit "$GROQBASHERRTMP"; fi
-  if call_api_streaming; then log_info "STREAM" "Streaming completed; captured response in $RESP"; printf '\n'; exit 0
-  else log_error "STREAM" "streaming request failed."; exit "$GROQBASHERRCURL_FAILED"; fi
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "missing API key; aborting."
+    exit "$GROQBASHERRTMP"
+  fi
+
+  if call_api_streaming; then
+    log_info "STREAM" "Streaming completed; captured response in $RESP"
+
+    # If sessioning requested, append both user and assistant
+    if [ -n "${SESSION_ID:-}" ]; then
+      # 1) Append user message (preserve existing semantics)
+      meta_source="cli"
+      meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+      meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
+      session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+
+      # 2) Append assistant response reconstructed from RESP (if present)
+      # Only append assistant when not in DRY_RUN and when RESP contains data
+      if [ "${DRY_RUN:-0}" -ne 1 ] && [ -s "${RESP:-}" ]; then
+        # extract_text_from_resp uses the same extraction logic used by finalize_and_output
+        assistant_text="$(extract_text_from_resp || true)"
+        # Normalize whitespace-only responses away
+        assistant_text="$(printf '%s' "$assistant_text" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d' || true)"
+        if [ -n "${assistant_text:-}" ]; then
+          meta_source="provider"
+          meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
+          session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
+        fi
+      fi
+    fi
+
+    printf '\n'
+    exit 0
+  else
+    log_error "STREAM" "streaming request failed."
+    exit "$GROQBASHERRCURL_FAILED"
+  fi
+
 else
+  # Non-streaming single request path
+
   if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
     printf '%b\n' "\033[1;36mYou:\033[0m" >&2
     if [ "${#ARGS[@]}" -gt 0 ]; then
       anyfile=0
       for a in "${ARGS[@]}"; do [ -r "$a" ] && [ -f "$a" ] && { anyfile=1; break; }; done
       [ "$anyfile" -eq 1 ] && printf '%s\n' "(using file contents)" >&2 || printf '%s\n' "$CONTENT" >&2
-    else printf '%s\n' "$CONTENT" >&2; fi
+    else
+      printf '%s\n' "$CONTENT" >&2
+    fi
     printf '%b\n' "\033[1;32mProvider ($PROVIDER, model: $MODEL):\033[0m" >&2
   fi
 
@@ -3062,18 +3110,32 @@ else
   fi
 
   build_payload_from_vars
-  if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting."; exit "$GROQBASHERRTMP"; fi
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "missing API key; aborting."
+    exit "$GROQBASHERRTMP"
+  fi
 
   # Perform request (with retries). After final attempt, append to session if requested.
   if perform_request_once; then
     # On success, append to session if SESSION_ID present (MVP)
     if [ -n "${SESSION_ID:-}" ]; then
-      # Build meta object: source and sanitized cmd
+      # 1) Append the user message (existing behavior)
       meta_source="cli"
       meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
-      meta_json="$(jq -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-      # session_append will generate message_id if meta.id empty
+      meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
       session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+
+      # 2) Append the assistant response (new)
+      # Only append assistant when not in DRY_RUN and when RESP contains data
+      if [ "${DRY_RUN:-0}" -ne 1 ] && [ -s "${RESP:-}" ]; then
+        assistant_text="$(extract_text_from_resp || true)"
+        assistant_text="$(printf '%s' "$assistant_text" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d' || true)"
+        if [ -n "${assistant_text:-}" ]; then
+          meta_source="provider"
+          meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
+          session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
+        fi
+      fi
     fi
     exit 0
   else
@@ -3081,7 +3143,7 @@ else
     if [ -n "${SESSION_ID:-}" ]; then
       meta_source="cli"
       meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
-      meta_json="$(jq -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
+      meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
       session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID after failed request"
     fi
     exit "$GROQBASHERRAPI"
