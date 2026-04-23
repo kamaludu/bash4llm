@@ -1,0 +1,572 @@
+# =====================================
+# GroqBash — Extended Manual
+# File: extras/docs/manual-en.txt
+# Version: 2.0.0
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Source: https://github.com/kamaludu/groqbash
+# =====================================
+
+Summary
+--------
+1. Title, version, license
+2. Requirements
+3. Quick usage (USAGE)
+4. CLI options (complete, grouped)
+5. Operating modes
+6. Immediate actions
+7. Environment variables (used in the script)
+8. Sessions (full behavior)
+9. History and rotation
+10. Streaming (technical details)
+11. Retry and API edge-case handling
+12. Security and filesystem constraints
+13. Examples
+14. Exit codes
+15. Troubleshooting
+16. Ambiguities found in the code
+17. Final notes for auditors/integrators
+
+1. Title, version, license
+----------------------------
+GroqBash — Bash-first wrapper for the Groq API
+File: extras/docs/help.txt
+Version: 2.0.0 (consistent with the provided script)
+License: GPL-3.0-or-later
+
+2. Requirements
+------------
+**Mandatory commands in PATH (no fallback):**
+- bash
+- jq
+- curl
+- mktemp
+- stat
+- flock
+- base64
+- find
+- awk
+- sed
+- grep
+- xargs
+- tr
+- sort
+- head
+- wc
+- tee
+- date
+- mv
+- chmod
+- cp
+- rm
+- printf
+
+**Supported platforms (as implemented in the script):**
+- GNU/Linux
+- macOS (GNU tools via Homebrew acceptable)
+- BusyBox/Alpine (POSIX-only)
+- WSL, Cygwin (Windows)
+- Termux (Android)
+
+3. Quick usage (USAGE)
+---------------------
+Invocation examples supported by the script:
+- `groqbash "prompt text"`
+- `bash groqbash "prompt text"`
+- `echo "prompt" | groqbash`
+- `groqbash -f input.txt`
+- `groqbash --batch batchfile.txt`
+
+4. CLI options (complete, grouped)
+--------------------------------------
+This section lists **all** options and flags recognized by the script parser. Descriptions are strictly based on the behavior implemented in the script.
+
+Note: the order and form are exactly those handled by the parser.
+
+### Section: Input and prompt
+- `-f <file>`  
+  Adds a file as input. Can be repeated for multiple files. Files are read and concatenated with separators when appropriate.
+
+- `--json-input <file>`  
+  Uses a raw JSON payload from a file. If the value is `-`, the script reads JSON from stdin and uses it as JSON_INPUT. When provided, `CONTENT` is ignored and the JSON payload is used directly.
+
+- `--template <name>`  
+  Uses a template present in `groqbash.d/templates`. The template must contain the placeholder `{{CONTENT}}` which will be replaced with the assembled content.
+
+- `--batch <file>`  
+  Batch mode: processes each non-empty line of the file as a separate prompt.
+
+- Positional ARGS (array ARGS)  
+  Positional arguments collected as prompt elements or expanded into CONTENT.
+
+### Section: Model and generation parameters
+- `-m, --model <name>`  
+  Selects the model (has highest precedence).
+
+- `--system <text>`  
+  Sets the system prompt (provider-specific field).
+
+- `--ture <n>`  
+  Alias for temperature (note: the script internally uses the variable TURE). Must be numeric.
+
+- `--temperature <n>`  
+  Alias for temperature; maps to the same internal variable (TURE/TEMPERATURE). Must be numeric.
+
+- `--max <n>`  
+  Sets the maximum number of tokens (MAX_TOKENS). Must be numeric.
+
+### Section: Sessions and conversations
+- `--session <session_id>`  
+  Enables sessioning with the provided ID. The script validates the ID with `session_validate_id` (alphanumeric, dots, underscores, dashes, max length). When active, the script prepares BUILD_MESSAGES_FILE and uses session_read_window / session_append to read and write session history.
+
+- `--session-window [<N>]`  
+  Specifies the window (number of messages) to read for the session. If provided without an argument, the parser sets `SESSION_WINDOW` to `10`. If provided with a value, it uses the numeric value. The script recommends values <= 20 and emits a warning if > 20.
+
+### Section: Output and formatting
+- `--json`  
+  Raw JSON output (prints the RESP file as-is).
+
+- `--pretty`  
+  Pretty-prints JSON (if RESP is JSON).
+
+- `--text`  
+  Text output (default).
+
+- `--raw`  
+  Raw text output without an added newline.
+
+- `--out <path>`  
+  Saves output to a file or directory. If `OUT_PATH` is a directory, the script creates a timestamped file inside.
+
+- `--threshold <bytes>`  
+  Byte threshold for automatic saving to history (THRESHOLD). Default 1000.
+
+- `--save`  
+  Forces saving textual output to history (FORCE_SAVE_MODE="save").
+
+- `--nosave`  
+  Disables saving output (FORCE_SAVE_MODE="nosave").
+
+### Section: Streaming and call mode
+- `--stream`  
+  Enables SSE streaming. Requires the provider to implement `call_api_streaming_<prov>()`. Incompatible with `--json` and `--pretty` (the script checks and rejects the combination).
+
+- `--no-stream`  
+  Explicitly disables streaming.
+
+### Section: Interactive modes and provider
+- `--provider <name>`  
+  If provided with an argument (non-empty and not starting with `-`), sets `PROVIDER_CLI` and persists the choice in `groqbash.d/config/provider`. If the argument is the literal string `list`, the code enters the interactive selection flow (see parser behavior).
+
+- `--provider` (without argument)  
+  Enters interactive provider selection mode (TTY required). Sets `PROVIDER_INTERACTIVE`.
+
+- `--install-extras [<src>]`  
+  Installs extras from the specified source path (optional) into the runtime directory `GROQBASH_EXTRAS_DIR`. Also supports the form `--install-extras=<src>`. Validates source, properties and copies files atomically.
+
+### Section: Model and list management actions
+- `--refresh-models`  
+  Triggers refresh of provider models (invokes `refresh_models_<prov>()` after provider is loaded and API key ensured).
+
+- `--refresh-model`  
+  Alias accepted by the script for `--refresh-models`.
+
+- `--list-models`  
+  Prints the local whitelist of models in a human-readable form.
+
+- `--list-models-raw`  
+  Prints the list of models in machine-readable form (one normalized model per line).
+
+- `--list-providers`  
+  Prints available providers (embedded + installed) in a human-readable form.
+
+- `--list-providers-raw`  
+  Prints available providers in machine-readable form (one provider per line).
+
+- `--set-default <model>`  
+  Persists the default model for the active provider in `groqbash.d/config/model.<provider>`.
+
+### Section: Debug, logging and behavior
+- `--dry-run`  
+  Prints the payload preview and skips the HTTP call (DRY_RUN). Shows the payload head.
+
+- `--quiet`  
+  Minimizes runtime messages.
+
+- `--debug`  
+  Enables verbose logging and preserves `RUN_TMPDIR` (does not clean it at the end).
+
+- `--show-config`  
+  Prints the active configuration (provider, model, paths, flags) and exits.
+
+- `--diagnostics`  
+  Runs diagnostic checks (permissions, provider, model) and exits.
+
+- `--version`  
+  Prints script name, version and date and exits.
+
+- `-h, --help`  
+  Shows this help and exits.
+
+### Section: End of options
+- `--`  
+  End-of-options marker: everything that follows is treated as positional arguments (ARGS).
+
+5. Operating modes
+---------------------
+This section describes the operating modes implemented in the script and the associated behavior.
+
+### Mode: Single request (default)
+- Flow: assemble content (ARGS, FILE_INPUTS, STDIN, TEMPLATE, JSON_INPUT), select model, build payload via provider, invoke API (streaming or non-streaming), extract response, finalize output, conditionally save history, optionally append to session.
+- Typical usage: `groqbash "prompt"`.
+
+### Mode: Streaming (`--stream`)
+- Requirement: provider must implement `call_api_streaming_<prov>()`.
+- Behavior: streaming is executed via curl HTTP/1.1; the raw stream is saved to `RUN_TMPDIR/resp.raw`. The script extracts lines starting with `data:` and filters valid JSON, reconstructs `resp.chunks.json` and `resp.text.txt`, and writes `RESP` atomically.
+- Incompatibility: `--stream` cannot be used with `--json` or `--pretty`.
+
+### Mode: Batch (`--batch <file>`)
+- For each non-empty line in the file:
+  - Sets `CONTENT` to the line.
+  - If `--session` is active, prepares BUILD_MESSAGES_FILE for the session.
+  - Builds payload and invokes provider.
+  - Prints separator `----` between items.
+- Does not abort the entire batch on a single error (the code continues with logged errors).
+
+### Mode: Interactive chat (`--chat`)
+- Requires TTY.
+- Interactive loop: reads user lines, builds `CONTENT`, prepares BUILD_MESSAGES_FILE if `--session` is active, invokes provider (streaming or non-streaming), prints response.
+- Conversation state is kept in memory for the current session; `session_append` can be used to persist.
+
+### Mode: Interactive provider selection (`--provider` without argument)
+- Requires TTY.
+- Shows a list of available providers (embedded + installed), allows numeric selection, persists choice in `groqbash.d/config/provider`.
+
+6. Immediate actions (immediate actions)
+---------------------------------------
+The following options perform an action and terminate the process (do not continue with the main flow):
+
+- `--list-providers`
+- `--list-models`
+- `--list-providers-raw`
+- `--list-models-raw`
+- `--set-default <model>`
+- `--install-extras [<src>]` (performs copy and exits)
+- `--refresh-models` / `--refresh-model`
+- `--show-config`
+- `--diagnostics`
+- `--version`
+- `-h, --help`
+
+7. Environment variables (only those actually used)
+-------------------------------------------------------
+Exhaustive list of environment variables read or used by the script (can be set by the user to influence behavior). Descriptions are strictly based on usage in the code.
+
+- `GROQ_API_KEY`  
+  Canonical API key for the `groq` provider. If not set, `ensure_api_key_for_provider` may prompt interactively.
+
+- `PROVIDER_API_ENV_<prov>`  
+  If set, the value is the name of an environment variable that contains the API key for provider `<prov>`.
+
+- `GROQBASH_DIR` / `GROQBASH_ROOT`  
+  Runtime root directory. If not set, `GROQBASH_DIR` is derived from `SCRIPTDIR/groqbash.d`.
+
+- `GROQBASH_CONFIG_DIR`  
+  Configuration directory (default: `$GROQBASH_DIR/config`).
+
+- `GROQBASH_MODELS_DIR`  
+  Models directory (default: `$GROQBASH_DIR/models`).
+
+- `GROQBASH_TEMPLATES_DIR`  
+  Templates directory (default: `$GROQBASH_DIR/templates`).
+
+- `GROQBASH_HISTORY_DIR`  
+  History directory (default: `$GROQBASH_DIR/history`).
+
+- `GROQBASH_TMPDIR`  
+  Base tmp directory (default: `$GROQBASH_DIR/tmp`).
+
+- `GROQBASH_EXTRAS_DIR`  
+  Runtime extras directory (default: `$GROQBASH_DIR/extras`).
+
+- `PROVIDERS_DIR`  
+  Runtime directory for provider modules (default: `$GROQBASH_EXTRAS_DIR/providers`).
+
+- `MODELS_FILE`  
+  Path to the models file (default: `$GROQBASH_MODELS_DIR/models.txt`).
+
+- `MAX_MODELS`  
+  Maximum number of models to consider (default defined in the script).
+
+- `MODELS_LOCK`, `HISTORY_LOCK`, `TMP_LOCK`  
+  Paths for lock files (can be overridden via env).
+
+- `GROQBASH_LOCK_TIMEOUT_TMP`, `GROQBASH_LOCK_TIMEOUT_MODELS`, `GROQBASH_LOCK_TIMEOUT_HISTORY`  
+  Lock timeouts (seconds).
+
+- `GROQBASH_DEBUG`  
+  If set to 1 enables debug logging.
+
+- `GROQBASH_LOG`  
+  Optional path to append structured logs.
+
+- `GROQBASH_ROTATE_HISTORY`  
+  If 1 enables rotate_history.
+
+- `GROQBASH_HISTORY_MAX_FILES`, `GROQBASH_HISTORY_MAX_BYTES`, `GROQBASH_HISTORY_KEEP_DAYS`  
+  Parameters for rotate_history.
+
+- `LAST_CHECK_LINES`  
+  Default for session_read_window (50 if not set).
+
+- `RUN_TMPDIR`, `PAYLOAD`, `RESP`, `ERRF`  
+  Runtime variables for tmp, payload, response and error file; can be overridden.
+
+- `JSON_INPUT`  
+  If set indicates a file or `-` to read JSON from stdin.
+
+- `SESSION_ID`, `SESSION_WINDOW`  
+  Variables for sessioning.
+
+- `TEMPLATE`, `BATCH_FILE`, `CHAT_MODE`, `SET_DEFAULT_MODEL`, `REFRESH_MODELS`, `LIST_MODELS`, `FORCE_SAVE_MODE`, `OUT_PATH`, `SYSTEM_PROMPT`  
+  Configuration/flag variables that can be set via env or CLI.
+
+- `TURE`, `TEMPERATURE`  
+  Variables for temperature (the code uses TURE as the internal name).
+
+- `MAX_TOKENS`  
+  Maximum number of tokens.
+
+- `MODEL`  
+  Active model name.
+
+- `AUTO_POLICY`  
+  Auto-selection policy (default value in code).
+
+- `DEBUG`, `QUIET`, `DRY_RUN`, `STREAM_MODE`, `OUTPUT_MODE`, `THRESHOLD`, `MAX_RETRIES`  
+  Operational flags and parameters.
+
+- `SUPPORTED_PROVIDERS`, `PROVIDER`, `PROVIDER_CLI`, `PROVIDER_INTERACTIVE`, `INSTALL_EXTRAS`, `ALLOWED_MODELS`  
+  Variables related to providers and extras.
+
+- `CURL_BASE_OPTS`  
+  Array of base options for curl (defined in the script).
+
+- `ALLOW_API_CALLS`  
+  Default 1; if GROQ_API_KEY is set but `ALLOW_API_CALLS` != 1 and `DRY_RUN` != 1, the script fails.
+
+- `PROVIDER_FILE`, `PROVIDER_MODULE_PATH`, `PROVIDER_DIR`, `PROVIDER_MODULE_LOADED`  
+  Path and state variables for provider modules.
+
+- `PROVIDER_API_ENV_groq`  
+  Provider-specific variable for groq (if present).
+
+- `SCRIPTDIR`, `LEGACY_EXTRAS_DIR`  
+  Variables derived from the script.
+
+- `GROQBASH_SOURCE_ONLY`  
+  **Guard for sourcing/testing**: if set to 1 before sourcing the script, the script loads only function definitions and does not execute the main runtime. This is intended for testing and development.
+
+8. Sessions (full behavior)
+------------------------------------
+The script implements a session system based on NDJSON files and a windowing mechanism.
+
+**Session ID validation**
+- `session_validate_id` verifies the ID is non-empty and matches the pattern `[A-Za-z0-9._-]{1,128}`.
+
+**Reading the message window**
+- `session_read_window <session_id> <N> <out_file>`:
+  - Reads the session NDJSON (`groqbash.d/history/sessions/<session_id>.ndjson`) and produces a JSON file with `{"messages":[...]}` containing the last N entries.
+  - Uses a lock on the session file to avoid partial reads during concurrent appends.
+  - Normalizes roles (`user`, `assistant`, `system`) and builds messages compatible with the provider.
+  - If the file does not exist or is unreadable, it may produce an empty file or fail silently (the CORE has fallbacks).
+
+**Idempotent append**
+- `session_append <session_id> <role> <content> <meta_json>`:
+  - Creates a compact NDJSON record with timestamp, role, content and meta.
+  - Uses markers based on `message_id` for cross-process idempotency; if `message_id` is present and the marker exists, the append is skipped.
+  - Acquires an exclusive lock on the session file for atomic append.
+  - Saves the file with restrictive permissions (600).
+  - Avoids appending empty user messages.
+
+**BUILD_MESSAGES_FILE**
+- When `--session` is active, the CORE prepares `BUILD_MESSAGES_FILE` in `RUN_TMPDIR` and exports it for the provider; the provider can use this file to build the payload.
+
+**Fallback**
+- If `session_read_window` does not produce messages, the CORE attempts to reconstruct the window with `tail` on the NDJSON or, as a last resort, creates a payload with only the current user message.
+
+9. History and rotation
+----------------------
+**Saving output**
+- `save_to_history` saves textual outputs in `groqbash.d/history` with names like `YYYYMMDD-HHMMSS-groq-output-$$.txt`.
+- Uses atomic writes and locks to ensure consistency.
+- Respects `FORCE_SAVE_MODE` (`save`/`nosave`) and `THRESHOLD` to decide automatic saving.
+
+**Rotate history**
+- `rotate_history` (enabled with `GROQBASH_ROTATE_HISTORY=1`) applies:
+  - Removal of files older than `GROQBASH_HISTORY_KEEP_DAYS`.
+  - Reduction of total space to `GROQBASH_HISTORY_MAX_BYTES`.
+  - Reduction of number of files to `GROQBASH_HISTORY_MAX_FILES`.
+- All operations are performed under `HISTORY_LOCK`.
+
+10. Streaming (technical details)
+-------------------------------
+**Requirements**
+- Provider must implement `call_api_streaming_<prov>()`.
+
+**Behavior**
+- Streaming is executed with `curl --http1.1` (the script uses the `--http1.1` option).
+- The raw stream is saved to `RUN_TMPDIR/resp.raw`.
+- The script extracts lines that start with `data:` and removes the prefix.
+- It filters only lines that are valid JSON; saves valid JSON lines to `resp.valid.jsons`.
+- Builds `resp.chunks.json` as an array of JSON chunks and `resp.text.txt` as the concatenation of extracted text fragments.
+- Writes `RESP` atomically using `resp.chunks.json` if valid chunks are present; otherwise, if `RESP_RAW` is valid JSON, it copies it to `RESP`.
+- During streaming, extracted text fragments are emitted to stdout as they arrive.
+
+**Temporary files**
+- `resp.raw`, `resp.lines`, `resp.valid.jsons`, `resp.chunks.json`, `resp.text.txt` are created in `RUN_TMPDIR` and removed when appropriate (unless debug mode is active).
+
+11. Retry and API edge-case handling
+----------------------------------
+**Retry**
+- `perform_request_once` implements a retry loop up to `MAX_RETRIES` (default 3).
+- After each failure, the code evaluates the error type:
+  - If a network error (`GROQBASHERRCURL_FAILED`), it retries with incremental backoff.
+  - If an API error (`GROQBASHERRAPI`), it does not retry and fails immediately.
+
+**Response extraction**
+- `extract_text_from_resp` attempts to extract text from `RESP` using:
+  - `.choices[] | .message?.content // .delta?.content` and joins with newline.
+  - Fallback: if `RESP` is not JSON, it cats the file.
+
+**Edge case: "empty completion"**
+- `detect_empty_edge_case` analyzes `RESP` to detect the empty completion pattern:
+  - Checks `choices[0].message.content` or `choices[0].delta.content` (empty),
+  - `choices[0].finish_reason == "stop"`,
+  - `usage.completion_tokens == 1` (or equivalent).
+- If detected, it sets global diagnostic variables:
+  - `GROQBASH_EDGE_EMPTY=1`
+  - `GROQBASH_EDGE_REQ_ID` (if present in `RESP` as `.x_groq?.id` or `.id`)
+  - `GROQBASH_EDGE_FINISH_REASON`
+  - `GROQBASH_EDGE_COMPLETION_TOKENS`
+- The CORE emits **one structured log** with these details inside `perform_request_once` and then fails with the appropriate API exit code.
+
+12. Security and filesystem constraints
+----------------------------------
+**General principles**
+- All runtime state is under `GROQBASH_DIR` (default: `SCRIPTDIR/groqbash.d`).
+- No use of the system `/tmp`: all tmp files are under `GROQBASH_TMPDIR` and `RUN_TMPDIR`.
+- Umask and restrictive permissions: directories 700, files 600 where applicable.
+- No `eval` and no execution of model-generated content.
+- All critical writes (models, manifest, history) are atomic and protected by locks (flock).
+
+**Provider modules**
+- Must not be symlinks.
+- Must pass `bash -n` before being sourced.
+- Ownership and permissions controlled: not world-writable; preferably owned by the current user.
+- The CORE verifies the presence of required functions and rejects incomplete providers.
+
+**Extras repository vs runtime**
+- `./extras/` in the repo root is only a source for `--install-extras`.
+- At runtime, the only trusted paths for extras/providers are `GROQBASH_EXTRAS_DIR` and `PROVIDERS_DIR` under `GROQBASH_DIR`.
+- The script prevents installs that would create nested copies or use symlinks as source.
+
+**Locking**
+- Locks are colocated near resources:
+  - `MODELS_LOCK` (e.g., `groqbash.d/models/models.lock`)
+  - `HISTORY_LOCK` (e.g., `groqbash.d/history/history.lock`)
+  - `TMP_LOCK` (e.g., `groqbash.d/tmp/tmp.lock`)
+- `lock_exec` uses `flock -x -w <timeout>` and fails with code 124 on timeout.
+
+13. Examples
+----------
+Invocation examples (exact forms recognized by the parser):
+
+- Single prompt (text output):
+  - `groqbash "Write a short summary of the following text"`
+
+- From file:
+  - `groqbash -f prompt.txt`
+
+- Pipe:
+  - `echo "Summarize this" | groqbash --model my-text-model`
+
+- Streaming (provider must support streaming):
+  - `groqbash --stream -m my-model "Generate code"`
+
+- Dry-run (shows payload and does not call the API):
+  - `groqbash --dry-run "Show me the payload"`
+
+- Install extras from source:
+  - `groqbash --install-extras /path/to/repo/extras`
+  - or: `groqbash --install-extras=/path/to/repo/extras`
+
+- Refresh models:
+  - `groqbash --refresh-models`
+
+- Interactive provider:
+  - `groqbash --provider` (TTY required)
+
+- Provider via argument:
+  - `groqbash --provider groq`
+
+- Provider "list" (treated as interactive selection request):
+  - `groqbash --provider list`
+
+- Session example:
+  - `groqbash --session mysession --session-window 20 "Continue conversation"`
+
+14. Exit codes
+--------------------
+Canonical exit codes used by the script (fixed numbers):
+
+- `10` — `GROQBASH_ERR_NO_API_KEY` — Missing API key for provider (non-interactive).
+- `11` — `GROQBASH_ERR_BAD_MODEL` — No valid model selected / invalid model.
+- `12` — `GROQBASH_ERR_CURL_FAILED` — Network / curl error.
+- `13` — `GROQBASH_ERR_INVALID_JSON` — Invalid JSON or parsing error.
+- `14` — `GROQBASH_ERR_NO_PROMPT` — No prompt provided.
+- `15` — `GROQBASH_ERR_TMP` — Tmpdir / temporary file error.
+- `16` — `GROQBASH_ERR_API` — HTTP/API error from the provider.
+
+15. Troubleshooting
+-------------------
+- **Script exits immediately**: verify that all mandatory commands are in PATH (see Requirements).
+- **Provider not found**: install provider script in `groqbash.d/extras/providers/<prov>.sh` or use `--install-extras`.
+- **API calls fail in CI**: ensure the API key is exported (`GROQ_API_KEY` or the variable specified by `PROVIDER_API_ENV_<prov>`).
+- **History not saved**: check `GROQBASH_ROTATE_HISTORY`, `THRESHOLD` and permissions on `groqbash.d/history`.
+- **Provider module issues**: verify the file is not a symlink, passes `bash -n` and is not world-writable.
+- **Lock timeout**: if receiving lock timeout errors, increase `GROQBASH_LOCK_TIMEOUT_*` or investigate concurrent processes holding locks.
+
+16. Ambiguities found in the code
+---------------------------------
+The script is the source of truth; however, the parser and some naming choices introduce ambiguities which are neutrally documented here:
+
+1. **Option `--ture` vs `--temperature`**  
+   - The script accepts both forms. Internally it uses the variable `TURE` as the primary name and then synchronizes with `TEMPERATURE`. This dual naming exists in the code; both options are supported and map to the same value.
+
+2. **`--json-input` with value `-`**  
+   - The code supports `--json-input -` as a signal to read JSON from stdin. This behavior is implemented but requires care: when `JSON_INPUT` is `-`, the script captures stdin into a temporary file and uses it as the JSON source.
+
+3. **`--session-window` without argument**  
+   - The parser allows `--session-window` without a value and in that case sets `SESSION_WINDOW="10"`. This behavior is explicit in the parser and can be a source of confusion if the user expects the option to always require an argument.
+
+4. **`--provider list` vs `--provider` without argument**  
+   - If the user invokes `--provider list` (the word `list` as an argument), the code treats the string `list` as a request for interactive selection. Additionally, `--provider` without an argument activates interactive selection. Both forms lead to the same interactive flow, but the presence of the word `list` as an argument is a special case handled by the parser.
+
+5. **`--install-extras` form with and without argument**  
+   - The script supports `--install-extras <src>`, `--install-extras=<src>` and also `--install-extras` without an argument (in this case it uses `SCRIPTDIR/extras` as the source). The behavior is implemented but the presence of multiple forms should be considered when automating usage.
+
+These ambiguities are reported for clarity and to guide correct usage of the script; they are not code errors but parsing choices the user should be aware of.
+
+17. Final notes for auditors/integrators
+---------------------------------------
+- The script is designed to be auditable: all sensitive operations (I/O, locks, writes) are centralized in atomic primitives and utility functions.
+- External providers are loaded via `source` after syntax and permission checks; the CORE communicates with them exclusively through the minimal interface functions (`buildpayload_<prov>`, `call_api_<prov>`, and optional ones).
+- For non-interactive integrations, ensure the correct API key is exported and set `ALLOW_API_CALLS` if necessary (the code enforces a check if `GROQ_API_KEY` is present but `ALLOW_API_CALLS` is not 1 and `DRY_RUN` is not 1).
+- All runtime state must remain under `GROQBASH_DIR` (default `SCRIPTDIR/groqbash.d`).
+
+--- 
+End of the extended manual.
+# =====================================
+# End of manual-it.txt
+# =====================================
