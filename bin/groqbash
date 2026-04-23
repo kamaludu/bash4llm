@@ -37,6 +37,17 @@ GROQBASHERRTMP=$GROQBASH_ERR_TMP
 GROQBASHERRAPI=$GROQBASH_ERR_API
 
 # ---------------------------------------------------------------------------
+# Dev/Test guard for sourcing only
+# ---------------------------------------------------------------------------
+# When set to 1, importing the script (GROQBASH_SOURCE_ONLY=1 . ./groqbash)
+# will load function definitions without executing the main runtime flow.
+if [ "${GROQBASH_SOURCE_ONLY:-0}" -eq 1 ]; then
+  # If sourced from a shell, return to the caller; if executed directly,
+  # exit with success to avoid running the main program.
+  return 0 2>/dev/null || exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Verify mandatory commands (no fallback)
 # ---------------------------------------------------------------------------
 for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do
@@ -812,6 +823,9 @@ session_append() {
   [ -n "$sid" ] || return 1
   [ -n "$content" ] || content=""
 
+  # Ensure we clean up marker_dir on unexpected exit; normal successful path will disable the trap.
+  trap 'if [ "${created_marker:-0}" -eq 1 ] && [ -n "${marker_dir:-}" ]; then rm -rf -- "$marker_dir" 2>/dev/null || true; fi' RETURN
+
   invocation_ts="$(session_now_ts)"
   message_id="$(printf '%s' "$meta_json" | jq -r '.id // empty' 2>/dev/null || true)"
   if [ -z "$message_id" ]; then
@@ -866,7 +880,7 @@ session_append() {
 
   # Prepare tmp file for any transient checks (kept minimal)
   tmpf="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.append.XXXX 2>/dev/null || true)"
-  : > "$tmpf" 2>/dev/null || true
+  : > "${tmpf:-/dev/null}" 2>/dev/null || true
 
   timeout="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 
@@ -897,6 +911,14 @@ session_append() {
   # Normalize role and meta, build line
   meta_json="$(printf '%s' "$meta_json" | jq -c '.' 2>/dev/null || printf '%s' '{}' )"
   case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
+
+  # Global guard: skip appending empty user messages
+  if [ "$role_norm" = "user" ] && [ -z "${content:-}" ]; then
+    log_info "SESSION" "skipping append of empty user message for session $sid"
+    # disable cleanup trap so marker is preserved if needed
+    trap - RETURN
+    return 0
+  fi
 
   # Build a compact single-line NDJSON record for the session
   # Use jq -c -n to produce compact JSON (one line)
@@ -935,6 +957,10 @@ session_append() {
 
   # Leave marker in place to indicate completion (used for idempotency if message_id present)
   touch "${marker_dir}/done" 2>/dev/null || true
+
+  # Successful completion: disable trap so marker is preserved
+  trap - RETURN
+
   log_info "SESSION" "appended message id ${message_id:-<no-id>} to $session_file"
   return 0
 }
@@ -1177,6 +1203,12 @@ buildpayload_groq() {
     return 0
   }
 
+  # Helper: dedupe messages array by role+content preserving order (remove later duplicates)
+  dedupe_messages_json() {
+    # reads JSON array from stdin, writes compact JSON array to stdout
+    jq -c 'reduce .[] as $m ( []; if any(.[]; (.role == $m.role) and ((.content // "") == ($m.content // ""))) then . else . + [$m] end )'
+  }
+
   # If JSON_INPUT provided, prefer it (supports both messages and prompt shapes)
   if [ -n "${JSON_INPUT:-}" ]; then
     # If JSON_INPUT is '-', capture stdin once into a temp file and reuse it.
@@ -1196,6 +1228,7 @@ buildpayload_groq() {
     # Now JSON_INPUT points to a file (either original path or the temp file)
     # 1) If it already contains messages[], stage it as-is
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
+      # Optionally dedupe messages in-file before staging? Keep original behavior: stage as-is.
       if ! b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT"; then
         rm -f "$tmp_payload.b64" 2>/dev/null || true
         [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
@@ -1214,6 +1247,8 @@ buildpayload_groq() {
       model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
       model_to_use="${model_in_file:-$MODEL}"
       MESSAGES_JSON="$(resolve_messages_json "$user_prompt" "${BUILD_MESSAGES_FILE:-}")"
+      # Deduplicate messages to avoid repeated identical user entries
+      MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
       jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
          --argjson messages "$MESSAGES_JSON" \
          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
@@ -1236,6 +1271,8 @@ buildpayload_groq() {
       model_to_use="${model_in_file:-$MODEL}"
       # build messages array from the single object
       MESSAGES_JSON="$(jq -c -n --arg role "$(jq -r '.role' "$JSON_INPUT" 2>/dev/null || echo user)" --arg content "$(jq -r '.content' "$JSON_INPUT" 2>/dev/null || echo '')" '[{role:$role,content:$content}]')"
+      # Deduplicate (safe no-op for single element)
+      MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
       jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
          --argjson messages "$MESSAGES_JSON" \
          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
@@ -1271,6 +1308,9 @@ buildpayload_groq() {
   else
     MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
   fi
+
+  # Deduplicate messages to avoid repeated identical user entries
+  MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
 
   jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
      --argjson messages "$MESSAGES_JSON" \
@@ -1840,27 +1880,83 @@ call_api_streaming() {
 }
 
 # ---------------------------------------------------------------------------
-# Response extraction helpers
+# Response extraction helpers (improved)
 # ---------------------------------------------------------------------------
 extract_text_from_resp() {
   [ ! -s "${RESP:-}" ] && return 0
-  if jq -e . "$RESP" >/dev/null 2>&1; then
+
+  # estrazione normale (message.content o delta.content)
+  local out
+  out="$(
     jq -r '
-      [ .choices[]? | (.message?.content // .delta?.content // "") ] | join("\n")
+      [ .choices[]? | (.message?.content // .delta?.content // "") | select(length > 0) ]
+      | join("\n")
     ' "$RESP" 2>/dev/null | sed 's/\\"/"/g' || true
-  else
-    cat "$RESP" 2>/dev/null || true
+  )"
+
+  if [ -z "$out" ]; then
+    # fallback: se JSON, prova a estrarre il primo frammento non vuoto; altrimenti cat
+    if jq -e . "$RESP" >/dev/null 2>&1; then
+      jq -r '
+        ( [ .choices[]? | (.message?.content // .delta?.content // "") ] | map(select(length > 0)) )[0] // empty
+      ' "$RESP" 2>/dev/null | sed 's/\\"/"/g' || true
+    else
+      cat "$RESP" 2>/dev/null || true
+    fi
+    return 0
   fi
+
+  printf '%s\n' "$out"
   return 0
 }
 
 extract_api_error() {
   [ ! -s "${RESP:-}" ] && return 0
+
   if jq -e . "$RESP" >/dev/null 2>&1; then
-    jq -r '.error?.message // .choices[]?.message?.content // empty' "$RESP" 2>/dev/null | head -n1 || true
+    # Prefer explicit error.message, then any non-empty choice content (first), else empty.
+    jq -r '
+      ( [ .error?.message // empty ] 
+        + [ .choices[]? | (.message?.content // .delta?.content // empty) ] )
+      | map(select(length > 0))
+      | .[0] // empty
+    ' "$RESP" 2>/dev/null | head -n1 || true
   else
     awk 'NF{print; exit}' "$RESP" 2>/dev/null || true
   fi
+}
+
+# detect_empty_edge_case: rileva l'edge case "completion vuota"
+# NON stampa nulla. Se rilevato, imposta variabili globali diagnostiche:
+#   GROQBASH_EDGE_EMPTY=1
+#   GROQBASH_EDGE_REQ_ID, GROQBASH_EDGE_FINISH_REASON, GROQBASH_EDGE_COMPLETION_TOKENS
+# Ritorna 0 se edge case rilevato, 1 altrimenti.
+detect_empty_edge_case() {
+  local resp="${RESP:-}"
+
+  # reset diagnostica
+  GROQBASH_EDGE_EMPTY=0
+  GROQBASH_EDGE_REQ_ID=""
+  GROQBASH_EDGE_FINISH_REASON=""
+  GROQBASH_EDGE_COMPLETION_TOKENS=0
+
+  [ ! -s "$resp" ] && return 1
+
+  local content finish_reason completion_tokens req_id
+  content="$(jq -r '.choices[0]?.message?.content // .choices[0]?.delta?.content // ""' "$resp" 2>/dev/null || echo "")"
+  finish_reason="$(jq -r '.choices[0]?.finish_reason // ""' "$resp" 2>/dev/null || echo "")"
+  completion_tokens="$(jq -r '.usage?.completion_tokens // 0' "$resp" 2>/dev/null || echo 0)"
+  req_id="$(jq -r '.x_groq?.id // .id // empty' "$resp" 2>/dev/null || echo "")"
+
+  if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "$completion_tokens" -eq 1 ]; then
+    GROQBASH_EDGE_EMPTY=1
+    GROQBASH_EDGE_REQ_ID="${req_id:-<none>}"
+    GROQBASH_EDGE_FINISH_REASON="$finish_reason"
+    GROQBASH_EDGE_COMPLETION_TOKENS="$completion_tokens"
+    return 0
+  fi
+
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -1920,30 +2016,62 @@ perform_request_once() {
         log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
         return 0
       fi
+
+      # reset diagnostica all'inizio della gestione della risposta
+      GROQBASH_EDGE_EMPTY=0
+      GROQBASH_EDGE_REQ_ID=""
+      GROQBASH_EDGE_FINISH_REASON=""
+      GROQBASH_EDGE_COMPLETION_TOKENS=0
+
       local text api_err
       text="$(extract_text_from_resp || true)"
+
+      # Esegui il rilevamento dell'edge case qui, sempre, subito dopo l'estrazione
+      detect_empty_edge_case || true
+
       if [ -z "$text" ] && [ "$OUTPUT_MODE" != "json" ] && [ "$OUTPUT_MODE" != "pretty" ]; then
         api_err="$(extract_api_error || true)"
         if [ -n "$api_err" ]; then
           log_error "API" "API error: $api_err"
           return "$GROQBASHERRAPI"
         else
+          # Se l'edge case è stato rilevato, emetti il log strutturato una sola volta
+          if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then
+            printf '%s\n' \
+              "API edge case detected: empty completion" \
+              "  req_id: ${GROQBASH_EDGE_REQ_ID:-<none>}" \
+              "  finish_reason: ${GROQBASH_EDGE_FINISH_REASON:-<none>}" \
+              "  completion_tokens: ${GROQBASH_EDGE_COMPLETION_TOKENS:-0}" >&2
+
+            log_error "API" "empty completion returned by provider (see previous diagnostic lines)."
+            return "$GROQBASHERRAPI"
+          fi
+
+          # fallback generico: nessun testo e nessun errore esplicito
           log_error "API" "no textual content extracted from response."
           head -n 50 "${RESP:-/dev/null}" >&2 || true
           return "$GROQBASHERRAPI"
         fi
       fi
+
       finalize_and_output "$OUTPUT_MODE" "$text"
       return 0
     else
       rc=$?
-      if [ "$rc" -eq "$GROQBASHERRCURL_FAILED" ]; then printf 'groqbash: WARN: Network error (curl). Retrying...\n' >&2
-      elif [ "$rc" -eq "$GROQBASHERRAPI" ]; then printf 'groqbash: ERROR: HTTP/API error. Not retrying.\n' >&2; head -n 50 "${RESP:-/dev/null}" >&2 || true; return "$GROQBASHERRAPI"
-      else printf 'groqbash: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
+      if [ "$rc" -eq "$GROQBASHERRCURL_FAILED" ]; then
+        printf 'groqbash: WARN: Network error (curl). Retrying...\n' >&2
+      elif [ "$rc" -eq "$GROQBASHERRAPI" ]; then
+        printf 'groqbash: ERROR: HTTP/API error. Not retrying.\n' >&2
+        head -n 50 "${RESP:-/dev/null}" >&2 || true
+        return "$GROQBASHERRAPI"
+      else
+        printf 'groqbash: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
       fi
     fi
+
     attempt=$((attempt + 1)); sleep $((attempt * 1))
   done
+
   log_error "REQUEST" "request failed after $MAX_RETRIES attempts."
   return "$GROQBASHERRAPI"
 }
@@ -2837,14 +2965,16 @@ assemble_content() {
     tmp_tmpl="$(_mktemp_in_dir "$RUN_TMPDIR" 2>/dev/null || true)"
 
     if [ -n "$tmp_tmpl" ]; then
-      printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}' > "$tmp_tmpl"
+      # Preserve original newlines while replacing the placeholder
+      printf '%s' "$tmpl" | awk -v repl="$CONTENT" '{ gsub(/\{\{CONTENT\}\}/, repl); print }' > "$tmp_tmpl"
       tmp_final="${tmp_tmpl}.final"
       mv "$tmp_tmpl" "$tmp_final" 2>/dev/null || true
       file_content="$(cat "$tmp_final" 2>/dev/null || printf '%s' "$tmpl")"
       CONTENT="$file_content"
       rm -f "$tmp_final" 2>/dev/null || true
     else
-      CONTENT="$(printf '%s' "$tmpl" | awk -v repl="$CONTENT" 'BEGIN{RS=""; ORS="";} {gsub(/\{\{CONTENT\}\}/, repl); print}')"
+      # Fallback: perform replacement while preserving newlines
+      CONTENT="$(printf '%s' "$tmpl" | awk -v repl="$CONTENT" '{ gsub(/\{\{CONTENT\}\}/, repl); print }')"
     fi
     return 0
   fi
@@ -3030,9 +3160,15 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   fi
 
   build_payload_from_vars
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "missing API key; aborting."
-    exit "$GROQBASHERRTMP"
+
+  # Skip API key prompt in dry-run mode
+  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+    log_info "DRY" "dry-run: skipping API key check for provider $PROVIDER"
+  else
+    if ! ensure_api_key_for_provider "$PROVIDER"; then
+      log_error "APIKEY" "missing API key; aborting."
+      exit "$GROQBASHERRTMP"
+    fi
   fi
 
   if call_api_streaming; then
@@ -3040,11 +3176,13 @@ if [ "$STREAM_MODE" -eq 1 ]; then
 
     # If sessioning requested, append both user and assistant
     if [ -n "${SESSION_ID:-}" ]; then
-      # 1) Append user message (preserve existing semantics)
-      meta_source="cli"
-      meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
-      meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-      session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+      # 1) Append user message (preserve existing semantics) only if non-empty
+      if [ -n "${CONTENT:-}" ]; then
+        meta_source="cli"
+        meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+        meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
+        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+      fi
 
       # 2) Append assistant response reconstructed from RESP (if present)
       # Only append assistant when not in DRY_RUN and when RESP contains data
@@ -3110,20 +3248,28 @@ else
   fi
 
   build_payload_from_vars
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "missing API key; aborting."
-    exit "$GROQBASHERRTMP"
+
+  # Skip API key prompt in dry-run mode
+  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+    log_info "DRY" "dry-run: skipping API key check for provider $PROVIDER"
+  else
+    if ! ensure_api_key_for_provider "$PROVIDER"; then
+      log_error "APIKEY" "missing API key; aborting."
+      exit "$GROQBASHERRTMP"
+    fi
   fi
 
   # Perform request (with retries). After final attempt, append to session if requested.
   if perform_request_once; then
     # On success, append to session if SESSION_ID present (MVP)
     if [ -n "${SESSION_ID:-}" ]; then
-      # 1) Append the user message (existing behavior)
-      meta_source="cli"
-      meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
-      meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-      session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+      # 1) Append the user message (existing behavior) only if non-empty
+      if [ -n "${CONTENT:-}" ]; then
+        meta_source="cli"
+        meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+        meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
+        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+      fi
 
       # 2) Append the assistant response (new)
       # Only append assistant when not in DRY_RUN and when RESP contains data
@@ -3141,10 +3287,12 @@ else
   else
     # On failure, still attempt append (record of attempted message) but do not block
     if [ -n "${SESSION_ID:-}" ]; then
-      meta_source="cli"
-      meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
-      meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-      session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID after failed request"
+      if [ -n "${CONTENT:-}" ]; then
+        meta_source="cli"
+        meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+        meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
+        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID after failed request"
+      fi
     fi
     exit "$GROQBASHERRAPI"
   fi
