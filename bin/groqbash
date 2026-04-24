@@ -2281,6 +2281,27 @@ done
 # so immediate actions like --list-providers use the intended provider.
 PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
 
+# --- Session Engine conditional sourcing (load once when SESSION_ID is known) ---
+SE_ENGINE_PATH="${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh"
+SE_AVAILABLE=0
+if [ -n "${SESSION_ID:-}" ] && [ -f "$SE_ENGINE_PATH" ] && [ "${GROQBASH_SESSION_ENGINE:-on}" != "off" ]; then
+  # Source the engine into current shell (it must not change core functions)
+  . "$SE_ENGINE_PATH"
+  if type session_engine_enabled >/dev/null 2>&1 && session_engine_enabled; then
+    SE_AVAILABLE=1
+    log_info "SESSION" "Session Engine loaded and available"
+  else
+    SE_AVAILABLE=0
+    log_info "SESSION" "Session Engine present but not enabled"
+  fi
+else
+  # Engine not present or disabled; SE_AVAILABLE remains 0
+  if [ -n "${SESSION_ID:-}" ]; then
+    log_info "SESSION" "Session Engine not loaded (missing file or disabled)"
+  fi
+fi
+# --- End Session Engine conditional sourcing ---
+
 # ---------------------------------------------------------------------------
 # Normalize boolean-like flags
 # ---------------------------------------------------------------------------
