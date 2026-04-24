@@ -3144,7 +3144,17 @@ if [ "$CHAT_MODE" -eq 1 ]; then
 
       ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
       BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
-      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+
+      # Try Session Engine first; fallback to legacy on any failure
+      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+          log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
+          session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || log_warn "SESSION" "legacy session_read_window failed"
+        fi
+      else
+        session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || log_warn "SESSION" "legacy session_read_window failed"
+      fi
+
       export BUILD_MESSAGES_FILE
     fi
 
