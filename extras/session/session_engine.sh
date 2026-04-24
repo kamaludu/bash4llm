@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# session-engine.sh
+# =============================================================================
 # Optional Session Engine for GroqBash
-# Location: groqbash.d/extras/session/session-engine.sh
+# File: session-engine.sh
+# Version: 2.0.0
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# =============================================================================
 # Contract: exposes session_engine_enabled, session_engine_build_window,
 #           session_engine_append, session_engine_snapshot
-#
 # Safety: uses only RUN_TMPDIR and GROQBASH_HISTORY_DIR; uses lock_exec/atomic_write;
 #         on any failure returns non-zero and leaves original files untouched.
 # Behavior: Option A for --session-window: explicit N -> last N messages across segments,
