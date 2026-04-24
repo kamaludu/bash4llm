@@ -3191,7 +3191,17 @@ if [ "$STREAM_MODE" -eq 1 ]; then
 
     ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
-    session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+
+    # Try Session Engine first; fallback to legacy on any failure
+    if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+        log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
+        session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+      fi
+    else
+      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+    fi
+
     export BUILD_MESSAGES_FILE
   fi
 
@@ -3217,7 +3227,15 @@ if [ "$STREAM_MODE" -eq 1 ]; then
         meta_source="cli"
         meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
         meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+
+        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+          if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json"; then
+            log_warn "SESSION" "session_engine_append (user) failed; falling back to legacy session_append"
+            session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+          fi
+        else
+          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+        fi
       fi
 
       # 2) Append assistant response reconstructed from RESP (if present)
@@ -3230,7 +3248,15 @@ if [ "$STREAM_MODE" -eq 1 ]; then
         if [ -n "${assistant_text:-}" ]; then
           meta_source="provider"
           meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
-          session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
+
+          if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+            if ! session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json"; then
+              log_warn "SESSION" "session_engine_append (assistant) failed; falling back to legacy session_append"
+              session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
+            fi
+          else
+            session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
+          fi
         fi
       fi
     fi
@@ -3279,7 +3305,17 @@ else
 
     ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
-    session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+
+    # Try Session Engine first; fallback to legacy on any failure
+    if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+        log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
+        session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+      fi
+    else
+      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+    fi
+
     export BUILD_MESSAGES_FILE
   fi
 
@@ -3304,7 +3340,15 @@ else
         meta_source="cli"
         meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
         meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+
+        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+          if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json"; then
+            log_warn "SESSION" "session_engine_append (user) failed; falling back to legacy session_append"
+            session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+          fi
+        else
+          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+        fi
       fi
 
       # 2) Append the assistant response (new)
@@ -3315,7 +3359,15 @@ else
         if [ -n "${assistant_text:-}" ]; then
           meta_source="provider"
           meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
-          session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
+
+          if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+            if ! session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json"; then
+              log_warn "SESSION" "session_engine_append (assistant) failed; falling back to legacy session_append"
+              session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
+            fi
+          else
+            session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
+          fi
         fi
       fi
     fi
@@ -3327,7 +3379,15 @@ else
         meta_source="cli"
         meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
         meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID after failed request"
+
+        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+          if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json"; then
+            log_warn "SESSION" "session_engine_append (user) failed after failed request; falling back to legacy session_append"
+            session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID after failed request"
+          fi
+        else
+          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID after failed request"
+        fi
       fi
     fi
     exit "$GROQBASHERRAPI"
