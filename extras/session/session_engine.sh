@@ -12,6 +12,11 @@
 #         on any failure returns non-zero and leaves original files untouched.
 # Behavior: Option A for --session-window: explicit N -> last N messages across segments,
 #           do not apply target_bytes trimming in that case.
+#
+# NOTE (contractual): this engine requires a valid RUN_TMPDIR (or GROQBASH_TMPDIR)
+# to create temporary files. If RUN_TMPDIR is unset or not writable the engine
+# will return non-zero and the core must fallback to legacy session handling.
+# =============================================================================
 
 # --- Defaults (can be overridden via env) ---
 : "${GROQBASH_SESSION_ENGINE:=on}"
@@ -39,8 +44,9 @@ SE_DIR="${GROQBASH_EXTRAS_DIR%/}/session"
 SE_SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 
 # In-process cache (non-persistent)
-declare -A SE_CACHE_MTIME
-declare -A SE_CACHE_WINDOW
+declare -A SE_CACHE_MTIME    # file mtime at cache creation (for invalidation)
+declare -A SE_CACHE_WINDOW   # cached JSON window (key: sid|params_hash)
+declare -A SE_CACHE_STORED_TS # epoch when cache entry was stored (for TTL)
 
 _se_log() {
   local lvl="$1" msg="$2"
@@ -56,11 +62,18 @@ _se_log() {
   fi
 }
 
-# safe tmp file in RUN_TMPDIR
+# safe tmp file in RUN_TMPDIR (creates file and returns path)
 _se_tmpf() {
   local base="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  [ -n "$base" ] || return 1
   mkdir -p "$base" 2>/dev/null || return 1
-  mktemp -p "$base" se.XXXX 2>/dev/null || printf '%s' "$base/se.$$.$RANDOM"
+  if command -v mktemp >/dev/null 2>&1; then
+    mktemp -p "$base" se.XXXX 2>/dev/null || return 1
+  else
+    local f="$base/se.$$.$RANDOM"
+    : > "$f" 2>/dev/null || return 1
+    printf '%s' "$f"
+  fi
 }
 
 # list segments for a session (sorted ascending). includes base file first.
@@ -99,12 +112,19 @@ _se_compute_weight() {
 _se_dedupe_check() {
   local session_file="$1" role="$2" content="$3" window="${4:-$GROQBASH_SESSION_DEDUP_WINDOW}"
   [ -f "$session_file" ] || return 1
-  # read last window lines and compare role+content
-  tail -n "$window" "$session_file" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do
+
+  local tmp
+  tmp="$(_se_tmpf)" || return 1
+  tail -n "$window" "$session_file" 2>/dev/null > "$tmp" || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+
+  while IFS= read -r line || [ -n "$line" ]; do
     if printf '%s' "$line" | jq -e --arg r "$role" --arg c "$content" '(.role == $r) and ((.content // "") == $c)' >/dev/null 2>&1; then
+      rm -f "$tmp" 2>/dev/null || true
       return 0
     fi
-  done
+  done < "$tmp"
+
+  rm -f "$tmp" 2>/dev/null || true
   return 1
 }
 
@@ -192,10 +212,26 @@ _se_segment_rotate_if_needed() {
   return 0
 }
 
+# invalidate cache entries for a session id (prefix match)
+_se_invalidate_cache_for_sid() {
+  local sid="$1"
+  local k
+  for k in "${!SE_CACHE_WINDOW[@]}"; do
+    case "$k" in
+      "${sid}"\|*) unset "SE_CACHE_WINDOW[$k]" "SE_CACHE_MTIME[$k]" "SE_CACHE_STORED_TS[$k]" ;;
+    esac
+  done
+}
+
 # --- Public API: session_engine_enabled
 session_engine_enabled() {
   if [ "${GROQBASH_SESSION_ENGINE:-on}" = "off" ]; then return 1; fi
   if [ ! -d "${SE_DIR}" ]; then return 1; fi
+  # require RUN_TMPDIR to be set and writable
+  if [ -z "${RUN_TMPDIR:-}" ] && [ -z "${GROQBASH_TMPDIR:-}" ]; then
+    _se_log warn "session engine disabled: RUN_TMPDIR/GROQBASH_TMPDIR not set"
+    return 1
+  fi
   return 0
 }
 
@@ -231,14 +267,8 @@ session_engine_append() {
   # 2) Dedup/noise detection
   local mark_ignored=0
   if [ "${GROQBASH_SESSION_DEDUP_ENABLED:-1}" -eq 1 ]; then
-    if [ "${#content}" -lt "${GROQBASH_SESSION_MIN_CONTENT_BYTES:-8}" ]; then
-      if _se_dedupe_check "$session_file" "$role" "$content" "${GROQBASH_SESSION_DEDUP_WINDOW:-20}"; then
-        mark_ignored=1
-      fi
-    else
-      if _se_dedupe_check "$session_file" "$role" "$content" "${GROQBASH_SESSION_DEDUP_WINDOW:-20}"; then
-        mark_ignored=1
-      fi
+    if _se_dedupe_check "$session_file" "$role" "$content" "${GROQBASH_SESSION_DEDUP_WINDOW:-20}"; then
+      mark_ignored=1
     fi
   fi
 
@@ -309,11 +339,8 @@ session_engine_append() {
     _se_log warn "append: post-append rotation failed for $session_file"
   fi
 
-  # 7) Update in-process cache
-  if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-    SE_CACHE_MTIME["$sid"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
-    unset "SE_CACHE_WINDOW[$sid]"
-  fi
+  # 7) Update in-process cache: invalidate entries for this sid
+  _se_invalidate_cache_for_sid "$sid"
 
   touch "${marker_dir}/done" 2>/dev/null || true
   return 0
@@ -335,16 +362,32 @@ session_engine_build_window() {
   fi
 
   tmpf="$(_se_tmpf)" || return 1
-  : > "$tmpf" || return 1
+  : > "$tmpf" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
 
-  # Use cache if available and fresh
-  local params_hash cached_mtime
+  # Compute params_hash and use it as cache key (sid|params_hash)
+  local params_hash
   params_hash="$(printf '%s|%s|%s' "$N" "$target_bytes" "${GROQBASH_SESSION_TARGET_BYTES:-}" | (command -v sha256sum >/dev/null 2>&1 && sha256sum | awk '{print $1}' || cat) 2>/dev/null || true)"
+  local cache_key="${sid}|${params_hash}"
+
+  # Use cache if available, fresh and TTL not expired
   if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
+    local cached_mtime stored_ts now
     cached_mtime="$(stat -c %Y "$session_file" 2>/dev/null || true)"
-    if [ -n "${SE_CACHE_MTIME[$sid]:-}" ] && [ "${SE_CACHE_MTIME[$sid]}" = "$cached_mtime" ] && [ -n "${SE_CACHE_WINDOW[$sid]:-}" ]; then
-      printf '%s' "${SE_CACHE_WINDOW[$sid]}" > "$out" 2>/dev/null || true
-      return 0
+    stored_ts="${SE_CACHE_STORED_TS[$cache_key]:-}"
+    now="$(date +%s)"
+    if [ -n "${SE_CACHE_MTIME[$cache_key]:-}" ] && [ "${SE_CACHE_MTIME[$cache_key]}" = "$cached_mtime" ] && [ -n "${SE_CACHE_WINDOW[$cache_key]:-}" ]; then
+      if [ -n "$stored_ts" ] && [ "${SESSION_CACHE_TTL_SEC:-0}" -gt 0 ]; then
+        if [ $((now - stored_ts)) -le "${SESSION_CACHE_TTL_SEC:-0}" ]; then
+          printf '%s' "${SE_CACHE_WINDOW[$cache_key]}" > "$out" 2>/dev/null || true
+          rm -f "$tmpf" 2>/dev/null || true
+          return 0
+        fi
+      else
+        # no TTL configured, accept cache
+        printf '%s' "${SE_CACHE_WINDOW[$cache_key]}" > "$out" 2>/dev/null || true
+        rm -f "$tmpf" 2>/dev/null || true
+        return 0
+      fi
     fi
   fi
 
@@ -353,20 +396,23 @@ session_engine_build_window() {
   segments="$(_se_list_segments "$sid" | tac 2>/dev/null || true)"
   if [ -z "$segments" ]; then
     printf '%s' '{"messages":[]}' > "$out" 2>/dev/null || true
+    rm -f "$tmpf" 2>/dev/null || true
     return 0
   fi
 
   # If explicit N provided and >0 -> Option A: last N messages across segments (exclude meta.ignored)
   if printf '%s' "$N" | grep -qE '^[0-9]+$' && [ "$N" -gt 0 ]; then
     local remaining="$N"
-    local collect_tmp="$(_se_tmpf).collect" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
+    local collect_tmp
+    collect_tmp="$(_se_tmpf).collect" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
     : > "$collect_tmp"
+
     # iterate segments newest-first, collect lines newest-first into collect_tmp
     for seg in $segments; do
       case "$seg" in *.gz) continue ;; esac
       if [ "$remaining" -le 0 ]; then break; fi
-      # read segment lines newest-first
-      tac "$seg" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do
+      # read segment lines newest-first using process substitution so while runs in current shell
+      while IFS= read -r line || [ -n "$line" ]; do
         # skip ignored messages
         if printf '%s' "$line" | jq -e '.meta?.ignored == true' >/dev/null 2>&1; then
           continue
@@ -374,7 +420,7 @@ session_engine_build_window() {
         printf '%s\n' "$line" >> "$collect_tmp"
         remaining=$((remaining - 1))
         if [ "$remaining" -le 0 ]; then break; fi
-      done
+      done < <(tac "$seg" 2>/dev/null)
       if [ "$remaining" -le 0 ]; then break; fi
     done
 
@@ -392,8 +438,9 @@ session_engine_build_window() {
     if jq -s '{messages: map({role:.role, content:.content})}' "$tmpf" > "$out" 2>/dev/null; then
       # update cache
       if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-        SE_CACHE_MTIME["$sid"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
-        SE_CACHE_WINDOW["$sid"]="$(cat "$out" 2>/dev/null || true)"
+        SE_CACHE_MTIME["$cache_key"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
+        SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
+        SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
       fi
       rm -f "$collect_tmp" "$tmpf" 2>/dev/null || true
       return 0
@@ -410,12 +457,14 @@ session_engine_build_window() {
   local max_msgs="${GROQBASH_SESSION_MAX_MESSAGES:-200}"
   local total_bytes=0
   local msg_count=0
-  local msgs_tmp="$(_se_tmpf).msgs" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
+  local msgs_tmp
+  msgs_tmp="$(_se_tmpf).msgs" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
   : > "$msgs_tmp"
 
   for seg in $segments; do
     case "$seg" in *.gz) continue ;; esac
-    tac "$seg" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do
+    # read newest-first but process in current shell
+    while IFS= read -r line || [ -n "$line" ]; do
       role="$(printf '%s' "$line" | jq -r '.role // "user"' 2>/dev/null || echo user)"
       content="$(printf '%s' "$line" | jq -r '.content // ""' 2>/dev/null || echo '')"
       if printf '%s' "$line" | jq -e '.meta?.ignored == true' >/dev/null 2>&1; then
@@ -438,15 +487,16 @@ session_engine_build_window() {
           break 2
         fi
       fi
-    done
+    done < <(tac "$seg" 2>/dev/null)
   done
 
   if [ -s "$msgs_tmp" ]; then
     tac "$msgs_tmp" > "$tmpf" 2>/dev/null || cp -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
     if jq -s '{messages: map({role:.role, content:.content})}' "$tmpf" > "$out" 2>/dev/null; then
       if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-        SE_CACHE_MTIME["$sid"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
-        SE_CACHE_WINDOW["$sid"]="$(cat "$out" 2>/dev/null || true)"
+        SE_CACHE_MTIME["$cache_key"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
+        SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
+        SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
       fi
       rm -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
       return 0
@@ -507,9 +557,14 @@ session_engine_snapshot() {
     done
   done
 
-  jq -n --arg sid "$sid" --argjson stats "$(jq -n --argjson msgs "$total_msgs" --argjson segs "$seg_count" --argjson size "$total_size" '{message_count:$msgs, segments:$segs, total_size_bytes:$size}')" \
-    --slurpfile last "${last_tmp}.tail" --slurpfile sums "$summaries_tmp" \
-    '{session_id:$sid, stats:$stats, last_messages:($last|map(.)), summaries:($sums|map(.))}' > "$out" 2>/dev/null || {
+  # Build snapshot JSON
+  jq -n --arg sid "$sid" \
+    --argjson message_count "$total_msgs" \
+    --argjson segments "$seg_count" \
+    --argjson total_size "$total_size" \
+    --slurpfile last "${last_tmp}.tail" \
+    --slurpfile sums "$summaries_tmp" \
+    '{session_id:$sid, stats:{message_count:$message_count, segments:$segments, total_size_bytes:$total_size}, last_messages:($last|map(.)), summaries:($sums|map(.))}' > "$out" 2>/dev/null || {
       _se_log err "snapshot: failed to assemble JSON"
       rm -f "$tmp" "$last_tmp" "${last_tmp}.tail" "$summaries_tmp" 2>/dev/null || true
       return 1
