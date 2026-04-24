@@ -4,6 +4,7 @@
 # File: session-engine.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
+# Source: https://github.com/kamaludu/groqbash
 # =============================================================================
 # Contract: exposes session_engine_enabled, session_engine_build_window,
 #           session_engine_append, session_engine_snapshot
