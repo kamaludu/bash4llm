@@ -2,7 +2,6 @@
 # =============================================================================
 # Optional Session Engine for GroqBash
 # File: session-engine.sh
-# Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # =============================================================================
