@@ -3068,16 +3068,21 @@ if [ -n "$BATCH_FILE" ]; then
       BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
       export BUILD_MESSAGES_FILE
 
-      # Primary attempt: let session_read_window populate BUILD_MESSAGES_FILE
-      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
-
-      # If session_read_window produced empty/invalid messages, try reconstructing from NDJSON tail
-      if [ ! -f "${BUILD_MESSAGES_FILE:-}" ] || [ "$(jq -r '.messages | length' "$BUILD_MESSAGES_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
-        SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
-        if [ -f "${SESSION_DIR%/}/${SESSION_ID}.ndjson" ]; then
-          tail -n "${SESSION_WINDOW:-10}" "${SESSION_DIR%/}/${SESSION_ID}.ndjson" \
-            | jq -s '{messages: map(.message // .)}' > "${BUILD_MESSAGES_FILE}" 2>/dev/null || true
+      # Try Session Engine first (Option A semantics: engine will honor --session-window override)
+      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+          # Engine failed: fallback to legacy session_read_window
+          log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
+          session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "SESSION" "legacy session_read_window also failed"
         fi
+      else
+        # Engine not available: use legacy behavior
+        session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "SESSION" "legacy session_read_window failed"
+      fi
+
+      # If BUILD_MESSAGES_FILE is still missing or invalid, ensure at least current user message is present
+      if [ ! -f "${BUILD_MESSAGES_FILE:-}" ] || [ "$(jq -r '.messages | length' "$BUILD_MESSAGES_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
+        jq -n --arg role "user" --arg content "${CONTENT:-}" '{messages:[{role:$role,content:$content}] }' > "${BUILD_MESSAGES_FILE}"
       fi
 
       # Final fallback: ensure at least the current user message is present so API never receives messages:[]
