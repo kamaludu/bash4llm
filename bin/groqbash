@@ -737,42 +737,51 @@ _get_owner() {
 
 _get_file_signature() {
   local path="$1"
-  local sig="" hash="" dev="" inode="" size="" ctime="" mtime="" uid="" gid="" mode=""
-  # Return empty if not a regular file
+  local hash="" stat_out="" dev="" inode="" size="" ctime="" mtime="" uid="" gid="" mode=""
+  # Return empty string if not a regular file
   [ -f "$path" ] || { printf ''; return 0; }
 
   # Decide whether to compute content hash (default 1)
   local use_hash="${GROQBASH_SIG_HASH:-1}"
 
-  # Compute SHA256 if requested and available (coreutils sha256sum)
+  # Compute SHA256 if requested and available
   if [ "${use_hash}" != "0" ] && command -v sha256sum >/dev/null 2>&1; then
     hash="$(sha256sum "$path" 2>/dev/null | awk '{print $1}' || true)"
   else
     hash=""
   fi
 
+  # Collect stat output in a portable way
   case "$(uname 2>/dev/null || echo Linux)" in
     Darwin)
-      # BSD/macOS stat -f: %d device, %i inode, %z size, %c ctime, %m mtime, %u uid, %g gid, %p mode
-      if stat -f '%d %i %z %c %m %u %g %p' "$path" >/dev/null 2>&1; then
-        read -r dev inode size ctime mtime uid gid mode < <(stat -f '%d %i %z %c %m %u %g %p' "$path" 2>/dev/null || true)
-      else
-        dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
-      fi
+      # BSD/macOS stat format: device inode size ctime mtime uid gid mode
+      stat_out="$(stat -f '%d %i %z %c %m %u %g %p' "$path" 2>/dev/null || true)"
       ;;
     *)
-      # GNU stat (util-linux): %d device, %i inode, %s size, %Z ctime, %Y mtime, %u uid, %g gid, %a mode
-      if stat -c '%d %i %s %Z %Y %u %g %a' "$path" >/dev/null 2>&1; then
-        read -r dev inode size ctime mtime uid gid mode < <(stat -c '%d %i %s %Z %Y %u %g %a' "$path" 2>/dev/null || true)
-      else
-        dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
-      fi
+      # GNU stat format: device inode size ctime mtime uid gid mode
+      stat_out="$(stat -c '%d %i %s %Z %Y %u %g %a' "$path" 2>/dev/null || true)"
       ;;
   esac
 
-  printf 'sha256:%s|dev:%s:%s|size:%s|ctime:%s|mtime:%s|uid:%s|gid:%s|mode:%s' \
+  # If stat failed, ensure variables are empty and continue (do not abort)
+  if [ -z "${stat_out:-}" ]; then
+    dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
+  else
+    # Parse stat_out using a here-doc to avoid process substitution portability issues
+    read -r dev inode size ctime mtime uid gid mode <<EOF
+$stat_out
+EOF
+    # If read failed for any reason, reset to empty strings
+    if [ -z "${dev:-}" ] && [ -z "${inode:-}" ] && [ -z "${size:-}" ]; then
+      dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
+    fi
+  fi
+
+  # Output a stable, linear signature: hash|dev|inode|size|ctime|mtime|uid|gid|mode
+  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' \
     "${hash:-}" "${dev:-}" "${inode:-}" "${size:-}" "${ctime:-}" "${mtime:-}" "${uid:-}" "${gid:-}" "${mode:-}"
 }
+
 getfile_signature() { _get_file_signature "$1"; }
 
 _is_world_writable() {
