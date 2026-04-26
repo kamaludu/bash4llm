@@ -1,6 +1,4 @@
-## [🇮🇹](#-sezione-italiana)   [🇬🇧](#-english-section)
-
----
+## Session Engine [🇮🇹](#-sezione-italiana)   [🇬🇧](#-english-section)
 
 ### 🇮🇹 Sezione Italiana
 
