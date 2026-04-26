@@ -6,12 +6,21 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-set -euo pipefail
+
+# When sourced, avoid enabling strict mode globally.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  set -euo pipefail
+fi
 
 MISTRAL_API_KEY="${MISTRAL_API_KEY:-}"
 
 API_URL_MISTRAL="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
 MODELS_ENDPOINT_MISTRAL="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
+
+# Provide no-op dbg() if not defined by core
+if ! type dbg >/dev/null 2>&1; then
+  dbg() { :; }
+fi
 
 # -------------------------
 # Helpers
@@ -38,10 +47,10 @@ _get_work_tmpdir_mistral() {
 
 _mktemp_in_dir_mistral() {
   local dir="$1" tmpf
-  [ -z "$dir" ] && return 1
-  [ ! -d "$dir" ] && return 1
+  [ -n "$dir" ] || return 1
+  [ -d "$dir" ] || return 1
   tmpf="$(mktemp -p "$dir" mistral-XXXX 2>/dev/null || true)"
-  [ -z "$tmpf" ] && return 1
+  [ -n "$tmpf" ] || return 1
   printf '%s' "$tmpf"
   return 0
 }
@@ -59,14 +68,31 @@ _escape_json_string_mistral() {
 # -------------------------
 buildpayload_mistral() {
   local workdir tmp_payload model_in_file model_to_use user_prompt
+
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return 1
+  fi
+
   workdir="$(_get_work_tmpdir_mistral)" || return 1
   tmp_payload="$(_mktemp_in_dir_mistral "$workdir")" || return 1
   umask 077
 
+  # Quick dependency check
+  if ! command -v jq >/dev/null 2>&1; then
+    dbg "DEPENDENCY" "jq not found"
+    return 1
+  fi
+
   # JSON_INPUT mode
   if [ -n "${JSON_INPUT:-}" ]; then
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+      else
+        cp -f "$JSON_INPUT" "$PAYLOAD" 2>/dev/null || true
+        chmod 600 "$PAYLOAD" 2>/dev/null || true
+      fi
       return 0
     fi
 
@@ -83,11 +109,21 @@ buildpayload_mistral() {
             '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
             > "$tmp_payload"
 
-      cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      else
+        cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
+        chmod 600 "$PAYLOAD" 2>/dev/null || true
+      fi
       return 0
     fi
 
-    cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+    else
+      cp -f "$JSON_INPUT" "$PAYLOAD" 2>/dev/null || true
+      chmod 600 "$PAYLOAD" 2>/dev/null || true
+    fi
     return 0
   fi
 
@@ -123,7 +159,12 @@ buildpayload_mistral() {
           > "$tmp_payload"
   fi
 
-  cat "$tmp_payload" | atomic_write "$PAYLOAD"
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmp_payload" | atomic_write "$PAYLOAD"
+  else
+    cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
+    chmod 600 "$PAYLOAD" 2>/dev/null || true
+  fi
   return 0
 }
 
@@ -131,7 +172,22 @@ buildpayload_mistral() {
 # call_api_mistral (non-streaming)
 # -------------------------
 call_api_mistral() {
-  local key="${MISTRAL_API_KEY:-}"
+  local prov_env key
+
+  # Resolve API key via core helper if available
+  if type ensure_api_key_for_provider >/dev/null 2>&1; then
+    if ! ensure_api_key_for_provider "mistral"; then
+      log_error "APIKEY" "MISTRAL API key required to call Mistral."
+      return $GROQBASHERRNOAPIKEY
+    fi
+  fi
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "mistral")"
+    key="${!prov_env:-${MISTRAL_API_KEY:-}}"
+  else
+    key="${MISTRAL_API_KEY:-}"
+  fi
+
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
     return 2
@@ -145,13 +201,21 @@ call_api_mistral() {
     return 0
   fi
 
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return 4
+  fi
+
   local workdir tmpout tmpresp api_url http_code time_total
   workdir="$(_get_work_tmpdir_mistral)" || return 4
   tmpout="$(_mktemp_in_dir_mistral "$workdir")" || return 4
   tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || return 4
+  ERRF="${ERRF:-$workdir/curl.err}"
+  RESP="${RESP:-$workdir/resp.json}"
   api_url="${API_URL_MISTRAL}"
 
-  curl ${CURL_BASE_OPTS:-} \
+  # Use array-safe expansion of CURL_BASE_OPTS
+  curl "${CURL_BASE_OPTS[@]:-}" \
        -H "Authorization: Bearer $key" \
        -H "Content-Type: application/json" \
        --data-binary @"$PAYLOAD" \
@@ -165,14 +229,24 @@ call_api_mistral() {
     time_total="0"
   }
 
-  cat "$tmpresp" | atomic_write "$RESP"
+  if [ -s "$tmpresp" ]; then
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$tmpresp" | atomic_write "${RESP:-$workdir/resp.json}"
+    else
+      cp -f "$tmpresp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      chmod 600 "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+    fi
+  else
+    : > "${RESP:-/dev/null}" 2>/dev/null || true
+  fi
+
   rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
 
   case "$http_code" in
     2*) return 0 ;;
     *)
       dbg "HTTP error code: $http_code"
-      dbg "Response (head):"; head -n 200 "$RESP" >&2 || true
+      dbg "Response (head):"; head -n 200 "${RESP:-/dev/null}" >&2 || true
       dbg "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
       return 5
       ;;
@@ -183,7 +257,22 @@ call_api_mistral() {
 # call_api_streaming_mistral (SSE)
 # -------------------------
 call_api_streaming_mistral() {
-  local key="${MISTRAL_API_KEY:-}"
+  local prov_env key
+
+  # Resolve API key via core helper if available
+  if type ensure_api_key_for_provider >/dev/null 2>&1; then
+    if ! ensure_api_key_for_provider "mistral"; then
+      log_error "APIKEY" "MISTRAL API key required to call Mistral."
+      return $GROQBASHERRNOAPIKEY
+    fi
+  fi
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "mistral")"
+    key="${!prov_env:-${MISTRAL_API_KEY:-}}"
+  else
+    key="${MISTRAL_API_KEY:-}"
+  fi
+
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
     return 2
@@ -193,13 +282,22 @@ call_api_streaming_mistral() {
     return 0
   fi
 
-  local api_url rc RESP_RAW
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return 4
+  fi
+
+  local api_url rc RESP_RAW workdir
   api_url="${API_URL_MISTRAL}"
-  RESP_RAW="${RUN_TMPDIR:-}/resp.raw"
+  workdir="$(_get_work_tmpdir_mistral)" || return 4
+  RESP_RAW="${RUN_TMPDIR:-$workdir}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
+  ERRF="${ERRF:-$workdir/curl.err}"
+  RESP="${RESP:-$workdir/resp.json}"
 
-  curl ${CURL_BASE_OPTS:-} \
+  # Use array-safe expansion of CURL_BASE_OPTS
+  curl "${CURL_BASE_OPTS[@]:-}" \
        -H "Authorization: Bearer $key" \
        -H "Content-Type: application/json" \
        --data-binary @"$PAYLOAD" \
@@ -260,7 +358,15 @@ call_api_streaming_mistral() {
 # -------------------------
 refresh_models_mistral() {
   local outpath="${1:-${MODELS_FILE:-}}"
-  local key="${MISTRAL_API_KEY:-}"
+  local prov_env key
+
+  # Resolve API key via core helper if available
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "mistral")"
+    key="${!prov_env:-${MISTRAL_API_KEY:-}}"
+  else
+    key="${MISTRAL_API_KEY:-}"
+  fi
 
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is required to refresh models." >&2
@@ -269,6 +375,11 @@ refresh_models_mistral() {
   if [ -z "$outpath" ]; then
     echo "Error: MODELS file path not provided." >&2
     return 7
+  fi
+
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return 4
   fi
 
   local workdir tmpd out errf api_url parsed
@@ -280,7 +391,8 @@ refresh_models_mistral() {
   errf="$tmpd/curl.err"
   api_url="${MODELS_ENDPOINT_MISTRAL}"
 
-  if ! curl ${CURL_BASE_OPTS:-} \
+  # Use array-safe expansion of CURL_BASE_OPTS
+  if ! curl "${CURL_BASE_OPTS[@]:-}" \
             -H "Authorization: Bearer $key" \
             -H "Content-Type: application/json" \
             "$api_url" -o "$out" 2>"$errf"; then
@@ -294,7 +406,12 @@ refresh_models_mistral() {
 
   if [ -s "$parsed" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    cat "$parsed" | atomic_write "$outpath"
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$parsed" | atomic_write "$outpath"
+    else
+      cp -f "$parsed" "$outpath" 2>/dev/null || true
+      chmod 600 "$outpath" 2>/dev/null || true
+    fi
     chmod 600 "$outpath" 2>/dev/null || true
     rm -rf "$tmpd" 2>/dev/null || true
     return 0
