@@ -196,7 +196,7 @@ Provider esterno (se installato):
 
 ---
 
-# 🟦 Come funziona la memoria contestuale in GroqBash
+## 🟦 Come funziona la memoria contestuale in GroqBash
 GroqBash **non mantiene memoria da solo**.  
 La memoria esiste **solo se attivi una sessione** tramite `--session`.
 
