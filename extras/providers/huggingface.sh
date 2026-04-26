@@ -6,7 +6,11 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
-set -euo pipefail
+
+# When sourced, avoid enabling strict mode globally.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  set -euo pipefail
+fi
 
 HFAPIKEY="${HFAPIKEY:-}"
 
@@ -45,13 +49,25 @@ _mktemp_in_dir_hf() {
 # -------------------------
 buildpayload_huggingface() {
   local workdir tmp_payload model_in_file model_to_use user_prompt
+
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return $GROQBASHERRTMP
+  fi
+
   workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
   tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   umask 077
 
   if [ -n "${JSON_INPUT:-}" ]; then
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+      # Preserve OpenAI-style messages as-is
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+      else
+        cp -f "$JSON_INPUT" "$PAYLOAD" 2>/dev/null || true
+        chmod 600 "$PAYLOAD" 2>/dev/null || true
+      fi
       return 0
     fi
 
@@ -68,11 +84,22 @@ buildpayload_huggingface() {
             '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
             > "$tmp_payload"
 
-      cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      else
+        cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
+        chmod 600 "$PAYLOAD" 2>/dev/null || true
+      fi
       return 0
     fi
 
-    cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+    # Pass through raw JSON_INPUT
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
+    else
+      cp -f "$JSON_INPUT" "$PAYLOAD" 2>/dev/null || true
+      chmod 600 "$PAYLOAD" 2>/dev/null || true
+    fi
     return 0
   fi
 
@@ -95,7 +122,12 @@ buildpayload_huggingface() {
           > "$tmp_payload"
   fi
 
-  cat "$tmp_payload" | atomic_write "$PAYLOAD"
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmp_payload" | atomic_write "$PAYLOAD"
+  else
+    cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
+    chmod 600 "$PAYLOAD" 2>/dev/null || true
+  fi
   return 0
 }
 
@@ -103,10 +135,26 @@ buildpayload_huggingface() {
 # call_api_huggingface
 # -------------------------
 call_api_huggingface() {
+  local prov_env
+
+  # Resolve API key via core helper if available
+  if type ensure_api_key_for_provider >/dev/null 2>&1; then
+    if ! ensure_api_key_for_provider "huggingface"; then
+      log_error "APIKEY" "HF API key required to call Hugging Face."
+      return $GROQBASHERRNOAPIKEY
+    fi
+  fi
+
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "huggingface")"
+    HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+  fi
+
   if [ -z "${HFAPIKEY:-}" ]; then
     echo "Error: HFAPIKEY is not set." >&2
     return $GROQBASHERRNOAPIKEY
   fi
+
   if [ ! -s "${PAYLOAD:-}" ]; then
     echo "Error: payload file missing or empty: ${PAYLOAD:-<unset>}" >&2
     return $GROQBASHERRTMP
@@ -116,13 +164,21 @@ call_api_huggingface() {
     return 0
   fi
 
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return $GROQBASHERRTMP
+  fi
+
   local workdir tmpout tmpresp api_url http_code time_total
   workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
   tmpout="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
+  ERRF="${ERRF:-$workdir/curl.err}"
+  RESP="${RESP:-$workdir/resp.json}"
   api_url="https://api-inference.huggingface.co/v1/chat/completions"
 
-  curl ${CURL_BASE_OPTS:-} \
+  # Use array-safe expansion of CURL_BASE_OPTS if defined by core
+  curl "${CURL_BASE_OPTS[@]:-}" \
        -H "Authorization: Bearer $HFAPIKEY" \
        -H "Content-Type: application/json" \
        --data-binary @"$PAYLOAD" \
@@ -136,14 +192,24 @@ call_api_huggingface() {
     time_total="0"
   }
 
-  cat "$tmpresp" | atomic_write "$RESP"
+  if [ -s "$tmpresp" ]; then
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$tmpresp" | atomic_write "${RESP:-$workdir/resp.json}"
+    else
+      cp -f "$tmpresp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      chmod 600 "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+    fi
+  else
+    : > "${RESP:-/dev/null}" 2>/dev/null || true
+  fi
+
   rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
 
   case "$http_code" in
     2*) return 0 ;;
     *)
       dbg "HTTP error code: $http_code"
-      dbg "Response (head):"; head -n 200 "$RESP" >&2 || true
+      dbg "Response (head):"; head -n 200 "${RESP:-/dev/null}" >&2 || true
       dbg "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
       return $GROQBASHERRAPI
       ;;
@@ -154,22 +220,47 @@ call_api_huggingface() {
 # call_api_streaming_huggingface
 # -------------------------
 call_api_streaming_huggingface() {
+  local prov_env
+
+  # Resolve API key via core helper if available
+  if type ensure_api_key_for_provider >/dev/null 2>&1; then
+    if ! ensure_api_key_for_provider "huggingface"; then
+      log_error "APIKEY" "HF API key required to call Hugging Face."
+      return $GROQBASHERRNOAPIKEY
+    fi
+  fi
+
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "huggingface")"
+    HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+  fi
+
   if [ -z "${HFAPIKEY:-}" ]; then
     echo "Error: HFAPIKEY is not set." >&2
     return $GROQBASHERRNOAPIKEY
   fi
+
   if is_truthy "${DRY_RUN:-0}"; then
     printf 'DRY-RUN: skipping streaming HTTP call (exit 0)\n' >&2
     return 0
   fi
 
-  local api_url rc RESP_RAW
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return $GROQBASHERRTMP
+  fi
+
+  local api_url rc RESP_RAW workdir
   api_url="https://api-inference.huggingface.co/v1/chat/completions"
-  RESP_RAW="${RUN_TMPDIR:-}/resp.raw"
+  workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
+  RESP_RAW="${RUN_TMPDIR:-$workdir}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
+  ERRF="${ERRF:-$workdir/curl.err}"
+  RESP="${RESP:-$workdir/resp.json}"
 
-  curl ${CURL_BASE_OPTS:-} \
+  # Use array-safe expansion of CURL_BASE_OPTS if defined by core
+  curl "${CURL_BASE_OPTS[@]:-}" \
        -H "Authorization: Bearer $HFAPIKEY" \
        -H "Content-Type: application/json" \
        --data-binary @"$PAYLOAD" \
@@ -231,9 +322,19 @@ call_api_streaming_huggingface() {
 refresh_models_huggingface() {
   local outpath="${1:-$MODELS_FILE}"
 
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return $GROQBASHERRTMP
+  fi
+
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    cat "$MODELS_FILE" | atomic_write "$outpath"
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$MODELS_FILE" | atomic_write "$outpath"
+    else
+      cp -f "$MODELS_FILE" "$outpath" 2>/dev/null || true
+      chmod 600 "$outpath" 2>/dev/null || true
+    fi
     chmod 600 "$outpath" 2>/dev/null || true
     echo "Model list copied from local MODELS_FILE to $outpath" >&2
     return 0
