@@ -123,7 +123,7 @@ Il Session Engine garantisce:
 
 # 🧩 API pubbliche
 
-## `session_engine_enabled`
+### `session_engine_enabled`
 Determina se l’engine può essere usato.  
 Controlla:
 - variabile `GROQBASH_SESSION_ENGINE`
@@ -132,17 +132,17 @@ Controlla:
 
 ---
 
-## `session_engine_append <sid> <role> <content> <meta_json>`
+### `session_engine_append <sid> <role> <content> <meta_json>`
 Aggiunge un messaggio alla sessione in modo sicuro e idempotente.
 
 ---
 
-## `session_engine_build_window <sid> <N> <target_bytes> <out_file>`
+### `session_engine_build_window <sid> <N> <target_bytes> <out_file>`
 Costruisce la finestra di contesto per il modello.
 
 ---
 
-## `session_engine_snapshot <sid> <out_file>`
+### `session_engine_snapshot <sid> <out_file>`
 Genera un report diagnostico completo.
 
 ---
