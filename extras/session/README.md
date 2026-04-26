@@ -1,4 +1,4 @@
-[🇮🇹 Italiano](#-sezione-italiana) / [🇬🇧 English](#-english-section)
+## [🇮🇹](#-sezione-italiana)   [🇬🇧](#-english-section)
 
 ---
 
