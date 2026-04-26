@@ -220,7 +220,6 @@ _se_segment_rotate_if_needed() {
 _se_invalidate_cache_for_sid() {
   local sid="$1"
   local k
-  # Copia delle chiavi per iterare in modo sicuro anche se unset avviene durante il loop
   for k in "${!SE_CACHE_WINDOW[@]}"; do
     case "$k" in
       "${sid}"\|*) unset "SE_CACHE_WINDOW[$k]" "SE_CACHE_MTIME[$k]" "SE_CACHE_STORED_TS[$k]" ;;
@@ -246,6 +245,14 @@ session_engine_append() {
   local session_file="${SE_SESSION_DIR%/}/${sid}.ndjson"
   local lockfile="${session_file}.lock"
   local tmpf marker_dir created_marker=0
+
+  # Validate sid if CORE provides validator
+  if type session_validate_id >/dev/null 2>&1; then
+    if ! session_validate_id "$sid"; then
+      _se_log err "append: invalid session id: $sid"
+      return 1
+    fi
+  fi
 
   if [ -z "$sid" ] || [ -z "$role" ]; then
     _se_log err "append: missing sid or role"
@@ -358,6 +365,15 @@ session_engine_build_window() {
   local sid="$1" N="$2" target_bytes="$3" out="$4"
   local session_file="${SE_SESSION_DIR%/}/${sid}.ndjson"
   local tmpf out_tmp
+
+  # Validate sid if CORE provides validator
+  if type session_validate_id >/dev/null 2>&1; then
+    if ! session_validate_id "$sid"; then
+      _se_log err "build_window: invalid session id: $sid"
+      return 1
+    fi
+  fi
+
   [ -n "$sid" ] || { _se_log err "build_window: missing session id"; return 1; }
   [ -n "$out" ] || { _se_log err "build_window: missing out file"; return 1; }
 
@@ -521,6 +537,15 @@ session_engine_build_window() {
 session_engine_snapshot() {
   local sid="$1" out="$2"
   local dir="${SE_SESSION_DIR%/}"
+
+  # Validate sid if CORE provides validator
+  if type session_validate_id >/dev/null 2>&1; then
+    if ! session_validate_id "$sid"; then
+      _se_log err "snapshot: invalid session id: $sid"
+      return 1
+    fi
+  fi
+
   [ -n "$sid" ] || return 1
   [ -n "$out" ] || return 1
   if [ ! -d "$dir" ]; then
@@ -578,5 +603,4 @@ session_engine_snapshot() {
   rm -f "$tmp" "$last_tmp" "${last_tmp}.tail" "$summaries_tmp" 2>/dev/null || true
   return 0
 }
-
 # End of session-engine.sh
