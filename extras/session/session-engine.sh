@@ -68,10 +68,14 @@ _se_tmpf() {
   [ -n "$base" ] || return 1
   mkdir -p "$base" 2>/dev/null || return 1
   if command -v mktemp >/dev/null 2>&1; then
-    mktemp -p "$base" se.XXXX 2>/dev/null || return 1
+    local f
+    f="$(mktemp -p "$base" se.XXXX 2>/dev/null)" || return 1
+    chmod 600 "$f" 2>/dev/null || true
+    printf '%s' "$f"
   else
     local f="$base/se.$$.$RANDOM"
     : > "$f" 2>/dev/null || return 1
+    chmod 600 "$f" 2>/dev/null || true
     printf '%s' "$f"
   fi
 }
@@ -216,6 +220,7 @@ _se_segment_rotate_if_needed() {
 _se_invalidate_cache_for_sid() {
   local sid="$1"
   local k
+  # Copia delle chiavi per iterare in modo sicuro anche se unset avviene durante il loop
   for k in "${!SE_CACHE_WINDOW[@]}"; do
     case "$k" in
       "${sid}"\|*) unset "SE_CACHE_WINDOW[$k]" "SE_CACHE_MTIME[$k]" "SE_CACHE_STORED_TS[$k]" ;;
