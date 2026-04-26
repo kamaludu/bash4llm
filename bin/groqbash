@@ -1286,25 +1286,45 @@ session_cache_invalidate() {
   return 0
 }
 
-# Integration note: call session_cache_invalidate "$sid" after any successful session_append
-# (e.g., append user or assistant) to ensure subsequent reads rebuild the window.
+# Ensure and create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
+# Robust fallback chain: reuse RUN_TMPDIR if valid -> mktemp -> make_tmpdir -> timestamped dir.
+# Enforces strict perms and avoids /tmp usage. Removes empty groq.b64 staging files safely.
+DEBUG_PRESERVE="${DEBUG_PRESERVE:-0}"
 
 ensure_run_tmpdir() {
-  # Create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
+  # If RUN_TMPDIR already set and valid, reuse it
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+    # Ensure permissions are strict
+    chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
+    export RUN_TMPDIR
+    # Ensure payload/resp/errf exist
+    PAYLOAD="${PAYLOAD:-$RUN_TMPDIR/payload}"
+    RESP="${RESP:-$RUN_TMPDIR/resp.json}"
+    ERRF="${ERRF:-$RUN_TMPDIR/err.log}"
+    : > "$RESP" 2>/dev/null || true
+    chmod 600 "$RESP" 2>/dev/null || true
+    : > "$ERRF" 2>/dev/null || true
+    chmod 600 "$ERRF" 2>/dev/null || true
     return 0
   fi
 
-  # Ensure base tmpdir exists
-  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { log_error "TMPFAIL" "cannot create base tmpdir $GROQBASH_TMPDIR"; return 1; }
+  # Ensure base tmpdir exists and has strict perms
+  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { log_error "TMP" "cannot create base tmpdir $GROQBASH_TMPDIR"; return 1; }
+  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
 
-  # Prefer mktemp under GROQBASH_TMPDIR; fallback to make_tmpdir if necessary
+  # Try mktemp under GROQBASH_TMPDIR
   RUN_TMPDIR="$(mktemp -d "${GROQBASH_TMPDIR%/}/run.XXXXXX" 2>/dev/null || true)"
   if [ -z "$RUN_TMPDIR" ] || [ ! -d "$RUN_TMPDIR" ]; then
+    # Fallback to make_tmpdir helper
     RUN_TMPDIR="$(make_tmpdir 2>/dev/null || true)"
   fi
-  [ -n "$RUN_TMPDIR" ] && [ -d "$RUN_TMPDIR" ] || { log_error "TMPFAIL" "cannot create RUN_TMPDIR in $GROQBASH_TMPDIR"; return 1; }
+  if [ -z "$RUN_TMPDIR" ] || [ ! -d "$RUN_TMPDIR" ]; then
+    # Final fallback: timestamped directory under GROQBASH_TMPDIR
+    RUN_TMPDIR="${GROQBASH_TMPDIR%/}/run-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    mkdir -p "$RUN_TMPDIR" 2>/dev/null || { log_error "TMP" "cannot create fallback RUN_TMPDIR $RUN_TMPDIR"; return 1; }
+  fi
 
+  # Enforce strict perms
   chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
 
   # Provider-agnostic payload path (no imposed extension or semantics)
@@ -1317,17 +1337,43 @@ ensure_run_tmpdir() {
   : > "$ERRF" 2>/dev/null || true
   chmod 600 "$ERRF" 2>/dev/null || true
 
+  # Remove any empty groq.b64 staging files inside GROQBASH_TMPDIR to avoid confusing later logic
+  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
+    for f in "${GROQBASH_TMPDIR%/}/"*.b64 "${RUN_TMPDIR%/}/"*.b64; do
+      [ -e "$f" ] || continue
+      # Only remove zero-length .b64 files (safe cleanup)
+      if [ ! -s "$f" ]; then
+        rm -f -- "$f" 2>/dev/null || true
+        log_info "TMP" "Removed empty staging file: $f"
+      fi
+    done
+  fi
+
   cleanup_run_tmp_on_exit() {
-    if [ "${GROQBASH_DEBUG:-0}" -eq 0 ]; then
-      cleanup_tmp
-    else
-      log_info "TMPDEBUG" "preserving RUN_TMPDIR=$RUN_TMPDIR"
+    # Only remove RUN_TMPDIR if it is under GROQBASH_TMPDIR and DEBUG_PRESERVE is not set
+    if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
+      log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
+      return 0
+    fi
+    if [ -n "${RUN_TMPDIR:-}" ]; then
+      case "$RUN_TMPDIR" in
+        "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+          rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
+          log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
+          ;;
+        *)
+          # Do not remove directories outside GROQBASH_TMPDIR
+          log_info "TMP" "RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR"
+          ;;
+      esac
     fi
   }
+
+  # Install trap to cleanup on exit (INT/TERM/EXIT)
   trap cleanup_run_tmp_on_exit EXIT INT TERM
 
   export RUN_TMPDIR PAYLOAD RESP ERRF
-  log_info "TMPCREATE" "Created RUN_TMPDIR: $RUN_TMPDIR"
+  log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
   return 0
 }
 
@@ -1478,24 +1524,90 @@ fi
 
 # ---------------------------------------------------------------------------
 # buildpayload_groq
-# - Produces a base64-staged payload at $PAYLOAD (uses b64_atomic_write)
+# - Produces a base64-staged payload at $PAYLOAD (uses stage_b64)
 # - Supports: JSON_INPUT (messages or prompt), SYSTEM_PROMPT + CONTENT,
 #   or CONTENT alone.
 # - Honors STREAM_MODE via stream boolean in payload.
+# - Uses local helpers stage_b64 and _cleanup_local_tmp for atomicity and cleanup.
 # ---------------------------------------------------------------------------
-buildpayload_groq() {
-  # Build provider payload for Groq and stage it as a base64 file.
-  local workdir tmp_payload tmp_b64 dest_b64 model_in_file model_to_use user_prompt stream_json MESSAGES_JSON
 
-  # Ensure we have a run tmpdir to stage payloads
+# stage_b64: read stdin, write atomic base64 staging file under RUN_TMPDIR or destdir
+# Usage: stage_b64 <dest_b64_path> <max_bytes>
+stage_b64() {
+  local dest_b64="$1"
+  local max_bytes="${2:-10485760}" # default 10MB safeguard
+  local workdir tmp_local tmp_b64 lockfile size
+  [ -n "$dest_b64" ] || return 1
+  workdir="$(dirname "$dest_b64")"
+  mkdir -p "$workdir" 2>/dev/null || return 1
+
+  tmp_local="$(_mktemp_in_dir "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" "payload" 2>/dev/null || true)"
+  [ -n "$tmp_local" ] || tmp_local="${RUN_TMPDIR%/}/payload.tmp.$$"
+
+  # Write stdin to tmp_local
+  if ! cat - > "$tmp_local" 2>/dev/null; then
+    rm -f -- "$tmp_local" 2>/dev/null || true
+    log_error "PAYLOAD" "failed to write staging payload"
+    return 1
+  fi
+
+  # Optional size check
+  size="$(file_size "$tmp_local" 2>/dev/null || echo 0)"
+  if [ "$size" -gt "$max_bytes" ]; then
+    log_error "PAYLOAD" "staged payload exceeds max allowed size ($size > $max_bytes)"
+    rm -f -- "$tmp_local" 2>/dev/null || true
+    return 1
+  fi
+
+  # Create base64 staging in same dest dir atomically
+  tmp_b64="${workdir%/}/.groq-b64.$$.$RANDOM"
+  if [ -n "${B64_WRAP_OPT:-}" ]; then
+    base64 ${B64_WRAP_OPT} "$tmp_local" > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+  else
+    base64 "$tmp_local" | tr -d '\n' > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+  fi
+  chmod 600 "$tmp_b64" 2>/dev/null || true
+
+  # Atomic move into place under lock to avoid races
+  lockfile="${workdir%/}/.groqbash.lock"
+  lock_exec "$lockfile" 10 -- sh -c '
+    set -e
+    mv -f -- "$1" "$2"
+    chmod 600 "$2" 2>/dev/null || true
+  ' _ "$tmp_b64" "$dest_b64" || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+
+  rm -f -- "$tmp_local" 2>/dev/null || true
+  return 0
+}
+
+# _cleanup_local_tmp: helper to remove local temporary artifacts
+_cleanup_local_tmp() {
+  local tmp_payload="$1" tmp_b64_local="$2" json_input_file="$3"
+  [ -n "$tmp_payload" ] && rm -f -- "$tmp_payload" 2>/dev/null || true
+  [ -n "$tmp_b64_local" ] && rm -f -- "$tmp_b64_local" 2>/dev/null || true
+  [ -n "$json_input_file" ] && rm -f -- "$json_input_file" 2>/dev/null || true
+}
+
+buildpayload_groq() {
+  local workdir tmp_payload tmp_b64 dest_b64 model_in_file model_to_use user_prompt stream_json MESSAGES_JSON json_input_file tmp_b64_local
+
+  # Ensure json_input_file is always defined to avoid nounset errors
+  json_input_file="${JSON_INPUT:-}"
+
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
 
-  tmp_payload="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
-  umask 077
+  : "${TURE:=1.0}"
+  : "${MAX_TOKENS:=4096}"
 
   if is_truthy "${STREAM_MODE:-0}"; then stream_json=true; else stream_json=false; fi
+
+  # Require jq for JSON processing
+  if ! command -v jq >/dev/null 2>&1; then
+    log_error "DEPENDENCY" "jq is required but not found in PATH"
+    return "$GROQBASHERRTMP"
+  fi
 
   # Helper: resolve messages JSON (use BUILD_MESSAGES_FILE if non-empty, otherwise fallback to current content)
   resolve_messages_json() {
@@ -1508,131 +1620,181 @@ buildpayload_groq() {
         return 0
       fi
     fi
-    # fallback: single user message from provided content
     jq -c -n --arg role "user" --arg content "$fallback_content" '[{role:$role,content:$content}]'
     return 0
   }
 
-  # Helper: dedupe messages array by role+content preserving order (remove later duplicates)
+  # Deduplicate messages array by role+content preserving order
   dedupe_messages_json() {
-    # reads JSON array from stdin, writes compact JSON array to stdout
     jq -c 'reduce .[] as $m ( []; if any(.[]; (.role == $m.role) and ((.content // "") == ($m.content // ""))) then . else . + [$m] end )'
   }
 
-  # If JSON_INPUT provided, prefer it (supports both messages and prompt shapes)
+  # If JSON_INPUT provided, support '-' (stdin) and files and objects
   if [ -n "${JSON_INPUT:-}" ]; then
-    # If JSON_INPUT is '-', capture stdin once into a temp file and reuse it.
-    local json_input_file=""
     if [ "${JSON_INPUT:-}" = "-" ]; then
       json_input_file="${workdir%/}/json_input.$$"
       : > "$json_input_file"
       if ! cat - > "$json_input_file" 2>/dev/null; then
-        rm -f "$json_input_file" 2>/dev/null || true
+        _cleanup_local_tmp "" "" "$json_input_file"
         log_error "PAYLOAD" "failed to read JSON input from stdin"
         return "$GROQBASHERRTMP"
       fi
-      # Use the temp file for subsequent operations
       JSON_INPUT="$json_input_file"
     fi
 
-    # Now JSON_INPUT points to a file (either original path or the temp file)
-    # 1) If it already contains messages[], stage it as-is
+    # If JSON_INPUT contains messages[], stage it as-is (but dedupe messages)
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      # Optionally dedupe messages in-file before staging? Keep original behavior: stage as-is.
-      if ! b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT"; then
-        rm -f "$tmp_payload.b64" 2>/dev/null || true
-        [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
-        return "$GROQBASHERRTMP"
-      fi
-      dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-      PAYLOAD="$dest_b64"
-      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
-      return 0
-    fi
-
-    # 2) If it contains prompt, build payload from prompt + BUILD_MESSAGES_FILE
-    if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
-      user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
-      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
-      model_to_use="${model_in_file:-$MODEL}"
-      MESSAGES_JSON="$(resolve_messages_json "$user_prompt" "${BUILD_MESSAGES_FILE:-}")"
-      # Deduplicate messages to avoid repeated identical user entries
+      MESSAGES_JSON="$(jq -c '.messages' "$JSON_INPUT" 2>/dev/null || printf '[]')"
       MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
-      jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
-         --argjson messages "$MESSAGES_JSON" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-      if ! b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload"; then
-        rm -f "$tmp_payload.b64" 2>/dev/null || true
-        [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+
+      tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
+      if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
+        _cleanup_local_tmp "" "" "$json_input_file"
+        log_error "TMP" "failed to create temporary payload file"
         return "$GROQBASHERRTMP"
       fi
+
+      jq -n --arg model "${MODEL:-}" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --argjson messages "$MESSAGES_JSON" \
+         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
+
       dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      if [ -z "${dest_b64:-}" ]; then
+        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+        log_error "PAYLOAD" "destination b64 path is empty"
+        return "$GROQBASHERRTMP"
+      fi
+
+      if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
+        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+        return "$GROQBASHERRTMP"
+      fi
+
+      if [ ! -f "$dest_b64" ]; then
+        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+        log_error "PAYLOAD" "staged payload missing: $dest_b64"
+        return "$GROQBASHERRTMP"
+      fi
+      chmod 600 "$dest_b64" 2>/dev/null || true
+
       PAYLOAD="$dest_b64"
-      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
       return 0
     fi
 
-    # 3) NEW: If JSON_INPUT is a single message object {role,content,...}, wrap into messages array and build full payload
+    # If JSON_INPUT is a single message object {role,content}
     if jq -e 'type=="object" and has("role") and has("content")' "$JSON_INPUT" >/dev/null 2>&1; then
-      # allow optional model override inside the message object
       model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
       model_to_use="${model_in_file:-$MODEL}"
-      # build messages array from the single object
       MESSAGES_JSON="$(jq -c -n --arg role "$(jq -r '.role' "$JSON_INPUT" 2>/dev/null || echo user)" --arg content "$(jq -r '.content' "$JSON_INPUT" 2>/dev/null || echo '')" '[{role:$role,content:$content}]')"
-      # Deduplicate (safe no-op for single element)
       MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
-      jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
-         --argjson messages "$MESSAGES_JSON" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-      if ! b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload"; then
-        rm -f "$tmp_payload.b64" 2>/dev/null || true
-        [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+
+      tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
+      if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
+        _cleanup_local_tmp "" "" "$json_input_file"
+        log_error "TMP" "failed to create temporary payload file"
         return "$GROQBASHERRTMP"
       fi
+
+      jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --argjson messages "$MESSAGES_JSON" \
+         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
+
       dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      if [ -z "${dest_b64:-}" ]; then
+        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+        log_error "PAYLOAD" "destination b64 path is empty"
+        return "$GROQBASHERRTMP"
+      fi
+
+      if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
+        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+        return "$GROQBASHERRTMP"
+      fi
+
+      if [ ! -f "$dest_b64" ]; then
+        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+        log_error "PAYLOAD" "staged payload missing: $dest_b64"
+        return "$GROQBASHERRTMP"
+      fi
+      chmod 600 "$dest_b64" 2>/dev/null || true
+
       PAYLOAD="$dest_b64"
-      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
       return 0
     fi
 
-    # 4) Otherwise stage the raw JSON_INPUT (now a file)
-    if ! b64_atomic_write "$tmp_payload.b64" 10 < "$JSON_INPUT"; then
-      rm -f "$tmp_payload.b64" 2>/dev/null || true
-      [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+    # Otherwise stage the raw JSON_INPUT file as-is
+    tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
+    if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
+      _cleanup_local_tmp "" "" "$json_input_file"
+      log_error "TMP" "failed to create temporary payload file"
       return "$GROQBASHERRTMP"
     fi
+
+    if ! cat "$JSON_INPUT" > "$tmp_payload" 2>/dev/null; then
+      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+      return "$GROQBASHERRTMP"
+    fi
+
     dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-    mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+    if [ -z "${dest_b64:-}" ]; then
+      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+      log_error "PAYLOAD" "destination b64 path is empty"
+      return "$GROQBASHERRTMP"
+    fi
+
+    if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
+      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+      return "$GROQBASHERRTMP"
+    fi
+
+    if [ ! -f "$dest_b64" ]; then
+      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+      log_error "PAYLOAD" "staged payload missing: $dest_b64"
+      return "$GROQBASHERRTMP"
+    fi
+    chmod 600 "$dest_b64" 2>/dev/null || true
+
     PAYLOAD="$dest_b64"
-    [ -n "$json_input_file" ] && rm -f "$json_input_file" 2>/dev/null || true
+    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
     return 0
   fi
 
   # Build payload from CONTENT / SYSTEM_PROMPT
   model_to_use="${MODEL}"
-  if [ -n "${SYSTEM_PROMPT:-}" ]; then
-    MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
-  else
-    MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
-  fi
-
-  # Deduplicate messages to avoid repeated identical user entries
+  MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
   MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
 
-  jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
-     --argjson messages "$MESSAGES_JSON" \
+  tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
+  if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
+    _cleanup_local_tmp "" "" "$json_input_file"
+    log_error "TMP" "failed to create temporary payload file"
+    return "$GROQBASHERRTMP"
+  fi
+
+  jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --argjson messages "$MESSAGES_JSON" \
      '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
 
-  b64_atomic_write "$tmp_payload.b64" 10 < "$tmp_payload" || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-
-  # Move staged .b64 to a deterministic destination and ensure PAYLOAD points to it.
   dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-  mv -f "$tmp_payload.b64" "$dest_b64" 2>/dev/null || { rm -f "$tmp_payload.b64" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
-  PAYLOAD="$dest_b64"
+  if [ -z "${dest_b64:-}" ]; then
+    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+    log_error "PAYLOAD" "destination b64 path is empty"
+    return "$GROQBASHERRTMP"
+  fi
 
+  if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
+    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+    return "$GROQBASHERRTMP"
+  fi
+
+  if [ ! -f "$dest_b64" ]; then
+    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
+    log_error "PAYLOAD" "staged payload missing: $dest_b64"
+    return "$GROQBASHERRTMP"
+  fi
+  chmod 600 "$dest_b64" 2>/dev/null || true
+
+  PAYLOAD="$dest_b64"
+  _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
   return 0
 }
 
@@ -1857,10 +2019,16 @@ call_api_streaming_groq() {
       cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
     fi
 
-    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "$GROQBASH_TMPDIR"/*) true;; "$GROQBASH_TMPDIR") true;; *) false;; esac; then
-      rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
-      log_info "STREAM" "Removed intermediate files resp.lines and resp.valid.jsons from $RUN_TMPDIR"
-    fi
+    # Remove intermediate files only when RUN_TMPDIR is under GROQBASH_TMPDIR
+    case "$RUN_TMPDIR" in
+      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+        rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+        log_info "STREAM" "Removed intermediate files resp.lines and resp.valid.jsons from $RUN_TMPDIR"
+        ;;
+      *)
+        log_info "STREAM" "Preserving intermediate streaming files in $RUN_TMPDIR (outside GROQBASH_TMPDIR)"
+        ;;
+    esac
   else
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
@@ -2074,7 +2242,6 @@ call_provider() {
 
 # Provider dispatch wrappers (call provider-specific implementations if present)
 refresh_models_dispatch() {
-  # Dispatch to provider-specific refresh function.
   local destfile="${1:-${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}}"
   local fn="refresh_models_${PROVIDER}"
   local rc=0
@@ -2084,21 +2251,19 @@ refresh_models_dispatch() {
     return 127
   fi
 
-  # Try calling provider refresh with destfile first (many providers accept a target)
+  # Try provider-specific refresh; prefer passing destfile but tolerate providers that ignore args
   if "$fn" "$destfile" 2>/dev/null; then
+    log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER -> $destfile"
     return 0
-  else
-    rc=$?
   fi
 
-  # If that failed, try calling without args (some providers ignore args)
+  rc=$?
   if "$fn" 2>/dev/null; then
+    log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER (no explicit dest)"
     return 0
-  else
-    rc=$?
   fi
 
-  # If both attempts failed, capture exit code and report
+  rc=$?
   log_error "MODELREFRESH" "refresh_models for provider $PROVIDER failed (rc $rc)."
   return "$rc"
 }
@@ -3204,6 +3369,12 @@ fi
 # ---------------------------------------------------------------------------
 load_local_config
 load_whitelist
+
+# Ensure run tmpdir is available before proceeding with model selection and payload assembly
+if ! ensure_run_tmpdir; then
+  log_error "TMP" "cannot create or access RUN_TMPDIR ($GROQBASH_TMPDIR). Aborting."
+  exit "$GROQBASHERRTMP"
+fi
 
 # Determine final_model (preserve existing precedence but ensure only supported models are selected)
 final_model=""
