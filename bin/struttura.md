@@ -69,6 +69,28 @@
 - **Azioni immediate e CLI**: parsing delle opzioni, gestione di comandi come list-models, list-providers, set-default, install-extras, refresh-models, diagnostics e show-config.  
 - **Gestione history e rotazione**: salvataggio atomico degli output, rotazione e compattazione della history secondo policy configurabili.
 
+**Session helpers**
+- **Posizionamento**: le funzioni helper di sessione (`session_read_window`, `session_append`, `session_cache_*`, `session_validate_id`, `session_now_ts`, `session_sanitize_cmd`, ecc.) fanno parte del **CORE / MVP** e devono essere documentate e mantenute all’interno del codice principale di `groqbash`.
+
+- **Responsabilità dei helper di sessione (CORE)**:  
+  - **Leggere** la finestra di sessione e produrre un file normalizzato `{"messages":[...]}` per la costruzione del payload.  
+  - **Appendere** record user/assistant in file NDJSON di sessione con idempotenza, locking, scritture atomiche e marker per la deduplicazione.  
+  - **Cachare** artefatti derivati dalla sessione con TTL, scritture atomiche e funzioni di invalidazione.  
+  - **Sanitizzare** e normalizzare input (ruoli, timestamp, meta) prima della persistenza.  
+  - **Esporre** primitive piccole e testabili che il CORE invoca durante la preparazione del payload e la finalizzazione.
+
+- **Invarianti imposte dagli helper CORE**:  
+  - Tutte le operazioni I/O per le sessioni avvengono sotto `GROQBASH_HISTORY_DIR` (o `SESSION_DIR`) e usano scritture atomiche + lock.  
+  - Nessun file runtime viene scritto al di fuori di `GROQBASH_DIR` o di `GROQBASH_TMPDIR`/`RUN_TMPDIR`.  
+  - Idempotenza tramite `message_id` e marker run‑local evita doppie scritture.  
+  - Permessi restrittivi su directory/file di sessione (700/600).
+
+- **Ruolo di session-engine.sh**:  
+  - **Extra opzionale** che si appoggia alle primitive del CORE.  
+  - Fornisce orchestrazione di livello superiore, politiche di sessione estese, manutenzione in background o API sessione avanzate se installato.  
+  - **Non** deve bypassare le primitive PRECORE (atomic write, lock); deve usare `session_*` del CORE per tutte le operazioni critiche.
+
+
 **Edge case API e logging strutturato**  
 - Esiste un percorso centralizzato per la gestione dell’edge case noto come “completion vuota”. Questo percorso è composto da tre componenti orchestrati nel CORE: l’estrazione del testo (`extract_text_from_resp`), il rilevamento dell’edge case (`detect_empty_edge_case`) e la logica di controllo/retry (`perform_request_once`).  
 - Quando l’edge case viene rilevato, il CORE emette un logging strutturato **una sola volta** in un punto definito della sequenza di gestione della risposta. Il log contiene dettagli diagnostici chiave (ad esempio `req_id`, `finish_reason`, `completion_tokens`) e viene usato per decisioni successive (es. non retryare o segnalare errore API). Questo approccio centralizzato evita duplicazioni di messaggi diagnostici e garantisce che l’informazione critica sia disponibile in modo coerente per operatori e strumenti di monitoraggio.
