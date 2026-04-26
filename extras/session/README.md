@@ -1,3 +1,9 @@
+[🇮🇹 Italiano](#-sezione-italiana) / [🇬🇧 English](#-english-section)
+
+---
+
+### 🇮🇹 Sezione Italiana
+
 # 📘 Session Engine (extra opzionale per GroqBash)
 
 Il *Session Engine* è un componente **opzionale** che estende le funzionalità di session management del CORE di GroqBash.  
@@ -187,6 +193,7 @@ Se non installato o disabilitato, GroqBash usa automaticamente il CORE/MVP.
 
 ---
 
+### 🇬🇧 English section
 
 # 📘 Session Engine (optional extra for GroqBash)
 
