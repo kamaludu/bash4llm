@@ -192,6 +192,47 @@ GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 MAX_MODELS="${MAX_MODELS:-200}"
 
+# Defensive normalization: ensure GROQBASH_CONFIG_DIR is non-empty and normalized
+GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR%/}"
+if [ -z "$GROQBASH_CONFIG_DIR" ]; then
+  GROQBASH_CONFIG_DIR="${GROQBASH_DIR%/}/config"
+fi
+
+# Helper: ensure config dir exists and is usable before any writes
+ensure_config_dir() {
+  # Normalize
+  GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR%/}"
+  if [ -z "$GROQBASH_CONFIG_DIR" ]; then
+    GROQBASH_CONFIG_DIR="${GROQBASH_DIR%/}/config"
+  fi
+
+  # Try to create directory (idempotent)
+  if ! mkdir -p "${GROQBASH_CONFIG_DIR}" 2>/dev/null; then
+    log_error "CONFIG" "cannot create config dir: ${GROQBASH_CONFIG_DIR}"
+    return 1
+  fi
+
+  # Enforce strict perms
+  chmod 700 "${GROQBASH_CONFIG_DIR}" 2>/dev/null || true
+
+  # Quick writability check: try to create a temp file inside
+  if ! : > "${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check" 2>/dev/null; then
+    log_error "CONFIG" "config dir not writable: ${GROQBASH_CONFIG_DIR}"
+    return 1
+  else
+    rm -f "${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check" 2>/dev/null || true
+  fi
+
+  return 0
+}
+
+# Ensure config dir exists now (fail early if not)
+ensure_config_dir || { log_error "CONFIG" "config dir unavailable; aborting."; exit "$GROQBASHERRTMP"; }
+
+# Canonical PROVIDER_FILE path built only from GROQBASH_CONFIG_DIR
+PROVIDER_FILE="${PROVIDER_FILE:-${GROQBASH_CONFIG_DIR%/}/provider}"
+PROVIDER_FILE="${GROQBASH_CONFIG_DIR%/}/provider"
+
 # Ensure essential directories exist with strict perms
 mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
 mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || true
@@ -1443,6 +1484,25 @@ THRESHOLD="${THRESHOLD:-1000}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 PROVIDER="${PROVIDER:-groq}"
+# Ensure config dir exists and is usable before reading persisted provider
+# (this uses the ensure_config_dir helper if present; otherwise create dir defensively)
+if type ensure_config_dir >/dev/null 2>&1; then
+  ensure_config_dir >/dev/null 2>&1 || true
+else
+  mkdir -p "${GROQBASH_CONFIG_DIR%/}" 2>/dev/null || true
+fi
+
+# Immediately honor persisted provider selection (unless CLI override or interactive mode)
+# Precedence for initial assignment here: persisted provider file -> existing $PROVIDER
+if [ -z "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ] && \
+   [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ] && [ -s "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+  prov="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+  prov="$(printf '%s' "$prov" | awk '{$1=$1;print}')"
+  if [ -n "$prov" ]; then
+    PROVIDER="$prov"
+  fi
+fi
+# Now $PROVIDER reflects persisted selection early in execution
 PROVIDER_CLI="${PROVIDER_CLI:-}"
 PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}"
@@ -2287,6 +2347,113 @@ auto_select_model_dispatch() {
   return 1
 }
 
+# resolve_model: determina MODEL finale seguendo ordine di priorità e validando
+# Risultato: imposta la variabile globale FINAL_MODEL (stringa) o vuota se non risolta.
+resolve_model() {
+  FINAL_MODEL=""
+
+  # 1) CLI-specified model (highest priority)
+  if [ "${MODEL_CLI_SET:-0}" -eq 1 ] && [ -n "${MODEL:-}" ]; then
+    FINAL_MODEL="$MODEL"
+    return 0
+  fi
+
+  # Determine active provider robustly for provider-specific default lookup:
+  # Precedence: PROVIDER_CLI -> persisted provider file under GROQBASH_CONFIG_DIR -> $PROVIDER -> fallback groq
+  if [ -n "${PROVIDER_CLI:-}" ]; then
+    active_provider="${PROVIDER_CLI}"
+  elif [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ] && [ -s "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+    active_provider="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+    active_provider="$(printf '%s' "$active_provider" | awk '{$1=$1;print}')"
+    [ -z "$active_provider" ] && active_provider="${PROVIDER:-groq}"
+  else
+    active_provider="${PROVIDER:-groq}"
+  fi
+
+  # 2) provider-specific persisted default (model.<active_provider>)
+  # Determine active provider robustly: precedence PROVIDER_CLI -> persisted provider file -> $PROVIDER -> fallback groq
+  if [ -n "${PROVIDER_CLI:-}" ]; then
+    active_provider="${PROVIDER_CLI}"
+  elif [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ] && [ -s "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+    active_provider="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+    active_provider="$(printf '%s' "$active_provider" | awk '{$1=$1;print}')"
+    [ -z "$active_provider" ] && active_provider="${PROVIDER:-groq}"
+  else
+    active_provider="${PROVIDER:-groq}"
+  fi
+
+  MODEL_PROVIDER_CFG="${GROQBASH_CONFIG_DIR%/}/model.${active_provider}"
+  if [ -s "$MODEL_PROVIDER_CFG" ]; then
+    candidate="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
+    candidate="$(printf '%s' "$candidate" | awk '{$1=$1;print}')"
+    if [ -n "$candidate" ] && is_supported_model "$candidate"; then
+      if validate_model_core "$candidate" >/dev/null 2>&1 && validate_model_dispatch "$candidate" >/dev/null 2>&1; then
+        FINAL_MODEL="$candidate"
+        return 0
+      fi
+    fi
+  fi
+
+  # 3) provider auto-select (only if provider module can provide it)
+  candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
+  if [ -n "$candidate" ] && is_supported_model "$candidate"; then
+    if validate_model_dispatch "$candidate" >/dev/null 2>&1 && validate_model_core "$candidate" >/dev/null 2>&1; then
+      FINAL_MODEL="$candidate"
+      return 0
+    fi
+  fi
+
+  # 4) first supported entry in MODELS_FILE (if present)
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    cnt=0
+    while IFS= read -r m || [ -n "$m" ]; do
+      [ -z "$m" ] && continue
+      cnt=$((cnt+1))
+      if is_supported_model "$m"; then
+        if validate_model_core "$m" >/dev/null 2>&1 && validate_model_dispatch "$m" >/dev/null 2>&1; then
+          FINAL_MODEL="$m"
+          return 0
+        fi
+      fi
+      [ "$cnt" -ge "$MAX_MODELS" ] && break
+    done < "$MODELS_FILE"
+  fi
+
+  # 5) config MODEL= in config file (legacy)
+  if [ -f "${GROQBASH_CONFIG_DIR%/}/config" ]; then
+    cfg_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "${GROQBASH_CONFIG_DIR%/}/config" 2>/dev/null || true)"
+    cfg_model="$(printf '%s' "$cfg_model" | awk '{$1=$1;print}')"
+    if [ -n "$cfg_model" ] && is_supported_model "$cfg_model"; then
+      if validate_model_core "$cfg_model" >/dev/null 2>&1 && validate_model_dispatch "$cfg_model" >/dev/null 2>&1; then
+        FINAL_MODEL="$cfg_model"
+        return 0
+      fi
+    fi
+  fi
+
+  # 6) ALLOWED_MODELS fallback (first supported)
+  if [ -n "${ALLOWED_MODELS:-}" ]; then
+    cnt=0
+    while IFS= read -r m || [ -n "$m" ]; do
+      [ -z "$m" ] && continue
+      cnt=$((cnt+1))
+      if is_supported_model "$m"; then
+        if validate_model_core "$m" >/dev/null 2>&1 && validate_model_dispatch "$m" >/dev/null 2>&1; then
+          FINAL_MODEL="$m"
+          return 0
+        fi
+      fi
+      [ "$cnt" -ge "$MAX_MODELS" ] && break
+    done <<EOF
+$(printf '%s\n' "$ALLOWED_MODELS")
+EOF
+  fi
+
+  # Nothing found
+  FINAL_MODEL=""
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 # Build payload from current vars (delegates to provider)
 # ---------------------------------------------------------------------------
@@ -2747,10 +2914,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Ensure provider selection from CLI or persisted config is applied early,
-# so immediate actions like --list-providers use the intended provider.
-PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
-
 # ---------------------------------------------------------------------------
 # Session Engine: safe sourcing and robust fallback
 # - If the module extras/session/session_engine.sh exists, we source it.
@@ -2865,7 +3028,6 @@ fi
 # Note: explicit --refresh-models handling has been moved to after provider load.
 # ---------------------------------------------------------------------------
 if [ "$LIST_PROVIDERS" -eq 1 ]; then
-  PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
   printf 'Available providers:\n' >&2
   printf '  - groq (embedded)\n' >&2
   extras_prov_dir="$PROVIDERS_DIR"
@@ -2879,8 +3041,11 @@ if [ "$LIST_PROVIDERS" -eq 1 ]; then
       found=1
     done
   fi
-  if [ -f "$PROVIDER_FILE" ]; then
-    active="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
+
+  # Read persisted provider explicitly from GROQBASH_CONFIG_DIR to avoid relying on PROVIDER_FILE variable
+  if [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+    active="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+    active="$(printf '%s' "$active" | awk '{$1=$1;print}')"
     if [ -n "$active" ]; then
       printf '\nActive provider: %s\n' "$active" >&2
     else
@@ -2897,11 +3062,35 @@ if [ "$LIST_MODELS" -eq 1 ]; then
 fi
 
 if [ -n "$SET_DEFAULT_MODEL" ]; then
-  mkdir -p "$GROQBASH_CONFIG_DIR" 2>/dev/null || true
-  if [ -L "$GROQBASH_CONFIG_DIR" ]; then log_error "SEC" "config dir is a symlink."; exit "$GROQBASHERRTMP"; fi
-  printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$GROQBASH_CONFIG_DIR/model.$PROVIDER" 10 \
-    || { log_error "SEC" "cannot write default model."; exit "$GROQBASHERRTMP"; }
-  printf 'groqbash: INFO: Default model for provider %s set to: %s\n' "$PROVIDER" "$SET_DEFAULT_MODEL" >&2
+  # Ensure config dir exists and is safe
+  if ! ensure_config_dir; then
+    log_error "SEC" "config dir unavailable; cannot persist default model."
+    exit "$GROQBASHERRTMP"
+  fi
+  if [ -L "${GROQBASH_CONFIG_DIR%/}" ]; then log_error "SEC" "config dir is a symlink."; exit "$GROQBASHERRTMP"; fi
+
+  # Determine the active provider robustly (explicit precedence):
+  # 1) explicit CLI override PROVIDER_CLI
+  # 2) persisted provider file under GROQBASH_CONFIG_DIR/provider (if present)
+  # 3) current $PROVIDER variable
+  if [ -n "${PROVIDER_CLI:-}" ]; then
+    target_provider="${PROVIDER_CLI}"
+  elif [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ] && [ -s "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+    target_provider="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+    target_provider="$(printf '%s' "$target_provider" | awk '{$1=$1;print}')"
+    [ -z "$target_provider" ] && target_provider="${PROVIDER:-groq}"
+  else
+    target_provider="${PROVIDER:-groq}"
+  fi
+
+  # Persist default model for the explicit/active provider under GROQBASH_CONFIG_DIR
+  target_model_file="${GROQBASH_CONFIG_DIR%/}/model.${target_provider}"
+  printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$target_model_file" 10 \
+    || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$GROQBASHERRTMP"; }
+  chmod 600 "$target_model_file" 2>/dev/null || true
+
+  # Log must reflect the actual provider used (target_provider), not $PROVIDER
+  printf 'groqbash: INFO: Default model for provider %s set to: %s\n' "$target_provider" "$SET_DEFAULT_MODEL" >&2
   exit 0
 fi
 
@@ -3043,7 +3232,7 @@ fi
 # Load local config and whitelist
 # ---------------------------------------------------------------------------
 load_local_config() {
-  local cfg="$GROQBASH_CONFIG_DIR/config" key val
+  local cfg="${GROQBASH_CONFIG_DIR%/}/config" key val
   [ -f "$cfg" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
@@ -3082,7 +3271,6 @@ is_tty_out() {
 # ---------------------------------------------------------------------------
 # Provider discovery and loading (keeps behavior compatible)
 # ---------------------------------------------------------------------------
-PROVIDER_FILE="${PROVIDER_FILE:-$GROQBASH_CONFIG_DIR/provider}"
 
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
@@ -3098,8 +3286,9 @@ fi
 SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
 
 # Respect persisted provider selection unless overridden via CLI
-if [ -f "$PROVIDER_FILE" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_INTERACTIVE" -eq 0 ]; then
-  prov="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)"
+if [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_INTERACTIVE" -eq 0 ]; then
+  prov="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+  prov="$(printf '%s' "$prov" | awk '{$1=$1;print}')"
   [ -n "$prov" ] && PROVIDER="$prov"
 fi
 
@@ -3113,7 +3302,11 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
     *) log_error "PROVIDER" "unknown provider: $PROVIDER_CLI"; exit "$GROQBASHERRTMP" ;;
   esac
 
-  mkdir -p "$(dirname "$PROVIDER_FILE")" 2>/dev/null || true
+  # Ensure config dir is available and writable
+  if ! ensure_config_dir; then
+    log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
+    exit "$GROQBASHERRTMP"
+  fi
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
     if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
@@ -3121,12 +3314,13 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
     fi
   fi
 
-  printf '%s\n' "$PROVIDER" | atomic_write "$PROVIDER_FILE" 10 \
-    || { log_error "PROVIDER" "cannot persist provider selection."; exit "$GROQBASHERRTMP"; }
-  chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
+  # Persist the explicit CLI-chosen provider (use PROVIDER_CLI to avoid race with other logic)
+  target_provider="${PROVIDER_CLI}"
+  target_provider_file="${GROQBASH_CONFIG_DIR%/}/provider"
+  printf '%s\n' "$target_provider" | atomic_write "$target_provider_file" 10 \
+    || { log_error "PROVIDER" "cannot persist provider selection to $target_provider_file."; exit "$GROQBASHERRTMP"; }
+  chmod 600 "$target_provider_file" 2>/dev/null || true
 
-  # NOTE: do not call refresh_models_dispatch here — provider module must be loaded first.
-  # ensure_api_key_for_provider will be attempted after provider module is validated/loaded.
 fi
 
 # Interactive provider selection
@@ -3135,7 +3329,11 @@ if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
 $SUPPORTED_PROVIDERS
 EOF
   current_default="$PROVIDER"
-  [ -f "$PROVIDER_FILE" ] && pf="$(sed -n '1p' "$PROVIDER_FILE" 2>/dev/null || true)" && [ -n "$pf" ] && current_default="$pf"
+  if [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+    pf="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+    pf="$(printf '%s' "$pf" | awk '{$1=$1;print}')"
+    [ -n "$pf" ] && current_default="$pf"
+  fi
 
   printf 'Select provider:\n' >&2
   i=1
@@ -3155,11 +3353,19 @@ EOF
   [ -z "$chosen" ] && { log_error "PROVIDER" "Selection out of range."; exit "$GROQBASHERRTMP"; }
 
   prev_provider="$PROVIDER"
-  if ! printf '%s\n' "$chosen" | atomic_write "$PROVIDER_FILE" 10; then
-    log_error "PROVIDER" "cannot persist provider selection."
+
+  # Ensure config dir available
+  if ! ensure_config_dir; then
+    log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
     exit "$GROQBASHERRTMP"
   fi
-  chmod 600 "$PROVIDER_FILE" 2>/dev/null || true
+
+  target_provider_file="${GROQBASH_CONFIG_DIR%/}/provider"
+  if ! printf '%s\n' "$chosen" | atomic_write "$target_provider_file" 10; then
+    log_error "PROVIDER" "cannot persist provider selection to $target_provider_file."
+    exit "$GROQBASHERRTMP"
+  fi
+  chmod 600 "$target_provider_file" 2>/dev/null || true
   PROVIDER="$chosen"
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
@@ -3169,7 +3375,7 @@ EOF
   fi
 
   # NOTE: do not call refresh_models_dispatch here — provider module must be loaded first.
-  exit 0
+  # Continue execution instead of exiting so the chosen provider is applied to the rest of the run.
 fi
 
 # Load provider module if present (embedded groq is always available)
@@ -3295,12 +3501,28 @@ if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   printf '  Provider: %s\n' "$PROVIDER"
   printf '  Model (active): %s\n' "$MODEL"
   printf '  Model set via CLI: %s\n' "${MODEL_CLI_SET:-0}"
-  MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
+
+  # Determine which provider file to consult for the default model:
+  # precedence: persisted provider file -> $PROVIDER -> fallback groq
+  if [ -f "${GROQBASH_CONFIG_DIR%/}/provider" ] && [ -s "${GROQBASH_CONFIG_DIR%/}/provider" ]; then
+    cfg_prov="$(sed -n '1p' "${GROQBASH_CONFIG_DIR%/}/provider" 2>/dev/null || true)"
+    cfg_prov="$(printf '%s' "$cfg_prov" | awk '{$1=$1;print}')"
+    if [ -n "$cfg_prov" ]; then
+      model_provider="$cfg_prov"
+    else
+      model_provider="${PROVIDER:-groq}"
+    fi
+  else
+    model_provider="${PROVIDER:-groq}"
+  fi
+
+  MODEL_PROVIDER_CFG="${GROQBASH_CONFIG_DIR%/}/model.${model_provider}"
   if [ -s "$MODEL_PROVIDER_CFG" ]; then
     printf '  Model (default): %s\n' "$(sed -n '1p' "$MODEL_PROVIDER_CFG")"
   else
     printf '  Model (default): <none>\n'
   fi
+
   printf '  Config dir: %s\n' "$GROQBASH_CONFIG_DIR"
   printf '  Models dir: %s\n' "$GROQBASH_MODELS_DIR"
   printf '  Tmp dir: %s\n' "$GROQBASH_TMPDIR"
@@ -3376,76 +3598,25 @@ if ! ensure_run_tmpdir; then
   exit "$GROQBASHERRTMP"
 fi
 
-# Determine final_model (preserve existing precedence but ensure only supported models are selected)
-final_model=""
-
-# If MODEL was explicitly provided via CLI (-m/--model), honor it.
-# Otherwise ignore any MODEL value inherited from the environment and prefer persisted default / auto-select.
-if [ -n "$MODEL" ] && [ "${MODEL_CLI_SET:-0}" -eq 1 ]; then
-  final_model="$MODEL"
-else
-  MODEL_PROVIDER_CFG="$GROQBASH_CONFIG_DIR/model.$PROVIDER"
-  if [ -s "$MODEL_PROVIDER_CFG" ]; then
-    final_model="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
-  fi
-
-  # If still empty, try provider auto-select but ensure it's supported
-  if [ -z "$final_model" ]; then
-    candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
-    if [ -n "$candidate" ] && is_supported_model "$candidate"; then
-      final_model="$candidate"
-    else
-      if [ -s "$MODELS_FILE" ]; then
-        cnt=0
-        while IFS= read -r m || [ -n "$m" ]; do
-          [ -z "$m" ] && continue
-          cnt=$((cnt+1))
-          if is_supported_model "$m"; then
-            final_model="$m"
-            break
-          fi
-          if [ "$cnt" -ge "$MAX_MODELS" ]; then break; fi
-        done < "$MODELS_FILE"
-      fi
-    fi
-  fi
-
-  # Additional fallbacks: config MODEL= in config file or ALLOWED_MODELS first supported entry
-  if [ -z "$final_model" ] && [ -f "$GROQBASH_CONFIG_DIR/config" ]; then
-    final_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "$GROQBASH_CONFIG_DIR/config" 2>/dev/null || true)"
-    if [ -n "$final_model" ] && ! is_supported_model "$final_model"; then final_model=""; fi
-  fi
-
-  if [ -z "$final_model" ] && [ -n "$ALLOWED_MODELS" ]; then
-    cnt=0
-    while IFS= read -r m || [ -n "$m" ]; do
-      [ -z "$m" ] && continue
-      cnt=$((cnt+1))
-      if is_supported_model "$m"; then final_model="$m"; break; fi
-      if [ "$cnt" -ge "$MAX_MODELS" ]; then break; fi
-    done <<EOF
-$(printf '%s\n' "$ALLOWED_MODELS")
-EOF
-  fi
-fi
-
-if [ -z "$final_model" ]; then
+# Determine final model using centralized resolver
+if ! resolve_model; then
   log_error "MODEL" "no model could be selected."
   exit "$GROQBASHERRBAD_MODEL"
 fi
 
-# Core-level validation: presence in MODELS_FILE (if present) and text-only support
-if ! validate_model_core "$final_model"; then
+# FINAL_MODEL set by resolve_model()
+# Validate core and provider-specific constraints
+if ! validate_model_core "$FINAL_MODEL"; then
+  log_error "MODEL" "model failed core validation: $FINAL_MODEL"
   exit "$GROQBASHERRBAD_MODEL"
 fi
 
-# Provider-specific validation (optional)
-if ! validate_model_dispatch "$final_model"; then
-  log_error "MODEL" "invalid model: $final_model"
+if ! validate_model_dispatch "$FINAL_MODEL"; then
+  log_error "MODEL" "invalid model for provider $PROVIDER: $FINAL_MODEL"
   exit "$GROQBASHERRBAD_MODEL"
 fi
 
-MODEL="$final_model"
+MODEL="$FINAL_MODEL"
 
 # Read stdin only when JSON_INPUT is not explicitly requested.
 STDIN_CONTENT=""
