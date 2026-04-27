@@ -320,28 +320,124 @@ call_api_streaming_huggingface() {
 # refresh_models_huggingface
 # -------------------------
 refresh_models_huggingface() {
-  local outpath="${1:-$MODELS_FILE}"
+  local outpath="${1:-${MODELS_FILE:-}}"
+  local prov_env hf_key workdir tmpd out errf curlout parsed tmpout http_code time_total api_url
+
+  # Resolve API key via core helper if available
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "huggingface")"
+    hf_key="${!prov_env:-${HFAPIKEY:-}}"
+  else
+    hf_key="${HFAPIKEY:-}"
+  fi
+
+  if [ -z "$hf_key" ]; then
+    log_error "APIKEY" "Hugging Face API key required to refresh models."
+    return "$GROQBASHERRNOAPIKEY"
+  fi
+
+  if [ -z "$outpath" ]; then
+    log_error "MODELREFRESH" "MODELS file path not provided."
+    return "$GROQBASHERRTMP"
+  fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $GROQBASHERRTMP
+    ensure_run_tmpdir || return "$GROQBASHERRTMP"
   fi
 
-  if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$MODELS_FILE" | atomic_write "$outpath"
-    else
-      cp -f "$MODELS_FILE" "$outpath" 2>/dev/null || true
-      chmod 600 "$outpath" 2>/dev/null || true
+  workdir="$(_get_work_tmpdir_hf)" || workdir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+
+  tmpd="$(mktemp -d -p "$workdir" hf-models.XXXX 2>/dev/null || true)"
+  [ -n "$tmpd" ] || return "$GROQBASHERRTMP"
+
+  out="$tmpd/models.json"
+  errf="$tmpd/curl.err"
+  curlout="$tmpd/curl.out"
+
+  # Hugging Face models listing endpoint (public API)
+  api_url="https://huggingface.co/api/models?full=false&limit=${MAX_MODELS:-200}"
+
+  rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
+
+  # Use array-safe expansion of CURL_BASE_OPTS and header auth
+  if ! curl "${CURL_BASE_OPTS[@]:-}" -H "Authorization: Bearer ${hf_key}" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+    log_error "MODELREFRESH" "HTTP request to Hugging Face models endpoint failed."
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
+  http_code="${http_code:-000}"
+
+  if [ "${http_code:0:1}" != "2" ]; then
+    log_error "MODELREFRESH" "models.list HTTP code: $http_code"
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  # Validate JSON
+  if ! jq -e . "$out" >/dev/null 2>&1; then
+    log_error "MODELREFRESH" "Invalid JSON received from Hugging Face models endpoint."
+    log_info "MODELREFRESH" "curl stderr (head):"
+    head -n 200 "$errf" >&2 || true
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  # Extract model ids (robust extraction)
+  parsed="$tmpd/parsed_models.txt"
+  jq -r '.[]? | (.modelId // .id // .model // empty)' "$out" | awk 'NF{print}' | sort -u > "$parsed" 2>/dev/null || true
+
+  if [ ! -s "$parsed" ]; then
+    log_error "MODELREFRESH" "parsed models list empty"
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
+  fi
+
+  # Limit to MAX_MODELS
+  tmpout="$(_mktemp_in_dir_hf "$(dirname "$outpath")" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
+  awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpout" || true
+
+  mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
+
+  # Write atomically (use b64_atomic_write if available, else atomic_write)
+  if type b64_atomic_write >/dev/null 2>&1; then
+    if ! b64_atomic_write "${outpath}.b64" 10 < "$tmpout"; then
+      log_error "MODELREFRESH" "failed to stage models file"
+      rm -f "$tmpout" 2>/dev/null || true
+      rm -rf "$tmpd"
+      return "$GROQBASHERRTMP"
     fi
-    chmod 600 "$outpath" 2>/dev/null || true
-    echo "Model list copied from local MODELS_FILE to $outpath" >&2
-    return 0
+    lockfile="${MODELS_LOCK:-${outpath}.lock}"
+    lock_exec "$lockfile" 10 -- sh -c '
+      set -e
+      manifest_b64="$1"
+      dest="$2"
+      base64 ${B64_DECODE_OPT:-} < "$manifest_b64" > "$dest"
+      chmod 600 "$dest" 2>/dev/null || true
+    ' _ "${outpath}.b64" "$outpath" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+  else
+    if type atomic_write >/dev/null 2>&1; then
+      cat "$tmpout" | atomic_write "$outpath"
+    else
+      mv "$tmpout" "${outpath}.new" 2>/dev/null || cp -f "$tmpout" "${outpath}.new" 2>/dev/null || true
+      chmod 600 "${outpath}.new" 2>/dev/null || true
+      mv -f "${outpath}.new" "$outpath" 2>/dev/null || cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
+    fi
   fi
 
-  echo "Hugging Face does not support automatic model refresh" >&2
-  return 1
+  chmod 600 "$outpath" 2>/dev/null || true
+  log_info "MODELREFRESH" "Hugging Face models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
+
+  rm -rf "$tmpd"
+  return 0
 }
 
 validate_model_huggingface() {
