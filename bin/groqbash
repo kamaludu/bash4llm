@@ -378,6 +378,13 @@ log_error() {
   if [ -n "$GROQBASH_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
 }
 
+# debug helper: if DEBUG is (1)
+dbg() {
+  if [ "${DEBUG:-0}" -ne 0 ]; then
+    printf '%s\n' "$*" >&2
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # lock_exec: acquire exclusive flock on a lockfile with timeout (improved)
 # Usage: lock_exec <lockfile> <timeout> -- <command> [args...]
@@ -3478,6 +3485,9 @@ EOF
   fi
   chmod 600 "$target_provider_file" 2>/dev/null || true
   PROVIDER="$chosen"
+  # Mark that provider was selected interactively in this invocation so we can
+  # exit before prompt-processing if no positional args (configuration-only run).
+  PROVIDER_INTERACTIVE_SELECTED=1
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
     if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
@@ -3485,8 +3495,12 @@ EOF
     fi
   fi
 
+  # If this invocation was only to change provider (no positional args), exit now.
+  if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ]; then
+    exit 0
+  fi
   # NOTE: do not call refresh_models_dispatch here — provider module must be loaded first.
-  # Continue execution instead of exiting so the chosen provider is applied to the rest of the run.
+  # Continue execution so the chosen provider is applied to the rest of the run when a prompt is present.
 fi
 
 # Load provider module if present (embedded groq is always available)
