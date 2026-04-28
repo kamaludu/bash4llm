@@ -48,7 +48,7 @@ _mktemp_in_dir_hf() {
 # buildpayload_huggingface
 # -------------------------
 buildpayload_huggingface() {
-  local workdir tmp_payload model_in_file model_to_use user_prompt
+  local workdir tmp_payload model_in_file model_to_use user_prompt joined
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
@@ -60,30 +60,12 @@ buildpayload_huggingface() {
   umask 077
 
   if [ -n "${JSON_INPUT:-}" ]; then
+    # If JSON contains OpenAI-style messages, convert to HF Inference inputs
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      # Preserve OpenAI-style messages as-is
-      if type atomic_write >/dev/null 2>&1; then
-        cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
-      else
-        cp -f "$JSON_INPUT" "$PAYLOAD" 2>/dev/null || true
-        chmod 600 "$PAYLOAD" 2>/dev/null || true
-      fi
-      return 0
-    fi
-
-    if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
-      user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
-      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
-      model_to_use="${model_in_file:-$MODEL}"
-
-      jq -n --arg model "$model_to_use" \
-            --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-            --arg ture "$TURE" \
-            --arg max_tokens "$MAX_TOKENS" \
-            --arg user "$user_prompt" \
-            '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
-            > "$tmp_payload"
-
+      # join messages into a single textual input (preserve role labels)
+      joined="$(jq -r '[.messages[] | (if .role then (.role + ": ") else "" end) + (.content // "")] | join("\n\n")' "$JSON_INPUT" 2>/dev/null || true)"
+      jq -n --arg inputs "$joined" --argjson params "$(jq -n '{max_new_tokens:('"${MAX_TOKENS:-256}"')}' 2>/dev/null)" \
+         '{inputs:$inputs, parameters:$params}' > "$tmp_payload"
       if type atomic_write >/dev/null 2>&1; then
         cat "$tmp_payload" | atomic_write "$PAYLOAD"
       else
@@ -93,7 +75,23 @@ buildpayload_huggingface() {
       return 0
     fi
 
-    # Pass through raw JSON_INPUT
+    # If JSON contains "prompt", convert to HF inputs
+    if jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
+      user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
+      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
+      model_to_use="${model_in_file:-$MODEL}"
+      jq -n --arg inputs "$user_prompt" --arg model "$model_to_use" --argjson params "$(jq -n '{max_new_tokens:('"${MAX_TOKENS:-256}"')}' 2>/dev/null)" \
+         '{inputs:$inputs, model:$model, parameters:$params}' > "$tmp_payload"
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$tmp_payload" | atomic_write "$PAYLOAD"
+      else
+        cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
+        chmod 600 "$PAYLOAD" 2>/dev/null || true
+      fi
+      return 0
+    fi
+
+    # Pass through raw JSON_INPUT (already HF-style)
     if type atomic_write >/dev/null 2>&1; then
       cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
     else
@@ -103,24 +101,15 @@ buildpayload_huggingface() {
     return 0
   fi
 
+  # No JSON_INPUT: build inputs from SYSTEM_PROMPT + CONTENT
   if [ -n "${SYSTEM_PROMPT:-}" ]; then
-    jq -n --arg model "$MODEL" \
-          --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-          --arg ture "$TURE" \
-          --arg max_tokens "$MAX_TOKENS" \
-          --arg system "$SYSTEM_PROMPT" \
-          --arg user "$CONTENT" \
-          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"system",content:$system},{role:"user",content:$user}] }' \
-          > "$tmp_payload"
+    joined="$(printf 'System: %s\n\nUser: %s' "$SYSTEM_PROMPT" "$CONTENT")"
   else
-    jq -n --arg model "$MODEL" \
-          --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-          --arg ture "$TURE" \
-          --arg max_tokens "$MAX_TOKENS" \
-          --arg user "$CONTENT" \
-          '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
-          > "$tmp_payload"
+    joined="$CONTENT"
   fi
+
+  jq -n --arg inputs "$joined" --argjson params "$(jq -n '{max_new_tokens:('"${MAX_TOKENS:-256}"')}' 2>/dev/null)" \
+     '{inputs:$inputs, parameters:$params}' > "$tmp_payload"
 
   if type atomic_write >/dev/null 2>&1; then
     cat "$tmp_payload" | atomic_write "$PAYLOAD"
@@ -151,12 +140,12 @@ call_api_huggingface() {
   fi
 
   if [ -z "${HFAPIKEY:-}" ]; then
-    echo "Error: HFAPIKEY is not set." >&2
+    log_error "APIKEY" "HF API key not set (env ${prov_env:-HUGGINGFACE_API_KEY})."
     return $GROQBASHERRNOAPIKEY
   fi
 
   if [ ! -s "${PAYLOAD:-}" ]; then
-    echo "Error: payload file missing or empty: ${PAYLOAD:-<unset>}" >&2
+    log_error "HTTP" "payload file missing or empty: ${PAYLOAD:-<unset>}"
     return $GROQBASHERRTMP
   fi
   if is_truthy "${DRY_RUN:-0}"; then
@@ -169,48 +158,98 @@ call_api_huggingface() {
     ensure_run_tmpdir || return $GROQBASHERRTMP
   fi
 
-  local workdir tmpout tmpresp api_url http_code time_total
+  local workdir tmpout tmpresp hdr_file ERRF RESP api_url http_result http_code time_total http_ct http_body err_text
   workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
   tmpout="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
-  api_url="https://api-inference.huggingface.co/v1/chat/completions"
 
-  # Use array-safe expansion of CURL_BASE_OPTS if defined by core
-  curl "${CURL_BASE_OPTS[@]:-}" \
-       -H "Authorization: Bearer $HFAPIKEY" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       -o "$tmpresp" \
-       -w '%{http_code} %{time_total}' \
-       "$api_url" \
-       2>"$ERRF" >"$tmpout" || true
+  # Build model-specific Inference API URL (use MODEL resolved by core)
+  api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
+  api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
 
-  read -r http_code time_total < "$tmpout" 2>/dev/null || {
-    http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
-    time_total="0"
-  }
+  : > "$tmpout" 2>/dev/null || true
+  : > "$ERRF" 2>/dev/null || true
+  : > "$tmpresp" 2>/dev/null || true
+  : > "$hdr_file" 2>/dev/null || true
 
+  # Perform request: capture headers to hdr_file, body to tmpresp, and write http_code/time to tmpout
+  http_result="$(curl "${CURL_BASE_OPTS[@]:-}" \
+    -sS -D "$hdr_file" \
+    -H "Authorization: Bearer $HFAPIKEY" \
+    -H "Content-Type: application/json" \
+    --data-binary @"$PAYLOAD" \
+    -o "$tmpresp" -w '%{http_code} %{time_total}' \
+    "$api_url" 2>"$ERRF" || true)"
+
+  # Parse http_code and time_total
+  read -r http_code time_total <<EOF
+$http_result
+EOF
+  http_code="${http_code:-000}"
+
+  # Determine content-type (lowercased)
+  http_ct="$(tr '[:upper:]' '[:lower:]' < "$hdr_file" 2>/dev/null | grep -i '^content-type:' || true)"
+  http_body="$(cat "$tmpresp" 2>/dev/null || true)"
+
+  # Persist response atomically if present
   if [ -s "$tmpresp" ]; then
     if type atomic_write >/dev/null 2>&1; then
-      cat "$tmpresp" | atomic_write "${RESP:-$workdir/resp.json}"
+      cat "$tmpresp" | atomic_write "${RESP}" || cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
     else
-      cp -f "$tmpresp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-      chmod 600 "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
+      chmod 600 "${RESP}" 2>/dev/null || true
     fi
   else
-    : > "${RESP:-/dev/null}" 2>/dev/null || true
+    : > "${RESP}" 2>/dev/null || true
   fi
 
+  # Cleanup tmp files we no longer need (keep RESP if needed)
   rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
 
+  # Handle HTTP status
   case "$http_code" in
-    2*) return 0 ;;
+    2*)
+      # Success: if JSON, print it; otherwise log debug and return success
+      if printf '%s' "$http_ct" | grep -q 'application/json'; then
+        printf '%s' "$http_body"
+        return 0
+      else
+        dbg "HF non-json response (truncated): $(printf '%s' "$http_body" | head -c 2048)"
+        log_error "HTTP" "API returned non-JSON response (status $http_code). See debug logs."
+        return $GROQBASHERRAPI
+      fi
+      ;;
     *)
-      dbg "HTTP error code: $http_code"
-      dbg "Response (head):"; head -n 200 "${RESP:-/dev/null}" >&2 || true
-      dbg "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
+      # Extract textual error from HTML if possible (prefer <pre> or plain text)
+      err_text=""
+      if printf '%s' "$http_body" | grep -qi '<pre'; then
+        err_text="$(printf '%s' "$http_body" | sed -n 's/.*<pre[^>]*>\(.*\)<\/pre>.*/\1/p' | sed 's/<[^>]*>//g' | awk '{$1=$1;print}')"
+      else
+        # fallback: strip tags and take first non-empty lines
+        err_text="$(printf '%s' "$http_body" | sed 's/<[^>]*>/ /g' | tr -s '[:space:]' ' ' | awk '{print; exit}')"
+      fi
+      # Truncate and sanitize
+      err_text="$(printf '%s' "$err_text" | sed -n '1,6p' | awk '{$1=$1;print}')"
+
+      dbg "HTTP $http_code response headers (head):"; head -n 50 "$hdr_file" >&2 || true
+      dbg "HTTP body (truncated):"; printf '%s' "$http_body" | head -c 2048 >&2 || true
+      dbg "curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
+
+      # If we extracted a meaningful message, show it to the user
+      if [ -n "$err_text" ]; then
+        log_error "HTTP" "API error (status $http_code): $err_text"
+      else
+        log_error "HTTP" "API error (status $http_code). See debug logs for details."
+      fi
+
+      # Write a sanitized error JSON to RESP to avoid leaking raw HTML
+      printf '{"error":"HTTP %s from Hugging Face inference endpoint","message":%s}\n' "$http_code" "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
+      chmod 600 "${RESP}" 2>/dev/null || true
+
+      rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
       return $GROQBASHERRAPI
       ;;
   esac
@@ -236,7 +275,7 @@ call_api_streaming_huggingface() {
   fi
 
   if [ -z "${HFAPIKEY:-}" ]; then
-    echo "Error: HFAPIKEY is not set." >&2
+    log_error "APIKEY" "HF API key not set (env ${prov_env:-HUGGINGFACE_API_KEY})."
     return $GROQBASHERRNOAPIKEY
   fi
 
@@ -250,19 +289,25 @@ call_api_streaming_huggingface() {
     ensure_run_tmpdir || return $GROQBASHERRTMP
   fi
 
-  local api_url rc RESP_RAW workdir
-  api_url="https://api-inference.huggingface.co/v1/chat/completions"
+  local api_url rc RESP_RAW workdir hdr_file ERRF
   workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
   RESP_RAW="${RUN_TMPDIR:-$workdir}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
+
+  # Build model-specific Inference API URL (use MODEL resolved by core)
+  api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
+  api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
 
   # Use array-safe expansion of CURL_BASE_OPTS if defined by core
   curl "${CURL_BASE_OPTS[@]:-}" \
+       -sS -D "$hdr_file" \
        -H "Authorization: Bearer $HFAPIKEY" \
        -H "Content-Type: application/json" \
+       --no-buffer \
        --data-binary @"$PAYLOAD" \
        "$api_url" \
        2>"$ERRF" | tee -a "$RESP_RAW" | \
@@ -281,6 +326,7 @@ call_api_streaming_huggingface() {
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
     dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
+    rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
     return $GROQBASHERRCURL_FAILED
   }
 
@@ -313,6 +359,7 @@ call_api_streaming_huggingface() {
     fi
   fi
 
+  rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
   return 0
 }
 
