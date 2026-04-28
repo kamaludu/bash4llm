@@ -385,6 +385,87 @@ dbg() {
   fi
 }
 
+# Load and validate provider module for given provider name
+load_provider_module() {
+  local provider="$1"
+
+  # Skip if already loaded for the same provider
+  if [ "${LOADED_PROVIDER_NAME:-}" = "$provider" ] && [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
+    return 0
+  fi
+
+  LOADED_PROVIDER_NAME="$provider"
+  PROVIDER_MODULE_LOADED=0
+  PROVIDER_MODULE_PATH="$PROVIDERS_DIR/${provider}.sh"
+  PROVIDER_DIR="$PROVIDERS_DIR"
+
+  if [ ! -d "$PROVIDER_DIR" ]; then
+    mkdir -p "$PROVIDER_DIR" 2>/dev/null || { log_error "PROVIDER" "cannot create provider directory."; return 1; }
+  fi
+
+  if _is_world_writable "$PROVIDER_DIR"; then
+    log_error "SEC" "provider directory is world-writable."
+    return 1
+  fi
+
+  local current_user owner file_owner perms group_write others_write beforesig aftersig invalid_provider _req
+  current_user="$(id -un 2>/dev/null || printf '')"
+  owner="$(_get_owner "$PROVIDER_DIR")"
+  [ -n "$owner" ] && [ "$owner" != "$current_user" ] && log_warn "SEC" "provider directory owned by $owner"
+
+  if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
+    if [ "$provider" != "groq" ]; then
+      printf 'Provider %s is not installed.\n' "$provider" >&2
+      PROVIDER_MODULE_LOADED=0
+      return 0
+    else
+      PROVIDER_MODULE_LOADED=1
+      return 0
+    fi
+  fi
+
+  if [ -L "$PROVIDER_MODULE_PATH" ]; then
+    log_error "SEC" "provider file is symlink."
+    return 1
+  fi
+
+  file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
+  [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ] && { log_error "SEC" "wrong owner for provider file."; return 1; }
+
+  perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
+  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
+  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
+  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
+    log_error "SEC" "provider file writable by group/world."
+    return 1
+  fi
+
+  beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
+
+  if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
+    . "$PROVIDER_MODULE_PATH"
+    PROVIDER_MODULE_LOADED=1
+
+    invalid_provider=0
+    for _req in "buildpayload_${provider}" "call_api_${provider}"; do
+      type "$_req" >/dev/null 2>&1 || invalid_provider=1
+    done
+
+    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
+    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return 1; }
+
+    if [ "$invalid_provider" -eq 1 ]; then
+      log_warn "PROVIDER" "provider module incomplete; falling back to embedded provider."
+      PROVIDER_MODULE_LOADED=0
+    fi
+  else
+    log_warn "PROVIDER" "provider module invalid; falling back to embedded provider."
+    PROVIDER_MODULE_LOADED=0
+  fi
+
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # lock_exec: acquire exclusive flock on a lockfile with timeout (improved)
 # Usage: lock_exec <lockfile> <timeout> -- <command> [args...]
@@ -3446,6 +3527,7 @@ if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
   IFS=' ' read -r -a _prov_arr <<EOF
 $SUPPORTED_PROVIDERS
 EOF
+
   current_default="$PROVIDER"
   if [ -f "$(canonical_provider_file)" ]; then
     pf="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
@@ -3456,19 +3538,42 @@ EOF
   printf 'Select provider:\n' >&2
   i=1
   for p in "${_prov_arr[@]}"; do
-    if [ "$p" = "$current_default" ]; then printf '%d) %s (default)\n' "$i" "$p" >&2
-    else printf '%d) %s\n' "$i" "$p" >&2; fi
+    if [ "$p" = "$current_default" ]; then
+      printf '%d) %s (default)\n' "$i" "$p" >&2
+    else
+      printf '%d) %s\n' "$i" "$p" >&2
+    fi
     i=$((i+1))
   done
 
   printf '> ' >&2
-  if ! IFS= read -r sel; then printf 'No selection made.\n' >&2; exit "$GROQBASHERRTMP"; fi
+  if ! IFS= read -r sel; then
+    printf 'No selection made.\n' >&2
+    exit "$GROQBASHERRTMP"
+  fi
   sel="$(trim "$sel")"
-  printf '%s\n' "$sel" | grep -qE '^[0-9]+$' || { log_error "PROVIDER" "Invalid selection."; exit "$GROQBASHERRTMP"; }
 
-  idx="$sel"
-  chosen="${_prov_arr[$((idx-1))]}"
-  [ -z "$chosen" ] && { log_error "PROVIDER" "Selection out of range."; exit "$GROQBASHERRTMP"; }
+  # If empty input, use current_default
+  if [ -z "$sel" ]; then
+    chosen="$current_default"
+  else
+    # If numeric selection, map to array index
+    if printf '%s\n' "$sel" | grep -qE '^[0-9]+$'; then
+      idx="$sel"
+      chosen="${_prov_arr[$((idx-1))]}"
+    else
+      # treat input as provider name (case-sensitive match)
+      chosen=""
+      for p in "${_prov_arr[@]}"; do
+        if [ "$p" = "$sel" ]; then
+          chosen="$p"
+          break
+        fi
+      done
+    fi
+  fi
+
+  [ -n "$chosen" ] || { log_error "PROVIDER" "Selection out of range or unknown provider."; exit "$GROQBASHERRTMP"; }
 
   prev_provider="$PROVIDER"
 
@@ -3484,10 +3589,16 @@ EOF
     exit "$GROQBASHERRTMP"
   fi
   chmod 600 "$target_provider_file" 2>/dev/null || true
+
   PROVIDER="$chosen"
   # Mark that provider was selected interactively in this invocation so we can
   # exit before prompt-processing if no positional args (configuration-only run).
   PROVIDER_INTERACTIVE_SELECTED=1
+
+  if ! load_provider_module "$PROVIDER"; then
+    log_error "PROVIDER" "failed to load provider module: $PROVIDER"
+    exit "$GROQBASHERRTMP"
+  fi
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
     if [ -n "${MODELS_FILE:-}" ] && [ -f "$MODELS_FILE" ]; then
@@ -3497,100 +3608,55 @@ EOF
 
   # If this invocation was only to change provider (no positional args), exit now.
   if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ]; then
+    printf 'groqbash: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
     exit 0
   fi
-  # NOTE: do not call refresh_models_dispatch here — provider module must be loaded first.
-  # Continue execution so the chosen provider is applied to the rest of the run when a prompt is present.
 fi
 
-# Load provider module if present (embedded groq is always available)
-PROVIDER_MODULE_LOADED=0
-PROVIDER_MODULE_PATH="$PROVIDERS_DIR/${PROVIDER}.sh"
-PROVIDER_DIR="$PROVIDERS_DIR"
-
-if [ ! -d "$PROVIDER_DIR" ]; then
-  mkdir -p "$PROVIDER_DIR" 2>/dev/null || { log_error "PROVIDER" "cannot create provider directory."; exit "$GROQBASHERRTMP"; }
-fi
-
-if _is_world_writable "$PROVIDER_DIR"; then
-  log_error "SEC" "provider directory is world-writable."
+# ---------------------------------------------------------------------------
+# Load provider module for the chosen provider (ensure CLI/persisted cases are handled)
+# ---------------------------------------------------------------------------
+# Call load_provider_module once for the final PROVIDER value. The function is
+# guarded against double-loading (LOADED_PROVIDER_NAME), so this is safe even
+# if the interactive branch already loaded the module.
+if ! load_provider_module "$PROVIDER"; then
+  log_error "PROVIDER" "failed to load provider module: $PROVIDER"
   exit "$GROQBASHERRTMP"
 fi
 
-current_user="$(id -un 2>/dev/null || printf '')"
-owner="$(_get_owner "$PROVIDER_DIR")"
-[ -n "$owner" ] && [ "$owner" != "$current_user" ] && log_warn "SEC" "provider directory owned by $owner"
-
-if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
-  if [ "$PROVIDER" != "groq" ]; then
-    printf 'Provider %s is not installed.\n' "$PROVIDER" >&2
-    PROVIDER_MODULE_LOADED=0
-  else
-    PROVIDER_MODULE_LOADED=1
-  fi
-else
-  if [ -L "$PROVIDER_MODULE_PATH" ]; then log_error "SEC" "provider file is symlink."; exit "$GROQBASHERRTMP"; fi
-
-  file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
-  [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ] && { log_error "SEC" "wrong owner for provider file."; exit "$GROQBASHERRTMP"; }
-
-  perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
-  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
-  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
-  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
-    log_error "SEC" "provider file writable by group/world."
-    exit "$GROQBASHERRTMP"
-  fi
-
-  beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-
-  # Robust syntax check and load in current shell (avoid subshell tests)
-  if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-    # Source the provider into the current shell so functions are visible
-    . "$PROVIDER_MODULE_PATH"
-    PROVIDER_MODULE_LOADED=1
-
-    # Validate presence of required functions in current shell
-    invalid_provider=0
-    for _req in "buildpayload_${PROVIDER}" "call_api_${PROVIDER}"; do
-      type "$_req" >/dev/null 2>&1 || invalid_provider=1
-    done
-
-    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; exit "$GROQBASHERRTMP"; }
-
-    if [ "$invalid_provider" -eq 1 ]; then
-      log_warn "PROVIDER" "provider module incomplete; falling back to embedded provider."
-      PROVIDER_MODULE_LOADED=0
-    fi
-  else
-    log_warn "PROVIDER" "provider module invalid; falling back to embedded provider."
-    PROVIDER_MODULE_LOADED=0
-  fi
-fi
+# ---------------------------------------------------------------------------
+# Validate provider module and interface (must run after provider module load)
+# ---------------------------------------------------------------------------
 
 # Validate provider interface
 validate_provider_interface() {
-  local p="$1" missing=0
+  local p="$1"
+  local missing=0
   local required=( "buildpayload_${p}" "call_api_${p}" )
   local optional=( "call_api_streaming_${p}" "refresh_models_${p}" "validate_model_${p}" "auto_select_model_${p}" )
   local f
+
   for f in "${required[@]}"; do
     if ! type "$f" >/dev/null 2>&1; then
-      printf 'Provider '\''%s'\'' module does not define required function %s().\n' "$p" "$f" >&2
+      log_error "PROVIDER" "Provider '$p' module does not define required function $f()."
       missing=1
     fi
   done
+
   for f in "${optional[@]}"; do
     if ! type "$f" >/dev/null 2>&1; then
       log_info "PROVIDER" "Provider '$p' missing optional function $f()"
     fi
   done
+
   return $missing
 }
 
+# Ensure provider module loaded and interface valid
 if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
-  validate_provider_interface "$PROVIDER" || exit "$GROQBASHERRAPI"
+  if ! validate_provider_interface "$PROVIDER"; then
+    exit "$GROQBASHERRAPI"
+  fi
 else
   log_error "PROVIDER" "no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin."
   exit "$GROQBASHERRAPI"
@@ -3818,6 +3884,29 @@ assemble_content() {
 }
 
 assemble_content
+
+# If provider was selected interactively in this invocation and there are no
+# positional args / no content, treat this run as configuration-only and exit.
+if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ] && [ -z "${CONTENT:-}" ]; then
+  printf 'groqbash: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
+  exit 0
+fi
+
+# Defensive check: ensure we actually have something to send as prompt/content.
+# CONTENT may be set by assemble_content (from ARGS, files, stdin, template, JSON).
+if [ -n "${JSON_INPUT:-}" ]; then
+  : # JSON input present, proceed
+elif [ -n "${CONTENT:-}" ]; then
+  : # content assembled, proceed
+elif [ "$#" -gt 0 ]; then
+  # Positional args still present (fallback): join them into CONTENT
+  CONTENT="$(printf '%s ' "$@")"
+  CONTENT="${CONTENT%" "}" # trim trailing space
+else
+  # No prompt/content available: emit clear error and exit with input error code.
+  log_error "INPUT" "no prompt provided."
+  exit "$GROQBASHERRINPUT"
+fi
 
 if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "$CHAT_MODE" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
   log_error "INPUT" "no prompt provided."
