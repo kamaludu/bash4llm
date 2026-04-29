@@ -3,7 +3,7 @@
 
 ### 🇮🇹 Sezione Italiana
 
-# 📘 Session Engine (extra opzionale per GroqBash)
+# 🗃️ Session Engine (extra opzionale per GroqBash)
 
 Il *Session Engine* è un componente **opzionale** che estende le funzionalità di session management del CORE di GroqBash.  
 Non sostituisce le primitive MVP (`session_read_window`, `session_append`, cache), ma le **potenzia** con segmentazione, rotazione, deduplicazione, caching avanzato e snapshot diagnostici.
