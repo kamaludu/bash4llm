@@ -59,6 +59,10 @@ buildpayload_huggingface() {
   tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   umask 077
 
+  # Ensure PAYLOAD/RESP variables point to safe file paths (use .json for clarity)
+  PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
+  RESP="${RESP:-${workdir}/resp.json}"
+
   if [ -n "${JSON_INPUT:-}" ]; then
     # If JSON contains OpenAI-style messages, convert to HF Inference inputs
     if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
@@ -91,7 +95,7 @@ buildpayload_huggingface() {
       return 0
     fi
 
-    # Pass through raw JSON_INPUT (already HF-style)
+    # Pass through raw JSON_INPUT (assume already HF-style)
     if type atomic_write >/dev/null 2>&1; then
       cat "$JSON_INPUT" | atomic_write "$PAYLOAD"
     else
@@ -144,6 +148,23 @@ call_api_huggingface() {
     return $GROQBASHERRNOAPIKEY
   fi
 
+  # Ensure runtime tmpdir is available and validated by PRECORE
+  if type ensure_run_tmpdir >/dev/null 2>&1; then
+    ensure_run_tmpdir || return $GROQBASHERRTMP
+  fi
+
+  # Ensure PAYLOAD/RESP have sensible defaults inside the project tmpdir
+  workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
+  PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
+  RESP="${RESP:-${workdir}/resp.json}"
+  ERRF="${ERRF:-${workdir}/curl.err}"
+
+  dbg "PAYLOAD path: ${PAYLOAD:-<unset>}"
+  dbg "RESP path: ${RESP:-<unset>}"
+
+  # Expose payload path for reproducibility (stderr)
+  printf 'groqbash: DEBUG: using payload file: %s\n' "${PAYLOAD:-<unset>}" >&2
+
   if [ ! -s "${PAYLOAD:-}" ]; then
     log_error "HTTP" "payload file missing or empty: ${PAYLOAD:-<unset>}"
     return $GROQBASHERRTMP
@@ -153,27 +174,49 @@ call_api_huggingface() {
     return 0
   fi
 
-  # Ensure runtime tmpdir is available and validated by PRECORE
-  if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $GROQBASHERRTMP
+  # helper: check model existence on HF Hub (returns 0 if accessible)
+  hub_check() {
+    local check_url
+    check_url="https://huggingface.co/api/models/${api_model_path}"
+    # Use token if available to check private models
+    if curl "${CURL_BASE_OPTS[@]:-}" -sS -H "Authorization: Bearer ${HFAPIKEY}" -o /dev/null -w '%{http_code}' "$check_url" 2>/dev/null | grep -q '^2'; then
+      return 0
+    fi
+    return 1
+  }
+
+  # Build model-specific path and choose api_url (support explicit endpoint)
+  api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
+  if [ -n "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
+    # If endpoint URL provided, use it as-is (user must include model if required)
+    api_url="${HUGGINGFACE_ENDPOINT_URL%/}"
+  else
+    api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
   fi
 
-  local workdir tmpout tmpresp hdr_file ERRF RESP api_url http_result http_code time_total http_ct http_body err_text
-  workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
+  # Show a redacted reproducible curl command in debug logs
+  dbg "Repro curl (redacted): curl -H 'Authorization: Bearer <REDACTED>' -H 'Content-Type: application/json' --data-binary @\"$PAYLOAD\" \"$api_url\""
+
+  local tmpout tmpresp hdr_file http_result http_code time_total http_ct http_body err_text rc
   tmpout="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
   hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
-  ERRF="${ERRF:-$workdir/curl.err}"
-  RESP="${RESP:-$workdir/resp.json}"
-
-  # Build model-specific Inference API URL (use MODEL resolved by core)
-  api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
-  api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
 
   : > "$tmpout" 2>/dev/null || true
   : > "$ERRF" 2>/dev/null || true
   : > "$tmpresp" 2>/dev/null || true
   : > "$hdr_file" 2>/dev/null || true
+
+  # Preflight: if no explicit endpoint URL, check model existence on Hub to avoid blind inference calls
+  if [ -z "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
+    if ! hub_check; then
+      log_error "HTTP" "Model '${MODEL}' not found or not accessible on Hugging Face Hub. Check model id or permissions."
+      printf '{"error":"model_not_found","model":"%s","hint":"Check model id, visibility, or use a Hugging Face Inference Endpoint."}\n' "$MODEL" > "${RESP}" 2>/dev/null || true
+      chmod 600 "${RESP}" 2>/dev/null || true
+      rm -f "$tmpout" "$tmpresp" "$hdr_file" 2>/dev/null || true
+      return $GROQBASHERRAPI
+    fi
+  fi
 
   # Perform request: capture headers to hdr_file, body to tmpresp, and write http_code/time to tmpout
   http_result="$(curl "${CURL_BASE_OPTS[@]:-}" \
@@ -206,15 +249,42 @@ EOF
     : > "${RESP}" 2>/dev/null || true
   fi
 
-  # Cleanup tmp files we no longer need (keep RESP if needed)
-  rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
+  # If 404 and hub_check previously succeeded (model exists), try pipeline fallback once (only if no explicit endpoint)
+  if [ "$http_code" = "404" ] && [ -z "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
+    # Only attempt fallback if hub_check indicated model exists (defensive)
+    if hub_check; then
+      dbg "Model not available via /models/<id>, trying pipeline/text-generation fallback"
+      fallback_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/pipeline/text-generation"
+      http_result="$(curl "${CURL_BASE_OPTS[@]:-}" -sS -D "$hdr_file" \
+        -H "Authorization: Bearer $HFAPIKEY" -H "Content-Type: application/json" \
+        --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$fallback_url" 2>"$ERRF" || true)"
+      read -r http_code time_total <<EOF
+$http_result
+EOF
+      http_code="${http_code:-000}"
+      http_ct="$(tr '[:upper:]' '[:lower:]' < "$hdr_file" 2>/dev/null | grep -i '^content-type:' || true)"
+      http_body="$(cat "$tmpresp" 2>/dev/null || true)"
+      # persist fallback response
+      if [ -s "$tmpresp" ]; then
+        if type atomic_write >/dev/null 2>&1; then
+          cat "$tmpresp" | atomic_write "${RESP}" || cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
+        else
+          cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
+          chmod 600 "${RESP}" 2>/dev/null || true
+        fi
+      fi
+    fi
+  fi
+
+  # Cleanup tmpout (we keep RESP and PAYLOAD for inspection)
+  rm -f "$tmpout" 2>/dev/null || true
 
   # Handle HTTP status
   case "$http_code" in
     2*)
       # Success: if JSON, print it; otherwise log debug and return success
       if printf '%s' "$http_ct" | grep -q 'application/json'; then
-        printf '%s' "$http_body"
+        cat "${RESP}" || printf '%s' "$http_body"
         return 0
       else
         dbg "HF non-json response (truncated): $(printf '%s' "$http_body" | head -c 2048)"
@@ -222,31 +292,55 @@ EOF
         return $GROQBASHERRAPI
       fi
       ;;
-    *)
-      # Extract textual error from HTML if possible (prefer <pre> or plain text)
+    404)
+      # Model or pipeline not available via public inference endpoint
       err_text=""
       if printf '%s' "$http_body" | grep -qi '<pre'; then
         err_text="$(printf '%s' "$http_body" | sed -n 's/.*<pre[^>]*>\(.*\)<\/pre>.*/\1/p' | sed 's/<[^>]*>//g' | awk '{$1=$1;print}')"
       else
-        # fallback: strip tags and take first non-empty lines
         err_text="$(printf '%s' "$http_body" | sed 's/<[^>]*>/ /g' | tr -s '[:space:]' ' ' | awk '{print; exit}')"
       fi
-      # Truncate and sanitize
+      err_text="$(printf '%s' "$err_text" | sed -n '1,6p' | awk '{$1=$1;print}')"
+
+      dbg "HTTP 404 response headers (head):"; head -n 50 "$hdr_file" >&2 || true
+      dbg "HTTP body (truncated):"; printf '%s' "$http_body" | head -c 2048 >&2 || true
+      dbg "curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
+
+      if [ -n "$err_text" ]; then
+        log_error "HTTP" "API error (status 404): $err_text"
+      else
+        log_error "HTTP" "API error (status 404): model or pipeline not available via public inference endpoint."
+      fi
+
+      # Provide actionable hint in RESP (sanitized)
+      printf '{"error":"HTTP 404","message":%s,"hint":"Check model id, visibility, or use a Hugging Face Inference Endpoint (set HUGGINGFACE_ENDPOINT_URL)."}\n' \
+        "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
+      chmod 600 "${RESP}" 2>/dev/null || true
+
+      rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
+      return $GROQBASHERRAPI
+      ;;
+    *)
+      # Other non-2xx errors: extract textual error from HTML if possible
+      err_text=""
+      if printf '%s' "$http_body" | grep -qi '<pre'; then
+        err_text="$(printf '%s' "$http_body" | sed -n 's/.*<pre[^>]*>\(.*\)<\/pre>.*/\1/p' | sed 's/<[^>]*>//g' | awk '{$1=$1;print}')"
+      else
+        err_text="$(printf '%s' "$http_body" | sed 's/<[^>]*>/ /g' | tr -s '[:space:]' ' ' | awk '{print; exit}')"
+      fi
       err_text="$(printf '%s' "$err_text" | sed -n '1,6p' | awk '{$1=$1;print}')"
 
       dbg "HTTP $http_code response headers (head):"; head -n 50 "$hdr_file" >&2 || true
       dbg "HTTP body (truncated):"; printf '%s' "$http_body" | head -c 2048 >&2 || true
       dbg "curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
 
-      # If we extracted a meaningful message, show it to the user
       if [ -n "$err_text" ]; then
         log_error "HTTP" "API error (status $http_code): $err_text"
       else
         log_error "HTTP" "API error (status $http_code). See debug logs for details."
       fi
 
-      # Write a sanitized error JSON to RESP to avoid leaking raw HTML
-      printf '{"error":"HTTP %s from Hugging Face inference endpoint","message":%s}\n' "$http_code" "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
+      printf '{"error":"HTTP %s","message":%s}\n' "$http_code" "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
       chmod 600 "${RESP}" 2>/dev/null || true
 
       rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
@@ -291,16 +385,20 @@ call_api_streaming_huggingface() {
 
   local api_url rc RESP_RAW workdir hdr_file ERRF
   workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
-  RESP_RAW="${RUN_TMPDIR:-$workdir}/resp.raw"
+  RESP_RAW="${RESP_RAW:-${workdir}/resp.raw}"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
-  ERRF="${ERRF:-$workdir/curl.err}"
-  RESP="${RESP:-$workdir/resp.json}"
+  ERRF="${ERRF:-${workdir}/curl.err}"
+  RESP="${RESP:-${workdir}/resp.json}"
   hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
 
-  # Build model-specific Inference API URL (use MODEL resolved by core)
+  # Build model-specific Inference API URL (use MODEL resolved by core or explicit endpoint)
   api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
-  api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
+  if [ -n "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
+    api_url="${HUGGINGFACE_ENDPOINT_URL%/}"
+  else
+    api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
+  fi
 
   # Use array-safe expansion of CURL_BASE_OPTS if defined by core
   curl "${CURL_BASE_OPTS[@]:-}" \
@@ -331,31 +429,31 @@ call_api_streaming_huggingface() {
   }
 
   # Post-processing: build resp.chunks.json, resp.text.txt and write RESP atomically
-  : > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
-  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
+  : > "$workdir/resp.lines" 2>/dev/null || true
+  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$workdir/resp.lines" 2>/dev/null || true
 
-  : > "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+  : > "$workdir/resp.valid.jsons" 2>/dev/null || true
   while IFS= read -r _line; do
     if printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$_line" >> "$RUN_TMPDIR/resp.valid.jsons"
+      printf '%s\n' "$_line" >> "$workdir/resp.valid.jsons"
     fi
-  done < "$RUN_TMPDIR/resp.lines"
+  done < "$workdir/resp.lines"
 
-  if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
-    jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
-    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
+  if [ -s "$workdir/resp.valid.jsons" ]; then
+    jq -s '.' "$workdir/resp.valid.jsons" > "$workdir/resp.chunks.json" 2>/dev/null || true
+    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$workdir/resp.chunks.json" > "$workdir/resp.text.txt" 2>/dev/null || true
     if type atomic_write >/dev/null 2>&1; then
-      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${GROQBASH_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      cat "$workdir/resp.chunks.json" | atomic_write "${RESP:-$workdir/resp.json}" "${GROQBASH_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
     else
-      cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
     fi
 
     if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${GROQBASH_TMPDIR:-}"/*) true;; "${GROQBASH_TMPDIR:-}") true;; *) false;; esac; then
-      rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
+      rm -f "$workdir/resp.lines" "$workdir/resp.valid.jsons" 2>/dev/null || true
     fi
   else
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
-      cp -f "$RESP_RAW" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      cp -f "$RESP_RAW" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
     fi
   fi
 
@@ -450,7 +548,7 @@ refresh_models_huggingface() {
   # Limit to MAX_MODELS
   tmpout="$(_mktemp_in_dir_hf "$(dirname "$outpath")" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
-  awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpout" || true
+  awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpout" 2>/dev/null || true
 
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
 
