@@ -121,7 +121,14 @@ ensure_api_key_for_provider() {
     printf '\ngroqbash: ERROR: no input received. Aborting.\n' >&2
     return "$GROQBASHERRNOAPIKEY"
   fi
+
+  # Normalize input: strip CR/LF, leading "export ", and VAR=VALUE forms
   input_key="$(printf '%s' "$input_key" | tr -d '\r\n')"
+  input_key="$(printf '%s' "$input_key" | sed -E 's/^[[:space:]]*export[[:space:]]+//I')"
+  if printf '%s' "$input_key" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*='; then
+    input_key="$(printf '%s' "$input_key" | sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[\"\x27]?([^\"\x27]*).*$/\1/')"
+  fi
+
   if [ -z "$input_key" ]; then
     printf 'groqbash: ERROR: API key required. Aborting.\n' >&2
     return "$GROQBASHERRNOAPIKEY"
