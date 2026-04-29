@@ -194,7 +194,7 @@ Se non installato o disabilitato, GroqBash usa automaticamente il CORE/MVP.
 
 ### 🇬🇧 English section
 
-# 📘 Session Engine (optional extra for GroqBash)
+# 🗃️ Session Engine (optional extra for GroqBash)
 
 The *Session Engine* is an **optional** component that extends the session‑management capabilities of the GroqBash CORE.  
 It does **not** replace the MVP primitives (`session_read_window`, `session_append`, cache); instead, it **enhances** them with segmentation, rotation, deduplication, advanced caching, and diagnostic snapshots.
