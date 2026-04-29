@@ -14,6 +14,7 @@ fi
 
 HFAPIKEY="${HFAPIKEY:-}"
 
+# Default helpers for tmpdir and mktemp in project-local tmpdir
 _get_work_tmpdir_hf() {
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     printf '%s' "$RUN_TMPDIR"
@@ -41,6 +42,105 @@ _mktemp_in_dir_hf() {
   tmpf="$(mktemp -p "$dir" hf-XXXX 2>/dev/null || true)"
   [ -z "$tmpf" ] && return 1
   printf '%s' "$tmpf"
+  return 0
+}
+
+# -------------------------
+# HF endpoints config helpers
+# -------------------------
+hf_default_endpoints_file() {
+  # derive repo root relative to this script if possible
+  local base
+  base="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd 2>/dev/null || pwd)"
+  printf '%s' "${HF_ENDPOINTS_FILE:-${base}/groqbash.d/config/providers/hf_endpoints}"
+}
+
+# Load endpoints file (no remote calls). Returns 0 if file exists or empty file is acceptable.
+hf_load_endpoints() {
+  local f
+  f="$(hf_default_endpoints_file)"
+  if [ ! -f "$f" ]; then
+    # ensure directory exists
+    mkdir -p "$(dirname "$f")" 2>/dev/null || true
+    : > "$f" 2>/dev/null || true
+    chmod 644 "$f" 2>/dev/null || true
+  fi
+  printf '%s' "$f"
+  return 0
+}
+
+# Get endpoint URL for a model name (exact match on left field). Prints URL or empty.
+hf_get_endpoint_for_model() {
+  local model="$1" f
+  f="$(hf_load_endpoints)" || return 1
+  # exact match on model name (field before first |)
+  awk -F'|' -v m="$model" 'BEGIN{OFS=FS} $1==m {print $2; exit}' "$f" 2>/dev/null || true
+}
+
+# List endpoints (human readable)
+hf_list_endpoints() {
+  local f i=0
+  f="$(hf_load_endpoints)" || return 1
+  if [ ! -s "$f" ]; then
+    printf 'No Hugging Face endpoints registered (file: %s)\n' "$f" >&2
+    return 0
+  fi
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    model="$(printf '%s' "$line" | awk -F'|' '{print $1}')"
+    url="$(printf '%s' "$line" | awk -F'|' '{print $2}')"
+    i=$((i+1))
+    printf '%d) %s -> %s\n' "$i" "$model" "$url"
+  done < "$f"
+  return 0
+}
+
+# Add an endpoint: model|url
+hf_add_endpoint() {
+  local model="$1" url="$2" f tmp
+  f="$(hf_load_endpoints)" || return 1
+  # minimal validation
+  case "$url" in
+    https://*) ;;
+    *) log_error "HF" "Endpoint URL must start with https://"; return 1 ;;
+  esac
+  # ensure no duplicate model
+  if awk -F'|' -v m="$model" '$1==m{exit 1}' "$f" 2>/dev/null; then
+    log_error "HF" "Model '$model' already present in endpoints file"
+    return 1
+  fi
+  tmp="$(_mktemp_in_dir_hf "$(dirname "$f")" 2>/dev/null || true)" || tmp="${f}.tmp"
+  printf '%s|%s\n' "$model" "$url" >> "$tmp"
+  # append existing content then move atomically
+  if [ -s "$f" ]; then
+    cat "$f" >> "$tmp" 2>/dev/null || true
+  fi
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmp" | atomic_write "$f" || mv -f "$tmp" "$f"
+  else
+    mv -f "$tmp" "$f" 2>/dev/null || cp -f "$tmp" "$f" 2>/dev/null || true
+  fi
+  chmod 644 "$f" 2>/dev/null || true
+  return 0
+}
+
+# Remove endpoint by model name
+hf_remove_endpoint() {
+  local model="$1" f tmp
+  f="$(hf_load_endpoints)" || return 1
+  if ! awk -F'|' -v m="$model" '$1==m{found=1} END{exit !found}' "$f" 2>/dev/null; then
+    log_error "HF" "Model '$model' not found in endpoints file"
+    return 1
+  fi
+  tmp="$(_mktemp_in_dir_hf "$(dirname "$f")" 2>/dev/null || true)" || tmp="${f}.tmp"
+  awk -F'|' -v m="$model" '$1!=m{print $0}' "$f" > "$tmp" 2>/dev/null || true
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmp" | atomic_write "$f" || mv -f "$tmp" "$f"
+  else
+    mv -f "$tmp" "$f" 2>/dev/null || cp -f "$tmp" "$f" 2>/dev/null || true
+  fi
+  chmod 644 "$f" 2>/dev/null || true
   return 0
 }
 
@@ -174,25 +274,18 @@ call_api_huggingface() {
     return 0
   fi
 
-  # helper: check model existence on HF Hub (returns 0 if accessible)
-  hub_check() {
-    local check_url
-    check_url="https://huggingface.co/api/models/${api_model_path}"
-    # Use token if available to check private models
-    if curl "${CURL_BASE_OPTS[@]:-}" -sS -H "Authorization: Bearer ${HFAPIKEY}" -o /dev/null -w '%{http_code}' "$check_url" 2>/dev/null | grep -q '^2'; then
-      return 0
-    fi
-    return 1
-  }
-
-  # Build model-specific path and choose api_url (support explicit endpoint)
-  api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
-  if [ -n "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
-    # If endpoint URL provided, use it as-is (user must include model if required)
-    api_url="${HUGGINGFACE_ENDPOINT_URL%/}"
-  else
-    api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
+  # Resolve endpoint for requested model from local endpoints file
+  local endpoint_url
+  endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
+  if [ -z "${endpoint_url:-}" ]; then
+    log_error "HTTP" "Model '$MODEL' not registered in local HF endpoints. Use groqbash --provider to add an endpoint."
+    printf '{"error":"model_not_registered","model":"%s","hint":"Register endpoint in groqbash.d/config/providers/hf_endpoints"}\n' "$MODEL" > "${RESP}" 2>/dev/null || true
+    chmod 600 "${RESP}" 2>/dev/null || true
+    return $GROQBASHERRAPI
   fi
+
+  # Build api_url from endpoint_url (user-provided endpoint is authoritative)
+  api_url="${endpoint_url%/}"
 
   # Show a redacted reproducible curl command in debug logs
   dbg "Repro curl (redacted): curl -H 'Authorization: Bearer <REDACTED>' -H 'Content-Type: application/json' --data-binary @\"$PAYLOAD\" \"$api_url\""
@@ -206,17 +299,6 @@ call_api_huggingface() {
   : > "$ERRF" 2>/dev/null || true
   : > "$tmpresp" 2>/dev/null || true
   : > "$hdr_file" 2>/dev/null || true
-
-  # Preflight: if no explicit endpoint URL, check model existence on Hub to avoid blind inference calls
-  if [ -z "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
-    if ! hub_check; then
-      log_error "HTTP" "Model '${MODEL}' not found or not accessible on Hugging Face Hub. Check model id or permissions."
-      printf '{"error":"model_not_found","model":"%s","hint":"Check model id, visibility, or use a Hugging Face Inference Endpoint."}\n' "$MODEL" > "${RESP}" 2>/dev/null || true
-      chmod 600 "${RESP}" 2>/dev/null || true
-      rm -f "$tmpout" "$tmpresp" "$hdr_file" 2>/dev/null || true
-      return $GROQBASHERRAPI
-    fi
-  fi
 
   # Perform request: capture headers to hdr_file, body to tmpresp, and write http_code/time to tmpout
   http_result="$(curl "${CURL_BASE_OPTS[@]:-}" \
@@ -249,33 +331,6 @@ EOF
     : > "${RESP}" 2>/dev/null || true
   fi
 
-  # If 404 and hub_check previously succeeded (model exists), try pipeline fallback once (only if no explicit endpoint)
-  if [ "$http_code" = "404" ] && [ -z "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
-    # Only attempt fallback if hub_check indicated model exists (defensive)
-    if hub_check; then
-      dbg "Model not available via /models/<id>, trying pipeline/text-generation fallback"
-      fallback_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/pipeline/text-generation"
-      http_result="$(curl "${CURL_BASE_OPTS[@]:-}" -sS -D "$hdr_file" \
-        -H "Authorization: Bearer $HFAPIKEY" -H "Content-Type: application/json" \
-        --data-binary @"$PAYLOAD" -o "$tmpresp" -w '%{http_code} %{time_total}' "$fallback_url" 2>"$ERRF" || true)"
-      read -r http_code time_total <<EOF
-$http_result
-EOF
-      http_code="${http_code:-000}"
-      http_ct="$(tr '[:upper:]' '[:lower:]' < "$hdr_file" 2>/dev/null | grep -i '^content-type:' || true)"
-      http_body="$(cat "$tmpresp" 2>/dev/null || true)"
-      # persist fallback response
-      if [ -s "$tmpresp" ]; then
-        if type atomic_write >/dev/null 2>&1; then
-          cat "$tmpresp" | atomic_write "${RESP}" || cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
-        else
-          cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
-          chmod 600 "${RESP}" 2>/dev/null || true
-        fi
-      fi
-    fi
-  fi
-
   # Cleanup tmpout (we keep RESP and PAYLOAD for inspection)
   rm -f "$tmpout" 2>/dev/null || true
 
@@ -293,28 +348,14 @@ EOF
       fi
       ;;
     404)
-      # Model or pipeline not available via public inference endpoint
-      err_text=""
-      if printf '%s' "$http_body" | grep -qi '<pre'; then
-        err_text="$(printf '%s' "$http_body" | sed -n 's/.*<pre[^>]*>\(.*\)<\/pre>.*/\1/p' | sed 's/<[^>]*>//g' | awk '{$1=$1;print}')"
-      else
-        err_text="$(printf '%s' "$http_body" | sed 's/<[^>]*>/ /g' | tr -s '[:space:]' ' ' | awk '{print; exit}')"
-      fi
-      err_text="$(printf '%s' "$err_text" | sed -n '1,6p' | awk '{$1=$1;print}')"
-
+      # Endpoint returned 404: provide actionable hint
       dbg "HTTP 404 response headers (head):"; head -n 50 "$hdr_file" >&2 || true
       dbg "HTTP body (truncated):"; printf '%s' "$http_body" | head -c 2048 >&2 || true
       dbg "curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
 
-      if [ -n "$err_text" ]; then
-        log_error "HTTP" "API error (status 404): $err_text"
-      else
-        log_error "HTTP" "API error (status 404): model or pipeline not available via public inference endpoint."
-      fi
-
-      # Provide actionable hint in RESP (sanitized)
-      printf '{"error":"HTTP 404","message":%s,"hint":"Check model id, visibility, or use a Hugging Face Inference Endpoint (set HUGGINGFACE_ENDPOINT_URL)."}\n' \
-        "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
+      log_error "HTTP" "API error (status 404): endpoint returned 404. Check endpoint URL and token permissions."
+      printf '{"error":"HTTP 404","message":%s,"hint":"Check endpoint URL, token permissions, or use a different endpoint."}\n' \
+        "$(printf '%s' "$http_body" | sed -n '1,6p' | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
       chmod 600 "${RESP}" 2>/dev/null || true
 
       rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
@@ -389,16 +430,19 @@ call_api_streaming_huggingface() {
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
   ERRF="${ERRF:-${workdir}/curl.err}"
-  RESP="${RESP:-${workdir}/resp.json}"
+  RESP="${RESP:-$workdir/resp.json}"
   hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
 
-  # Build model-specific Inference API URL (use MODEL resolved by core or explicit endpoint)
-  api_model_path="$(printf '%s' "$MODEL" | sed 's/ /%20/g')"
-  if [ -n "${HUGGINGFACE_ENDPOINT_URL:-}" ]; then
-    api_url="${HUGGINGFACE_ENDPOINT_URL%/}"
-  else
-    api_url="${HUGGINGFACE_API_HOST:-https://api-inference.huggingface.co}/models/${api_model_path}"
+  # Resolve endpoint for requested model from local endpoints file
+  local endpoint_url
+  endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
+  if [ -z "${endpoint_url:-}" ]; then
+    log_error "HTTP" "Model '$MODEL' not registered in local HF endpoints. Use groqbash --provider to add an endpoint."
+    return $GROQBASHERRAPI
   fi
+
+  # Build api_url from endpoint_url (user-provided endpoint is authoritative)
+  api_url="${endpoint_url%/}"
 
   # Use array-safe expansion of CURL_BASE_OPTS if defined by core
   curl "${CURL_BASE_OPTS[@]:-}" \
@@ -465,128 +509,47 @@ call_api_streaming_huggingface() {
 # refresh_models_huggingface
 # -------------------------
 refresh_models_huggingface() {
+  # For the local-endpoints architecture, refresh_models simply reads the hf_endpoints
+  # file and writes the model names (one per line) to the provided outpath.
   local outpath="${1:-${MODELS_FILE:-}}"
-  local prov_env hf_key workdir tmpd out errf curlout parsed tmpout http_code time_total api_url
-
-  # Resolve API key via core helper if available
-  if type provider_api_env_var_name >/dev/null 2>&1; then
-    prov_env="$(provider_api_env_var_name "huggingface")"
-    hf_key="${!prov_env:-${HFAPIKEY:-}}"
-  else
-    hf_key="${HFAPIKEY:-}"
-  fi
-
-  if [ -z "$hf_key" ]; then
-    log_error "APIKEY" "Hugging Face API key required to refresh models."
-    return "$GROQBASHERRNOAPIKEY"
-  fi
+  local f tmpd tmpout
 
   if [ -z "$outpath" ]; then
     log_error "MODELREFRESH" "MODELS file path not provided."
     return "$GROQBASHERRTMP"
   fi
 
-  # Ensure runtime tmpdir is available and validated by PRECORE
+  f="$(hf_load_endpoints)" || return "$GROQBASHERRTMP"
+
+  # Create a temp file under project tmpdir and write model names
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "$GROQBASHERRTMP"
   fi
-
-  workdir="$(_get_work_tmpdir_hf)" || workdir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-
-  tmpd="$(mktemp -d -p "$workdir" hf-models.XXXX 2>/dev/null || true)"
-  [ -n "$tmpd" ] || return "$GROQBASHERRTMP"
-
-  out="$tmpd/models.json"
-  errf="$tmpd/curl.err"
-  curlout="$tmpd/curl.out"
-
-  # Hugging Face models listing endpoint (public API)
-  api_url="https://huggingface.co/api/models?full=false&limit=${MAX_MODELS:-200}"
-
-  rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
-
-  # Use array-safe expansion of CURL_BASE_OPTS and header auth
-  if ! curl "${CURL_BASE_OPTS[@]:-}" -H "Authorization: Bearer ${hf_key}" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
-    log_error "MODELREFRESH" "HTTP request to Hugging Face models endpoint failed."
-    log_info "MODELREFRESH" "curl stderr (head):"
-    head -n 200 "$errf" >&2 || true
-    rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
-  fi
-
-  read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
-  http_code="${http_code:-000}"
-
-  if [ "${http_code:0:1}" != "2" ]; then
-    log_error "MODELREFRESH" "models.list HTTP code: $http_code"
-    log_info "MODELREFRESH" "curl stderr (head):"
-    head -n 200 "$errf" >&2 || true
-    rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
-  fi
-
-  # Validate JSON
-  if ! jq -e . "$out" >/dev/null 2>&1; then
-    log_error "MODELREFRESH" "Invalid JSON received from Hugging Face models endpoint."
-    log_info "MODELREFRESH" "curl stderr (head):"
-    head -n 200 "$errf" >&2 || true
-    rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
-  fi
-
-  # Extract model ids (robust extraction)
-  parsed="$tmpd/parsed_models.txt"
-  jq -r '.[]? | (.modelId // .id // .model // empty)' "$out" | awk 'NF{print}' | sort -u > "$parsed" 2>/dev/null || true
-
-  if [ ! -s "$parsed" ]; then
-    log_error "MODELREFRESH" "parsed models list empty"
-    rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
-  fi
-
-  # Limit to MAX_MODELS
-  tmpout="$(_mktemp_in_dir_hf "$(dirname "$outpath")" 2>/dev/null || true)"
+  tmpd="$(_get_work_tmpdir_hf)" || tmpd="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  tmpout="$(_mktemp_in_dir_hf "$tmpd" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
-  awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpout" 2>/dev/null || true
+
+  # Extract model names (left field) ignoring comments and blank lines
+  awk -F'|' 'NF && $1!~/^#/ {print $1}' "$f" | awk 'NF{print}' | sort -u > "$tmpout" 2>/dev/null || true
 
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
 
-  # Write atomically (use b64_atomic_write if available, else atomic_write)
-  if type b64_atomic_write >/dev/null 2>&1; then
-    if ! b64_atomic_write "${outpath}.b64" 10 < "$tmpout"; then
-      log_error "MODELREFRESH" "failed to stage models file"
-      rm -f "$tmpout" 2>/dev/null || true
-      rm -rf "$tmpd"
-      return "$GROQBASHERRTMP"
-    fi
-    lockfile="${MODELS_LOCK:-${outpath}.lock}"
-    lock_exec "$lockfile" 10 -- sh -c '
-      set -e
-      manifest_b64="$1"
-      dest="$2"
-      base64 ${B64_DECODE_OPT:-} < "$manifest_b64" > "$dest"
-      chmod 600 "$dest" 2>/dev/null || true
-    ' _ "${outpath}.b64" "$outpath" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmpout" | atomic_write "$outpath"
   else
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$tmpout" | atomic_write "$outpath"
-    else
-      mv "$tmpout" "${outpath}.new" 2>/dev/null || cp -f "$tmpout" "${outpath}.new" 2>/dev/null || true
-      chmod 600 "${outpath}.new" 2>/dev/null || true
-      mv -f "${outpath}.new" "$outpath" 2>/dev/null || cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
-    fi
+    mv "$tmpout" "${outpath}.new" 2>/dev/null || cp -f "$tmpout" "${outpath}.new" 2>/dev/null || true
+    chmod 600 "${outpath}.new" 2>/dev/null || true
+    mv -f "${outpath}.new" "$outpath" 2>/dev/null || cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
   fi
 
   chmod 600 "$outpath" 2>/dev/null || true
-  log_info "MODELREFRESH" "Hugging Face models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
-
-  rm -rf "$tmpd"
+  log_info "MODELREFRESH" "Hugging Face models refreshed from local endpoints and saved to: $outpath"
   return 0
 }
 
 validate_model_huggingface() {
   local model="$1"
+  # Validate against local models list (MODELS_FILE) if present, else accept
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
     grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null
     return $?
