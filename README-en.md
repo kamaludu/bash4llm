@@ -196,7 +196,7 @@ External provider (if installed):
 
 ---
 
-# 🟦 How contextual memory works in GroqBash
+# 📘 How contextual memory works in GroqBash
 GroqBash **does not keep memory on its own**.  
 Memory exists **only if you enable a session** via `--session`.
 
