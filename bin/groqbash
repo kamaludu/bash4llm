@@ -3912,7 +3912,7 @@ elif [ "$#" -gt 0 ]; then
 else
   # No prompt/content available: emit clear error and exit with input error code.
   log_error "INPUT" "no prompt provided."
-  exit "$GROQBASHERRINPUT"
+  exit "$GROQBASHERRNO_PROMPT"
 fi
 
 if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "$CHAT_MODE" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
