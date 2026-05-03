@@ -83,14 +83,14 @@ atomic_write_safe() {
   mkdir -p -- "${TMP_DIR%/}" 2>/dev/null || true
 
   local tmp
-  if declare -f mktemp_portable >/dev/null 2>&1; then
-    tmp="$(mktemp_portable "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"
+  if declare -f portable_mktemp >/dev/null 2>&1; then
+    tmp="$(portable_mktemp "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"
   else
     tmp=""
   fi
 
   if [[ -z "$tmp" ]]; then
-    log_error "GUIIO" "atomic_write_safe: mktemp_portable failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform non-atomic write"
+    log_error "GUIIO" "atomic_write_safe: portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform non-atomic write"
     return 1
   fi
 
