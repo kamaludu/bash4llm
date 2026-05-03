@@ -629,7 +629,7 @@ env_prepare_runtime() {
   rc=1
 
   if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
-    tmp_shadow="$(mktemp_portable "$TMP_DIR" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
+    tmp_shadow="$(portable_mktemp "$TMP_DIR" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
     if [[ -n "$tmp_shadow" ]]; then
       if ! cp -f -- "$groqbash_real" "$tmp_shadow" 2>/dev/null; then
         log_warn "ENV" "Failed to copy real groqbash to tmp shadow"
@@ -687,7 +687,7 @@ env_prepare_runtime() {
 
   # Write wrapper atomically into TMP_DIR, then move only if different
   local tmp_wrapper new_wrapper_hash existing_wrapper_hash wrapper_hash
-  tmp_wrapper="$(mktemp_portable "$TMP_DIR" "wrapper.XXXXXX")" || tmp_wrapper=""
+  tmp_wrapper="$(portable_mktemp "$TMP_DIR" "wrapper.XXXXXX")" || tmp_wrapper=""
   if [[ -n "$tmp_wrapper" ]]; then
     printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$tmp_wrapper" 2>/dev/null || {
       log_warn "ENV" "Failed to write tmp wrapper"
@@ -793,7 +793,7 @@ env_after_groqbash_resolved() {
 }
 
 # ---------------------------------------------------------------------------
-# Utility: ensure_tmpdir, mktemp_portable, portable_mktemp alias,
+# Utility: ensure_tmpdir, portable_mktemp, portable_mktemp alias,
 # atomic_write, atomic_append_conv, compute_hash, same_filesystem
 # ---------------------------------------------------------------------------
 ensure_tmpdir() {
@@ -812,61 +812,77 @@ ensure_tmpdir() {
   return 0
 }
 
-mktemp_portable() {
-  # Usage: mktemp_portable <dir> <template>
-  local dir="$1" template="$2"
-  local dir_real base rand i tmpname candidate
+# Canonical portable_mktemp: portable_mktemp <dir> [template]
+portable_mktemp() {
+  local dir="${1:-}" template="${2:-.tmp.XXXXXX}"
+  local dir_real tmp candidate base i rand
 
-  if [[ -z "$dir" || -z "$template" ]]; then
-    log_error "GUIIO" "mktemp_portable called with empty dir or template"
+  if [[ -z "$dir" ]]; then
+    log_error "GUIIO" "portable_mktemp called with empty dir"
     return 1
   fi
 
-  dir_real="$(cd "$dir" 2>/dev/null && pwd -P || true)"
+  # Ensure directory exists and is writable
+  mkdir -p -- "$dir" 2>/dev/null || { log_error "GUIIO" "portable_mktemp: cannot create dir: $dir"; return 1; }
+  dir_real="$(cd -- "$dir" 2>/dev/null && pwd -P || true)"
   if [[ -z "$dir_real" || ! -d "$dir_real" || ! -w "$dir_real" ]]; then
-    log_error "GUIIO" "mktemp_portable: dir invalid or not writable: ${dir:-<unset>} -> ${dir_real:-<unresolved>}"
+    log_error "GUIIO" "portable_mktemp: dir invalid or not writable: ${dir:-<unset>} -> ${dir_real:-<unresolved>}"
     return 1
   fi
 
-  # Enforce that dir is inside TMP_DIR
-  case "$dir_real" in
-    "$TMP_DIR"/*|"$TMP_DIR") ;;
-    *)
-      log_error "GUIIO" "mktemp_portable: dir ${dir_real} is not inside TMP_DIR (${TMP_DIR:-<unset>})"
-      return 1
-      ;;
-  esac
+  # Optional confinement: prefer TMP_DIR if set, otherwise allow UI_ROOT/.tmp
+  if [[ -n "${TMP_DIR:-}" ]]; then
+    case "$dir_real" in
+      "$TMP_DIR"/*|"$TMP_DIR") ;;
+      *)
+        log_error "GUIIO" "portable_mktemp: dir ${dir_real} is not inside TMP_DIR (${TMP_DIR:-<unset>})"
+        return 1
+        ;;
+    esac
+  fi
 
+  # Try mktemp -p if available (portable systems)
+  if command -v mktemp >/dev/null 2>&1; then
+    if tmp="$(mktemp -p "$dir_real" "$template" 2>/dev/null)"; then
+      chmod 600 -- "$tmp" 2>/dev/null || true
+      printf '%s' "$tmp"
+      return 0
+    fi
+    if tmp="$(mktemp "${dir_real}/${template}" 2>/dev/null)"; then
+      chmod 600 -- "$tmp" 2>/dev/null || true
+      printf '%s' "$tmp"
+      return 0
+    fi
+  fi
+
+  # Fallback deterministic loop (avoid collisions)
   base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
   i=0
   while (( i < 200 )); do
     rand="${base}.$RANDOM.$$.$i"
     if [[ "$template" == *"XXXXXX"* ]]; then
-      tmpname="${template//XXXXXX/$rand}"
+      candidate="${template//XXXXXX/$rand}"
     else
-      tmpname="${template}.$rand"
+      candidate="${template}.$rand"
     fi
-    candidate="$dir_real/$tmpname"
-    ( set -C; : >"$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; }
+    tmp="$dir_real/$candidate"
+    ( set -C; : >"$tmp" ) 2>/dev/null && { chmod 600 -- "$tmp" 2>/dev/null || true; printf '%s' "$tmp"; return 0; }
     i=$((i+1))
   done
 
-  log_error "GUIIO" "mktemp_portable failed to create temp file in $dir_real"
+  log_error "GUIIO" "portable_mktemp failed to create temp file in $dir_real"
   return 1
 }
-
-# Backwards-compatible alias used elsewhere in code
-portable_mktemp() { mktemp_portable "$@"; }
 
 # Atomic write: atomic_write <dest> <content>
 atomic_write() {
   local dest="$1" content="${2:-}" dest_dir tmp
   dest_dir="$(dirname -- "$dest")"
   ensure_tmpdir || return 1
-  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(mktemp_portable "$TMP_DIR" "atomic.XXXXXX")"; then
+  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(portable_mktemp "$TMP_DIR" "atomic.XXXXXX")"; then
     :
   else
-    tmp="$(mktemp_portable "$dest_dir" "atomic.XXXXXX")"
+    tmp="$(portable_mktemp "$dest_dir" "atomic.XXXXXX")"
   fi
   umask 077
   printf '%s' "$content" >"$tmp" || { log_error "GUIIO" "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
@@ -892,10 +908,10 @@ atomic_append_conv() {
     fi
   fi
 
-  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(mktemp_portable "$TMP_DIR" "conv.XXXXXX")"; then
+  if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(portable_mktemp "$TMP_DIR" "conv.XXXXXX")"; then
     :
   else
-    tmp="$(mktemp_portable "$dest_dir" "conv.XXXXXX")"
+    tmp="$(portable_mktemp "$dest_dir" "conv.XXXXXX")"
   fi
   if [[ -f "$conv_file" ]]; then
     cat "$conv_file" >"$tmp" 2>/dev/null || { log_error "GUIIO" "Failed to copy existing conversation to tmp"; rm -f "$tmp" 2>/dev/null || true; [[ -n "$lockfd" ]] && { flock -u "$lockfd" 2>/dev/null || true; exec {lockfd}>&- 2>/dev/null || true; }; return 1; }
@@ -921,8 +937,8 @@ atomic_append_conv_in_uiroot() {
   dir="$(dirname -- "$convfile")"
   mkdir -p -- "$dir" 2>/dev/null || true
 
-  # Use mktemp_portable only; if it fails, fail the function
-  tmpf="$(mktemp_portable "$dir" "conv.XXXXXX")" || return 1
+  # Use portable_mktemp only; if it fails, fail the function
+  tmpf="$(portable_mktemp "$dir" "conv.XXXXXX")" || return 1
 
   if [[ -f "$convfile" ]]; then
     cp -a -- "$convfile" "$tmpf" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
@@ -941,7 +957,7 @@ atomic_append_conv_in_uiroot() {
 compute_hash() {
   local file="$1" tmpf
   [[ -f "$file" ]] || { printf ''; return 0; }
-  tmpf="$(mktemp_portable "$TMP_DIR" "hash.XXXXXX")" || { printf ''; return 0; }
+  tmpf="$(portable_mktemp "$TMP_DIR" "hash.XXXXXX")" || { printf ''; return 0; }
   tail -n +2 "$file" >"$tmpf" 2>/dev/null || cat "$file" >"$tmpf" 2>/dev/null || true
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$tmpf" 2>/dev/null | awk '{print $1}'
