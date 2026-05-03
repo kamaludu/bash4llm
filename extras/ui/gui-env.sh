@@ -348,6 +348,11 @@ install_default_traps() {
     mode="cli"
   fi
 
+  # Export a stable trap-mode variable for use inside trap handlers.
+  # Trap handlers run later, after this function returns, so they must not
+  # reference a local variable that will go out of scope.
+  _GUI_ENV_TRAP_MODE="${mode}"
+
   # Guard to avoid double-install
   if [[ "${_GUI_ENV_TRAPS_INSTALLED:-}" == "1" ]]; then
     return 0
@@ -365,7 +370,7 @@ install_default_traps() {
     _GUI_ENV_TRAP_INVOKED=1
     # Run exit hooks first (best-effort)
     gui_env_on_exit || true
-    if [[ "$mode" == "cgi" ]]; then
+    if [[ "${_GUI_ENV_TRAP_MODE:-cli}" == "cgi" ]]; then
       cgi_fatal "$rc" "Uncaught error in CGI"
     else
       fatal "$rc" "Uncaught error in CLI"
@@ -381,7 +386,7 @@ install_default_traps() {
     # Run exit hooks
     gui_env_on_exit || true
     if [[ "$rc" -ne 0 ]]; then
-      if [[ "$mode" == "cgi" ]]; then
+      if [[ "${_GUI_ENV_TRAP_MODE:-cli}" == "cgi" ]]; then
         cgi_fatal "$rc" "Script exited with non-zero status"
       else
         log_error "EXIT" "Script exited with status $rc"
