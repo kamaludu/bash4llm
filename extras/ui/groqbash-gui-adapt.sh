@@ -114,7 +114,7 @@ atomic_write_in_uiroot() {
   destdir="$(dirname -- "$dest")"
   mkdir -p -- "$destdir"
   chmod 700 -- "$destdir" || true
-  tmp="$(portable_mktemp "$destdir")" || err "portable_mktemp failed for $destdir"
+  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   chmod 600 -- "$tmp" || true
   cat >"$tmp"
   mv -f -- "$tmp" "$dest"
@@ -130,7 +130,7 @@ atomic_append_conv_in_uiroot() {
   destdir="$(dirname -- "$dest")"
   mkdir -p -- "$destdir"
   chmod 700 -- "$destdir" || true
-  tmp="$(portable_mktemp "$destdir")" || err "portable_mktemp failed for $destdir"
+  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   chmod 600 -- "$tmp" || true
   if [ -e "$dest" ]; then cat -- "$dest" >"$tmp"; fi
   cat >>"$tmp"
@@ -191,7 +191,7 @@ atomic_replace_first_line_in_uiroot() {
   local file="$1" new_shebang="$2"
   if ! path_within_ui_root "$file"; then err "Refusing to modify outside UI_ROOT: $file"; fi
   local tmp
-  tmp="$(portable_mktemp "$(dirname -- "$file")")" || err "portable_mktemp failed for $(dirname -- "$file")"
+  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   {
     printf '%s\n' "$new_shebang"
     tail -n +2 -- "$file" | sed -e 's/\r$//'
@@ -209,7 +209,7 @@ process_target() {
   if ! is_regular_file "$file"; then info "Skipping non-regular file: $file"; return 0; fi
 
   local tmpnorm
-  tmpnorm="$(portable_mktemp "$(dirname -- "$file")")" || err "mktemp failed for $(dirname -- "$file")"
+  tmpnorm="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   sed -e 's/\r$//' "$file" >"$tmpnorm"
   mv -f -- "$tmpnorm" "$file"
   if ! path_within_ui_root "$file"; then err "Post-normalize check failed: $file is outside UI_ROOT"; fi
