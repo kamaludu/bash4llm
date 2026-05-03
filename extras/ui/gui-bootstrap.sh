@@ -717,7 +717,7 @@ ensure_provider_cache_fresh() {
     return 0
   fi
 
-  tmpf="$(mktemp_portable "$TMP_DIR" "providers.XXXXXX")" || tmpf=""
+  tmpf="$(portable_mktemp "$TMP_DIR" "providers.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
     "${GROQBASH_CMD}" --list-providers-raw 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
     if [[ -s "$tmpf" ]]; then
@@ -767,7 +767,7 @@ ensure_model_cache_fresh() {
     return 0
   fi
 
-  tmpf="$(mktemp_portable "$TMP_DIR" "models.${provider}.XXXXXX")" || tmpf=""
+  tmpf="$(portable_mktemp "$TMP_DIR" "models.${provider}.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
     "${GROQBASH_CMD}" --list-models-raw --provider "$provider" 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
     if [[ -s "$tmpf" ]]; then
