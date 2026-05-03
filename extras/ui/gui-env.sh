@@ -50,9 +50,16 @@ _safe_printf() {
 }
 
 # -------------------------
-# PS4 for set -x traces (include UTC timestamp and script name)
+# Robust PS4: include timestamp and script name; avoid unbound-variable with set -u
 # -------------------------
-export PS4='+[$(_now_iso)] ${BASH_SOURCE##*/}:${LINENO}: '
+{
+  # Derive a safe script-name fallback
+  _ps4_src="${BASH_SOURCE[0]:-$0}"
+  _ps4_name="${_ps4_src##*/}"
+  # Use an escaped LINENO so it expands at trace time, not now
+  export PS4='+[$(_now_iso)] '"${_ps4_name}"':${LINENO}: '
+  unset _ps4_src _ps4_name
+} 2>/dev/null || true
 
 # -------------------------
 # UI_ROOT placeholder (caller may set before sourcing)
