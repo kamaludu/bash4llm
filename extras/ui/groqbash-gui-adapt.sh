@@ -766,13 +766,23 @@ main() {
       info "Warning: failed to source bootstrap at $BOOTSTRAP"
     fi
     set -u
-
-    # Fail-fast: ensure portable_mktemp is defined by the sourced bootstrap/env
-    if ! declare -f portable_mktemp >/dev/null 2>&1; then
-      err "portable_mktemp not defined after sourcing bootstrap; aborting adapt. Check gui-env.sh sourcing and TMP_DIR"
-    fi
   else
     info "Warning: bootstrap not found at $BOOTSTRAP; continuing"
+  fi
+
+  # Fail-fast: ensure portable_mktemp is defined by the sourced bootstrap/env
+  if ! declare -f portable_mktemp >/dev/null 2>&1; then
+    err "portable_mktemp not defined after sourcing bootstrap; aborting adapt. Check gui-env.sh sourcing and TMP_DIR"
+  fi
+
+  # Ensure TMP_DIR exists, is confined under UI_ROOT and writable
+  : "${TMP_DIR:=${UI_ROOT%/}/.tmp}"
+  # Create and secure TMP_DIR
+  mkdir -p -- "$TMP_DIR" 2>/dev/null || err "Cannot create TMP_DIR: $TMP_DIR"
+  chmod 700 -- "$TMP_DIR" 2>/dev/null || true
+  # Verify writability
+  if [ ! -w "$TMP_DIR" ]; then
+    err "TMP_DIR not writable: $TMP_DIR"
   fi
 
   enforce_ui_root_only_writes
