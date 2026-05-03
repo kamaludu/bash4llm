@@ -766,6 +766,11 @@ main() {
       info "Warning: failed to source bootstrap at $BOOTSTRAP"
     fi
     set -u
+
+    # Fail-fast: ensure portable_mktemp is defined by the sourced bootstrap/env
+    if ! declare -f portable_mktemp >/dev/null 2>&1; then
+      err "portable_mktemp not defined after sourcing bootstrap; aborting adapt. Check gui-env.sh sourcing and TMP_DIR"
+    fi
   else
     info "Warning: bootstrap not found at $BOOTSTRAP; continuing"
   fi
