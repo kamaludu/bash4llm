@@ -520,7 +520,7 @@ install_termux_shadow_wrapper() {
   if [ -z "$groqbash_real" ]; then info "No local groqbash binary found among candidates; cannot install Termux shadow/wrapper"; return 0; fi
 
   local groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
-  local tmpdir="$UI_ROOT/.tmp"
+  local tmpdir="$UI_ROOT/tmp"
   mkdir -p -- "$tmpdir" 2>/dev/null || true
   chmod 700 -- "$tmpdir" 2>/dev/null || true
 
@@ -776,7 +776,7 @@ main() {
   fi
 
   # Ensure TMP_DIR exists, is confined under UI_ROOT and writable
-  : "${TMP_DIR:=${UI_ROOT%/}/.tmp}"
+  : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
   # Create and secure TMP_DIR
   mkdir -p -- "$TMP_DIR" 2>/dev/null || err "Cannot create TMP_DIR: $TMP_DIR"
   chmod 700 -- "$TMP_DIR" 2>/dev/null || true
@@ -809,8 +809,8 @@ main() {
   }
   trap 'cleanup_tmp' EXIT INT TERM
 
-  mkdir -p -- "$UI_ROOT/.tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2"
-  chmod 700 -- "$UI_ROOT/.tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" || true
+  mkdir -p -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2"
+  chmod 700 -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" || true
 
   TARGET_FILES=()
   for rel in "${TARGET_FILES_REL[@]}"; do TARGET_FILES+=("$UI_ROOT/$rel"); done
