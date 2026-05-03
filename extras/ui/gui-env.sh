@@ -830,7 +830,7 @@ portable_mktemp() {
     return 1
   fi
 
-  # Optional confinement: prefer TMP_DIR if set, otherwise allow UI_ROOT/.tmp
+  # Optional confinement: prefer TMP_DIR if set, otherwise allow UI_ROOT/tmp
   if [[ -n "${TMP_DIR:-}" ]]; then
     case "$dir_real" in
       "$TMP_DIR"/*|"$TMP_DIR") ;;
