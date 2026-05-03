@@ -95,28 +95,6 @@ path_within_ui_root() {
   case "$real_dir" in "$UI_ROOT"/*|"$UI_ROOT") return 0;; *) return 1;; esac
 }
 
-# -------- Portable mktemp inside UI_ROOT only --------
-portable_mktemp() {
-  local dir="$1" tmp
-  [ -n "$dir" ] || return 1
-  mkdir -p -- "$dir" 2>/dev/null || return 1
-  if tmp="$(mktemp -p "$dir" ".tmp.XXXXXX" 2>/dev/null)"; then
-    chmod 600 -- "$tmp" 2>/dev/null || true
-    printf '%s' "$tmp"
-    return 0
-  fi
-  if tmp="$(mktemp "${dir}/.tmp.XXXXXX" 2>/dev/null)"; then
-    chmod 600 -- "$tmp" 2>/dev/null || true
-    printf '%s' "$tmp"
-    return 0
-  fi
-  tmp="${dir}/.tmp.$$.$RANDOM.$(date +%s 2>/dev/null || printf '%s' "$RANDOM")"
-  ( set -C; : >"$tmp" ) 2>/dev/null || return 1
-  chmod 600 -- "$tmp" 2>/dev/null || true
-  printf '%s' "$tmp"
-  return 0
-}
-
 # -------- Escape replacement for sed --------
 sed_escape_replacement() {
   local s="$1"
