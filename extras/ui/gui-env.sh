@@ -201,6 +201,107 @@ path_within_ui_root() {
 }
 
 # -------------------------
+# Sanitization and parsing helpers (central)
+# Insert this block in gui-env.sh after path_within_ui_root / helper functions
+# -------------------------
+
+# url_decode: percent-decode, safe (returns decoded string)
+url_decode() {
+  local s="$1"
+  # replace + with space, then decode %HH
+  s="${s//+/ }"
+  printf '%s' "$s" | sed -E 's/%([0-9A-Fa-f]{2})/\\x\1/g' | xargs -0 printf '%b'
+}
+
+# html_escape: escape <>&"'
+html_escape() {
+  local s="$1"
+  s="${s//&/&amp;}"
+  s="${s//</&lt;}"
+  s="${s//>/&gt;}"
+  s="${s//\"/&quot;}"
+  s="${s//\'/&#39;}"
+  printf '%s' "$s"
+}
+
+# sanitize_param: trim, remove control chars, collapse whitespace, limit length
+sanitize_param() {
+  local s="$1"
+  local maxlen="${2:-256}"
+  # remove NUL and control chars except tab/newline/space
+  s="$(printf '%s' "$s" | tr -d '\000' | sed -E 's/[\x00-\x1F\x7F]+/ /g')"
+  # trim
+  s="$(printf '%s' "$s" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+  # collapse internal whitespace
+  s="$(printf '%s' "$s" | tr -s '[:space:]' ' ')"
+  # enforce max length
+  if [ "${#s}" -gt "$maxlen" ]; then
+    s="${s:0:$maxlen}"
+  fi
+  printf '%s' "$s"
+}
+
+# validate_name: whitelist characters for names (providers, models, conv ids)
+# Accepts only letters, digits, underscore, hyphen, dot; no slashes, no spaces, length limits
+validate_name() {
+  local name="$1"
+  local maxlen="${2:-128}"
+  if [[ -z "$name" ]]; then return 1; fi
+  if (( ${#name} > maxlen )); then return 1; fi
+  if [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then return 0; else return 1; fi
+}
+
+# safe_read_post_body: read up to a limit (protect from huge POSTs)
+read_post_body() {
+  local max="${1:-65536}"   # default 64 KiB
+  local ctlen="${CONTENT_LENGTH:-0}"
+  if [[ -n "$ctlen" && "$ctlen" -gt "$max" ]]; then
+    log_warn "CGI" "POST body too large: ${ctlen} > ${max}"
+    # read and discard to avoid broken pipe
+    dd bs=1 count="$max" 2>/dev/null || true
+    return 1
+  fi
+  # read safely from stdin
+  if [ -n "${CONTENT_LENGTH:-}" ]; then
+    dd bs=1 count="${CONTENT_LENGTH}" 2>/dev/null || true
+  else
+    # fallback: read until EOF but limit
+    head -c "$max"
+  fi
+}
+
+# parse_form_field: extract single field from application/x-www-form-urlencoded body
+# Usage: parse_form_field "fieldname" < <(printf '%s' "$body")
+parse_form_field() {
+  local key="$1"
+  # read from stdin
+  local body
+  body="$(cat -)"
+  # find key=... (first occurrence), decode
+  local kv
+  kv="$(printf '%s' "$body" | tr '&' '\n' | awk -F= -v k="$key" '$1==k{print substr($0, index($0,"=")+1); exit}')"
+  if [[ -z "$kv" ]]; then
+    printf ''
+    return 0
+  fi
+  # percent-decode safely and sanitize
+  local decoded
+  decoded="$(url_decode "$kv" 2>/dev/null || printf '%s' "$kv")"
+  decoded="$(sanitize_param "$decoded")"
+  printf '%s' "$decoded"
+}
+
+# json_escape for safe JSON embedding (simple)
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  printf '%s' "$s"
+}
+
+# -------------------------
 # HTTP helpers (minimal, safe)
 # -------------------------
 print_http_header() {
