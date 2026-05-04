@@ -950,7 +950,7 @@ atomic_append_conv_in_uiroot() {
   mkdir -p -- "$dir" 2>/dev/null || true
 
   # Use portable_mktemp only; if it fails, fail the function
-  tmpf="$(portable_mktemp "$dir" "conv.XXXXXX")" || return 1
+  tmpf="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" "conv.XXXXXX")" || return 1
 
   if [[ -f "$convfile" ]]; then
     cp -a -- "$convfile" "$tmpf" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
