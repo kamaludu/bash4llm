@@ -901,20 +901,49 @@ portable_mktemp() {
 }
 
 # Atomic write: atomic_write <dest> <content>
+# - scrive in modo atomico usando tmp in TMP_DIR
+# - umask 077, chmod 600 sul file finale
+# - se è definita path_within_ui_root, rifiuta scritture fuori da UI_ROOT
 atomic_write() {
   local dest="$1" content="${2:-}" dest_dir tmp
+
+  if [[ -z "${dest:-}" ]]; then
+    log_error "GUIIO" "atomic_write called without destination"
+    return 1
+  fi
+
   dest_dir="$(dirname -- "$dest")"
+
+  # Optional confinement: if helper path_within_ui_root exists, enforce it
+  if declare -f path_within_ui_root >/dev/null 2>&1 && [[ -n "${UI_ROOT:-}" ]]; then
+    if ! path_within_ui_root "$dest"; then
+      log_error "GUIIO" "atomic_write: refusing to write outside UI_ROOT: $dest"
+      return 1
+    fi
+  fi
+
   ensure_tmpdir || return 1
+
+  # Prefer tmp on same filesystem as destination when possible
   if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(portable_mktemp "$TMP_DIR" "atomic.XXXXXX")"; then
     :
   else
     tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" "atomic.XXXXXX")"
   fi
+
+  if [[ -z "${tmp:-}" ]]; then
+    log_error "GUIIO" "atomic_write: portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}"
+    return 1
+  fi
+
   umask 077
   printf '%s' "$content" >"$tmp" || { log_error "GUIIO" "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
+
   if command -v sync >/dev/null 2>&1; then sync || true; fi
+
   mv -f "$tmp" "$dest" || { log_error "GUIIO" "mv failed in atomic_write from $tmp to $dest"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  chmod 600 "$dest" || true
+
+  chmod 600 "$dest" 2>/dev/null || true
   return 0
 }
 
