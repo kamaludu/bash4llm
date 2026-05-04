@@ -581,7 +581,7 @@ env_prepare_runtime() {
       # Persist groqbash_real into CFG_DIR/groqbash-path atomically
       mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
       if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" ]]; then
-        tmp_path="$(portable_mktemp "${CFG_DIR%/}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
+        tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
         if printf '%s\n' "$groqbash_real" >"$tmp_path" 2>/dev/null; then
           line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
           if [[ "$line_count" -eq 1 ]]; then
@@ -764,7 +764,7 @@ env_prepare_runtime() {
     mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
     if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" && -x "$wrapper" ]]; then
       # write into a temp file inside CFG_DIR and validate it contains exactly one non-empty line
-      tmp_path="$(portable_mktemp "${CFG_DIR%/}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
+      tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
       if printf '%s\n' "$wrapper" >"$tmp_path" 2>/dev/null; then
         # normalize and count non-empty lines
         line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
@@ -894,7 +894,7 @@ atomic_write() {
   if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(portable_mktemp "$TMP_DIR" "atomic.XXXXXX")"; then
     :
   else
-    tmp="$(portable_mktemp "$dest_dir" "atomic.XXXXXX")"
+    tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" "atomic.XXXXXX")"
   fi
   umask 077
   printf '%s' "$content" >"$tmp" || { log_error "GUIIO" "Failed to write to temp file $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
