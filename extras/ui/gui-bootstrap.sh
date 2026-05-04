@@ -207,6 +207,8 @@ html_unescape() {
 # ---------------------------------------------------------------------------
 # Validation and sanitization
 # ---------------------------------------------------------------------------
+# validate_name <name> [maxlen]
+# Accepts letters, digits, dot, underscore, hyphen; no slashes, no control chars; max 255 chars.
 validate_name() {
   local name="$1"
   [[ -n "$name" ]] || return 1
@@ -220,20 +222,34 @@ validate_name() {
   return 1
 }
 
+# sanitize_param <value> [maxlen]
+# - rimuove NUL e control chars, normalizza whitespace, trim, collapse spazi, applica maxlen
 sanitize_param() {
-  local v="$1"
-  v="$(printf '%s' "$v" | tr -d '\000-\011\013\014\016-\037' | tr '\t' ' ' | sed -E 's/  +/ /g')"
+  local v="${1:-}"
+  local maxlen="${2:-256}"
+  # remove NUL and control chars except tab/newline/space
+  v="$(printf '%s' "$v" | tr -d '\000' | tr -d '\013\014' | sed -E 's/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/ /g')"
+  # normalize tabs to space, collapse multiple spaces
+  v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
+  # trim leading/trailing whitespace
+  v="$(printf '%s' "$v" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+  # enforce max length
+  if (( ${#v} > maxlen )); then
+    v="${v:0:maxlen}"
+  fi
   printf '%s' "$v"
 }
 
 sanitize_model_output() {
-  local v max=10000
-  v="${1:-}"
-  v="$(printf '%s' "$v" | sed -r 's/\x1B
-
-\[[0-9;]*[a-zA-Z]//g')"
+  local v="${1:-}"
+  local max="${2:-10000}"
+  # remove ANSI escape sequences
+  v="$(printf '%s' "$v" | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g')"
+  # remove control chars except newline and tab/space, normalize CRLF
   v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
+  # normalize tabs and collapse spaces
   v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
+  # trim
   v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
   if [ "${#v}" -gt "$max" ]; then
     v="${v:0:max}"
@@ -810,5 +826,5 @@ export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
        DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE GROQBASH_CMD
 
-# End of bootstrap
 return 0 2>/dev/null || true
+# End of bootstrap
