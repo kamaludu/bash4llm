@@ -72,6 +72,22 @@ atomic_write_safe() {
     return 1
   fi
 
+  # Ensure target is inside UI_ROOT to enforce confinement
+  if declare -f path_within_ui_root >/dev/null 2>&1; then
+    if ! path_within_ui_root "$path"; then
+      log_error "GUIIO" "atomic_write_safe: refusing to write outside UI_ROOT: $path"
+      return 1
+    fi
+  else
+    # Fallback conservative check: path must start with UI_ROOT (if UI_ROOT set)
+    if [[ -n "${UI_ROOT:-}" ]]; then
+      case "$path" in
+        "${UI_ROOT%/}/"*) ;; 
+        *) log_error "GUIIO" "atomic_write_safe: UI_ROOT not available or path outside UI_ROOT: $path"; return 1 ;;
+      esac
+    fi
+  fi
+
   mkdir -p -- "$(dirname -- "$path")" 2>/dev/null || true
 
   if declare -f atomic_write >/dev/null 2>&1; then
@@ -108,6 +124,22 @@ atomic_append_conv_safe() {
   if [[ -z "${conv:-}" ]]; then
     return 1
   fi
+
+  # Ensure target is inside UI_ROOT to enforce confinement
+  if declare -f path_within_ui_root >/dev/null 2>&1; then
+    if ! path_within_ui_root "$conv"; then
+      log_error "GUIIO" "atomic_append_conv_safe: refusing to append outside UI_ROOT: $conv"
+      return 1
+    fi
+  else
+    if [[ -n "${UI_ROOT:-}" ]]; then
+      case "$conv" in
+        "${UI_ROOT%/}/"*) ;;
+        *) log_error "GUIIO" "atomic_append_conv_safe: UI_ROOT not available or path outside UI_ROOT: $conv"; return 1 ;;
+      esac
+    fi
+  fi
+
   mkdir -p -- "$(dirname -- "$conv")" 2>/dev/null || true
   if declare -f atomic_append_conv >/dev/null 2>&1; then
     atomic_append_conv "$conv" "$line"
