@@ -553,7 +553,7 @@ install_termux_shadow_wrapper() {
   fi
 
   local tmp_shadow
-  tmp_shadow="$(portable_mktemp "$tmpdir")" || tmp_shadow=""
+  tmp_shadow="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_shadow=""
   [ -n "$tmp_shadow" ] || { _release_lock_and_restore; err "Failed to create tmp shadow"; }
 
   if ! cp -f -- "$groqbash_real" "$tmp_shadow"; then
@@ -583,7 +583,7 @@ install_termux_shadow_wrapper() {
   chmod 700 -- "$BIN_DIR" 2>/dev/null || true
   local wrapper="$BIN_DIR/groqbash-wrapper"
   local tmp_wrapper
-  tmp_wrapper="$(portable_mktemp "$tmpdir")" || tmp_wrapper=""
+  tmp_wrapper="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
   [ -n "$tmp_wrapper" ] || { _release_lock_and_restore; err "Failed to create tmp wrapper"; }
 
   # Write robust, autosufficient wrapper template (fixed GROQBASH_ROOT derivation)
