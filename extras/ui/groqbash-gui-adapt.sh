@@ -524,7 +524,7 @@ install_termux_shadow_wrapper() {
   mkdir -p -- "$tmpdir" 2>/dev/null || true
   chmod 700 -- "$tmpdir" 2>/dev/null || true
 
-  portable_mktemp "$tmpdir" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
+  portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
   local lockfile="$tmpdir/bootstrap.lock"
   exec 9>"$lockfile" 2>/dev/null || err "Cannot open lockfile $lockfile"
 
@@ -725,7 +725,7 @@ EOF
   mkdir -p -- "$cfg_dir" 2>/dev/null || true
   chmod 700 -- "$cfg_dir" 2>/dev/null || true
   local tmp_path
-  tmp_path="$(portable_mktemp "$cfg_dir")" || tmp_path="${cfg_dir}/groqbash-path.tmp"
+  tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${cfg_dir}/groqbash-path.tmp"
   if printf '%s\n' "$wrapper" >"$tmp_path"; then
     local line_count
     line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
