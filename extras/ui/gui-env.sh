@@ -177,6 +177,29 @@ cgi_fatal() {
   exit "$rc"
 }
 
+# path_within_ui_root <path>
+# Restituisce 0 se <path> è dentro UI_ROOT; se UI_ROOT non è impostato permette tutto
+path_within_ui_root() {
+  local p="$1"
+  if [[ -z "${UI_ROOT:-}" ]]; then
+    return 0
+  fi
+  if command -v readlink >/dev/null 2>&1; then
+    p="$(readlink -f -- "$p" 2>/dev/null || printf '%s' "$p")"
+    local root
+    root="$(readlink -f -- "${UI_ROOT%/}" 2>/dev/null || printf '%s' "${UI_ROOT%/}")"
+    case "$p" in
+      "$root"/*|"$root") return 0 ;;
+      *) return 1 ;;
+    esac
+  else
+    case "$p" in
+      "${UI_ROOT%/}/"*) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+}
+
 # -------------------------
 # HTTP helpers (minimal, safe)
 # -------------------------
