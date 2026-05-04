@@ -537,11 +537,36 @@ install_termux_shadow_wrapper() {
   _release_lock_and_restore() {
     flock -u 9 2>/dev/null || true
     exec 9>&- 2>/dev/null || true
-    # restore previous traps if any
-    if [ -n "${_old_trap_return:-}" ]; then eval "$_old_trap_return" 2>/dev/null || true; fi
-    if [ -n "${_old_trap_exit:-}" ]; then eval "$_old_trap_exit" 2>/dev/null || true; fi
-    if [ -n "${_old_trap_int:-}" ]; then eval "$_old_trap_int" 2>/dev/null || true; fi
-    if [ -n "${_old_trap_term:-}" ]; then eval "$_old_trap_term" 2>/dev/null || true; fi
+
+    # Safe restore of previously saved traps without using eval.
+    # Accepts a single line from `trap -p` (e.g. "trap -- 'cmd' RETURN")
+    _restore_trap_from_trapp() {
+      local tr="$1"
+      [ -z "${tr:-}" ] && return 0
+      # Extract command between the first and last single quote
+      local cmd
+      cmd="$(printf '%s' "$tr" | sed -n "s/^trap -- '\(.*\)' \([^ ]*\)$/\1/p")"
+      local sig
+      sig="$(printf '%s' "$tr" | awk '{print $NF}')"
+      if [[ -n "${cmd:-}" ]]; then
+        trap -- "$cmd" "$sig" 2>/dev/null || true
+      fi
+    }
+
+    # restore previous traps if any (use safe parser)
+    if [ -n "${_old_trap_return:-}" ]; then
+      _restore_trap_from_trapp "$_old_trap_return"
+    fi
+    if [ -n "${_old_trap_exit:-}" ]; then
+      _restore_trap_from_trapp "$_old_trap_exit"
+    fi
+    if [ -n "${_old_trap_int:-}" ]; then
+      _restore_trap_from_trapp "$_old_trap_int"
+    fi
+    if [ -n "${_old_trap_term:-}" ]; then
+      _restore_trap_from_trapp "$_old_trap_term"
+    fi
+
     unset _old_trap_return _old_trap_exit _old_trap_int _old_trap_term
   }
 
