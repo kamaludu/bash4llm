@@ -473,8 +473,22 @@ env_prepare_runtime() {
   : "${CFG_DIR:=${UI_ROOT%/}/config}"
   : "${BOOTSTRAP_LOCK:=${TMP_DIR%/}/bootstrap.lock}"
   : "${BASH_PATH:=$(command -v bash 2>/dev/null || true)}"
-  : "${INSTALL_MODE:=0}"   # 0 = normal runtime (no writes), 1 = install/adapt (allowed writes)"
+  : "${INSTALL_MODE:=0}"   # 0 = normal runtime (no writes), 1 = install/adapt (allowed writes)
 
+  # Ensure TMP_DIR exists and is writable
+  mkdir -p "$TMP_DIR" 2>/dev/null || {
+    log_error "GUIIO" "Cannot create TMP_DIR: $TMP_DIR"
+    return 1
+  }
+
+  # Health check: portable_mktemp must work here
+  if ! tmp_test="$(portable_mktemp "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"; then
+    log_error "GUIIO" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; aborting env_prepare_runtime"
+    return 1
+  else
+    rm -f -- "$tmp_test" 2>/dev/null || true
+  fi
+  
   # --- Safe defaults for GUI runtime (single source of truth) ---
   : "${MAX_PROMPT_CHARS:=4096}"
   : "${MAX_RESPONSE_CHARS:=8192}"
