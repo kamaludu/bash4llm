@@ -261,14 +261,62 @@ is_configured() {
   return 1
 }
 
+# ---------------------------------------------------------------------
+# call_groqbash_with_args: wrapper sicuro per invocare il core
+# - obbliga argomenti nominati
+# - valida provider/model con validate_name
+# - preferisce passare prompt/testo tramite stdin (--prompt-from-stdin)
+# - evita posizionali e costruzioni dinamiche
+# ---------------------------------------------------------------------
 call_groqbash_with_args() {
   if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
     log_error "GUIIO" "GROQBASH_CMD not set or not executable: ${GROQBASH_CMD:-<unset>}"
     return 1
   fi
+
+  local -a argv=()
+  local stdin_payload=""
+  local key val
+
+  while (( $# )); do
+    key="$1"; shift || true
+    case "$key" in
+      --provider)
+        val="${1:-}"; shift || true
+        val="$(sanitize_param "$val")"
+        if ! validate_name "$val"; then log_error "GUIIO" "Invalid provider for core call: $val"; return 1; fi
+        argv+=( "--provider" "$val" )
+        ;;
+      --model)
+        val="${1:-}"; shift || true
+        val="$(sanitize_param "$val")"
+        if ! validate_name "$val"; then log_error "GUIIO" "Invalid model for core call: $val"; return 1; fi
+        argv+=( "--model" "$val" )
+        ;;
+      --prompt-from-stdin)
+        stdin_payload="${1:-}"; shift || true
+        ;;
+      --*)
+        # generic named flag with value
+        val="${1:-}"; shift || true
+        val="$(sanitize_param "$val")"
+        argv+=( "$key" "$val" )
+        ;;
+      *)
+        log_error "GUIIO" "call_groqbash_with_args: unexpected positional arg: $key"
+        return 1
+        ;;
+    esac
+  done
+
   local out rc
-  out="$("${GROQBASH_CMD}" "$@" </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
-  rc=$?
+  if [[ -n "$stdin_payload" ]]; then
+    out="$(printf '%s' "$stdin_payload" | "${GROQBASH_CMD}" "${argv[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"
+    rc=$?
+  else
+    out="$("${GROQBASH_CMD}" "${argv[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"
+    rc=$?
+  fi
   printf '%s' "$out"
   return $rc
 }
@@ -304,8 +352,17 @@ refresh_models_via_groqbash() {
     log_error "GUIIO" "groqbash not available for refresh"
     return 1
   fi
+
+  # Sanitize and validate provider before any use
+  prov="$(sanitize_param "$prov")"
+  if ! validate_name "$prov"; then
+    log_error "GUIIO" "Invalid provider for refresh: $prov"
+    return 1
+  fi
+
   export_api_key_for_provider "$prov" || true
-  out="$("$GROQBASH_CMD" --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
+
+  out="$(call_groqbash_with_args --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
   out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
   if [[ -n "$out" ]]; then
     atomic_write_safe "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
@@ -590,6 +647,8 @@ handle_post_main() {
     prompt="${prompt:0:_max_prompt}"
   fi
   unset _max_prompt
+
+  # Defensive validation (single place)
   if [[ -n "$model" ]]; then
     if ! validate_name "$model"; then
       log_error "GUIIO" "Invalid model name attempted: $model"
@@ -602,25 +661,31 @@ handle_post_main() {
       provider=""
     fi
   fi
+
   if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
     lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
+
   conv_file="$(get_current_conversation_file)"
   if [[ -n "$conv_title" ]]; then
     title_file="$(get_title_file_for_conv "$conv_file")"
     atomic_write_safe "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
   fi
+
   atomic_append_conv_safe "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
+
   if ! is_configured; then
     log_error "GUIIO" "Attempt to call groqbash while GUI not configured"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
     return 0
   fi
+
   if ! (declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"); then
     log_error "GUIIO" "API key missing for provider $provider"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
     return 0
   fi
+
   models_file="$(get_models_file)"
   if [[ -f "$models_file" ]]; then
     if [[ -n "$model" ]]; then
@@ -638,19 +703,25 @@ handle_post_main() {
       fi
     fi
   fi
-  local groq_args=()
-  if [[ -n "$provider" ]]; then groq_args+=(--provider "$provider"); fi
-  if [[ -n "$model" ]]; then groq_args+=(--model "$model"); fi
-  if ! output="$(printf '%s' "$prompt" | call_groqbash_with_args "${groq_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
+
+  # Build safe args for core call
+  local safe_args=()
+  if [[ -n "$provider" ]]; then safe_args+=( --provider "$provider" ); fi
+  if [[ -n "$model" ]]; then safe_args+=( --model "$model" ); fi
+
+  # Call core safely, passing prompt via stdin
+  if ! output="$(printf '%s' "$prompt" | call_groqbash_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
     log_error "GUIIO" "groqbash invocation failed"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: groqbash invocation failed. Check server logs." || true
     return 0
   fi
+
   if type html_unescape >/dev/null 2>&1; then
     output="$(html_unescape "$output")"
   else
     output="$(html_unescape_fallback "$output")"
   fi
+
   sanitized_output="$(sanitize_model_output "$output")"
   atomic_append_conv_safe "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
 }
