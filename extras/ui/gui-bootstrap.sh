@@ -715,7 +715,7 @@ fix_termux_perms() {
 # ---------------------------------------------------------------------------
 ensure_provider_cache_fresh() {
   local providers_file="${CFG_DIR%/}/providers.txt"
-  local lockfd tmpf out rc
+  local lockfd tmpf rc
   local lockfile="${BOOTSTRAP_LOCK:-$TMP_DIR/bootstrap.lock}"
 
   mkdir -p "$(dirname -- "$providers_file")" 2>/dev/null || true
