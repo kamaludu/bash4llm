@@ -195,7 +195,7 @@
 
 ---
 
-### Informazioni da `gui-lang.conf`
+### Informazioni su `gui-lang.conf`
 
 gui-lang.conf è un dizionario di traduzioni multilingue che fornisce i TXT_... utilizzabili poi nei template; non definisce nuovi placeholder di propria iniziativa.
 Contiene un set completo di TXT_... e LANG_NAME.* (elencati sotto).
