@@ -4,7 +4,28 @@
 
 ## Fonte di Verità unificata dei placeholder CGI
 
-> **Nota**: i nomi dei placeholder corrispondono ai token che `render_template` sostituisce (es. `{{LANG_CODE}}`, `{{MODEL_OPTIONS}}`, `{{TXT_HOME}}`, `{{CURRENT_CONV}}`, `{{1}}`, ecc.). Per ciascuno è indicata la pagina/contesto dove viene popolato, il tipo, l’origine e le note tecniche.
+>[!NOTE]
+> I nomi dei placeholder corrispondono ai token che `render_template` sostituisce (es. `{{LANG_CODE}}`, `{{MODEL_OPTIONS}}`, `{{TXT_HOME}}`, `{{CURRENT_CONV}}`, `{{1}}`, ecc.). Per ciascuno è indicata la pagina/contesto dove viene popolato, il tipo, l’origine e le note tecniche.
+
+1. `{{LANG_CODE}}`
+2. `{{THEME}}`
+3. `{{PROVIDER_CURRENT}}`
+4. `{{MODEL_CURRENT}}`
+5. `{{API_KEY_FIELD}}`
+6. `{{LANG_OPTIONS}}`
+7. `{{MODEL_OPTIONS}}`
+8. `{{PROVIDER_OPTIONS}}`
+9. `{{MODEL_LIST_SCROLL}}`
+10. `{{MODEL_SELECT_OPTIONS}}`
+11. `{{CONV_LIST}}`
+12. `{{CURRENT_CONV_FILE}}`
+13. `{{MODEL_WHITELIST_PRESENT}}`
+14. `{{CONFIGURED}}`
+15. `{{GUI_CGI_BASE}}` / posizionale `{{6}}`
+16. `{{THEME_IS_light}}` / `{{THEME_IS_dark}}`
+17. `{{CURRENT_CONV}}`
+18. `{{TXT_<KEY>}}` (es. `{{TXT_HOME}}`, `{{TXT_SETTINGS}}`, ...)
+19. Posizionali `{{1}}`, `{{2}}`, `{{3}}`, ...
 
 ---
 
