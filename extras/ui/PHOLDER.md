@@ -192,3 +192,44 @@
   - File rilevanti: `${CFG_DIR}/providers.txt`, `models*.txt` (più percorsi possibili), `gui-lang.conf` (più percorsi possibili), `CURRENT_CONV_FILE`, `LANG_CURRENT_FILE`, `THEME_CURRENT_FILE`, `DEFAULT_MODEL_FILE`, `DEFAULT_PROVIDER_FILE`, `API_KEY_FILE`, `CONV_DIR`.
 - **Fallback e comportamento quando mancano dati**:
   - Molte variabili hanno fallback (es. lingua `en`, tema `light`, conversazione `conv-001.txt`), e il server gestisce assenza di dati con messaggi di warning o valori vuoti.
+
+---
+
+### Informazioni da `gui-lang.conf`
+Pattern `TXT_<KEY>.<lang>`: il file definisce chiavi TXT_... per le lingue supportate (en, it, es, fr, de). Queste chiavi sono la fonte primaria per i placeholder dinamici {{TXT_<KEY>}} quando non esiste una variabile d’ambiente corrispondente.
+
+Pattern `LANG_NAME.<code>`: definisce le etichette leggibili per i codici lingua (es. LANG_NAME.it=Italiano) usate da build_lang_options() per generare <option> nella select lingua.
+
+Lingue presenti nel file: en, it, es, fr, de. Le chiavi TXT_... presenti includono:
+```
+LANG_NAME
+
+TXT_HOME
+TXT_SETTINGS
+TXT_NEW_CONVERSATION
+TXT_APPLY
+TXT_THEME_LIGHT
+TXT_THEME_DARK
+TXT_LANGUAGE
+TXT_THEME
+TXT_CONVERSATIONS
+TXT_CURRENT_CONVERSATION
+TXT_SEND_PROMPT
+TXT_PROMPT
+TXT_SEND
+TXT_PROVIDER
+TXT_MODEL
+TXT_SET_MODEL
+TXT_API_KEY
+TXT_REFRESH_MODELS
+TXT_REFRESH
+TXT_SAVE
+TXT_FOOTER_COPYRIGHT
+TXT_FILES_INPUT
+TXT_REPO_URL
+TXT_REPO_LINK
+TXT_ABOUT
+TXT_HELP
+TXT_WARNING
+TXT_ERROR
+```
