@@ -246,41 +246,46 @@ process_target() {
 }
 
 # Acquire a global adapt/install lock to serialize multi-step operations.
-# Uses a dynamic FD (ADAPT_LOCK_FD) to avoid collisions with fixed FDs.
+# Uses a dynamic FD (ADAPT_LOCK_FD) and exports ADAPT_LOCK_FILE for other code to inspect.
 _global_adapt_lock_init() {
   : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
 
   # canonicalize TMP_DIR and lock path
   local tmpdir_real
   tmpdir_real="$(cd "${TMP_DIR%/}" 2>/dev/null && pwd -P || printf '%s' "${TMP_DIR%/}")"
-  local global_lock="${tmpdir_real%/}/adapt.lock"
+  ADAPT_LOCK_FILE="${tmpdir_real%/}/adapt.lock"
 
   mkdir -p -- "$tmpdir_real" 2>/dev/null || {
     err "Cannot create TMP_DIR $tmpdir_real"
   }
 
   # open lockfile on a dynamic FD and keep it open
-  exec {ADAPT_LOCK_FD}>"$global_lock" 2>/dev/null || {
-    err "Cannot open global lockfile $global_lock"
+  exec {ADAPT_LOCK_FD}>"$ADAPT_LOCK_FILE" 2>/dev/null || {
+    err "Cannot open global lockfile $ADAPT_LOCK_FILE"
   }
 
   # try to acquire exclusive lock (wait up to 10s)
   if ! flock -x -w 10 "$ADAPT_LOCK_FD"; then
     # close the dynamic FD to avoid leaking it
     exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
-    err "Could not acquire global adapt lock ($global_lock)"
+    unset ADAPT_LOCK_FD ADAPT_LOCK_FILE
+    err "Could not acquire global adapt lock ($ADAPT_LOCK_FILE)"
   fi
 
   # log acquisition
-  info "LOCK: Acquired global adapt lock -> $global_lock (pid=$$ fd=$ADAPT_LOCK_FD)"
+  info "LOCK: Acquired global adapt lock -> $ADAPT_LOCK_FILE (pid=$$ fd=$ADAPT_LOCK_FD)"
 
   # ensure release on exit/interrupt; keep FD open until release
   _release_global_adapt_lock() {
-    info "LOCK: Releasing global adapt lock -> $global_lock (pid=$$ fd=$ADAPT_LOCK_FD)"
-    flock -u "$ADAPT_LOCK_FD" 2>/dev/null || true
-    exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
+    info "LOCK: Releasing global adapt lock -> $ADAPT_LOCK_FILE (pid=$$ fd=${ADAPT_LOCK_FD:-<unset>})"
+    if [ -n "${ADAPT_LOCK_FD:-}" ]; then
+      flock -u "$ADAPT_LOCK_FD" 2>/dev/null || true
+      exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
+    fi
+    unset ADAPT_LOCK_FD ADAPT_LOCK_FILE
   }
-  trap '_release_global_adapt_lock' RETURN EXIT INT TERM
+  # NOTE: do NOT trap RETURN here — that would release the lock when this function returns.
+  trap '_release_global_adapt_lock' EXIT INT TERM
 }
 
 # -------- Generate Termux Apache config (confined) --------
@@ -566,7 +571,12 @@ install_termux_shadow_wrapper() {
   # Acquire global adapt lock to serialize multi-step operations
   _global_adapt_lock_init
   local lockfile="$tmpdir/bootstrap.lock"
-  exec 9>"$lockfile" 2>/dev/null || err "Cannot open lockfile $lockfile"
+
+  # Open bootstrap lock on a dynamic FD to avoid collisions with fixed FDs
+  exec {BOOTSTRAP_LOCK_FD}>"$lockfile" 2>/dev/null || {
+    _release_lock_and_restore 2>/dev/null || true
+    err "Cannot open lockfile $lockfile"
+  }
 
   # Save existing traps and install local cleanup trap
   _old_trap_return="$(trap -p RETURN 2>/dev/null || true)"
@@ -575,8 +585,9 @@ install_termux_shadow_wrapper() {
   _old_trap_term="$(trap -p TERM 2>/dev/null || true)"
 
   _release_lock_and_restore() {
-    flock -u 9 2>/dev/null || true
-    exec 9>&- 2>/dev/null || true
+    # Release bootstrap lock and close dynamic FD
+    flock -u "$BOOTSTRAP_LOCK_FD" 2>/dev/null || true
+    exec {BOOTSTRAP_LOCK_FD}>&- 2>/dev/null || true
 
     # Safe restore of previously saved traps without using eval.
     # Accepts a single line from `trap -p` (e.g. "trap -- 'cmd' RETURN")
@@ -613,7 +624,7 @@ install_termux_shadow_wrapper() {
 
   trap '_release_lock_and_restore' RETURN EXIT INT TERM
 
-  if ! flock -x -w 5 9; then
+  if ! flock -x -w 5 "$BOOTSTRAP_LOCK_FD"; then
     _release_lock_and_restore
     err "Could not acquire lock"
   fi
