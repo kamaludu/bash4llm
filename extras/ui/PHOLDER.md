@@ -2,40 +2,193 @@
 
 ### Placeholder CGI: elenco completo e specifiche.  🇮🇹 [🇬🇧](PHOLDER-en.md)
 
-| **Placeholder** | **Origine** | **Tipo** | **Esempio** | **Sanitizzazione / Note** |
-|:---|:---|---|:---|:---|
-| **`{{MODEL_OPTIONS}}`** | `build_model_options()` (gui-server) | HTML `<option>` | `<option value="gpt-4">gpt-4</option>` | Generato internamente; ogni valore `html_escape`; **inserire come HTML pre-sanitizzato** (no double-escape). Usato in template che richiedono un semplice select di modelli globale. |
-| **`{{PROVIDER_OPTIONS}}`** | `build_provider_options()` (gui-server) | HTML `<option>` | `<option value="groq" selected>groq</option>` | Generato internamente; `html_escape` su value/label; **inserire come HTML pre-sanitizzato**. |
-| **`{{CONV_LIST}}`** | `build_conv_list()` (gui-server) | HTML/text list | `conv-001.txt — Titolo` | Generato internamente con `html_escape` su nomi e titoli; trattarlo come HTML sicuro (non double-escape). |
-| **`{{CURRENT_CONV}}`** | `build_current_conv_block()` (gui-server) | HTML (title + `<pre>`) | `<h2>Title</h2><pre>USER: ...</pre>` | Contenuto conversazione escapato con `html_escape_stream`; **inserire come HTML pre-sanitizzato**. Nota: funzione corretta è `build_current_conv_block`. |
-| **`{{MODEL_LIST_SCROLL}}`** | `build_model_list_and_select()` (gui-server) | testo/HTML per textarea | `gpt-4\ngpt-4o\n...` | Generato internamente; contenuto escapato; **inserire come HTML pre-sanitizzato** nella textarea che mostra l’elenco modelli. |
-| **`{{MODEL_SELECT_OPTIONS}}`** | `build_model_list_and_select()` (gui-server) | HTML `<option>` | `<option value="gpt-4" selected>gpt-4</option>` | Generato internamente; `html_escape` su value/label; **inserire come HTML pre-sanitizzato**. |
-| **`{{CONFIGURED}}`** | env `CONFIGURED` (export) | flag stringa | `true` / `false` | Esportata dal server; usare come stringa; `html_escape` se inserita in testo HTML. |
-| **`{{1}}..{{N}}`** | argomenti posizionali passati a `render_template` | posizionali | `en`, `light`, `gpt-4` | Vengono escapati da `render_template` prima della sostituzione; usare per valori testuali. |
-| **`{{LANG_CODE}}`** | router / `lang_code` | runtime | `en` / `it` | Validare con whitelist; `sanitize_param` + `html_escape`. |
-| **`{{THEME}}`** | router / `theme_code` | runtime | `light` / `dark` | Validare su `light/dark`; `sanitize_param` + `html_escape`. |
-| **`{{PROVIDER_CURRENT}}`** | `get_default_provider()` | runtime (input value) | `groq` | `sanitize_param` + `html_escape`; non esporre segreti. |
-| **`{{MODEL_CURRENT}}`** | `get_default_model()` | runtime (input value) | `gpt-4` | `sanitize_param` + `html_escape`. |
-| **`{{LANG_OPTIONS}}`** | generato da `gui-lang.conf` | HTML `<option>` | `<option value="it" selected>Italiano</option>` | Generare internamente; `html_escape` su value/label; `selected` su `LANG_CODE`; inserire come HTML pre-sanitizzato. |
-| **`{{THEME_IS_light}}`** | derived da `theme_code` | attribute marker | `selected` / `` | Restituisce `selected` o stringa vuota; calcolare internamente; non necessita escape. |
-| **`{{THEME_IS_dark}}`** | derived da `theme_code` | attribute marker | `selected` / `` | Restituisce `selected` o stringa vuota; calcolare internamente; non necessita escape. |
-| **`{{TXT_<KEY>}}`** (es. `{{TXT_HOME}}`) | `gui-lang.conf` via `read_txt_key` | testo UI localizzato | `Home` / `Impostazioni` | Caricare per lingua corrente; **sempre** `html_escape` prima di inserire. |
-| **`{{TXT_REPO_URL}}`** | `gui-lang.conf` o costante | URL | `https://github.com/...` | Validare URL; `html_escape` in attributi. |
-| **`{{TXT_REPO_LINK}}`** | `gui-lang.conf` o costante | testo link | `Repo` | `html_escape`. |
-| **`{{TXT_FOOTER_COPYRIGHT}}`** | `gui-lang.conf` | testo | `GPL-3.0-or-later — Project GroqBash` | `html_escape`. |
-| **`{{API_KEY_FIELD}}`** | `read_api_key_file()` (gui-server) | input value (escaped) | `xsk_xxxxxxxxx` | **Solo** valore per campo input; `html_escape` obbligatorio; **non esportare** come env ai template; server deve usare `export_api_key_for_provider` per runtime. |
-| **`{{CURRENT_CONV_FILE}}`** | `get_current_conversation_file()` basename | testo | `conv-001.txt` | `html_escape`; non esporre path assoluti. |
-| **`{{MODEL_WHITELIST_PRESENT}}`** | derived da `get_models_file()` | boolean string | `true` / `false` | Usato per messaggi condizionali; sostituire con `true`/`false` o HTML condizionale. |
+## Fonte di Verità unificata dei placeholder CGI
+
+> **Nota**: i nomi dei placeholder corrispondono ai token che `render_template` sostituisce (es. `{{LANG_CODE}}`, `{{MODEL_OPTIONS}}`, `{{TXT_HOME}}`, `{{CURRENT_CONV}}`, `{{1}}`, ecc.). Per ciascuno è indicata la pagina/contesto dove viene popolato, il tipo, l’origine e le note tecniche.
 
 ---
 
-### Regole operative essenziali (sintetico)
-- **Escape obbligatorio**: tutti i valori testuali devono passare per `sanitize_param` e `html_escape` prima di essere inseriti nei template.  
-- **HTML pre-generato**: `MODEL_OPTIONS`, `PROVIDER_OPTIONS`, `CONV_LIST`, `CURRENT_CONV`, `LANG_OPTIONS`, `MODEL_LIST_SCROLL`, `MODEL_SELECT_OPTIONS` sono generati internamente e **non** devono essere double-escaped; documentare esplicitamente “inserire come HTML pre-sanitizzato”.  
-- **Differenza importante**: `MODEL_OPTIONS` è una sorgente di `<option>` usata in alcuni template; `build_model_list_and_select()` produce invece **due** output distinti: `MODEL_LIST_SCROLL` (textarea) e `MODEL_SELECT_OPTIONS` (select). Usare il campo corretto nel template appropriato.  
-- **API key**: `{{API_KEY_FIELD}}` mostra la chiave nel form come valore escapato; non loggare né esportare la chiave nei template. L’uso runtime della chiave è gestito dal server.  
-- **Posizionali**: `{{1}}..{{N}}` sono argomenti posizionali passati a `render_template`; `render_template` effettua `html_escape`.  
-- **Localizzazione**: ogni `{{TXT_*}}` è risolto leggendo `gui-lang.conf` per la lingua corrente; fallback su `DEFAULT_LANG`.  
-- **Validazione**: `LANG_CODE` e `THEME` devono essere validate prima di essere scritte su file di configurazione.  
-- **Booleani stringa**: `CONFIGURED` e `MODEL_WHITELIST_PRESENT` sono stringhe `"true"`/`"false"`; i template devono testarle come stringhe.
+#### 1. `{{LANG_CODE}}`
+- **Pagine**: header, content, footer, main, settings (tutti i template che ricevono `esc_lang`).
+- **Tipo**: codice lingua (stringa, es. `en`, `it`).
+- **Origine**: query `lang` o file `LANG_CURRENT_FILE` (fallback `en`); sanitizzato con `sanitize_param`.
+- **Obblig./Opz.**: opzionale (default `en`).
+- **Note**: validazione su pattern `^[A-Za-z_-]+$`; passato ai template come `html_escape`.
 
+---
+
+#### 2. `{{THEME}}`
+- **Pagine**: header, content, footer, main, settings.
+- **Tipo**: enumerazione (`light` | `dark`).
+- **Origine**: query `theme` o file `THEME_CURRENT_FILE` (fallback `light`); sanitizzato.
+- **Obblig./Opz.**: opzionale (default `light`).
+- **Note**: anche esposto come `{{THEME_IS_light}}` / `{{THEME_IS_dark}}` con valore `selected` o `""`.
+
+---
+
+#### 3. `{{PROVIDER_CURRENT}}`
+- **Pagine**: header, content, footer, main, settings.
+- **Tipo**: stringa (nome provider).
+- **Origine**: `get_default_provider()` → `DEFAULT_PROVIDER_FILE`; sanitizzato.
+- **Obblig./Opz.**: opzionale.
+- **Note**: usato anche per costruire `{{PROVIDER_OPTIONS}}`.
+
+---
+
+#### 4. `{{MODEL_CURRENT}}`
+- **Pagine**: header, content, footer, main, settings.
+- **Tipo**: stringa (nome modello).
+- **Origine**: `get_default_model()` → `DEFAULT_MODEL_FILE`; sanitizzato.
+- **Obblig./Opz.**: opzionale.
+- **Note**: usato anche per `{{MODEL_OPTIONS}}`, `{{MODEL_SELECT_OPTIONS}}`, `{{MODEL_LIST_SCROLL}}`.
+
+---
+
+#### 5. `{{API_KEY_FIELD}}`
+- **Pagine**: header, content, footer, main, settings.
+- **Tipo**: stringa (contenuto del file API key), **HTML-escaped**.
+- **Origine**: `read_api_key_file()` → `API_KEY_FILE`.
+- **Obblig./Opz.**: opzionale.
+- **Note**: destinato a visualizzazione testuale; già passato attraverso `html_escape`.
+
+---
+
+#### 6. `{{LANG_OPTIONS}}`
+- **Pagine**: header, content, footer, main, settings.
+- **Tipo**: blocco HTML `<option>` (stringa multilinea).
+- **Origine**: `build_lang_options()` che legge `gui-lang.conf` (cerca `LANG_NAME.<code>` e genera `<option>`); i label/codici sono sanitizzati e `html_escape`-ati.
+- **Obblig./Opz.**: opzionale (vuoto se `gui-lang.conf` non trovato).
+- **Note**: il file `gui-lang.conf` fornisce `LANG_NAME.en=English`, `LANG_NAME.it=Italiano`, ecc.
+
+---
+
+#### 7. `{{MODEL_OPTIONS}}`
+- **Pagine**: header, content, footer, main, settings.
+- **Tipo**: blocco HTML `<option>`.
+- **Origine**: `build_model_options()` → `get_models_file()` → file `models*.txt`.
+- **Obblig./Opz.**: opzionale.
+- **Note**: ogni `<option>` è costruita con `sanitize_param` + `html_escape`.
+
+---
+
+#### 8. `{{PROVIDER_OPTIONS}}`
+- **Pagine**: settings (principalmente).
+- **Tipo**: blocco HTML `<option>`.
+- **Origine**: `build_provider_options()` → `PROVIDER_CACHE_FILE` (default `${CFG_DIR}/providers.txt`), con possibile refresh tramite `ensure_provider_cache_fresh`.
+- **Obblig./Opz.**: opzionale.
+- **Note**: elementi sanitizzati e `html_escape`-ati.
+
+---
+
+#### 9. `{{MODEL_LIST_SCROLL}}`
+- **Pagine**: settings.
+- **Tipo**: testo multilinea (lista di modelli, newline-separated).
+- **Origine**: `build_model_list_and_select()` → file modelli.
+- **Obblig./Opz.**: opzionale.
+- **Note**: non è HTML `<option>` ma testo; elementi sanitizzati.
+
+---
+
+#### 10. `{{MODEL_SELECT_OPTIONS}}`
+- **Pagine**: settings.
+- **Tipo**: blocco HTML `<option>`.
+- **Origine**: `build_model_list_and_select()` (considera provider corrente).
+- **Obblig./Opz.**: opzionale.
+- **Note**: simile a `MODEL_OPTIONS` ma con logica provider-aware.
+
+---
+
+#### 11. `{{CONV_LIST}}`
+- **Pagine**: main, settings.
+- **Tipo**: testo/HTML (stringa con linee; ogni riga `basename — title` o `basename`).
+- **Origine**: `build_conv_list()` → legge `CONV_DIR/conv-*.txt` e `read_conv_title()`.
+- **Obblig./Opz.**: opzionale.
+- **Note**: nomi e titoli sono `html_escape`-ati; risultato pronto per inserimento in HTML.
+
+---
+
+#### 12. `{{CURRENT_CONV_FILE}}`
+- **Pagine**: main, settings.
+- **Tipo**: stringa (nome file conversazione corrente).
+- **Origine**: `get_current_conversation_file()` → `CURRENT_CONV_FILE` (config).
+- **Obblig./Opz.**: opzionale.
+- **Note**: passato come `html_escape` prima della sostituzione.
+
+---
+
+#### 13. `{{MODEL_WHITELIST_PRESENT}}`
+- **Pagine**: main, settings.
+- **Tipo**: booleano testuale (`true` | `false`).
+- **Origine**: controllo su `get_models_file()` e primo record non vuoto.
+- **Obblig./Opz.**: sempre presente (valore `true`/`false`).
+- **Note**: usato per abilitare/disabilitare UI relativa ai modelli.
+
+---
+
+#### 14. `{{CONFIGURED}}`
+- **Pagine**: main, settings.
+- **Tipo**: booleano testuale (`true` | `false`).
+- **Origine**: `is_configured()` (verifica provider, api key, modello/whitelist).
+- **Obblig./Opz.**: sempre presente.
+- **Note**: se `false` il server mostra un alert di configurazione richiesta.
+
+---
+
+#### 15. `{{GUI_CGI_BASE}}` / posizionale `{{6}}`
+- **Pagine**: header, content, footer, main, settings (passato come argomento posizionale).
+- **Tipo**: URL base (stringa, es. `/groqbash-gui/cgi/`).
+- **Origine**: variabile d’ambiente `GUI_CGI_BASE` o default `"/groqbash-gui/cgi/"`.
+- **Obblig./Opz.**: opzionale (default presente).
+- **Note**: normalizzato con trailing slash e `html_escape` prima della sostituzione; inoltre passato come argomento posizionale `{{6}}`.
+
+---
+
+#### 16. `{{THEME_IS_light}}` / `{{THEME_IS_dark}}`
+- **Pagine**: header, settings.
+- **Tipo**: stringa attributo `selected` o vuota.
+- **Origine**: derivato da `THEME`.
+- **Obblig./Opz.**: opzionale.
+- **Note**: pensati per inserimento diretto in `<option>`.
+
+---
+
+#### 17. `{{CURRENT_CONV}}`
+- **Pagine**: qualsiasi template che contiene il token `{{CURRENT_CONV}}`.
+- **Tipo**: blocco HTML preformattato (`<pre>...</pre>`).
+- **Origine**: `build_current_conv_block()` che legge il file conversazione corrente, applica `sanitize_model_output` + `html_escape` riga per riga e costruisce `CURRENT_CONV`.
+- **Obblig./Opz.**: opzionale (vuoto se file mancante).
+- **Note**: la sostituzione è letterale (il token viene rimpiazzato con `CURRENT_CONV` senza ulteriore escaping).
+
+---
+
+#### 18. `{{TXT_<KEY>}}` (es. `{{TXT_HOME}}`, `{{TXT_SETTINGS}}`, ...)
+- **Pagine**: tutte le template che includono token `{{TXT_...}}`.
+- **Tipo**: testo (stringa), **HTML-escaped** prima dell’inserimento.
+- **Origine**: priorità
+  1. variabile shell `TXT_<KEY>` se definita,
+  2. altrimenti `read_txt_key("TXT_<KEY>", lang)` che legge `gui-lang.conf` (chiave `TXT_<KEY>.<lang>` o fallback su `DEFAULT_LANG`).
+- **Obblig./Opz.**: opzionale (se non trovata restituisce stringa vuota).
+- **Note**:
+  - `gui-lang.conf` fornisce molte chiavi per `en`, `it`, `es`, `fr`, `de` (es. `TXT_HOME.en=Home`, `TXT_SETTINGS.it=Impostazioni`).
+  - `render_template` individua dinamicamente tutte le occorrenze `{{TXT_...}}` nel file e le sostituisce con il valore `html_escape`-ato.
+
+---
+
+#### 19. Posizionali `{{1}}`, `{{2}}`, `{{3}}`, ...
+- **Pagine**: tutte le template chiamate con argomenti posizionali tramite `render_template`.
+- **Tipo**: stringhe **HTML-escaped**.
+- **Origine**: argomenti passati a `render_template` (nell’uso corrente: `esc_lang`, `esc_theme`, `esc_model`, `esc_provider`, `esc_conv`, `esc_cgi_base`).
+- **Obblig./Opz.**: opzionale (se non forniti rimangono vuoti).
+- **Note**: `render_template` esegue `html_escape` su ciascun argomento prima della sostituzione.
+
+---
+
+## Note tecniche generali e sicurezza (riassunto)
+- **Escaping**:
+  - Le singole variabili passate come argomenti o sostituite direttamente (`LANG_CODE`, `THEME`, `PROVIDER_CURRENT`, `MODEL_CURRENT`, `API_KEY_FIELD`, `CURRENT_CONV_FILE`, `CONFIGURED`, ecc.) sono **HTML-escaped** in `render_template` prima della sostituzione.
+  - I blocchi HTML generati (`MODEL_OPTIONS`, `PROVIDER_OPTIONS`, `LANG_OPTIONS`, `MODEL_SELECT_OPTIONS`, `CONV_LIST`) sono costruiti con escaping sui singoli elementi e poi concatenati; i template devono inserirli come HTML (non ri-escape).
+  - `CURRENT_CONV` è costruito come `<pre>...</pre>` con ogni riga `sanitize_model_output` + `html_escape`.
+- **Origini file/config**:
+  - File rilevanti: `${CFG_DIR}/providers.txt`, `models*.txt` (più percorsi possibili), `gui-lang.conf` (più percorsi possibili), `CURRENT_CONV_FILE`, `LANG_CURRENT_FILE`, `THEME_CURRENT_FILE`, `DEFAULT_MODEL_FILE`, `DEFAULT_PROVIDER_FILE`, `API_KEY_FILE`, `CONV_DIR`.
+- **Fallback e comportamento quando mancano dati**:
+  - Molte variabili hanno fallback (es. lingua `en`, tema `light`, conversazione `conv-001.txt`), e il server gestisce assenza di dati con messaggi di warning o valori vuoti.
