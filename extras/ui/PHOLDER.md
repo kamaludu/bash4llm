@@ -197,6 +197,8 @@
 
 ### Informazioni da `gui-lang.conf`
 
+gui-lang.conf è un dizionario di traduzioni multilingue che fornisce i TXT_... utilizzabili poi nei template; non definisce nuovi placeholder di propria iniziativa.
+Contiene un set completo di TXT_... e LANG_NAME.* (elencati sotto).
 - Pattern `TXT_<KEY>.<lang>`: il file definisce chiavi TXT_... per le lingue supportate (**en, it, es, fr, de**). Queste chiavi sono la fonte primaria per i placeholder dinamici `{{TXT_<KEY>}}` quando non esiste una variabile d’ambiente corrispondente.
 
 - Pattern `LANG_NAME.<code>`: definisce le etichette leggibili per i codici lingua (es. `LANG_NAME.it=Italiano`) usate da `build_lang_options()` per generare <option> nella select lingua.
