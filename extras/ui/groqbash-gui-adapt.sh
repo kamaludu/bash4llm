@@ -245,6 +245,44 @@ process_target() {
   info "Patched shebang: $file -> $target_shebang"
 }
 
+# Acquire a global adapt/install lock to serialize multi-step operations.
+# Uses a dynamic FD (ADAPT_LOCK_FD) to avoid collisions with fixed FDs.
+_global_adapt_lock_init() {
+  : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
+
+  # canonicalize TMP_DIR and lock path
+  local tmpdir_real
+  tmpdir_real="$(cd "${TMP_DIR%/}" 2>/dev/null && pwd -P || printf '%s' "${TMP_DIR%/}")"
+  local global_lock="${tmpdir_real%/}/adapt.lock"
+
+  mkdir -p -- "$tmpdir_real" 2>/dev/null || {
+    err "Cannot create TMP_DIR $tmpdir_real"
+  }
+
+  # open lockfile on a dynamic FD and keep it open
+  exec {ADAPT_LOCK_FD}>"$global_lock" 2>/dev/null || {
+    err "Cannot open global lockfile $global_lock"
+  }
+
+  # try to acquire exclusive lock (wait up to 10s)
+  if ! flock -x -w 10 "$ADAPT_LOCK_FD"; then
+    # close the dynamic FD to avoid leaking it
+    exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
+    err "Could not acquire global adapt lock ($global_lock)"
+  fi
+
+  # log acquisition
+  info "LOCK: Acquired global adapt lock -> $global_lock (pid=$$ fd=$ADAPT_LOCK_FD)"
+
+  # ensure release on exit/interrupt; keep FD open until release
+  _release_global_adapt_lock() {
+    info "LOCK: Releasing global adapt lock -> $global_lock (pid=$$ fd=$ADAPT_LOCK_FD)"
+    flock -u "$ADAPT_LOCK_FD" 2>/dev/null || true
+    exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
+  }
+  trap '_release_global_adapt_lock' RETURN EXIT INT TERM
+}
+
 # -------- Generate Termux Apache config (confined) --------
 generate_termux_apache_config() {
   local conf="$UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
@@ -525,6 +563,8 @@ install_termux_shadow_wrapper() {
   chmod 700 -- "$tmpdir" 2>/dev/null || true
 
   portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
+  # Acquire global adapt lock to serialize multi-step operations
+  _global_adapt_lock_init
   local lockfile="$tmpdir/bootstrap.lock"
   exec 9>"$lockfile" 2>/dev/null || err "Cannot open lockfile $lockfile"
 
@@ -543,6 +583,7 @@ install_termux_shadow_wrapper() {
     _restore_trap_from_trapp() {
       local tr="$1"
       [ -z "${tr:-}" ] && return 0
+
       # Extract command between the first and last single quote
       local cmd
       cmd="$(printf '%s' "$tr" | sed -n "s/^trap -- '\(.*\)' \([^ ]*\)$/\1/p")"
@@ -810,6 +851,9 @@ main() {
     err "TMP_DIR not writable: $TMP_DIR"
   fi
 
+  # Acquire global adapt lock to serialize multi-step operations
+  _global_adapt_lock_init
+
   enforce_ui_root_only_writes
 
   if [ -n "${UI_ROOT:-}" ]; then
@@ -898,4 +942,7 @@ main() {
   info "To test the Apache config manually: httpd -t -f $UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
 }
 
-main "$@"
+# Esegui il flusso principale solo se lo script è eseguito, non se viene sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
