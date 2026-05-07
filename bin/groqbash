@@ -2671,6 +2671,16 @@ auto_select_model_dispatch() {
 # resolve_model: determina MODEL finale seguendo ordine di priorità e validando
 # Risultato: imposta la variabile globale FINAL_MODEL (stringa) o vuota se non risolta.
 resolve_model() {
+  # Guard: warn if MODEL is present in environment but not provided via -m/--set-default.
+  # This helps CI/users who export MODEL expecting it to behave like -m.
+  if [ -n "${MODEL:-}" ] && [ "${MODEL_CLI_SET:-0}" -ne 1 ]; then
+    # Only warn when no provider-specific persisted default exists (avoid noisy logs).
+    model_cfg="$(canonical_model_file "${PROVIDER:-groq}")"
+    if [ ! -s "$model_cfg" ]; then
+      log_warn "MODEL" "MODEL is set in environment but not passed with -m/--set-default; use -m for per-run override or --set-default to persist."
+    fi
+  fi
+
   FINAL_MODEL=""
 
   # 1) CLI-specified model (highest priority)
