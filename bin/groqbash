@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_NAME="groqbash"
 SCRIPT_VERSION="2.0.0"
-SCRIPT_DATE="2026-04-21"
+SCRIPT_DATE="2026-05-07"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
@@ -470,6 +470,17 @@ load_provider_module() {
     PROVIDER_MODULE_LOADED=0
   fi
 
+  # --- Write provider capabilities to ui_state (canonical) ---
+  if [ -n "${provider:-}" ]; then
+    supports_streaming=0
+    supports_refresh_models=0
+    if type "call_api_streaming_${provider}" >/dev/null 2>&1; then supports_streaming=1; fi
+    if type "refresh_models_${provider}" >/dev/null 2>&1; then supports_refresh_models=1; fi
+    loaded_from="${PROVIDER_MODULE_PATH:-embedded}"
+    prov_json="$(jq -c -n --arg p "$provider" --arg loaded "$loaded_from" --argjson sstream "$supports_streaming" --argjson srefresh "$supports_refresh_models" '{provider:$p, supports_streaming:$sstream, supports_refresh_models:$srefresh, loaded_from:$loaded}')"
+    ui_state_write "provider_capabilities.json" "$prov_json" || log_warn "UI_STATE" "failed to write provider_capabilities for $provider"
+  fi
+
   return 0
 }
 
@@ -629,6 +640,45 @@ atomic_write() {
     mv -f -- "$1" "$2"
     chmod 600 "$2" 2>/dev/null || true
   ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# ui_state_write: helper centralizzato per scrivere file JSON per la GUI (atomic)
+# Usage: ui_state_write <relpath> <json-string>
+# Writes to: $GROQBASH_CONFIG_DIR/ui_state/<relpath>
+# Guarantees: atomic write, strict perms, non-fatal on error (logs warning).
+# ---------------------------------------------------------------------------
+ui_state_write() {
+  local relpath="$1" json="$2"
+  local dest_dir dest_file ui_dir sessions_dir tmpfile rc
+
+  if [ -z "${GROQBASH_CONFIG_DIR:-}" ]; then
+    log_warn "UI_STATE" "GROQBASH_CONFIG_DIR unset; cannot write ui_state"
+    return 1
+  fi
+
+  ui_dir="${GROQBASH_CONFIG_DIR%/}/ui_state"
+  sessions_dir="${ui_dir%/}/sessions"
+  dest_dir="$(dirname "${ui_dir%/}/${relpath}")"
+  dest_file="${ui_dir%/}/${relpath}"
+
+  # Ensure base dirs exist with strict perms
+  if ! mkdir -p "$dest_dir" 2>/dev/null; then
+    log_warn "UI_STATE" "cannot create ui_state dir: $dest_dir"
+    return 1
+  fi
+  chmod 700 "$ui_dir" 2>/dev/null || true
+  chmod 700 "$sessions_dir" 2>/dev/null || true
+
+  # Use atomic_write helper (timeout 10s) to write JSON content
+  if ! printf '%s' "$json" | atomic_write "$dest_file" 10; then
+    log_warn "UI_STATE" "atomic write failed for $dest_file"
+    return 1
+  fi
+
+  chmod 600 "$dest_file" 2>/dev/null || true
+  log_info "UI_STATE" "wrote $dest_file"
   return 0
 }
 
@@ -821,6 +871,20 @@ save_to_history() {
     set -e
     mv -f -- "$1" "$2"
     chmod 600 "$2" 2>/dev/null || true
+    
+    # --- Write last_history metadata to ui_state ---
+    if [ -f "$dest" ]; then
+      size_bytes="$(file_size "$dest" 2>/dev/null || echo 0)"
+      ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      basename="$(basename "$dest")"
+      history_json="$(jq -c -n --arg path "$dest" --arg base "$basename" --arg ts "$ts" --argjson size "$size_bytes" '{saved:true, path:$path, basename:$base, ts:$ts, size_bytes:$size}')"
+      ui_state_write "last_history.json" "$history_json" || log_warn "UI_STATE" "failed to write last_history.json"
+    else
+      ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      history_json="$(jq -c -n --arg ts "$ts" '{saved:false, ts:$ts}')"
+      ui_state_write "last_history.json" "$history_json" || true
+    fi
+
   ' _ "$tmpf" "$dest" || { rc=$?; rm -f -- "$tmpf" 2>/dev/null || true; return "$rc"; }
   if [ "${GROQBASH_ROTATE_HISTORY:-0}" -eq 1 ]; then
     rotate_history "$GROQBASH_LOCK_TIMEOUT_HISTORY" || true
@@ -1244,6 +1308,23 @@ session_read_window() {
   rm -f "$tmpf" 2>/dev/null || true
   chmod 600 "$out" 2>/dev/null || true
 
+  # --- Update ui_state session metadata after read_window (best-effort) ---
+  if [ -n "$sid" ]; then
+    if ensure_run_tmpdir >/dev/null 2>&1; then
+      msg_count=0
+      last_ts=""
+      if [ -f "$session_file" ]; then
+        msg_count="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
+        last_line="$(tail -n 1 "$session_file" 2>/dev/null || true)"
+        if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
+          last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
+        fi
+      fi
+      meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" '{id:$id, active:(( $msg_count | tonumber) > 0), msg_count:$msg_count, last_ts:$last_ts}')"
+      ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to update session meta for $sid (read_window)"
+    fi
+  fi
+
   [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window done: out=%s size=%s tmpf=%s\n' "$out" "$( [ -f "$out" ] && wc -c < "$out" || echo 0 )" "$tmpf" >&2
 
   return 0
@@ -1399,6 +1480,47 @@ session_append() {
 
   # Successful completion: disable trap so marker is preserved
   trap - RETURN
+
+  # --- Update ui_state session metadata (canonical single source) ---
+  # Build session meta JSON under lock-free context (we already released file lock)
+  if ensure_run_tmpdir >/dev/null 2>&1; then
+    # Compute msg_count and last_ts safely (session_file exists)
+    msg_count=0
+    last_ts=""
+    if [ -f "$session_file" ]; then
+      msg_count="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
+      # Extract last ts from last NDJSON line if possible
+      last_line="$(tail -n 1 "$session_file" 2>/dev/null || true)"
+      if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
+        last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
+      fi
+    fi
+
+    meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" \
+      '{id:$id, active:true, msg_count:$msg_count, last_ts:$last_ts}')"
+
+    # Write canonical ui_state session file
+    ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to write session meta for $sid"
+    # Update sessions index (best-effort): read existing index, add sid if missing
+    idx_file="${GROQBASH_CONFIG_DIR%/}/ui_state/sessions/index.json"
+    if [ -f "$idx_file" ]; then
+      if jq -e --arg sid "$sid" '(.sessions // []) | index($sid) // empty' "$idx_file" >/dev/null 2>&1; then
+        : # already present
+      else
+        # append sid
+        tmp_idx="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" uiidx.XXXX 2>/dev/null || true)"
+        if [ -n "$tmp_idx" ]; then
+          jq --arg sid "$sid" '.sessions = ((.sessions // []) + [$sid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null && mv -f "${tmp_idx}.new" "$tmp_idx" && ui_state_write "sessions/index.json" "$(cat "$tmp_idx")" || true
+          rm -f "$tmp_idx" 2>/dev/null || true
+        fi
+      fi
+    else
+      # create new index
+      ui_state_write "sessions/index.json" "$(jq -c -n --argjson arr '[]' '{sessions:[]}' )" >/dev/null 2>&1 || true
+      # then append sid
+      ui_state_write "sessions/index.json" "$(jq -c -n --arg sid "$sid" '{sessions:[$sid]}' )" >/dev/null 2>&1 || true
+    fi
+  fi
 
   log_info "SESSION" "appended message id ${message_id:-<no-id>} to $session_file"
   return 0
@@ -2150,6 +2272,18 @@ call_api_groq() {
   read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
   rm -f "$tmpout" 2>/dev/null || true
 
+  # --- Write last API metadata to ui_state (canonical) ---
+  if ensure_run_tmpdir >/dev/null 2>&1; then
+    # Extract finish_reason and req_id if RESP is JSON
+    finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
+    req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
+    edgecase=0
+    if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    api_json="$(jq -c -n --argjson http "${http_code:-0}" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
+    ui_state_write "last_api.json" "$api_json" || log_warn "UI_STATE" "failed to write last_api.json"
+  fi
+
   case "$http_code" in
     2*) return 0 ;;
     *) log_error "HTTP" "HTTP error code: $http_code"; log_info "RESPHEAD" "Response (head):"; head -n 200 "$RESP" >&2 || true; log_info "CURLERR" "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true; return "$GROQBASHERRAPI" ;;
@@ -2267,6 +2401,19 @@ call_api_streaming_groq() {
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
     fi
+  fi
+
+  # --- Write last API metadata to ui_state after streaming ---
+  if ensure_run_tmpdir >/dev/null 2>&1; then
+    http_code=200
+    # Try to extract finish_reason and req_id from RESP
+    finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
+    req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
+    edgecase=0
+    if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    api_json="$(jq -c -n --argjson http "$http_code" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
+    ui_state_write "last_api.json" "$api_json" || log_warn "UI_STATE" "failed to write last_api.json (streaming)"
   fi
 
   return 0
@@ -2844,6 +2991,22 @@ perform_request_once() {
 
       # Esegui il rilevamento dell'edge case qui, sempre, subito dopo l'estrazione
       detect_empty_edge_case || true
+
+      # Ensure last_api.json exists (fallback if provider didn't write it)
+      ui_last="${GROQBASH_CONFIG_DIR%/}/ui_state/last_api.json"
+      if [ ! -f "$ui_last" ] || [ "$ui_last" -ot "${RESP:-/dev/null}" ]; then
+        # Build fallback api_json from available globals
+        finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
+        req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
+        edgecase=0
+        if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
+        now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        http_code_fallback=0
+        # try to infer http code from RESP presence
+        if [ -s "$RESP" ]; then http_code_fallback=200; fi
+        api_json="$(jq -c -n --argjson http "$http_code_fallback" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
+        ui_state_write "last_api.json" "$api_json" || log_warn "UI_STATE" "failed to write fallback last_api.json"
+      fi
 
       if [ -z "$text" ] && [ "$OUTPUT_MODE" != "json" ] && [ "$OUTPUT_MODE" != "pretty" ]; then
         api_err="$(extract_api_error || true)"
