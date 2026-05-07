@@ -25,7 +25,10 @@ Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Termux.
   → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, validazione provider avanzata.
 
 - **Struttura modulare a sezioni**  
-  → BOOTSTRAP, HISTORY_MANIFEST, INSTALL_EXTRAS, PROVIDER, CLI_MAIN.
+  → PRECORE, PROVIDER, CORE, **Sistema di Stato UI**.
+
+- **Sistema di Stato UI (ui_state)**  
+  → il CORE espone metadati per GUI/strumenti esterni tramite file JSON atomici.
 
 - **Streaming e non‑streaming**  
   → output in tempo reale o completo a fine risposta.
@@ -67,7 +70,7 @@ GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 - jq
 
 Questi pacchetti forniscono tutti i comandi necessari:
-*bash* ` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
+`bash mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf`
 
 ---
 
@@ -77,20 +80,25 @@ Istruzioni dettagliate in: **[INSTALL](INSTALL.md)**
 
 In breve:
 
-`chmod +x groqbash`  
-`export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`  
-`./groqbash --help`
+```sh
+chmod +x groqbash
+export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
+./groqbash --help
+```
 
 Extras opzionali:
 
-`./groqbash --install-extras`
+```sh
+./groqbash --install-extras
+```
 
 Con opzioni:
 
 - `--source <dir>`  
 - `--force`  
 - `--dry-run`  
-- installazione selettiva: `./groqbash --install-extras provider1 templateA`
+- installazione selettiva:  
+  `./groqbash --install-extras provider1 templateA`
 
 ---
 
@@ -98,37 +106,48 @@ Con opzioni:
 
 Prompt diretto:
 
-`./groqbash "scrivi una breve poesia in italiano"`
+```sh
+./groqbash "scrivi una breve poesia in italiano"
+```
 
 Prompt multilinea:
 
 ```sh
 ./groqbash <<'EOF'
-> scrivi una breve poesia
-> in italiano
-> EOF
+scrivi una breve poesia
+in italiano
+EOF
 ```
-
 
 Input da file:
 
-`./groqbash -f prompt.txt`
+```sh
+./groqbash -f prompt.txt
+```
 
 Pipe:
 
-`echo "spiegami la relatività" | ./groqbash`
+```sh
+echo "spiegami la relatività" | ./groqbash
+```
 
 Modello specifico:
 
-`./groqbash -m llama-3.3-70b-versatile "scrivi un saggio breve"`
+```sh
+./groqbash -m llama-3.3-70b-versatile "scrivi un saggio breve"
+```
 
 Dry run:
 
-`./groqbash --dry-run "ciao"`
+```sh
+./groqbash --dry-run "ciao"
+```
 
 Provider esterno (se installato):
 
-`./groqbash --provider gemini "traduci questo"`
+```sh
+./groqbash --provider gemini "traduci questo"
+```
 
 ---
 
@@ -196,7 +215,29 @@ Provider esterno (se installato):
 
 ---
 
-## 📘 Come funziona la memoria contestuale in GroqBash
+# 📁 Sistema di Stato UI (ui_state)
+
+GroqBash espone metadati operativi destinati a GUI/strumenti esterni tramite file JSON atomici in:
+
+```
+$GROQBASH_CONFIG_DIR/ui_state
+```
+
+Contiene:
+
+- `sessions/<id>.json` → stato sessione (active, msg_count, last_ts)  
+- `sessions/index.json` → elenco sessioni  
+- `last_api.json` → ultimo risultato API  
+- `last_history.json` → ultimo salvataggio history  
+- `provider_capabilities.json` → capacità provider attivo  
+
+La GUI legge **solo** questi file per i placeholder CGI (20–23).  
+La semantica dei placeholder è definita nella *Fonte di Verità Unificata dei Placeholder (GUI + CGI)*.
+
+---
+
+# 📘 Memoria contestuale in GroqBash
+
 GroqBash **non mantiene memoria da solo**.  
 La memoria esiste **solo se attivi una sessione** tramite `--session`.
 
@@ -206,57 +247,32 @@ Ogni sessione crea un file NDJSON persistente:
 $GROQBASH_HISTORY_DIR/sessions/<session_id>.ndjson
 ```
 
-Ogni messaggio viene **appendato** lì, e alle invocazioni successive GroqBash legge le ultime N righe e le reinvia al modello come `messages`.
+E GroqBash mantiene metadati della sessione in:
+
+```
+$GROQBASH_CONFIG_DIR/ui_state/sessions/<session_id>.json
+```
+
+Questi metadati sono la fonte canonica per GUI/strumenti esterni.
 
 ---
 
 ### 🟩 Uso corretto di `--session`
-Attiva una sessione persistente:
-
-```sh
-./groqbash --session chat1 "Ciao"
-```
-
-Effetto:
-- crea/usa `sessions/chat1.ndjson`
-- salva il messaggio
-- alle invocazioni successive recupera la finestra contestuale
-
----
-
-### 🟩 Uso corretto di `--session-window`
-Controlla **quanti messaggi precedenti** vengono reinviati al modello:
-
-```sh
-./groqbash --session chat1 --session-window 10 "continua"
-```
-
-Significa:
-- leggi **ultimi 10 messaggi**
-- costruisci `BUILD_MESSAGES_FILE`
-- il modello vede la conversazione precedente
-
-Se omesso → default **10**  
-Se >20 → GroqBash avvisa (ma accetta)
-
----
-
-### 🟧 Regola fondamentale
-Per avere memoria contestuale **devi sempre** includere `--session <id>` in ogni invocazione della stessa conversazione.
-
-Esempio corretto:
 
 ```sh
 ./groqbash --session chat1 "Ciao"
 ./groqbash --session chat1 "Riassumi ciò che ho detto"
 ```
 
-Esempio sbagliato (perde memoria):
+### 🟩 Uso corretto di `--session-window`
 
 ```sh
-./groqbash "Ciao"
-./groqbash "Riassumi ciò che ho detto"
+./groqbash --session chat1 --session-window 10 "continua"
 ```
+
+### 🟧 Regola fondamentale
+
+Per avere memoria contestuale **devi sempre** includere `--session <id>`.
 
 ---
 
@@ -266,7 +282,7 @@ Gli extras non modificano il core.
 
 ### Sicurezza
 
-- provider aggiuntivi (**vedi: [ PROVIDERS](PROVIDERS.md)**)
+- provider aggiuntivi (**vedi: `[Sembra che non fosse sicuro mostrare il risultato. Cambiamo le cose e facciamo un altro tentativo.]`**)
 - strumenti di verifica permessi, symlink, owner  
 - template e documentazione
 
