@@ -2379,10 +2379,15 @@ call_api_groq() {
     return "$GROQBASHERRNOAPIKEY"
   fi
 
-  # Verify provider URL is set
-  provider_url="${GROQBASH_API_URL:-${GROQBASH_PROVIDER_URL:-}}"
+  # Use canonical provider URL resolved earlier by resolve_provider_url.
+  # Do not reconstruct provider_url locally; rely on GROQBASH_PROVIDER_URL.
+  if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
+    # Best-effort: attempt to populate canonical provider URL now.
+    resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+  fi
+  provider_url="${GROQBASH_PROVIDER_URL:-}"
   if [ -z "${provider_url:-}" ]; then
-    log_error "CALL" "no provider URL set (GROQBASH_API_URL or GROQBASH_PROVIDER_URL)"
+    log_error "CALL" "no provider URL set (GROQBASH_PROVIDER_URL)"
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     return 1
@@ -2620,9 +2625,15 @@ call_api_streaming_groq() {
     return 1
   fi
 
-  provider_url="${GROQBASH_API_URL:-${GROQBASH_PROVIDER_URL:-}}"
+  # Use canonical provider URL resolved earlier by resolve_provider_url.
+  # Do not reconstruct provider_url locally; rely on GROQBASH_PROVIDER_URL.
+  if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
+    # Best-effort: attempt to populate canonical provider URL now.
+    resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+  fi
+  provider_url="${GROQBASH_PROVIDER_URL:-}"
   if [ -z "${provider_url:-}" ]; then
-    log_error "CALL_STREAM" "no provider URL set (GROQBASH_API_URL or GROQBASH_PROVIDER_URL)"
+    log_error "CALL_STREAM" "no provider URL set (GROQBASH_PROVIDER_URL)"
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     return 1
@@ -2835,7 +2846,34 @@ refresh_models_groq() {
   tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX)" || return "$GROQBASHERRTMP"
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
-  api_url="https://api.groq.com/openai/v1/models"
+  # Derive models API URL from the canonical provider URL (GROQBASH_PROVIDER_URL).
+  # Do not introduce new env var semantics; attempt to resolve provider URL if needed.
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+  if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
+    # Extract origin (scheme + host[:port]) and append canonical models path.
+    origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
+    api_url="${origin%/}/openai/v1/models"
+  else
+    # Fallback to embedded groq models endpoint only if provider is groq (preserve prior behavior).
+    if [ "${PROVIDER:-}" = "groq" ]; then
+      # Do not introduce new env var semantics; attempt to resolve provider URL if needed.
+      resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+      if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
+        # Extract origin (scheme + host[:port]) and append canonical models path.
+        origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
+        api_url="${origin%/}/openai/v1/models"
+      else
+        # No canonical provider URL available: fail (do not use hardcoded endpoint).
+        log_error "MODELREFRESH" "no provider URL available to refresh models"
+        rm -rf "$tmpd"
+        return "$GROQBASHERRAPI"
+      fi
+    else
+      log_error "MODELREFRESH" "no provider URL available to refresh models"
+      rm -rf "$tmpd"
+      return "$GROQBASHERRAPI"
+    fi
+  fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
   if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
