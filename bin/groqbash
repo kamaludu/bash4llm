@@ -157,13 +157,17 @@ ensure_api_key_for_provider() {
 enforce_network_policy() {
   # If DRY_RUN or GROQBASH_SKIP_NETWORK are truthy, disallow network.
   if is_truthy "${DRY_RUN:-0}" || is_truthy "${GROQBASH_SKIP_NETWORK:-0}"; then
-    log_info "NETWORK" "Network calls disabled by DRY_RUN or GROQBASH_SKIP_NETWORK; skipping HTTP."
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "NETWORK" "Network calls disabled by DRY_RUN or GROQBASH_SKIP_NETWORK; skipping HTTP."
+    fi
     return 1
   fi
 
   # QUIET does not disable network by itself, but if QUIET is used with a policy variable we enforce it.
   if is_truthy "${GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET:-0}" && is_truthy "${QUIET:-0}"; then
-    log_info "NETWORK" "Network calls disabled due to QUIET policy."
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "NETWORK" "Network calls disabled due to QUIET policy."
+    fi
     return 1
   fi
 
@@ -488,7 +492,9 @@ stage_b64() {
   fi
 
   [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
-  log_info "STAGE" "staged base64 payload: $dst (size $(wc -c < "$dst" 2>/dev/null)B)"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "STAGE" "staged base64 payload: $dst (size $(wc -c < "$dst" 2>/dev/null)B)"
+  fi
   return 0
 }
 
@@ -925,7 +931,9 @@ ui_state_write() {
   # Use atomic_write helper (timeout optional) to write content
   printf '%s' "$content" | atomic_write "$target" 10 || { log_warn "UI_STATE" "atomic write failed for $target"; return 1; }
   chmod 600 "$target" 2>/dev/null || true
-  log_info "UI_STATE" "wrote $target (size $(wc -c < "$target" 2>/dev/null)B)"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "UI_STATE" "wrote $target (size $(wc -c < "$target" 2>/dev/null)B)"
+  fi
   return 0
 }
 
@@ -1337,7 +1345,9 @@ save_to_history() {
   if [ "${GROQBASH_ROTATE_HISTORY:-0}" -eq 1 ]; then
     rotate_history "$GROQBASH_LOCK_TIMEOUT_HISTORY" || true
   fi
-  log_info "HISTORY_SAVE" "$dest"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "HISTORY_SAVE" "$dest"
+  fi
   return 0
 }
 
@@ -1424,7 +1434,9 @@ manifest_add_part() {
     rm -f "$tmp" 2>/dev/null || true
   ' _ "$manifest" "$part_b64" "$name" "$mime" || { log_error "MANIFESTFAIL" "manifest_add_part: update failed"; return 1; }
 
-  log_info "MANIFEST_ADD" "added part $name -> $part_b64"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "MANIFEST_ADD" "added part $name -> $part_b64"
+  fi
   return 0
 }
 
@@ -1657,7 +1669,9 @@ session_read_window() {
   mkdir -p "${tmpdir%/}" 2>/dev/null || true
   chmod 700 "${tmpdir%/}" 2>/dev/null || true
   if ! : > "${tmpdir%/}/.groqbash_tmp_check" 2>/dev/null; then
-    [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window: tmpdir not writable: %s\n' "$tmpdir" >&2
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      printf 'DEBUG: session_read_window: tmpdir not writable: %s\n' "$tmpdir" >&2
+    fi
     return 1
   else
     rm -f "${tmpdir%/}/.groqbash_tmp_check" 2>/dev/null || true
@@ -1665,7 +1679,7 @@ session_read_window() {
 
   # Create a tmpf inside tmpdir (no /tmp, no /dev/null)
   tmpf="${tmpdir%/}/session.read.$$.$RANDOM"
-  : > "$tmpf" 2>/dev/null || { [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window: cannot create tmpf %s\n' "$tmpf" >&2; return 1; }
+  : > "$tmpf" 2>/dev/null || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create tmpf %s\n' "$tmpf" >&2; fi; return 1; }
 
   # Extract last N records robustly (records separated by blank line)
   if [ -f "$session_file" ]; then
@@ -1684,7 +1698,9 @@ session_read_window() {
       fi
     ' _ "$session_file" "$n" "$tmpf"
   else
-    [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window: session file not found: %s\n' "$session_file" >&2
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      printf 'DEBUG: session_read_window: session file not found: %s\n' "$session_file" >&2
+    fi
   fi
 
   # Prepare atomic output in same dir as out
@@ -1752,7 +1768,9 @@ session_read_window() {
     fi
   fi
 
-  [ "${GROQBASH_DEBUG:-0}" -eq 1 ] && printf 'DEBUG: session_read_window done: out=%s size=%s tmpf=%s\n' "$out" "$( [ -f "$out" ] && wc -c < "$out" || echo 0 )" "$tmpf" >&2
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    printf 'DEBUG: session_read_window done: out=%s size=%s tmpf=%s\n' "$out" "$( [ -f "$out" ] && wc -c < "$out" || echo 0 )" "$tmpf" >&2
+  fi
 
   return 0
 }
@@ -1813,7 +1831,9 @@ session_append() {
       chmod 700 "$marker_dir" 2>/dev/null || true
       created_marker=1
     else
-      log_info "SESSION" "append skipped: marker exists for message_id $message_id"
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "SESSION" "append skipped: marker exists for message_id $message_id"
+      fi
       return 0
     fi
   else
@@ -1845,12 +1865,14 @@ session_append() {
   # If message_id present, do a quick existence check under lock by searching for the id token.
   if [ -n "${message_id:-}" ] && [ -f "$session_file" ]; then
     # Only search for the id field; this is cheap and avoids content-based heuristics
-    if grep -F "\"id\":\"$message_id\"" "$session_file" >/dev/null 2>&1; then
+    if grep -F "\"id\":\"$message_id\"" "$session_file" >/dev/null 2>/dev/null; then
       # duplicate detected: release lock and keep marker (treat as done)
       flock -u 200 2>/dev/null || true
       exec 200>&- 2>/dev/null || true
       rm -f "$tmpf" 2>/dev/null || true
-      log_info "SESSION" "append skipped: duplicate detected for message_id $message_id"
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "SESSION" "append skipped: duplicate detected for message_id $message_id"
+      fi
       return 0
     fi
   fi
@@ -1861,7 +1883,9 @@ session_append() {
 
   # Global guard: skip appending empty user messages
   if [ "$role_norm" = "user" ] && [ -z "${content:-}" ]; then
-    log_info "SESSION" "skipping append of empty user message for session $sid"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "SESSION" "skipping append of empty user message for session $sid"
+    fi
     # disable cleanup trap so marker is preserved if needed
     trap - RETURN
     return 0
@@ -1949,7 +1973,9 @@ session_append() {
     fi
   fi
 
-  log_info "SESSION" "appended message id ${message_id:-<no-id>} to $session_file"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "SESSION" "appended message id ${message_id:-<no-id>} to $session_file"
+  fi
   return 0
 }
 
@@ -2998,13 +3024,17 @@ refresh_models_dispatch() {
 
   # Try provider-specific refresh; prefer passing destfile but tolerate providers that ignore args
   if "$fn" "$destfile" 2>/dev/null; then
-    log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER -> $destfile"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER -> $destfile"
+    fi
     return 0
   fi
 
   rc=$?
   if "$fn" 2>/dev/null; then
-    log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER (no explicit dest)"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER (no explicit dest)"
+    fi
     return 0
   fi
 
@@ -3201,8 +3231,10 @@ call_api_once() {
 
 call_api_streaming() {
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
-    show_payload_head "$PAYLOAD" 200 || true
-    log_info "DRYRUN" "DRY-RUN: skipping provider streaming HTTP call"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      show_payload_head "$PAYLOAD" 200 || true
+      log_info "DRYRUN" "DRY-RUN: skipping provider streaming HTTP call"
+    fi
     return 0
   fi
   local fn="call_api_streaming_${PROVIDER}"
@@ -3647,10 +3679,14 @@ if [ -f "$SE_ENGINE_PATH" ] && [ "${GROQBASH_SESSION_ENGINE:-on}" != "off" ]; th
     if type session_engine_build_window >/dev/null 2>&1 && type session_engine_append >/dev/null 2>&1 && type session_engine_enabled >/dev/null 2>&1; then
       if session_engine_enabled 2>/dev/null; then
         SE_AVAILABLE=1
-        log_info "SESSION" "Session Engine loaded and available"
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "SESSION" "Session Engine loaded and available"
+        fi
       else
         SE_AVAILABLE=0
-        log_info "SESSION" "Session Engine loaded but disabled by module"
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "SESSION" "Session Engine loaded but disabled by module"
+        fi
       fi
     else
       SE_AVAILABLE=0
@@ -3664,7 +3700,9 @@ else
   # No engine file present or explicitly disabled
   SE_AVAILABLE=0
   if [ -n "${SESSION_ID:-}" ]; then
-    log_info "SESSION" "Session Engine not available; using legacy session helpers"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "SESSION" "Session Engine not available; using legacy session helpers"
+    fi
   fi
 fi
 
