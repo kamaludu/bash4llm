@@ -4251,7 +4251,9 @@ validate_provider_interface() {
 
   for f in "${optional[@]}"; do
     if ! type "$f" >/dev/null 2>&1; then
-      log_info "PROVIDER" "Provider '$p' missing optional function $f()"
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "PROVIDER" "Provider '$p' missing optional function $f()"
+      fi
     fi
   done
 
@@ -4708,7 +4710,9 @@ if [ "$STREAM_MODE" -eq 1 ]; then
 
   # Skip API key prompt in dry-run mode
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
-    log_info "DRY" "dry-run: skipping API key check for provider $PROVIDER"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "DRY" "dry-run: skipping API key check for provider $PROVIDER"
+    fi
   else
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "missing API key; aborting."
@@ -4717,10 +4721,12 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   fi
 
   if call_api_streaming; then
-    log_info "STREAM" "Streaming completed; captured response in $RESP"
+     if [ "${DEBUG:-0}" -eq 1 ]; then
+       log_info "STREAM" "Streaming completed; captured response in $RESP"
+     fi
 
-    # If sessioning requested, append both user and assistant
-    if [ -n "${SESSION_ID:-}" ]; then
+     # If sessioning requested, append both user and assistant
+     if [ -n "${SESSION_ID:-}" ]; then
       # 1) Append user message (preserve existing semantics) only if non-empty
       if [ -n "${CONTENT:-}" ]; then
         meta_source="cli"
@@ -4822,7 +4828,9 @@ else
 
   # Skip API key prompt in dry-run mode
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
-    log_info "DRY" "dry-run: skipping API key check for provider $PROVIDER"
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "DRY" "dry-run: skipping API key check for provider $PROVIDER"
+    fi
   else
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "missing API key; aborting."
