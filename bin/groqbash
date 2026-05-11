@@ -365,17 +365,24 @@ is_valid_json_string() {
   printf '%s' "$s" | jq -e . >/dev/null 2>&1
 }
 
+# Normalize debug variable: prefer DEBUG, but respect GROQBASH_DEBUG if DEBUG unset
+# Place this after CLI parsing and before any logging or DEBUG checks
+if [ -n "${GROQBASH_DEBUG:-}" ] && [ -z "${DEBUG:-}" ]; then
+  DEBUG="${GROQBASH_DEBUG}"
+fi
+DEBUG="${DEBUG:-0}"
+
 # ---------------------------------------------------------------------------
-# Logging structured (activabile via GROQBASH_DEBUG o GROQBASH_LOG)
+# Logging structured (activabile via DEBUG o GROQBASH_LOG)
 # ---------------------------------------------------------------------------
-GROQBASH_DEBUG="${GROQBASH_DEBUG:-0}"
+DEBUG="${DEBUG:-0}"
 GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
 
 log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; }
 
 log_info() {
   local code="${1:-INFO}" msg="${2:-}"
-  if [ "${GROQBASH_DEBUG:-0}" -eq 1 ]; then
+  if [ "${DEBUG:-0}" -eq 1 ]; then
     printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
   fi
   if [ -n "$GROQBASH_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
@@ -2271,7 +2278,9 @@ buildpayload_groq() {
     model_from_file="$(jq -r '.model // .provider?.model // empty' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
     if [ -n "$model_from_file" ]; then
       MODEL="$model_from_file"
-      log_info "PAYLOAD" "MODEL set from BUILD_MESSAGES_FILE: ${MODEL}"
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "PAYLOAD" "MODEL set from BUILD_MESSAGES_FILE: ${MODEL}"
+      fi
     fi
   fi
 
@@ -2456,6 +2465,7 @@ call_api_groq() {
   # Capture diagnostics immediately
   resp_size=0; [ -f "$resp_tmp" ] && resp_size=$(wc -c < "$resp_tmp" 2>/dev/null || echo 0)
   errf_size=0; [ -f "$ERRF" ] && errf_size=$(wc -c < "$ERRF" 2>/dev/null || echo 0)
+
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CURL" "curl rc=${rc} http_code=${http_code:-?} resp_tmp_size=${resp_size}B ERRF_size=${errf_size}B resp_tmp='${resp_tmp}' ERRF='${ERRF}'"
     if [ -s "$ERRF" ]; then
