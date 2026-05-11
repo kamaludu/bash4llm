@@ -257,6 +257,84 @@ canonical_model_file() {
   printf '%s\n' "$(canonical_config_dir)/model.${prov}"
 }
 
+# -------------------------
+# Minimal provider-url helpers (embedded groq fallback)
+# -------------------------
+# Returns canonical provider-url file path: <config_dir>/provider-url
+canonical_provider_url_file() {
+  # prefer canonical_config_dir() if present
+  if type canonical_config_dir >/dev/null 2>&1; then
+    cfgdir="$(canonical_config_dir)"
+  else
+    cfgdir="${GROQBASH_CONFIG_DIR:-${GROQBASH_DIR%/}/config}"
+  fi
+  printf '%s' "${cfgdir%/}/provider-url"
+}
+
+# Write provider-url file (single-line, non-secret). Best-effort; do not write API keys.
+# Usage: write_provider_url_if_missing <provider> <url>
+write_provider_url_if_missing() {
+  local prov="$1" url="$2" file dir tmp
+  [ -z "$prov" ] && return 1
+  [ -z "$url" ] && return 1
+  file="$(canonical_provider_url_file)"
+  dir="$(dirname "$file")"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  # If file already exists and non-empty, do nothing
+  if [ -f "$file" ] && [ -s "$file" ]; then
+    return 0
+  fi
+  # Write atomically into RUN_TMPDIR if available, else directly (best-effort)
+  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+    tmp="$(mktemp -p "${RUN_TMPDIR}" provider-url.XXXX 2>/dev/null || true)"
+  else
+    tmp="$(mktemp 2>/dev/null || true)"
+  fi
+  if [ -n "$tmp" ]; then
+    printf '%s\n' "$url" > "$tmp"
+    mv -f "$tmp" "$file" 2>/dev/null || cp -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+    chmod 600 "$file" 2>/dev/null || true
+    return 0
+  else
+    # fallback: write directly
+    printf '%s\n' "$url" > "$file" 2>/dev/null || return 1
+    chmod 600 "$file" 2>/dev/null || true
+    return 0
+  fi
+}
+
+# Resolve provider URL with priority: ENV (GROQBASH_API_URL / GROQBASH_PROVIDER_URL) > provider-url file > embedded default (groq)
+# Usage: resolve_provider_url <provider>
+resolve_provider_url() {
+  local prov="${1:-$PROVIDER}" prov_file prov_val
+  # 1) ENV
+  if [ -n "${GROQBASH_API_URL:-}" ]; then
+    GROQBASH_PROVIDER_URL="${GROQBASH_API_URL}"
+    export GROQBASH_PROVIDER_URL
+    return 0
+  fi
+  if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
+    return 0
+  fi
+  # 2) provider-url file
+  prov_file="$(canonical_provider_url_file)"
+  if [ -f "$prov_file" ] && [ -s "$prov_file" ]; then
+    prov_val="$(sed -n '1p' "$prov_file" 2>/dev/null | awk '{$1=$1;print}')"
+    if [ -n "$prov_val" ]; then
+      GROQBASH_PROVIDER_URL="$prov_val"
+      export GROQBASH_PROVIDER_URL
+      return 0
+    fi
+  fi
+  # 3) embedded default for groq only (minimal)
+  if [ "${prov:-}" = "groq" ]; then
+    GROQBASH_PROVIDER_URL="https://api.groq.com/openai/v1/chat/completions"
+    export GROQBASH_PROVIDER_URL
+    return 0
+  fi
+  return 1
+}
+
 # Fail-fast if canonical_config_dir is empty for any reason
 if [ -z "$(canonical_config_dir)" ]; then
   printf 'groqbash: ERROR: CONFIG: canonical config dir is empty; aborting.\n' >&2
@@ -265,6 +343,593 @@ fi
 
 # Canonical PROVIDER_FILE path built only from GROQBASH_CONFIG_DIR
 PROVIDER_FILE="$(canonical_provider_file)"
+
+# --- PRECORE HELPERS BEGIN --------------------
+# Check if a file contains valid JSON (non-empty, parsable by jq)
+is_valid_json_file() {
+  local f="$1"
+  [ -f "$f" ] || return 1
+  [ -s "$f" ] || return 1
+  # Trim leading BOM/whitespace by letting jq parse; jq -e returns 0 on valid JSON
+  jq -e . "$f" >/dev/null 2>&1
+}
+
+# Check if a string is valid JSON (non-empty, parsable by jq)
+is_valid_json_string() {
+  local s="$1"
+  [ -n "${s:-}" ] || return 1
+  printf '%s' "$s" | jq -e . >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------------------
+# Logging structured (activabile via GROQBASH_DEBUG o GROQBASH_LOG)
+# ---------------------------------------------------------------------------
+GROQBASH_DEBUG="${GROQBASH_DEBUG:-0}"
+GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
+
+log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; }
+
+log_info() {
+  local code="${1:-INFO}" msg="${2:-}"
+  if [ "${GROQBASH_DEBUG:-0}" -eq 1 ]; then
+    printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  fi
+  if [ -n "$GROQBASH_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+}
+
+log_warn() {
+  local code="${1:-WARN}" msg="${2:-}"
+  printf '%sWARN: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  if [ -n "$GROQBASH_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+}
+
+log_error() {
+  local code="${1:-ERROR}" msg="${2:-}"
+  printf '%sERROR: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  if [ -n "$GROQBASH_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+}
+
+# debug helper: if DEBUG is (1)
+dbg() {
+  if [ "${DEBUG:-0}" -ne 0 ]; then
+    printf '%s\n' "$*" >&2
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Portable base64 wrappers (Linux, macOS, BusyBox)
+# - b64encode: reads stdin, writes base64 without newlines
+# - b64decode: reads base64 stdin, writes decoded bytes
+# These functions replace all direct base64 calls.
+# ---------------------------------------------------------------------------
+b64encode() {
+  # Use base64 with wrap option if available; ensure single-line output
+  if [ -n "${B64_WRAP_OPT:-}" ]; then
+    base64 ${B64_WRAP_OPT}
+  else
+    base64 | tr -d '\n'
+  fi
+}
+
+b64decode() {
+  # Use base64 with decode option if set; fall back to -d explicitly
+  if [ -n "${B64_DECODE_OPT:-}" ]; then
+    base64 ${B64_DECODE_OPT}
+  else
+    base64 -d
+  fi
+}
+
+# stage_b64: read stdin, write atomic base64 staging file under RUN_TMPDIR or destdir
+# Usage: stage_b64 <dest_b64_path> <max_bytes>
+stage_b64() {
+  # Dual-mode stage_b64:
+  # - If called with two args: stage_b64 /path/to/src /path/to/dst.b64
+  # - If called with one arg: stage_b64 /path/to/dst.b64  (reads stdin)
+  local src dst max_bytes tmp_local tmp_b64 workdir size b64_opts
+  if [ "$#" -eq 2 ]; then
+    src="$1"; dst="$2"
+  elif [ "$#" -eq 1 ]; then
+    dst="$1"
+    src=""
+  else
+    log_error "STAGE" "stage_b64 usage: stage_b64 [src] dst"
+    return 1
+  fi
+
+  max_bytes="${MAX_STAGE_BYTES:-10485760}" # default 10MB
+  [ -n "$dst" ] || return 1
+  workdir="$(dirname "$dst")"
+  mkdir -p "$workdir" 2>/dev/null || { log_error "STAGE" "cannot create workdir $workdir"; return 1; }
+
+  # If src provided, validate it; else read stdin into tmp_local
+  if [ -n "$src" ]; then
+    if [ ! -f "$src" ] || [ ! -s "$src" ]; then
+      log_error "STAGE" "stage_b64: source payload missing or empty: $src"
+      return 1
+    fi
+    tmp_local="$src"
+    tmp_local_is_temp=0
+  else
+    tmp_local="$(mktemp "${RUN_TMPDIR%/}/payload.tmp.XXXXXX" 2>/dev/null || true)"
+    [ -n "$tmp_local" ] || tmp_local="${RUN_TMPDIR%/}/payload.tmp.$$"
+    if ! cat - > "$tmp_local" 2>/dev/null; then
+      rm -f -- "$tmp_local" 2>/dev/null || true
+      log_error "STAGE" "failed to write staging payload from stdin"
+      return 1
+    fi
+    tmp_local_is_temp=1
+  fi
+
+  # Size check
+  size="$(file_size "$tmp_local" 2>/dev/null || echo 0)"
+  if [ "$size" -gt "$max_bytes" ]; then
+    log_error "STAGE" "staged payload exceeds max allowed size ($size > $max_bytes)"
+    [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
+    return 1
+  fi
+
+  # Create base64 staging file atomically in workdir
+  tmp_b64="$(mktemp "${workdir%/}/.groq-b64.XXXXXX" 2>/dev/null || true)"
+  [ -n "$tmp_b64" ] || tmp_b64="${workdir%/}/.groq-b64.$$.$RANDOM"
+  if [ -n "${B64_WRAP_OPT:-}" ]; then
+    base64 ${B64_WRAP_OPT} "$tmp_local" > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+  else
+    base64 "$tmp_local" > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+  fi
+  chmod 600 "$tmp_b64" 2>/dev/null || true
+
+  # Atomic move into place under lock if available
+  lockfile="${workdir%/}/.groqbash.lock"
+  if type lock_exec >/dev/null 2>&1; then
+    lock_exec "$lockfile" 10 -- sh -c 'set -e; mv -f -- "$1" "$2"; chmod 600 "$2" 2>/dev/null || true' _ "$tmp_b64" "$dst" || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+  else
+    mv -f "$tmp_b64" "$dst" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+  fi
+
+  [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
+  log_info "STAGE" "staged base64 payload: $dst (size $(wc -c < "$dst" 2>/dev/null)B)"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# lock_exec: acquire exclusive flock on a lockfile with timeout (improved)
+# Usage: lock_exec <lockfile> <timeout> -- <command> [args...]
+# Guarantees: acquista lock, esegue comando in subshell, rilascia lock sempre.
+# ---------------------------------------------------------------------------
+lock_exec() {
+  local lockfile="$1"
+  local timeout="${2:-10}"
+  shift 2
+  if [ "$1" != "--" ]; then
+    log_error "USAGE" "lock_exec <lockfile> <timeout> -- <cmd> [args...]"
+    return 2
+  fi
+  shift
+
+  mkdir -p "$(dirname "$lockfile")" 2>/dev/null || { log_error "LOCKFAIL" "cannot create lockfile dir: $(dirname "$lockfile")"; return 2; }
+
+  if command -v flock >/dev/null 2>&1; then
+    # Use a dedicated file descriptor to ensure lock is released when subshell exits
+    (
+      # Open FD 9 for the lockfile inside subshell to avoid leaking FDs to caller
+      exec 9>"$lockfile"
+      if ! flock -x -w "$timeout" 9; then
+        printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
+        exit 124
+      fi
+      # Execute the requested command in this subshell under lock
+      set -e
+      "$@"
+    )
+    rc=$?
+    return $rc
+  fi
+
+  # flock missing: fail with clear message
+  log_error "LOCK" "flock not available; cannot acquire lock on $lockfile. Install util-linux/coreutils or run on supported platform."
+  return 2
+}
+
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# - file_size returns bytes (portable)
+file_size() {
+  local f="$1"
+  if [ -z "$f" ] || [ ! -f "$f" ]; then
+    printf '0'
+    return 0
+  fi
+  case "$(uname 2>/dev/null || echo Linux)" in
+    Darwin) stat -f %z "$f" 2>/dev/null || printf '0' ;;
+    *) stat -c %s "$f" 2>/dev/null || printf '0' ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Compatibility wrapper: _mktemp_in_dir -> uses _tmpf to create a secure temp file
+# Usage: _mktemp_in_dir <dir> [prefix]
+# Returns path on stdout or non-zero on failure.
+# ---------------------------------------------------------------------------
+_mktemp_in_dir() {
+  local base="${1:-}" prefix="${2:-groq}" tmp
+  if [ -z "$base" ]; then
+    log_error "TMP" "_mktemp_in_dir: base dir required"
+    return "$GROQBASHERRTMP"
+  fi
+  # Delegate to _tmpf which already enforces umask/perms and returns a path
+  tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null || true)"
+  if [ -z "$tmp" ]; then
+    log_error "TMP" "_mktemp_in_dir: failed to create temp in $base"
+    return "$GROQBASHERRTMP"
+  fi
+  printf '%s' "$tmp"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Debug-safe payload preview (decodes b64 payloads)
+# ---------------------------------------------------------------------------
+show_payload_head() {
+  local path="${1:-$PAYLOAD}" lines="${2:-200}"
+  if [ -z "${path:-}" ]; then
+    printf 'groqbash: ERROR: payload file missing: %s\n' "<unset>" >&2
+    exit "$GROQBASHERRTMP"
+  fi
+  if [ ! -e "$path" ]; then
+    printf 'groqbash: ERROR: payload file missing: %s\n' "$path" >&2
+    exit "$GROQBASHERRTMP"
+  fi
+  if [ ! -s "$path" ]; then
+    printf 'groqbash: INFO: payload exists but is empty: %s\n' "$path" >&2
+    return 0
+  fi
+
+  # Diagnostic output only when DEBUG=1
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    printf 'groqbash: INFO: payload path: %s\n' "$path" >&2
+    printf 'groqbash: INFO: payload (head %d lines):\n' "$lines" >&2
+    if printf '%s' "$path" | grep -qE '\.b64$'; then
+      b64decode < "$path" 2>/dev/null | head -n "$lines" >&2 || true
+    else
+      head -n "$lines" "$path" 2>/dev/null >&2 || true
+    fi
+  fi
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Atomic raw write helper
+# - atomic_write <dest> <timeout> -- (reads stdin)
+# ---------------------------------------------------------------------------
+atomic_write() {
+  # Atomic write with optional lock support.
+  # Usage: atomic_write /path/to/target [timeout_seconds]
+  local dest="$1"
+  local timeout="${2:-10}"
+  [ -n "$dest" ] || return "$GROQBASHERRTMP"
+  local destdir tmp lockfile rc
+
+  destdir="$(dirname -- "$dest")"
+  mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
+  lockfile="${destdir}/.groqbash.lock"
+
+  tmp="$(mktemp -p "$destdir" .groq-atomic.XXXXXX 2>/dev/null || true)"
+  [ -n "$tmp" ] || tmp="$destdir/.groq-atomic.$$.$RANDOM"
+
+  if ! cat - > "$tmp"; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    log_error "ATOMICFAIL" "writing to temp failed"
+    return "$GROQBASHERRTMP"
+  fi
+  chmod 600 "$tmp" 2>/dev/null || true
+
+  # If lock_exec available, use it to perform the mv under lock; otherwise mv directly
+  if type lock_exec >/dev/null 2>&1; then
+    lock_exec "$lockfile" "$timeout" -- sh -c '
+      set -e
+      mv -f -- "$1" "$2"
+      chmod 600 "$2" 2>/dev/null || true
+    ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+  else
+    if mv -f -- "$tmp" "$dest" 2>/dev/null; then
+      chmod 600 "$dest" 2>/dev/null || true
+    else
+      rc=$?
+      rm -f -- "$tmp" 2>/dev/null || true
+      log_error "ATOMICFAIL" "mv failed with rc $rc"
+      return "$rc"
+    fi
+  fi
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Response extraction helpers (improved)
+# ---------------------------------------------------------------------------
+extract_text_from_resp() {
+  # Extract textual content from RESP and print to stdout.
+  # Return codes:
+  # 0 = success (text printed)
+  # 2 = RESP is diagnostic (no real content)
+  # 1 = no textual content found or error
+  local resp_file="${RESP:-}"
+  if [ -z "${resp_file:-}" ]; then
+    log_error "EXTRACT" "RESP path not set"
+    return 1
+  fi
+
+  if ! is_valid_json_file "$resp_file"; then
+    log_warn "EXTRACT" "RESP missing or not valid JSON: $resp_file"
+    # If file exists but not JSON, output raw content as fallback
+    if [ -f "$resp_file" ]; then
+      cat "$resp_file" 2>/dev/null || true
+      return 0
+    fi
+    return 1
+  fi
+
+  # If diagnostic JSON, bail with info
+  if jq -e 'has("diagnostic") and .diagnostic==true' "$resp_file" >/dev/null 2>&1; then
+    log_warn "EXTRACT" "RESP is diagnostic JSON; skipping text extraction"
+    return 2
+  fi
+
+  # 1) choices[].message.content or choices[].delta.content
+  if jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.message?.content // .delta?.content // "") ] | map(select(.!="")) | length > 0 )' "$resp_file" >/dev/null 2>&1; then
+    jq -r '[.choices[]? | (.message?.content // .delta?.content // "")] | map(select(.!="")) | join("\n\n")' "$resp_file" 2>/dev/null || return 1
+    return 0
+  fi
+
+  # 2) choices[].text (older formats)
+  if jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.text? // "") ] | map(select(.!="")) | length > 0 )' "$resp_file" >/dev/null 2>&1; then
+    jq -r '[.choices[]?.text? // empty] | map(select(.!="")) | join("\n\n")' "$resp_file" 2>/dev/null || return 1
+    return 0
+  fi
+
+  # 3) output_text or data[].text
+  if jq -e '(.output_text? // empty) != "" or (.data and (.data|length>0) and ( [ .data[]? | (.text? // "") ] | map(select(.!="")) | length > 0 ))' "$resp_file" >/dev/null 2>&1; then
+    if [ "$(jq -r '.output_text // empty' "$resp_file" 2>/dev/null)" != "" ]; then
+      jq -r '.output_text' "$resp_file" 2>/dev/null || return 1
+      return 0
+    else
+      jq -r '[.data[]?.text? // empty] | map(select(.!="")) | join("\n\n")' "$resp_file" 2>/dev/null || return 1
+      return 0
+    fi
+  fi
+
+  # 4) fallback: any string scalars concatenated
+  if jq -e 'paths(scalars) as $p | getpath($p) | type=="string"' "$resp_file" >/dev/null 2>&1; then
+    jq -r '[.. | scalars | select(type=="string")] | join("\n\n")' "$resp_file" 2>/dev/null || return 1
+    return 0
+  fi
+
+  log_warn "EXTRACT" "No textual content found in RESP"
+  return 1
+}
+
+# Ensure and create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
+# Robust fallback chain: reuse RUN_TMPDIR if valid -> mktemp -> make_tmpdir -> timestamped dir.
+# Enforces strict perms and avoids /tmp usage. Removes empty groq.b64 staging files safely.
+DEBUG_PRESERVE="${DEBUG_PRESERVE:-0}"
+
+ensure_run_tmpdir() {
+  # Usage:
+  #   ensure_run_tmpdir            -> create/export RUN_TMPDIR PAYLOAD RESP ERRF in-process
+  #   ensure_run_tmpdir --print    -> print RUN_TMPDIR to stdout (no trap, safe for subshell capture)
+  local print_only=0 subshell=0 tmpdir
+  if [ "${1:-}" = "--print" ]; then print_only=1; fi
+
+  # Detect subshell: prefer comparing BASHPID to $$ (reliable in bash)
+  # If BASHPID differs from $$ we are in a subshell; treat as subshell context.
+  if [ -n "${BASHPID:-}" ] && [ "${BASHPID:-}" != "$$" ]; then
+    subshell=1
+  fi
+
+  # If RUN_TMPDIR already set and valid, reuse it (do not clobber existing values)
+  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+    chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
+    : "${PAYLOAD:=$RUN_TMPDIR/payload}"
+    : "${RESP:=$RUN_TMPDIR/resp.json}"
+    : "${ERRF:=$RUN_TMPDIR/err.log}"
+    if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
+      : > "$RESP" 2>/dev/null || true
+      chmod 600 "$RESP" 2>/dev/null || true
+      : > "$ERRF" 2>/dev/null || true
+      chmod 600 "$ERRF" 2>/dev/null || true
+      export RUN_TMPDIR PAYLOAD RESP ERRF
+    fi
+    if [ "$print_only" -eq 1 ]; then
+      printf '%s' "$RUN_TMPDIR"
+    fi
+    return 0
+  fi
+
+  # Ensure base tmpdir exists and has strict perms
+  if [ -z "${GROQBASH_TMPDIR:-}" ]; then
+    log_error "TMP" "GROQBASH_TMPDIR not set"
+    return "$GROQBASHERRTMP"
+  fi
+  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { log_error "TMP" "cannot create base tmpdir $GROQBASH_TMPDIR"; return 1; }
+  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
+
+  # Try mktemp under GROQBASH_TMPDIR, fallback to make_tmpdir, then timestamped dir
+  tmpdir="$(mktemp -d "${GROQBASH_TMPDIR%/}/run.XXXXXX" 2>/dev/null || true)"
+  if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+    tmpdir="$(make_tmpdir 2>/dev/null || true)"
+  fi
+  if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+    tmpdir="${GROQBASH_TMPDIR%/}/run-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    mkdir -p "$tmpdir" 2>/dev/null || { log_error "TMP" "cannot create fallback RUN_TMPDIR $tmpdir"; return 1; }
+  fi
+
+  # Enforce strict perms
+  chmod 700 "$tmpdir" 2>/dev/null || true
+
+  # Assign into RUN_TMPDIR local then export if requested
+  RUN_TMPDIR="$tmpdir"
+
+  # Provider-agnostic payload path (set only if unset)
+  : "${PAYLOAD:=$RUN_TMPDIR/payload}"
+  : "${RESP:=$RUN_TMPDIR/resp.json}"
+  : "${ERRF:=$RUN_TMPDIR/err.log}"
+
+  # Create RESP/ERRF files only in main process and when not print-only
+  if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
+    : > "$RESP" 2>/dev/null || true
+    chmod 600 "$RESP" 2>/dev/null || true
+    : > "$ERRF" 2>/dev/null || true
+    chmod 600 "$ERRF" 2>/dev/null || true
+  fi
+
+  # Remove any empty groq.b64 staging files inside GROQBASH_TMPDIR to avoid confusing later logic
+  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
+    for f in "${GROQBASH_TMPDIR%/}/"*.b64 "${RUN_TMPDIR%/}/"*.b64; do
+      [ -e "$f" ] || continue
+      if [ ! -s "$f" ]; then
+        rm -f -- "$f" 2>/dev/null || true
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "TMP" "Removed empty staging file: $f"
+        fi
+      fi
+    done
+  fi
+
+  # Define cleanup function but install trap only when running in main process
+  cleanup_run_tmp_on_exit() {
+    if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
+      fi
+      return 0
+    fi
+    if [ -n "${RUN_TMPDIR:-}" ]; then
+      case "$RUN_TMPDIR" in
+        "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+          rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
+          if [ "${DEBUG:-0}" -eq 1 ]; then
+            log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
+          fi
+          ;;
+        *)
+          if [ "${DEBUG:-0}" -eq 1 ]; then
+            log_info "TMP" "RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR"
+          fi
+          ;;
+      esac
+    fi
+  }
+
+  # Install trap only if we are in the main shell and not in print-only mode
+  if [ "$subshell" -eq 0 ] && [ "$print_only" -eq 0 ]; then
+    trap cleanup_run_tmp_on_exit EXIT INT TERM
+  fi
+
+  # Export variables in main process (if not print-only)
+  if [ "$print_only" -eq 0 ]; then
+    export RUN_TMPDIR PAYLOAD RESP ERRF
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
+    fi
+  else
+    printf '%s' "$RUN_TMPDIR"
+  fi
+
+  return 0
+}
+
+cleanup_tmp() {
+  if [ -n "${RUN_TMPDIR:-}" ]; then
+    case "$RUN_TMPDIR" in
+      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+        rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
+        ;;
+      *)
+        ;;
+    esac
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Atomic base64 write/read helpers (use for payloads, manifests, staging)
+# - b64_atomic_write <dest.b64> <timeout> -- (reads stdin)
+# - b64_atomic_read <src.b64> (writes decoded to stdout)
+# ---------------------------------------------------------------------------
+b64_atomic_write() {
+  local dest="$1"
+  local timeout="${2:-10}"
+  shift 2 || true
+  [ -n "$dest" ] || { log_error "B64FAIL" "b64_atomic_write: dest required"; return "$GROQBASHERRTMP"; }
+  local destdir tmp lockfile
+  destdir="$(dirname -- "$dest")"
+  mkdir -p "$destdir" 2>/dev/null || { log_error "B64FAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
+  # Use a lock specific to the destination directory to avoid global contention
+  lockfile="${destdir%/}/.groqbash.lock"
+  tmp="$(mktemp -p "$destdir" .groq-b64.XXXXXX 2>/dev/null || true)"
+  [ -n "$tmp" ] || tmp="$destdir/.groq-b64.$$.$RANDOM"
+  if ! b64encode > "$tmp"; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    log_error "B64FAIL" "base64 encoding failed"
+    return "$GROQBASHERRTMP"
+  fi
+  chmod 600 "$tmp" 2>/dev/null || true
+  lock_exec "$lockfile" "$timeout" -- sh -c '
+    set -e
+    mv -f -- "$1" "$2"
+    chmod 600 "$2" 2>/dev/null || true
+  ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+  return 0
+}
+
+b64_atomic_read() {
+  local src="$1"
+  [ -f "$src" ] || return 1
+  b64decode < "$src"
+  return $?
+}
+
+# ---------------------------------------------------------------------------
+# ui_state_write: helper centralizzato per scrivere file JSON per la GUI (atomic)
+# Usage: ui_state_write <relpath> <json-string>
+# Writes to: $GROQBASH_CONFIG_DIR/ui_state/<relpath>
+# Guarantees: atomic write, strict perms, non-fatal on error (logs warning).
+# ---------------------------------------------------------------------------
+ui_state_write() {
+  # Write UI state JSON atomically.
+  # Usage: ui_state_write filename content_string
+  local name="$1"; local content="$2"
+  local dir target
+
+  if [ -n "${GROQBASH_CONFIG_DIR:-}" ]; then
+    dir="${GROQBASH_CONFIG_DIR%/}/ui_state"
+  else
+    dir="${RUN_TMPDIR%/}/ui_state"
+  fi
+
+  if [ -z "${name:-}" ]; then
+    log_error "UI_STATE" "ui_state_write requires a filename"
+    return 1
+  fi
+
+  mkdir -p "$dir" 2>/dev/null || { log_warn "UI_STATE" "failed to create ui_state dir: $dir"; return 1; }
+  chmod 700 "$dir" 2>/dev/null || true
+  target="$dir/$name"
+
+  # Use atomic_write helper (timeout optional) to write content
+  printf '%s' "$content" | atomic_write "$target" 10 || { log_warn "UI_STATE" "atomic write failed for $target"; return 1; }
+  chmod 600 "$target" 2>/dev/null || true
+  log_info "UI_STATE" "wrote $target (size $(wc -c < "$target" 2>/dev/null)B)"
+  return 0
+}
+
+# --- PRECORE HELPERS END ----------------------
 
 # ---------------------------------------------------------------------------
 # Internal CLI helpers: print canonical config paths (safe, single-file)
@@ -356,41 +1021,6 @@ TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
 GROQBASH_LOCK_TIMEOUT_TMP="${GROQBASH_LOCK_TIMEOUT_TMP:-10}"
 GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
 GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
-
-# ---------------------------------------------------------------------------
-# Logging structured (activabile via GROQBASH_DEBUG o GROQBASH_LOG)
-# ---------------------------------------------------------------------------
-GROQBASH_DEBUG="${GROQBASH_DEBUG:-0}"
-GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
-
-log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; }
-
-log_info() {
-  local code="${1:-INFO}" msg="${2:-}"
-  if [ "${GROQBASH_DEBUG:-0}" -eq 1 ]; then
-    printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  fi
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
-}
-
-log_warn() {
-  local code="${1:-WARN}" msg="${2:-}"
-  printf '%sWARN: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
-}
-
-log_error() {
-  local code="${1:-ERROR}" msg="${2:-}"
-  printf '%sERROR: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
-}
-
-# debug helper: if DEBUG is (1)
-dbg() {
-  if [ "${DEBUG:-0}" -ne 0 ]; then
-    printf '%s\n' "$*" >&2
-  fi
-}
 
 # Load and validate provider module for given provider name
 load_provider_module() {
@@ -485,45 +1115,6 @@ load_provider_module() {
 }
 
 # ---------------------------------------------------------------------------
-# lock_exec: acquire exclusive flock on a lockfile with timeout (improved)
-# Usage: lock_exec <lockfile> <timeout> -- <command> [args...]
-# Guarantees: acquista lock, esegue comando in subshell, rilascia lock sempre.
-# ---------------------------------------------------------------------------
-lock_exec() {
-  local lockfile="$1"
-  local timeout="${2:-10}"
-  shift 2
-  if [ "$1" != "--" ]; then
-    log_error "USAGE" "lock_exec <lockfile> <timeout> -- <cmd> [args...]"
-    return 2
-  fi
-  shift
-
-  mkdir -p "$(dirname "$lockfile")" 2>/dev/null || { log_error "LOCKFAIL" "cannot create lockfile dir: $(dirname "$lockfile")"; return 2; }
-
-  if command -v flock >/dev/null 2>&1; then
-    # Use a dedicated file descriptor to ensure lock is released when subshell exits
-    (
-      # Open FD 9 for the lockfile inside subshell to avoid leaking FDs to caller
-      exec 9>"$lockfile"
-      if ! flock -x -w "$timeout" 9; then
-        printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
-        exit 124
-      fi
-      # Execute the requested command in this subshell under lock
-      set -e
-      "$@"
-    )
-    rc=$?
-    return $rc
-  fi
-
-  # flock missing: fail with clear message
-  log_error "LOCK" "flock not available; cannot acquire lock on $lockfile. Install util-linux/coreutils or run on supported platform."
-  return 2
-}
-
-# ---------------------------------------------------------------------------
 # Detect portable base64 encode/decode commands (avoid parsing --help)
 # Sets B64_ENCODE_CMD and B64_DECODE_CMD arrays used by wrappers
 # ---------------------------------------------------------------------------
@@ -553,152 +1144,9 @@ _detect_base64_opts() {
 _detect_base64_opts
 
 # ---------------------------------------------------------------------------
-# Portable base64 wrappers (Linux, macOS, BusyBox)
-# - b64encode: reads stdin, writes base64 without newlines
-# - b64decode: reads base64 stdin, writes decoded bytes
-# These functions replace all direct base64 calls.
-# ---------------------------------------------------------------------------
-b64encode() {
-  # Use base64 with wrap option if available; ensure single-line output
-  if [ -n "${B64_WRAP_OPT:-}" ]; then
-    base64 ${B64_WRAP_OPT}
-  else
-    base64 | tr -d '\n'
-  fi
-}
-
-b64decode() {
-  # Use base64 with decode option if set; fall back to -d explicitly
-  if [ -n "${B64_DECODE_OPT:-}" ]; then
-    base64 ${B64_DECODE_OPT}
-  else
-    base64 -d
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Atomic base64 write/read helpers (use for payloads, manifests, staging)
-# - b64_atomic_write <dest.b64> <timeout> -- (reads stdin)
-# - b64_atomic_read <src.b64> (writes decoded to stdout)
-# ---------------------------------------------------------------------------
-b64_atomic_write() {
-  local dest="$1"
-  local timeout="${2:-10}"
-  shift 2 || true
-  [ -n "$dest" ] || { log_error "B64FAIL" "b64_atomic_write: dest required"; return "$GROQBASHERRTMP"; }
-  local destdir tmp lockfile
-  destdir="$(dirname -- "$dest")"
-  mkdir -p "$destdir" 2>/dev/null || { log_error "B64FAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
-  # Use a lock specific to the destination directory to avoid global contention
-  lockfile="${destdir%/}/.groqbash.lock"
-  tmp="$(mktemp -p "$destdir" .groq-b64.XXXXXX 2>/dev/null || true)"
-  [ -n "$tmp" ] || tmp="$destdir/.groq-b64.$$.$RANDOM"
-  if ! b64encode > "$tmp"; then
-    rm -f -- "$tmp" 2>/dev/null || true
-    log_error "B64FAIL" "base64 encoding failed"
-    return "$GROQBASHERRTMP"
-  fi
-  chmod 600 "$tmp" 2>/dev/null || true
-  lock_exec "$lockfile" "$timeout" -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
-  return 0
-}
-
-b64_atomic_read() {
-  local src="$1"
-  [ -f "$src" ] || return 1
-  b64decode < "$src"
-  return $?
-}
-
-# ---------------------------------------------------------------------------
-# Atomic raw write helper
-# - atomic_write <dest> <timeout> -- (reads stdin)
-# ---------------------------------------------------------------------------
-atomic_write() {
-  local dest="$1"
-  local timeout="${2:-10}"
-  shift 2 || true
-  [ -n "$dest" ] || return "$GROQBASHERRTMP"
-  local destdir lockfile tmp
-  destdir="$(dirname -- "$dest")"
-  mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
-  lockfile="${destdir}/.groqbash.lock"
-  tmp="$(mktemp -p "$destdir" .groq-atomic.XXXXXX 2>/dev/null || true)"
-  [ -n "$tmp" ] || tmp="$destdir/.groq-atomic.$$.$RANDOM"
-  if ! cat - > "$tmp"; then
-    rm -f -- "$tmp" 2>/dev/null || true
-    log_error "ATOMICFAIL" "writing to temp failed"
-    return "$GROQBASHERRTMP"
-  fi
-  chmod 600 "$tmp" 2>/dev/null || true
-  lock_exec "$lockfile" "$timeout" -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
-  return 0
-}
-
-# ---------------------------------------------------------------------------
-# ui_state_write: helper centralizzato per scrivere file JSON per la GUI (atomic)
-# Usage: ui_state_write <relpath> <json-string>
-# Writes to: $GROQBASH_CONFIG_DIR/ui_state/<relpath>
-# Guarantees: atomic write, strict perms, non-fatal on error (logs warning).
-# ---------------------------------------------------------------------------
-ui_state_write() {
-  local relpath="$1" json="$2"
-  local dest_dir dest_file ui_dir sessions_dir tmpfile rc
-
-  if [ -z "${GROQBASH_CONFIG_DIR:-}" ]; then
-    log_warn "UI_STATE" "GROQBASH_CONFIG_DIR unset; cannot write ui_state"
-    return 1
-  fi
-
-  ui_dir="${GROQBASH_CONFIG_DIR%/}/ui_state"
-  sessions_dir="${ui_dir%/}/sessions"
-  dest_dir="$(dirname "${ui_dir%/}/${relpath}")"
-  dest_file="${ui_dir%/}/${relpath}"
-
-  # Ensure base dirs exist with strict perms
-  if ! mkdir -p "$dest_dir" 2>/dev/null; then
-    log_warn "UI_STATE" "cannot create ui_state dir: $dest_dir"
-    return 1
-  fi
-  chmod 700 "$ui_dir" 2>/dev/null || true
-  chmod 700 "$sessions_dir" 2>/dev/null || true
-
-  # Use atomic_write helper (timeout 10s) to write JSON content
-  if ! printf '%s' "$json" | atomic_write "$dest_file" 10; then
-    log_warn "UI_STATE" "atomic write failed for $dest_file"
-    return 1
-  fi
-
-  chmod 600 "$dest_file" 2>/dev/null || true
-  log_info "UI_STATE" "wrote $dest_file"
-  return 0
-}
-
-# ---------------------------------------------------------------------------
 # Portable file size and listing helpers for rotate_history
-# - file_size returns bytes (portable)
 # - list_files_sorted_by_mtime lists files with mtime and path (portable)
 # ---------------------------------------------------------------------------
-file_size() {
-  local f="$1"
-  if [ -z "$f" ] || [ ! -f "$f" ]; then
-    printf '0'
-    return 0
-  fi
-  case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin) stat -f %z "$f" 2>/dev/null || printf '0' ;;
-    *) stat -c %s "$f" 2>/dev/null || printf '0' ;;
-  esac
-}
-
 # list_files_sorted_by_mtime <dir> -> prints "mtime_seconds|path" lines sorted ascending
 list_files_sorted_by_mtime() {
   local dir="$1"
@@ -1153,27 +1601,6 @@ _tmpf() {
 }
 
 # ---------------------------------------------------------------------------
-# Compatibility wrapper: _mktemp_in_dir -> uses _tmpf to create a secure temp file
-# Usage: _mktemp_in_dir <dir> [prefix]
-# Returns path on stdout or non-zero on failure.
-# ---------------------------------------------------------------------------
-_mktemp_in_dir() {
-  local base="${1:-}" prefix="${2:-groq}" tmp
-  if [ -z "$base" ]; then
-    log_error "TMP" "_mktemp_in_dir: base dir required"
-    return "$GROQBASHERRTMP"
-  fi
-  # Delegate to _tmpf which already enforces umask/perms and returns a path
-  tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null || true)"
-  if [ -z "$tmp" ]; then
-    log_error "TMP" "_mktemp_in_dir: failed to create temp in $base"
-    return "$GROQBASHERRTMP"
-  fi
-  printf '%s' "$tmp"
-  return 0
-}
-
-# ---------------------------------------------------------------------------
 # Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
 # - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ
@@ -1623,139 +2050,17 @@ session_cache_invalidate() {
   return 0
 }
 
-# Ensure and create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
-# Robust fallback chain: reuse RUN_TMPDIR if valid -> mktemp -> make_tmpdir -> timestamped dir.
-# Enforces strict perms and avoids /tmp usage. Removes empty groq.b64 staging files safely.
-DEBUG_PRESERVE="${DEBUG_PRESERVE:-0}"
-
-ensure_run_tmpdir() {
-  # If RUN_TMPDIR already set and valid, reuse it
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    # Ensure permissions are strict
-    chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
-    export RUN_TMPDIR
-    # Ensure payload/resp/errf exist
-    PAYLOAD="${PAYLOAD:-$RUN_TMPDIR/payload}"
-    RESP="${RESP:-$RUN_TMPDIR/resp.json}"
-    ERRF="${ERRF:-$RUN_TMPDIR/err.log}"
-    : > "$RESP" 2>/dev/null || true
-    chmod 600 "$RESP" 2>/dev/null || true
-    : > "$ERRF" 2>/dev/null || true
-    chmod 600 "$ERRF" 2>/dev/null || true
-    return 0
-  fi
-
-  # Ensure base tmpdir exists and has strict perms
-  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { log_error "TMP" "cannot create base tmpdir $GROQBASH_TMPDIR"; return 1; }
-  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
-
-  # Try mktemp under GROQBASH_TMPDIR
-  RUN_TMPDIR="$(mktemp -d "${GROQBASH_TMPDIR%/}/run.XXXXXX" 2>/dev/null || true)"
-  if [ -z "$RUN_TMPDIR" ] || [ ! -d "$RUN_TMPDIR" ]; then
-    # Fallback to make_tmpdir helper
-    RUN_TMPDIR="$(make_tmpdir 2>/dev/null || true)"
-  fi
-  if [ -z "$RUN_TMPDIR" ] || [ ! -d "$RUN_TMPDIR" ]; then
-    # Final fallback: timestamped directory under GROQBASH_TMPDIR
-    RUN_TMPDIR="${GROQBASH_TMPDIR%/}/run-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-    mkdir -p "$RUN_TMPDIR" 2>/dev/null || { log_error "TMP" "cannot create fallback RUN_TMPDIR $RUN_TMPDIR"; return 1; }
-  fi
-
-  # Enforce strict perms
-  chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
-
-  # Provider-agnostic payload path (no imposed extension or semantics)
-  PAYLOAD="${PAYLOAD:-$RUN_TMPDIR/payload}"
-  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
-  ERRF="${ERRF:-$RUN_TMPDIR/err.log}"
-
-  : > "$RESP" 2>/dev/null || true
-  chmod 600 "$RESP" 2>/dev/null || true
-  : > "$ERRF" 2>/dev/null || true
-  chmod 600 "$ERRF" 2>/dev/null || true
-
-  # Remove any empty groq.b64 staging files inside GROQBASH_TMPDIR to avoid confusing later logic
-  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
-    for f in "${GROQBASH_TMPDIR%/}/"*.b64 "${RUN_TMPDIR%/}/"*.b64; do
-      [ -e "$f" ] || continue
-      # Only remove zero-length .b64 files (safe cleanup)
-      if [ ! -s "$f" ]; then
-        rm -f -- "$f" 2>/dev/null || true
-        log_info "TMP" "Removed empty staging file: $f"
-      fi
-    done
-  fi
-
-  cleanup_run_tmp_on_exit() {
-    # Only remove RUN_TMPDIR if it is under GROQBASH_TMPDIR and DEBUG_PRESERVE is not set
-    if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
-      log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
-      return 0
-    fi
-    if [ -n "${RUN_TMPDIR:-}" ]; then
-      case "$RUN_TMPDIR" in
-        "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
-          rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
-          log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
-          ;;
-        *)
-          # Do not remove directories outside GROQBASH_TMPDIR
-          log_info "TMP" "RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR"
-          ;;
-      esac
-    fi
-  }
-
-  # Install trap to cleanup on exit (INT/TERM/EXIT)
-  trap cleanup_run_tmp_on_exit EXIT INT TERM
-
-  export RUN_TMPDIR PAYLOAD RESP ERRF
-  log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
-  return 0
-}
-
-cleanup_tmp() {
-  if [ -n "${RUN_TMPDIR:-}" ]; then
-    case "$RUN_TMPDIR" in
-      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
-        rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
-        ;;
-      *)
-        ;;
-    esac
-  fi
-}
-
+# Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
-# Runtime globals and normalization
-# ---------------------------------------------------------------------------
+# NOTE: Do not assign RUN_TMPDIR/RESP/PAYLOAD/ERRF to empty strings here.
+# Those variables must remain unset unless explicitly created by ensure_run_tmpdir
+# in the main process. Assign only safe, non-runtime defaults.
 CONTENT="${CONTENT:-}"
-RUN_TMPDIR="${RUN_TMPDIR:-}"
-PAYLOAD="${PAYLOAD:-}"
-RESP="${RESP:-}"
-ERRF="${ERRF:-}"
 JSON_INPUT="${JSON_INPUT:-}"
 # Session CLI flags defaults (initialized to avoid set -u failures)
 SESSION_ID="${SESSION_ID:-}"
 SESSION_WINDOW="${SESSION_WINDOW:-}"
-# Runtime defaults and safety for session-related env overrides
-# If an operator exported SESSION_WINDOW in the environment, keep it;
-# otherwise leave empty and let CLI parsing set it (default handled later).
-# Ensure LAST_CHECK_LINES already has a default (see session helpers).
-: "${LAST_CHECK_LINES:=50}"
-IFS_SAVE="$IFS"
-IFS=$'\n'
-ARGS=()
-if [ -n "${ARGS:-}" ]; then
-  read -r -d '' -a _tmp_args <<<"${ARGS:-}" 2>/dev/null || true
-  [ "${#_tmp_args[@]}" -gt 0 ] && ARGS=("${_tmp_args[@]}")
-fi
-FILE_INPUTS=()
-if [ -n "${FILE_INPUTS:-}" ]; then
-  read -r -d '' -a _tmp_files <<<"${FILE_INPUTS:-}" 2>/dev/null || true
-  [ "${#_tmp_files[@]}" -gt 0 ] && FILE_INPUTS=("${_tmp_files[@]}")
-fi
-IFS="$IFS_SAVE"
+# Runtime flags and other non-runtime defaults
 TEMPLATE="${TEMPLATE:-}"
 BATCH_FILE="${BATCH_FILE:-}"
 CHAT_MODE="${CHAT_MODE:-0}"
@@ -1788,34 +2093,22 @@ else
   mkdir -p "${GROQBASH_CONFIG_DIR%/}" 2>/dev/null || true
 fi
 
-# Immediately honor persisted provider selection (unless CLI override or interactive mode)
-# Precedence for initial assignment here: persisted provider file -> existing $PROVIDER
-if [ -z "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ] && \
-   [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
-  prov="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
-  prov="$(printf '%s' "$prov" | awk '{$1=$1;print}')"
-  if [ -n "$prov" ]; then
-    PROVIDER="$prov"
-  fi
-fi
-# Now $PROVIDER reflects persisted selection early in execution
-PROVIDER_CLI="${PROVIDER_CLI:-}"
-PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
-INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}"
-ALLOWED_MODELS="${ALLOWED_MODELS:-}"
-
+# NOTE: Do NOT reassign RUN_TMPDIR, RESP, PAYLOAD, ERRF to empty values anywhere
+# after this point; those are runtime-managed and must be created by ensure_run_tmpdir
+# in the main process.
 CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
 
-# ---------------------------------------------------------------------------
-# Helpers: truthy and normalization
-# ---------------------------------------------------------------------------
-is_truthy() {
-  case "${1:-}" in
-    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+# Ensure runtime tmpdir early so RESP/RUN_TMPDIR are available for later code
+if [ "${GROQBASH_SOURCE_ONLY:-0}" -eq 0 ]; then
+  if ! ensure_run_tmpdir >/dev/null 2>&1; then
+    log_error "TMP" "cannot create or access RUN_TMPDIR ($GROQBASH_TMPDIR). Aborting."
+    exit "$GROQBASHERRTMP"
+  fi
+fi
 
+# ---------------------------------------------------------------------------
+# Helpers: normalization
+# ---------------------------------------------------------------------------
 _normalize_bool_env() {
   local var val
   for var in ALLOW_API_CALLS DRY_RUN DEBUG; do
@@ -1831,32 +2124,6 @@ _normalize_bool_env() {
 }
 _normalize_bool_env
 
-# ---------------------------------------------------------------------------
-# Debug-safe payload preview (decodes b64 payloads)
-# ---------------------------------------------------------------------------
-show_payload_head() {
-  local path="${1:-$PAYLOAD}" lines="${2:-200}"
-  if [ -z "${path:-}" ]; then
-    printf 'groqbash: ERROR: payload file missing: %s\n' "<unset>" >&2
-    exit "$GROQBASHERRTMP"
-  fi
-  if [ ! -e "$path" ]; then
-    printf 'groqbash: ERROR: payload file missing: %s\n' "$path" >&2
-    exit "$GROQBASHERRTMP"
-  fi
-  if [ ! -s "$path" ]; then
-    printf 'groqbash: INFO: payload exists but is empty: %s\n' "$path" >&2
-    return 0
-  fi
-  printf 'groqbash: INFO: payload path: %s\n' "$path" >&2
-  printf 'groqbash: INFO: payload (head %d lines):\n' "$lines" >&2
-  if printf '%s' "$path" | grep -qE '\.b64$'; then
-    b64decode < "$path" 2>/dev/null | head -n "$lines" >&2 || true
-  else
-    head -n "$lines" "$path" 2>/dev/null >&2 || true
-  fi
-  return 0
-}
 ########################################
 # SECTION: PRECORE - END
 ########################################
@@ -1887,55 +2154,6 @@ fi
 # - Uses local helpers stage_b64 and _cleanup_local_tmp for atomicity and cleanup.
 # ---------------------------------------------------------------------------
 
-# stage_b64: read stdin, write atomic base64 staging file under RUN_TMPDIR or destdir
-# Usage: stage_b64 <dest_b64_path> <max_bytes>
-stage_b64() {
-  local dest_b64="$1"
-  local max_bytes="${2:-10485760}" # default 10MB safeguard
-  local workdir tmp_local tmp_b64 lockfile size
-  [ -n "$dest_b64" ] || return 1
-  workdir="$(dirname "$dest_b64")"
-  mkdir -p "$workdir" 2>/dev/null || return 1
-
-  tmp_local="$(_mktemp_in_dir "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" "payload" 2>/dev/null || true)"
-  [ -n "$tmp_local" ] || tmp_local="${RUN_TMPDIR%/}/payload.tmp.$$"
-
-  # Write stdin to tmp_local
-  if ! cat - > "$tmp_local" 2>/dev/null; then
-    rm -f -- "$tmp_local" 2>/dev/null || true
-    log_error "PAYLOAD" "failed to write staging payload"
-    return 1
-  fi
-
-  # Optional size check
-  size="$(file_size "$tmp_local" 2>/dev/null || echo 0)"
-  if [ "$size" -gt "$max_bytes" ]; then
-    log_error "PAYLOAD" "staged payload exceeds max allowed size ($size > $max_bytes)"
-    rm -f -- "$tmp_local" 2>/dev/null || true
-    return 1
-  fi
-
-  # Create base64 staging in same dest dir atomically
-  tmp_b64="${workdir%/}/.groq-b64.$$.$RANDOM"
-  if [ -n "${B64_WRAP_OPT:-}" ]; then
-    base64 ${B64_WRAP_OPT} "$tmp_local" > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
-  else
-    base64 "$tmp_local" | tr -d '\n' > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
-  fi
-  chmod 600 "$tmp_b64" 2>/dev/null || true
-
-  # Atomic move into place under lock to avoid races
-  lockfile="${workdir%/}/.groqbash.lock"
-  lock_exec "$lockfile" 10 -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$tmp_b64" "$dest_b64" || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
-
-  rm -f -- "$tmp_local" 2>/dev/null || true
-  return 0
-}
-
 # _cleanup_local_tmp: helper to remove local temporary artifacts
 _cleanup_local_tmp() {
   local tmp_payload="$1" tmp_b64_local="$2" json_input_file="$3"
@@ -1945,212 +2163,142 @@ _cleanup_local_tmp() {
 }
 
 buildpayload_groq() {
-  local workdir tmp_payload tmp_b64 dest_b64 model_in_file model_to_use user_prompt stream_json MESSAGES_JSON json_input_file tmp_b64_local
-
-  # Ensure json_input_file is always defined to avoid nounset errors
-  json_input_file="${JSON_INPUT:-}"
+  # Build payload for Groq provider into tmp_payload
+  # Assumes: MODEL, TURE, MAX_TOKENS, MESSAGES_JSON, BUILD_MESSAGES_FILE, STREAM_MODE, JSON_INPUT, CONTENT may be set
+  local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  workdir="${RUN_TMPDIR:-}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+  tmp_payload="$(_mktemp_in_dir "$RUN_TMPDIR" payload.XXXXXX.json 2>/dev/null || printf '%s' "$RUN_TMPDIR/payload.json")"
 
-  : "${TURE:=1.0}"
-  : "${MAX_TOKENS:=4096}"
+  # Normalize stream_json to a JSON boolean literal (true/false)
+  if is_truthy "${STREAM_MODE:-0}"; then
+    stream_json=true
+  else
+    stream_json=false
+  fi
+  case "${stream_json:-}" in
+    true|false) ;;    # valid
+    1) stream_json=true ;;
+    0) stream_json=false ;;
+    *) stream_json=false ;;
+  esac
 
-  if is_truthy "${STREAM_MODE:-0}"; then stream_json=true; else stream_json=false; fi
+  # Validate numeric inputs used with tonumber in jq
+  if ! printf '%s' "${TURE:-}" | grep -qE '^[0-9]+([.][0-9]+)?$'; then
+    log_warn "ARGS" "invalid TURE value '${TURE:-}'; defaulting to 1.0"
+    TURE="1.0"
+  fi
+  if ! printf '%s' "${MAX_TOKENS:-}" | grep -qE '^[0-9]+$'; then
+    log_warn "ARGS" "invalid MAX_TOKENS value '${MAX_TOKENS:-}'; defaulting to 4096"
+    MAX_TOKENS="4096"
+  fi
 
-  # Require jq for JSON processing
-  if ! command -v jq >/dev/null 2>&1; then
-    log_error "DEPENDENCY" "jq is required but not found in PATH"
+  # Priority for messages:
+  # 1) JSON_INPUT (if provided) -> .messages or .content/.prompt
+  # 2) MESSAGES_JSON (explicit)
+  # 3) BUILD_MESSAGES_FILE -> .messages
+  # 4) CONTENT (positional/stdin)
+  # 5) fallback single empty user message
+  VALID_MESSAGES_JSON=""
+
+  if [ -n "${JSON_INPUT:-}" ] && is_valid_json_string "${JSON_INPUT}"; then
+    # Prefer explicit .messages array in JSON_INPUT
+    msgs="$(printf '%s' "$JSON_INPUT" | jq -c '.messages // empty' 2>/dev/null || true)"
+    if [ -n "$msgs" ]; then
+      VALID_MESSAGES_JSON="$msgs"
+    else
+      # Try to extract a single content/prompt field and wrap it
+      content_val="$(printf '%s' "$JSON_INPUT" | jq -r '.content // .prompt // empty' 2>/dev/null || true)"
+      if [ -n "$content_val" ]; then
+        VALID_MESSAGES_JSON="$(jq -c -n --arg content "$content_val" '[{role:"user",content:$content}]')"
+      fi
+    fi
+  fi
+
+  if [ -z "$VALID_MESSAGES_JSON" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
+    VALID_MESSAGES_JSON="${MESSAGES_JSON}"
+  fi
+
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
+    VALID_MESSAGES_JSON="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
+  fi
+
+  # If still empty, but CONTENT present (from args/stdin), use it
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${CONTENT:-}" ]; then
+    VALID_MESSAGES_JSON="$(jq -c -n --arg content "$CONTENT" '[{role:"user",content:$content}]')"
+  fi
+
+  # Final fallback: single empty user message to avoid --argjson errors
+  if [ -z "$VALID_MESSAGES_JSON" ]; then
+    VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
+    log_warn "PAYLOAD" "MESSAGES_JSON invalid or missing; using fallback single empty user message"
+  fi
+
+  # Ensure messages is a non-empty array; if empty, fallback to single empty user message
+  if ! printf '%s' "$VALID_MESSAGES_JSON" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
+    log_warn "PAYLOAD" "VALID_MESSAGES_JSON is empty or not an array; using fallback single empty user message"
+    VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
+  fi
+
+  # If MODEL not set, try to read from BUILD_MESSAGES_FILE (if present and valid)
+  if [ -z "${MODEL:-}" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
+    model_from_file="$(jq -r '.model // .provider?.model // empty' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
+    if [ -n "$model_from_file" ]; then
+      MODEL="$model_from_file"
+      log_info "PAYLOAD" "MODEL set from BUILD_MESSAGES_FILE: ${MODEL}"
+    fi
+  fi
+
+  # Build payload using validated values; pass messages via validated JSON string
+  if ! jq -n --arg model "${MODEL:-}" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
+       --argjson messages "$(printf '%s' "$VALID_MESSAGES_JSON")" \
+       '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload" 2>/dev/null; then
+    log_error "PAYLOAD" "jq failed to build payload; tmp_payload not created"
+    rm -f "$tmp_payload" 2>/dev/null || true
     return "$GROQBASHERRTMP"
   fi
 
-  # Helper: resolve messages JSON (use BUILD_MESSAGES_FILE if non-empty, otherwise fallback to current content)
-  resolve_messages_json() {
-    local fallback_content="$1" file="${2:-}"
-    if [ -n "${file:-}" ] && [ -f "$file" ]; then
-      local len
-      len="$(jq '.messages | length' "$file" 2>/dev/null || echo 0)"
-      if [ "${len:-0}" -gt 0 ]; then
-        jq -c '.messages' "$file" 2>/dev/null || printf '[]'
-        return 0
-      fi
-    fi
-    jq -c -n --arg role "user" --arg content "$fallback_content" '[{role:$role,content:$content}]'
-    return 0
-  }
-
-  # Deduplicate messages array by role+content preserving order
-  dedupe_messages_json() {
-    jq -c 'reduce .[] as $m ( []; if any(.[]; (.role == $m.role) and ((.content // "") == ($m.content // ""))) then . else . + [$m] end )'
-  }
-
-  # If JSON_INPUT provided, support '-' (stdin) and files and objects
-  if [ -n "${JSON_INPUT:-}" ]; then
-    if [ "${JSON_INPUT:-}" = "-" ]; then
-      json_input_file="${workdir%/}/json_input.$$"
-      : > "$json_input_file"
-      if ! cat - > "$json_input_file" 2>/dev/null; then
-        _cleanup_local_tmp "" "" "$json_input_file"
-        log_error "PAYLOAD" "failed to read JSON input from stdin"
-        return "$GROQBASHERRTMP"
-      fi
-      JSON_INPUT="$json_input_file"
-    fi
-
-    # If JSON_INPUT contains messages[], stage it as-is (but dedupe messages)
-    if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-      MESSAGES_JSON="$(jq -c '.messages' "$JSON_INPUT" 2>/dev/null || printf '[]')"
-      MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
-
-      tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
-      if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
-        _cleanup_local_tmp "" "" "$json_input_file"
-        log_error "TMP" "failed to create temporary payload file"
-        return "$GROQBASHERRTMP"
-      fi
-
-      jq -n --arg model "${MODEL:-}" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --argjson messages "$MESSAGES_JSON" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-
-      dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      if [ -z "${dest_b64:-}" ]; then
-        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-        log_error "PAYLOAD" "destination b64 path is empty"
-        return "$GROQBASHERRTMP"
-      fi
-
-      if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
-        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-        return "$GROQBASHERRTMP"
-      fi
-
-      if [ ! -f "$dest_b64" ]; then
-        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-        log_error "PAYLOAD" "staged payload missing: $dest_b64"
-        return "$GROQBASHERRTMP"
-      fi
-      chmod 600 "$dest_b64" 2>/dev/null || true
-
-      PAYLOAD="$dest_b64"
-      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-      return 0
-    fi
-
-    # If JSON_INPUT is a single message object {role,content}
-    if jq -e 'type=="object" and has("role") and has("content")' "$JSON_INPUT" >/dev/null 2>&1; then
-      model_in_file="$(jq -r '.model // empty' "$JSON_INPUT" 2>/dev/null || true)"
-      model_to_use="${model_in_file:-$MODEL}"
-      MESSAGES_JSON="$(jq -c -n --arg role "$(jq -r '.role' "$JSON_INPUT" 2>/dev/null || echo user)" --arg content "$(jq -r '.content' "$JSON_INPUT" 2>/dev/null || echo '')" '[{role:$role,content:$content}]')"
-      MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
-
-      tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
-      if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
-        _cleanup_local_tmp "" "" "$json_input_file"
-        log_error "TMP" "failed to create temporary payload file"
-        return "$GROQBASHERRTMP"
-      fi
-
-      jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --argjson messages "$MESSAGES_JSON" \
-         '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-
-      dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-      if [ -z "${dest_b64:-}" ]; then
-        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-        log_error "PAYLOAD" "destination b64 path is empty"
-        return "$GROQBASHERRTMP"
-      fi
-
-      if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
-        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-        return "$GROQBASHERRTMP"
-      fi
-
-      if [ ! -f "$dest_b64" ]; then
-        _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-        log_error "PAYLOAD" "staged payload missing: $dest_b64"
-        return "$GROQBASHERRTMP"
-      fi
-      chmod 600 "$dest_b64" 2>/dev/null || true
-
-      PAYLOAD="$dest_b64"
-      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-      return 0
-    fi
-
-    # Otherwise stage the raw JSON_INPUT file as-is
-    tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
-    if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
-      _cleanup_local_tmp "" "" "$json_input_file"
-      log_error "TMP" "failed to create temporary payload file"
-      return "$GROQBASHERRTMP"
-    fi
-
-    if ! cat "$JSON_INPUT" > "$tmp_payload" 2>/dev/null; then
-      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-      return "$GROQBASHERRTMP"
-    fi
-
-    dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-    if [ -z "${dest_b64:-}" ]; then
-      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-      log_error "PAYLOAD" "destination b64 path is empty"
-      return "$GROQBASHERRTMP"
-    fi
-
-    if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
-      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-      return "$GROQBASHERRTMP"
-    fi
-
-    if [ ! -f "$dest_b64" ]; then
-      _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-      log_error "PAYLOAD" "staged payload missing: $dest_b64"
-      return "$GROQBASHERRTMP"
-    fi
-    chmod 600 "$dest_b64" 2>/dev/null || true
-
-    PAYLOAD="$dest_b64"
-    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-    return 0
-  fi
-
-  # Build payload from CONTENT / SYSTEM_PROMPT
-  model_to_use="${MODEL}"
-  MESSAGES_JSON="$(resolve_messages_json "${CONTENT:-}" "${BUILD_MESSAGES_FILE:-}")"
-  MESSAGES_JSON="$(printf '%s' "$MESSAGES_JSON" | dedupe_messages_json || printf '%s' "$MESSAGES_JSON")"
-
-  tmp_payload="$(_mktemp_in_dir "$workdir" 2>/dev/null || true)"
-  if [ -z "${tmp_payload:-}" ] || [ ! -e "$tmp_payload" ]; then
-    _cleanup_local_tmp "" "" "$json_input_file"
-    log_error "TMP" "failed to create temporary payload file"
+  # Ensure tmp_payload is non-empty before proceeding
+  if [ ! -s "$tmp_payload" ]; then
+    log_error "PAYLOAD" "tmp_payload is empty after jq; aborting"
+    rm -f "$tmp_payload" 2>/dev/null || true
     return "$GROQBASHERRTMP"
   fi
 
-  jq -n --arg model "$model_to_use" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" --argjson messages "$MESSAGES_JSON" \
-     '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload"
-
-  dest_b64="${PAYLOAD:-$workdir/payload}.b64"
-  if [ -z "${dest_b64:-}" ]; then
-    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-    log_error "PAYLOAD" "destination b64 path is empty"
-    return "$GROQBASHERRTMP"
+  # Diagnostic: show payload path and content on stderr only when DEBUG=1 (safe: do not print API keys)
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    payload_size=$(wc -c < "$tmp_payload" 2>/dev/null || echo 0)
+    log_info "PAYLOAD" "tmp_payload path: $tmp_payload size=${payload_size}B"
+    log_info "PAYLOAD" "tmp_payload content (head 2000 chars):"
+    head -c 2000 "$tmp_payload" >&2 || true
   fi
 
-  if ! stage_b64 "$dest_b64" < "$tmp_payload"; then
-    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-    return "$GROQBASHERRTMP"
+  # If stage_b64 helper exists, create a base64-staged payload and prefer it (keeps backward compatibility)
+  staged_b64=""
+  if type stage_b64 >/dev/null 2>&1; then
+    tmp_b64="${tmp_payload}.b64"
+    if stage_b64 < "$tmp_payload" > "$tmp_b64" 2>/dev/null; then
+      staged_b64="$tmp_b64"
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "PAYLOAD" "Created base64-staged payload: $staged_b64"
+      fi
+    else
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_warn "PAYLOAD" "stage_b64 failed; using raw JSON payload"
+      fi
+      rm -f "$tmp_b64" 2>/dev/null || true
+    fi
   fi
 
-  if [ ! -f "$dest_b64" ]; then
-    _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
-    log_error "PAYLOAD" "staged payload missing: $dest_b64"
-    return "$GROQBASHERRTMP"
+  # Provide tmp_payload path for caller to use (do not export)
+  if [ -n "$staged_b64" ]; then
+    GROQBASH_TMP_PAYLOAD="$staged_b64"
+    PAYLOAD="${PAYLOAD:-$staged_b64}"
+  else
+    GROQBASH_TMP_PAYLOAD="$tmp_payload"
+    PAYLOAD="${PAYLOAD:-$tmp_payload}"
   fi
-  chmod 600 "$dest_b64" 2>/dev/null || true
 
-  PAYLOAD="$dest_b64"
-  _cleanup_local_tmp "$tmp_payload" "" "$json_input_file"
   return 0
 }
 
@@ -2160,263 +2308,469 @@ buildpayloadgroq() { buildpayload_groq "$@"; }
 # call_api_groq (non-streaming) - with enforcement network policy
 # ---------------------------------------------------------------------------
 call_api_groq() {
-  # Enforce network policy first (no HTTP if DRY_RUN or GROQBASH_SKIP_NETWORK)
-  if ! enforce_network_policy; then
-    # In dry-run mode we still want to show payload head for debugging
+  # Robust non-streaming call to Groq API
+  # Expects: RUN_TMPDIR, RESP path variable, and payload file (GROQBASH_TMP_PAYLOAD or PAYLOAD)
+  local tmp_payload resp_tmp ERRF http_code rc resp_size errf_size now_ts stderr_head provider_url send_payload decoded_payload key_header CURL_CMD_ARR
+
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+
+  # Determine payload file to send
+  tmp_payload="${GROQBASH_TMP_PAYLOAD:-${PAYLOAD:-}}"
+  if [ -z "${tmp_payload:-}" ]; then
+    log_error "CALL" "no payload file specified (GROQBASH_TMP_PAYLOAD or PAYLOAD)"
+    return 1
+  fi
+
+  # Network policy: same semantics as streaming path
+  if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
-      show_payload_head "${PAYLOAD:-}" 200 || true
-      log_info "DRYRUN" "DRY-RUN: skipping HTTP call"
+      # show_payload_head is diagnostic; show only when DEBUG=1
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        show_payload_head "${PAYLOAD:-}" 200 || true
+        log_info "DRYRUN" "DRY-RUN: skipping non-streaming HTTP call"
+      fi
       return 0
     fi
-    log_error "NETWORK" "Network calls disabled; aborting HTTP request."
+    log_error "NETWORK" "Network calls disabled; aborting non-streaming request."
     return "$GROQBASHERRCURL_FAILED"
   fi
 
-  if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
-  if [ -z "${PAYLOAD:-}" ] || [ ! -s "${PAYLOAD:-}" ]; then log_error "PAYLOAD" "payload file missing or empty: ${PAYLOAD:-<unset>}"; return "$GROQBASHERRTMP"; fi
+  # Ensure API key present (unless dry-run)
+  if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
+    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
+  fi
+  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${GROQBASH_API_KEY:-}" ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
+    log_error "APIKEY" "GROQ_API_KEY (or GROQBASH_API_KEY) is not set."
+    return "$GROQBASHERRNOAPIKEY"
+  fi
 
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
-  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
+  # Verify provider URL is set
+  provider_url="${GROQBASH_API_URL:-${GROQBASH_PROVIDER_URL:-}}"
+  if [ -z "${provider_url:-}" ]; then
+    log_error "CALL" "no provider URL set (GROQBASH_API_URL or GROQBASH_PROVIDER_URL)"
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    return 1
+  fi
 
-  local workdir tmpout http_code _time_total api_url rc decoded_payload try_decoded send_payload
-  workdir="${RUN_TMPDIR:-}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmpout="$(_mktemp_in_dir "$workdir")" || return "$GROQBASHERRTMP"
-  api_url="https://api.groq.com/openai/v1/chat/completions"
+  # Safety: refuse to call curl with empty payload
+  if [ ! -s "$tmp_payload" ]; then
+    log_error "PAYLOAD" "Refusing to call curl: payload file is empty or missing: $tmp_payload"
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -c -n --arg ts "$now_ts" --arg note "empty_payload" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    return 1
+  fi
 
-  decoded_payload="$workdir/payload.dec.$$"
-  try_decoded=0
-
-  # (decoding/validation logic unchanged — preserve original behavior)
-  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
-    if b64decode < "$PAYLOAD" > "$decoded_payload" 2>"$ERRF"; then
-      if jq -e . "$decoded_payload" >/dev/null 2>&1; then
-        try_decoded=1
-      else
-        log_error "PAYLOAD" "decoded payload is not valid JSON; aborting HTTP call"
-        printf 'groqbash: INFO: decoded payload (head 200 bytes):\n' >&2
-        head -c 200 "$decoded_payload" >&2 || true
-        printf '\ngroqbash: INFO: curl stderr (head):\n' >&2
-        head -n 200 "$ERRF" >&2 || true
-        rm -f "$decoded_payload" 2>/dev/null || true
-        rm -f "$tmpout" 2>/dev/null || true
-        return "$GROQBASHERRTMP"
-      fi
-    else
-      log_error "B64DECODE" "base64 decode failed; see $ERRF"
-      head -n 200 "$ERRF" >&2 || true
+  # If payload is base64-staged (.b64), decode to a temporary file for sending
+  send_payload="$tmp_payload"
+  decoded_payload=""
+  if printf '%s' "$tmp_payload" | grep -qE '\.b64$'; then
+    decoded_payload="${RUN_TMPDIR%/}/payload.dec.$$"
+    if ! b64decode < "$tmp_payload" > "$decoded_payload" 2> /dev/null; then
+      log_error "B64DECODE" "base64 decode failed for payload; aborting non-streaming call"
       rm -f "$decoded_payload" 2>/dev/null || true
-      rm -f "$tmpout" 2>/dev/null || true
+      now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      jq -c -n --arg ts "$now_ts" --arg note "b64_decode_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
       return "$GROQBASHERRTMP"
     fi
-  else
-    if b64decode < "$PAYLOAD" > "$decoded_payload" 2>/dev/null; then
-      if jq -e . "$decoded_payload" >/dev/null 2>&1; then
-        try_decoded=1
-      else
-        rm -f "$decoded_payload" 2>/dev/null || true
-        try_decoded=0
-      fi
-    else
-      try_decoded=0
+    # ensure decoded payload is non-empty
+    if [ ! -s "$decoded_payload" ]; then
+      log_error "PAYLOAD" "decoded payload is empty; aborting"
+      rm -f "$decoded_payload" 2>/dev/null || true
+      now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      jq -c -n --arg ts "$now_ts" --arg note "empty_decoded_payload" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      return 1
     fi
-  fi
-
-  if [ "$try_decoded" -eq 1 ]; then
     send_payload="$decoded_payload"
-  else
-    send_payload="$PAYLOAD"
   fi
 
-  if [ ! -f "$send_payload" ] || [ ! -s "$send_payload" ]; then
-    log_error "PAYLOAD" "payload file missing or empty: $send_payload"
-    rm -f "$decoded_payload" 2>/dev/null || true
-    rm -f "$tmpout" 2>/dev/null || true
-    return "$GROQBASHERRTMP"
-  fi
-
-  if ! jq -e . "$send_payload" >/dev/null 2>&1; then
-    log_error "PAYLOAD" "payload is not valid JSON and not decodable as base64; aborting HTTP call"
-    printf 'groqbash: INFO: payload (head 200 bytes):\n' >&2
-    head -c 200 "$send_payload" >&2 || true
-    printf '\ngroqbash: INFO: curl stderr (head):\n' >&2
-    head -n 200 "$ERRF" >&2 || true
-    rm -f "$decoded_payload" 2>/dev/null || true
-    rm -f "$tmpout" 2>/dev/null || true
-    return "$GROQBASHERRTMP"
-  fi
-
-  local resp_tmp="${workdir%/}/resp.tmp.$$"
+  # Prepare tmp files
+  resp_tmp="${RUN_TMPDIR%/}/resp.json"
+  ERRF="${RUN_TMPDIR%/}/curl.err"
+  : > "$ERRF" 2>/dev/null || true
   rm -f "$resp_tmp" 2>/dev/null || true
 
-  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$send_payload" -o "$resp_tmp" -w '%{http_code} %{time_total}' "$api_url" 2>"$ERRF" >"$tmpout"; then
-    rc=$?
-  else
-    rc=0
+  # Diagnostic: log call only when DEBUG=1
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "CALL" "Invoking curl to provider (payload: $send_payload) -> $provider_url"
   fi
 
-  if [ "$rc" -eq 0 ] && [ -s "$resp_tmp" ]; then
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$resp_tmp" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
-    else
-      mv -f "$resp_tmp" "$RESP" 2>/dev/null || cp -f "$resp_tmp" "$RESP" 2>/dev/null || true
+  # Choose Authorization header if key present
+  # Build curl command: prefer http1.1, follow redirects for non-streaming, include CURL_BASE_OPTS if set
+  CURL_CMD_ARR=()
+  if command -v stdbuf >/dev/null 2>&1; then
+    CURL_CMD_ARR+=(stdbuf -oL curl --http1.1 -sS -L)
+  else
+    CURL_CMD_ARR+=(curl --http1.1 -sS -L)
+  fi
+
+  # Append any global base opts if defined
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    CURL_CMD_ARR+=("${CURL_BASE_OPTS[@]}")
+  fi
+
+  # Always include Content-Type header and Authorization if available
+  CURL_CMD_ARR+=( -H "Content-Type: application/json" )
+  if [ -n "${GROQ_API_KEY:-}" ]; then
+    CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
+  elif [ -n "${GROQBASH_API_KEY:-}" ]; then
+    CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQBASH_API_KEY}" )
+  fi
+
+  # Execute curl: write body to resp_tmp, capture http_code via -w, stderr to ERRF
+  # Do NOT use --fail (we want body even on 4xx/5xx)
+  http_code="$("${CURL_CMD_ARR[@]}" -o "$resp_tmp" -w '%{http_code}' --data-binary @"$send_payload" "$provider_url" 2> "$ERRF")"
+  rc=$?
+
+  # Cleanup decoded payload if used
+  if [ -n "$decoded_payload" ]; then
+    rm -f "$decoded_payload" 2>/dev/null || true
+  fi
+
+  # Capture diagnostics immediately
+  resp_size=0; [ -f "$resp_tmp" ] && resp_size=$(wc -c < "$resp_tmp" 2>/dev/null || echo 0)
+  errf_size=0; [ -f "$ERRF" ] && errf_size=$(wc -c < "$ERRF" 2>/dev/null || echo 0)
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "CURL" "curl rc=${rc} http_code=${http_code:-?} resp_tmp_size=${resp_size}B ERRF_size=${errf_size}B resp_tmp='${resp_tmp}' ERRF='${ERRF}'"
+    if [ -s "$ERRF" ]; then
+      log_info "CURL" "curl stderr (head 400 chars):"
+      head -c 400 "$ERRF" 2>/dev/null | sed -n '1,20p' >&2 || true
     fi
-    chmod 600 "$RESP" 2>/dev/null || true
+    if [ -s "$resp_tmp" ]; then
+      log_info "CURL" "resp_tmp content (head 400 chars):"
+      head -c 400 "$resp_tmp" 2>/dev/null | sed -n '1,20p' >&2 || true
+    fi
+  fi
+
+  if [ -s "$resp_tmp" ]; then
+    # Ensure file ends with newline to avoid concatenation with subsequent output
+    # Use tail -c1 if available, otherwise use awk to check last character
+    last_char=""
+    if command -v tail >/dev/null 2>&1; then
+      last_char="$(tail -c 1 "$resp_tmp" 2>/dev/null || printf '')"
+    else
+      last_char="$(awk 'END{printf "%s", substr($0,length($0),1)}' "$resp_tmp" 2>/dev/null || printf '')"
+    fi
+    if [ "$last_char" != $'\n' ]; then
+      printf '\n' >> "$resp_tmp" 2>/dev/null || true
+      resp_size=$((resp_size + 1)) 2>/dev/null || true
+    fi
+
+    # If resp_tmp is not valid JSON, attempt a conservative diagnostic extraction:
+    if ! jq -e . "$resp_tmp" >/dev/null 2>&1; then
+      prefix_file="${resp_tmp}.json_prefix"
+      tail_file="${resp_tmp}.tail"
+      awk '
+        BEGIN { in_str=0; depth=0; started=0; }
+        {
+          line=$0
+          for (i=1;i<=length(line);i++) {
+            c=substr(line,i,1)
+            if (c=="\"") { in_str = !in_str; }
+            if (!in_str) {
+              if (c=="{" || c=="[") { if (depth==0) started=1; depth++; }
+              else if (c=="}" || c=="]") { depth--; if (depth==0) { print substr(line,1,i); exit } }
+            }
+          }
+          if (started) print ""
+        }' "$resp_tmp" > "$prefix_file" 2>/dev/null || true
+
+      if [ -s "$prefix_file" ] && jq -e . "$prefix_file" >/dev/null 2>&1; then
+        # Save trailing content for manual inspection (files only; messages suppressed unless DEBUG)
+        printf '--- TRAILING NON-JSON DATA (diagnostic) ---\n' > "$tail_file" 2>/dev/null || true
+        cat "$resp_tmp" >> "$tail_file" 2>/dev/null || true
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "RESP" "Created diagnostic prefix/tail files: ${prefix_file} ${tail_file}"
+        fi
+      else
+        rm -f "$prefix_file" 2>/dev/null || true
+      fi
+    fi
+  fi
+
+  # Defensive RESP fallback and directory creation
+  if [ -z "${RESP:-}" ]; then
+    RESP="${RUN_TMPDIR%/}/resp.json"
+  fi
+  mkdir -p "$(dirname "$RESP")" 2>/dev/null || true
+
+  # Attempt to move resp_tmp -> RESP, fallback to cp, then diagnostic
+  if [ -s "$resp_tmp" ]; then
+    # If resp_tmp and RESP are identical paths, skip mv/cp (nothing to do)
+    if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
+      chmod 600 "$RESP" 2>/dev/null || true
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "RESP" "RESP already at resp_tmp: ${RESP}"
+      fi
+    else
+      if mv -f "$resp_tmp" "${RESP}" 2>/dev/null; then
+        chmod 600 "${RESP}" 2>/dev/null || true
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "RESP" "Wrote RESP from resp_tmp: ${RESP}"
+        fi
+      else
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_warn "RESP" "mv failed; attempting cp to write RESP"
+        fi
+        if cp -f "$resp_tmp" "${RESP}" 2>/dev/null; then
+          chmod 600 "${RESP}" 2>/dev/null || true
+          if [ "${DEBUG:-0}" -eq 1 ]; then
+            log_info "RESP" "Wrote RESP via cp: ${RESP}"
+          fi
+        else
+          log_error "RESP" "failed to write RESP from resp_tmp; writing diagnostic RESP"
+          now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+          jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
+            '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
+        fi
+      fi
+    fi
   else
-    rm -f "$resp_tmp" 2>/dev/null || true
-  fi
-
-  rm -f "$decoded_payload" 2>/dev/null || true
-
-  read -r http_code _time_total < "$tmpout" 2>/dev/null || http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
-  rm -f "$tmpout" 2>/dev/null || true
-
-  # --- Write last API metadata to ui_state (canonical) ---
-  if ensure_run_tmpdir >/dev/null 2>&1; then
-    # Extract finish_reason and req_id if RESP is JSON
-    finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
-    req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
-    edgecase=0
-    if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
+    # resp_tmp empty: write diagnostic RESP (only in this case) and log clearly (log suppressed unless DEBUG)
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_warn "RESP" "resp_tmp empty; writing diagnostic RESP (no body received). This is diagnostic only and does not mask real responses."
+    fi
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    api_json="$(jq -c -n --argjson http "${http_code:-0}" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
-    ui_state_write "last_api.json" "$api_json" || log_warn "UI_STATE" "failed to write last_api.json"
+    stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+    jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
+      '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
   fi
 
-  case "$http_code" in
-    2*) return 0 ;;
-    *) log_error "HTTP" "HTTP error code: $http_code"; log_info "RESPHEAD" "Response (head):"; head -n 200 "$RESP" >&2 || true; log_info "CURLERR" "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true; return "$GROQBASHERRAPI" ;;
-  esac
+  # Return transport rc (0 if curl succeeded at transport level)
+  return "${rc:-0}"
 }
 
 # ---------------------------------------------------------------------------
 # call_api_streaming_groq (streaming) - with enforcement network policy
 # ---------------------------------------------------------------------------
 call_api_streaming_groq() {
-  # Enforce network policy first
-  if ! enforce_network_policy; then
+  # Streaming call for Groq provider with robust checks and diagnostics.
+  # Expects: RUN_TMPDIR, RESP variable, and payload file (GROQBASH_TMP_PAYLOAD or PAYLOAD).
+  local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD
+
+  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+
+  # Network policy and API key checks (preserve existing repo semantics)
+  if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
-      show_payload_head "${PAYLOAD:-}" 200 || true
-      log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        show_payload_head "${PAYLOAD:-}" 200 || true
+        log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"
+      fi
       return 0
     fi
     log_error "NETWORK" "Network calls disabled; aborting streaming request."
     return "$GROQBASHERRCURL_FAILED"
   fi
 
-  if [ -z "${GROQ_API_KEY:-}" ]; then log_error "APIKEY" "GROQ_API_KEY is not set."; return "$GROQBASHERRNOAPIKEY"; fi
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  ERRF="${ERRF:-$RUN_TMPDIR/curl.err}"
-  RESP="${RESP:-$RUN_TMPDIR/resp.json}"
-  RESP_RAW="$RUN_TMPDIR/resp.raw"
-  : > "$RESP_RAW" 2>/dev/null || true
-  chmod 600 "$RESP_RAW" 2>/dev/null || true
+  if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
+    GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
+  fi
+  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${GROQBASH_API_KEY:-}" ]; then
+    log_error "APIKEY" "GROQ_API_KEY (or GROQBASH_API_KEY) is not set."
+    return "$GROQBASHERRNOAPIKEY"
+  fi
 
-  local api_url rc decoded_payload
-  api_url="https://api.groq.com/openai/v1/chat/completions"
+  tmp_payload="${GROQBASH_TMP_PAYLOAD:-${PAYLOAD:-}}"
+  if [ -z "${tmp_payload:-}" ]; then
+    log_error "CALL_STREAM" "no payload file specified (GROQBASH_TMP_PAYLOAD or PAYLOAD)"
+    return 1
+  fi
+  if [ ! -s "$tmp_payload" ]; then
+    log_error "CALL_STREAM" "Refusing to call curl: payload file is empty or missing: $tmp_payload"
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -c -n --arg ts "$now_ts" --arg note "empty_payload" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    return 1
+  fi
 
-  decoded_payload="$RUN_TMPDIR/payload.dec.$$"
-  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
-    if ! b64decode < "$PAYLOAD" > "$decoded_payload" 2>"$ERRF"; then
+  provider_url="${GROQBASH_API_URL:-${GROQBASH_PROVIDER_URL:-}}"
+  if [ -z "${provider_url:-}" ]; then
+    log_error "CALL_STREAM" "no provider URL set (GROQBASH_API_URL or GROQBASH_PROVIDER_URL)"
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    return 1
+  fi
+
+  resp_raw="${RUN_TMPDIR%/}/resp.raw"
+  resp_lines="${RUN_TMPDIR%/}/resp.lines"
+  resp_valid="${RUN_TMPDIR%/}/resp.valid.jsons"
+  resp_chunks="${RUN_TMPDIR%/}/resp.chunks.json"
+  ERRF="${RUN_TMPDIR%/}/curl_stream.err"
+  : > "$ERRF" 2>/dev/null || true
+  rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" 2>/dev/null || true
+
+  # Diagnostic: log streaming call only when DEBUG=1
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "CALL_STREAM" "Invoking streaming curl to $provider_url (payload: $tmp_payload)"
+  fi
+
+  # Prepare decoded payload if payload is base64 staged
+  decoded_payload="${RUN_TMPDIR%/}/payload.dec.$$"
+  if printf '%s' "${tmp_payload}" | grep -qE '\.b64$'; then
+    if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$ERRF"; then
       log_error "B64DECODE" "base64 decode failed for payload; see $ERRF"
       rm -f "$decoded_payload" 2>/dev/null || true
       return "$GROQBASHERRTMP"
     fi
+    send_payload="$decoded_payload"
   else
-    cp -f "$PAYLOAD" "$decoded_payload" 2>/dev/null || true
+    send_payload="$tmp_payload"
   fi
 
-  if ! jq -e . "$decoded_payload" >/dev/null 2>&1; then
-    log_error "PAYLOAD" "decoded payload is not valid JSON; aborting streaming call"
-    printf 'groqbash: INFO: decoded payload (head 200 bytes):\n' >&2
-    head -c 200 "$decoded_payload" >&2 || true
-    rm -f "$decoded_payload" 2>/dev/null || true
-    return "$GROQBASHERRTMP"
-  fi
-
-  local CURL_CMD
+  # Build curl command (use http1.1 to avoid some server buffering issues)
   if command -v stdbuf >/dev/null 2>&1; then
-    CURL_CMD=(stdbuf -oL curl --http1.1 "${CURL_BASE_OPTS[@]}")
+    CURL_CMD=(stdbuf -oL curl --http1.1 -sS -N)
   else
-    CURL_CMD=(curl --http1.1 "${CURL_BASE_OPTS[@]}")
+    CURL_CMD=(curl --http1.1 -sS -N)
   fi
 
-  log_info "STREAM" "Streaming active; chunks will be saved under $RUN_TMPDIR"
-
-  "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" --data-binary @"$decoded_payload" "$api_url" 2>"$ERRF" | tee -a "$RESP_RAW" | \
+  # Stream: capture raw stream to file and process lines for "data: " JSON chunks
+  "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY:-${GROQBASH_API_KEY:-}}" -H "Content-Type: application/json" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | tee -a "$resp_raw" | \
   while IFS= read -r line; do
+    # Normalize and emit content to stdout for interactive consumption
     case "$line" in
       'data: [DONE]'|'data:[DONE]') break ;;
       data:\ * )
         json="${line#data: }"
+        # Try to parse JSON and extract incremental content safely
         content="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true)"
         if [ -n "$content" ]; then
           printf '%s' "$content"
         fi
         ;;
-      *) ;;
+      *)
+        # Some streams may emit raw JSON lines without "data: " prefix
+        if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
+          content="$(printf '%s' "$line" | jq -r '(.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$ERRF" || true)"
+          if [ -n "$content" ]; then
+            printf '%s' "$content"
+          fi
+        fi
+        ;;
     esac
   done
 
+  # Capture curl exit code from pipeline
   rc=${PIPESTATUS[0]:-0}
+
+  # Cleanup decoded payload if used
   rm -f "$decoded_payload" 2>/dev/null || true
-  if [ "$rc" -ne 0 ]; then
-    log_error "CURLSTREAM" "curl streaming failed (rc $rc)"; head -n 50 "$ERRF" >&2 || true
-    return "$GROQBASHERRCURL_FAILED"
+
+  # Diagnostics: sizes and stderr head (only printed when DEBUG=1)
+  local resp_size errf_size
+  resp_size=0; [ -f "$resp_raw" ] && resp_size=$(wc -c < "$resp_raw" 2>/dev/null || echo 0)
+  errf_size=0; [ -f "$ERRF" ] && errf_size=$(wc -c < "$ERRF" 2>/dev/null || echo 0)
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "CALL_STREAM" "curl rc=${rc} resp_raw_size=${resp_size}B ERRF_size=${errf_size}B resp_raw='${resp_raw}' ERRF='${ERRF}'"
+    if [ -s "$ERRF" ]; then
+      log_info "CALL_STREAM" "curl stderr (head 400 chars):"
+      head -c 400 "$ERRF" 2>/dev/null | sed -n '1,20p' >&2 || true
+    fi
+    if [ -s "$resp_raw" ]; then
+      log_info "CALL_STREAM" "resp_raw head (first 400 chars):"
+      head -c 400 "$resp_raw" 2>/dev/null | sed -n '1,20p' >&2 || true
+    fi
   fi
 
-  log_info "STREAM" "Streaming completed; building outputs in $RUN_TMPDIR (final JSON: $RESP)"
+  # Extract lines starting with "data:" into resp.lines
+  if [ -s "$resp_raw" ]; then
+    grep -E '^data:' "$resp_raw" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$resp_lines" 2>/dev/null || true
+  fi
 
-  : > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
-  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
+  # Validate JSON lines and collect valid ones
+  : > "$resp_valid" 2>/dev/null || true
+  if [ -f "$resp_lines" ] && [ -s "$resp_lines" ]; then
+    while IFS= read -r _line; do
+      if printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
+        printf '%s\n' "$_line" >> "$resp_valid"
+      fi
+    done < "$resp_lines"
+  fi
 
-  : > "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
-  while IFS= read -r _line; do
-    if printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$_line" >> "$RUN_TMPDIR/resp.valid.jsons"
-    fi
-  done < "$RUN_TMPDIR/resp.lines"
-
-  if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
-    jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
-    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "$RESP" "$GROQBASH_LOCK_TIMEOUT_TMP" || cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
+  # If we have valid JSONs, assemble into chunks array
+  if [ -s "$resp_valid" ]; then
+    jq -s '.' "$resp_valid" > "$resp_chunks" 2>/dev/null || true
+    # produce a concatenated text file for convenience
+    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$resp_chunks" > "${RUN_TMPDIR%/}/resp.text.txt" 2>/dev/null || true
+    # write final JSON: prefer last object as final response
+    if jq -e 'type=="array"' "$resp_chunks" >/dev/null 2>&1; then
+      jq -c '.[-1]' "$resp_chunks" > "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
     else
-      cp -f "$RUN_TMPDIR/resp.chunks.json" "$RESP" 2>/dev/null || true
+      cp -f "$resp_chunks" "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
     fi
-
-    # Remove intermediate files only when RUN_TMPDIR is under GROQBASH_TMPDIR
-    case "$RUN_TMPDIR" in
-      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
-        rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
-        log_info "STREAM" "Removed intermediate files resp.lines and resp.valid.jsons from $RUN_TMPDIR"
-        ;;
-      *)
-        log_info "STREAM" "Preserving intermediate streaming files in $RUN_TMPDIR (outside GROQBASH_TMPDIR)"
-        ;;
-    esac
   else
-    if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
-      cp -f "$RESP_RAW" "$RESP" 2>/dev/null || true
+    # If no data: lines but resp_raw itself is valid JSON, copy it
+    if jq -e . "$resp_raw" >/dev/null 2>&1; then
+      cp -f "$resp_raw" "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
     fi
   fi
 
-  # --- Write last API metadata to ui_state after streaming ---
+  # Finalize RESP: move resp.json -> RESP if present, else write diagnostic
+  resp_tmp="${RUN_TMPDIR%/}/resp.json"
+
+  # Defensive RESP fallback and directory creation
+  if [ -z "${RESP:-}" ]; then
+    RESP="${RUN_TMPDIR%/}/resp.json"
+  fi
+  mkdir -p "$(dirname "$RESP")" 2>/dev/null || true
+
+  if [ -s "$resp_tmp" ]; then
+    # If resp_tmp and RESP are identical paths, skip mv/cp (nothing to do)
+    if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
+      chmod 600 "${RESP}" 2>/dev/null || true
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "CALL_STREAM" "RESP already at resp_tmp: ${RESP}"
+      fi
+    else
+      if mv -f "$resp_tmp" "${RESP}" 2>/dev/null; then
+        chmod 600 "${RESP}" 2>/dev/null || true
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "CALL_STREAM" "Wrote RESP from streaming output: ${RESP}"
+        fi
+      else
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_warn "CALL_STREAM" "mv failed; attempting cp to write RESP"
+        fi
+        if cp -f "$resp_tmp" "${RESP}" 2>/dev/null; then
+          chmod 600 "${RESP}" 2>/dev/null || true
+          if [ "${DEBUG:-0}" -eq 1 ]; then
+            log_info "CALL_STREAM" "Wrote RESP via cp: ${RESP}"
+          fi
+        else
+          log_error "CALL_STREAM" "failed to write RESP from streaming output"
+          # fallback diagnostic write
+          now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+          jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
+            '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
+        fi
+      fi
+    fi
+  else
+    # No final JSON extracted: write diagnostic RESP (only in this case)
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_warn "CALL_STREAM" "No JSON chunks extracted from stream; writing diagnostic RESP"
+    fi
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    stderr_head="$(head -c 200 "$ERRF" 2>/dev/null | sed 's/"/\\"/g' || true)"
+    jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
+      '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
+  fi
+
+  # Write last API metadata to ui_state (best-effort)
   if ensure_run_tmpdir >/dev/null 2>&1; then
     http_code=200
-    # Try to extract finish_reason and req_id from RESP
-    finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
-    req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
+    finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "${RESP}" 2>/dev/null || echo "")"
+    req_id="$(jq -r '.x_groq?.id // .id // empty' "${RESP}" 2>/dev/null || echo "")"
     edgecase=0
     if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     api_json="$(jq -c -n --argjson http "$http_code" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
-    ui_state_write "last_api.json" "$api_json" || log_warn "UI_STATE" "failed to write last_api.json (streaming)"
+    ui_state_write "last_api.json" "$api_json" || { if [ "${DEBUG:-0}" -eq 1 ]; then log_warn "UI_STATE" "failed to write last_api.json (streaming)"; fi; }
   fi
 
-  return 0
+  return "${rc:-0}"
 }
 
 call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
@@ -2450,14 +2804,18 @@ refresh_models_groq() {
   rm -f "$out" "$errf" 2>/dev/null || true
   if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
     log_error "MODELREFRESH" "Failed to fetch models from $api_url"
-    head -n 200 "$errf" >&2 || true
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      head -n 200 "$errf" >&2 || true
+    fi
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
 
   if ! jq -e . "$out" >/dev/null 2>&1; then
     log_error "MODELREFRESH" "Invalid JSON received from $api_url"
-    head -n 200 "$errf" >&2 || true
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      head -n 200 "$errf" >&2 || true
+    fi
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
@@ -2478,7 +2836,9 @@ refresh_models_groq() {
 
   if [ ! -s "$tmp_parsed" ]; then
     log_error "MODELREFRESH" "models refresh: parsed list empty"
-    head -n 200 "$errf" >&2 || true
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      head -n 200 "$errf" >&2 || true
+    fi
     rm -rf "$tmpd"
     return "$GROQBASHERRAPI"
   fi
@@ -2522,7 +2882,11 @@ refresh_models_groq() {
   ' _ "${MODELS_FILE}.b64" "$MODELS_FILE" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
-  log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
+
+  # Informational only when DEBUG=1
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
+  fi
 
   rm -rf "$tmpd"
   return 0
@@ -2814,8 +3178,11 @@ build_payload_from_vars() {
 # ---------------------------------------------------------------------------
 call_api_once() {
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
-    show_payload_head "$PAYLOAD" 200 || true
-    log_info "DRYRUN" "DRY-RUN: skipping provider HTTP call"
+    # show_payload_head is diagnostic; show only when DEBUG=1
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      show_payload_head "$PAYLOAD" 200 || true
+      log_info "DRYRUN" "DRY-RUN: skipping provider HTTP call"
+    fi
     return 0
   fi
   local fn="call_api_${PROVIDER}"
@@ -2852,37 +3219,6 @@ call_api_streaming() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Response extraction helpers (improved)
-# ---------------------------------------------------------------------------
-extract_text_from_resp() {
-  [ ! -s "${RESP:-}" ] && return 0
-
-  # estrazione normale (message.content o delta.content)
-  local out
-  out="$(
-    jq -r '
-      [ .choices[]? | (.message?.content // .delta?.content // "") | select(length > 0) ]
-      | join("\n")
-    ' "$RESP" 2>/dev/null | sed 's/\\"/"/g' || true
-  )"
-
-  if [ -z "$out" ]; then
-    # fallback: se JSON, prova a estrarre il primo frammento non vuoto; altrimenti cat
-    if jq -e . "$RESP" >/dev/null 2>&1; then
-      jq -r '
-        ( [ .choices[]? | (.message?.content // .delta?.content // "") ] | map(select(length > 0)) )[0] // empty
-      ' "$RESP" 2>/dev/null | sed 's/\\"/"/g' || true
-    else
-      cat "$RESP" 2>/dev/null || true
-    fi
-    return 0
-  fi
-
-  printf '%s\n' "$out"
-  return 0
-}
-
 extract_api_error() {
   [ ! -s "${RESP:-}" ] && return 0
 
@@ -2905,31 +3241,49 @@ extract_api_error() {
 #   GROQBASH_EDGE_REQ_ID, GROQBASH_EDGE_FINISH_REASON, GROQBASH_EDGE_COMPLETION_TOKENS
 # Ritorna 0 se edge case rilevato, 1 altrimenti.
 detect_empty_edge_case() {
+  # Populate edge-case variables and set GROQBASH_EDGE_EMPTY=1 when response is an "empty completion" edge.
   local resp="${RESP:-}"
-
-  # reset diagnostica
   GROQBASH_EDGE_EMPTY=0
   GROQBASH_EDGE_REQ_ID=""
   GROQBASH_EDGE_FINISH_REASON=""
   GROQBASH_EDGE_COMPLETION_TOKENS=0
 
-  [ ! -s "$resp" ] && return 1
+  if [ -z "${resp:-}" ] || [ ! -s "$resp" ]; then
+    GROQBASH_EDGE_EMPTY=1
+    return 0
+  fi
 
+  # If not valid JSON, consider it empty for edge detection
+  if ! is_valid_json_file "$resp"; then
+    GROQBASH_EDGE_EMPTY=1
+    return 0
+  fi
+
+  # If diagnostic JSON, mark as empty
+  if jq -e 'has("diagnostic") and .diagnostic==true' "$resp" >/dev/null 2>&1; then
+    GROQBASH_EDGE_EMPTY=1
+    return 0
+  fi
+
+  # Extract fields safely
   local content finish_reason completion_tokens req_id
   content="$(jq -r '.choices[0]?.message?.content // .choices[0]?.delta?.content // ""' "$resp" 2>/dev/null || echo "")"
   finish_reason="$(jq -r '.choices[0]?.finish_reason // ""' "$resp" 2>/dev/null || echo "")"
   completion_tokens="$(jq -r '.usage?.completion_tokens // 0' "$resp" 2>/dev/null || echo 0)"
   req_id="$(jq -r '.x_groq?.id // .id // empty' "$resp" 2>/dev/null || echo "")"
 
-  if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "$completion_tokens" -eq 1 ]; then
+  GROQBASH_EDGE_REQ_ID="${req_id:-}"
+  GROQBASH_EDGE_FINISH_REASON="${finish_reason:-}"
+  GROQBASH_EDGE_COMPLETION_TOKENS="${completion_tokens:-0}"
+
+  # Heuristic: empty content with finish_reason "stop" and very small completion tokens (1) => edge empty
+  if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "${completion_tokens:-0}" -le 1 ]; then
     GROQBASH_EDGE_EMPTY=1
-    GROQBASH_EDGE_REQ_ID="${req_id:-<none>}"
-    GROQBASH_EDGE_FINISH_REASON="$finish_reason"
-    GROQBASH_EDGE_COMPLETION_TOKENS="$completion_tokens"
-    return 0
+  else
+    GROQBASH_EDGE_EMPTY=0
   fi
 
-  return 1
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -2986,7 +3340,9 @@ perform_request_once() {
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
     if call_api_once; then
       if [ "${DRY_RUN:-0}" -eq 1 ]; then
-        log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
+        fi
         return 0
       fi
 
@@ -3015,7 +3371,7 @@ perform_request_once() {
         # try to infer http code from RESP presence
         if [ -s "$RESP" ]; then http_code_fallback=200; fi
         api_json="$(jq -c -n --argjson http "$http_code_fallback" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
-        ui_state_write "last_api.json" "$api_json" || log_warn "UI_STATE" "failed to write fallback last_api.json"
+        ui_state_write "last_api.json" "$api_json" || { if [ "${DEBUG:-0}" -eq 1 ]; then log_warn "UI_STATE" "failed to write fallback last_api.json"; fi; }
       fi
 
       if [ -z "$text" ] && [ "$OUTPUT_MODE" != "json" ] && [ "$OUTPUT_MODE" != "pretty" ]; then
@@ -3038,9 +3394,15 @@ perform_request_once() {
 
           # fallback generico: nessun testo e nessun errore esplicito
           log_error "API" "no textual content extracted from response."
-          head -n 50 "${RESP:-/dev/null}" >&2 || true
+          if [ "${DEBUG:-0}" -eq 1 ]; then
+            head -n 50 "${RESP:-/dev/null}" >&2 || true
+          fi
           return "$GROQBASHERRAPI"
         fi
+      fi
+      # Ensure separation between JSON and assistant text
+      if [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; then
+        printf '\n'  # <-- newline separator
       fi
 
       finalize_and_output "$OUTPUT_MODE" "$text"
@@ -3051,7 +3413,9 @@ perform_request_once() {
         printf 'groqbash: WARN: Network error (curl). Retrying...\n' >&2
       elif [ "$rc" -eq "$GROQBASHERRAPI" ]; then
         printf 'groqbash: ERROR: HTTP/API error. Not retrying.\n' >&2
-        head -n 50 "${RESP:-/dev/null}" >&2 || true
+        if [ "${DEBUG:-0}" -eq 1 ]; then
+          head -n 50 "${RESP:-/dev/null}" >&2 || true
+        fi
         return "$GROQBASHERRAPI"
       else
         printf 'groqbash: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
@@ -3650,7 +4014,6 @@ is_tty_out() {
 # ---------------------------------------------------------------------------
 # Provider discovery and loading (keeps behavior compatible)
 # ---------------------------------------------------------------------------
-
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
 extras_prov_dir="$PROVIDERS_DIR"
@@ -3793,6 +4156,18 @@ EOF
   fi
 fi
 
+# --- Minimal: create provider-url file with embedded default on first provider selection ---
+# Only create provider-url if missing and provider is groq (best-effort, non-secret).
+if [ "${PROVIDER:-}" = "groq" ]; then
+  prov_file="$(canonical_provider_url_file)"
+  if [ ! -f "$prov_file" ] || [ ! -s "$prov_file" ]; then
+    # Use embedded default endpoint for groq
+    embedded_url="https://api.groq.com/openai/v1/chat/completions"
+    write_provider_url_if_missing "groq" "$embedded_url" >/dev/null 2>&1 || true
+    # do not fail if write fails; it's best-effort
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # Load provider module for the chosen provider (ensure CLI/persisted cases are handled)
 # ---------------------------------------------------------------------------
@@ -3804,10 +4179,13 @@ if ! load_provider_module "$PROVIDER"; then
   exit "$GROQBASHERRTMP"
 fi
 
+# --- Minimal: resolve provider URL now (ENV > provider-url file > embedded default) ---
+resolve_provider_url "$PROVIDER" || true
+[ "${DEBUG:-0}" -eq 1 ] && printf 'DEBUG: provider=%s provider_url=%s\n' "$PROVIDER" "${GROQBASH_PROVIDER_URL:-<unset>}" >&2
+
 # ---------------------------------------------------------------------------
 # Validate provider module and interface (must run after provider module load)
 # ---------------------------------------------------------------------------
-
 # Validate provider interface
 validate_provider_interface() {
   local p="$1"
