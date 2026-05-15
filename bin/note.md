@@ -27,11 +27,11 @@ Nessuna dipendenza ulteriore è consentita.
 
 
 groqbash è progettato per ambienti single‑user, come:
-pc/laptop/tablet personali
-server privati
-installazioni Termux
-ambienti WSL
-shell locali
+- pc/laptop/tablet personali
+- server privati
+- installazioni Termux
+- ambienti WSL
+- shell locali
 
 
 groqbash non è progettato per:
