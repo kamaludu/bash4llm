@@ -1,5 +1,6 @@
 **GroqBash: punti essenziali:**
 
+---
 groqbash è uno script Bash, single-file, idempotente (funziona ovunque).
 ---
 groqbash è compatibile con ambienti Unix‑like:
