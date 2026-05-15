@@ -217,3 +217,158 @@ Per le funzioni rilevanti esposte come modulo.
   - Nessuna esecuzione automatica delle risposte API e nessun uso di eval.  
   - Locking obbligatorio per operazioni atomiche tramite lock_exec con timeout configurabile.  
 
+---
+
+### IDENTITÀ DELLA SEZIONE
+**Nome sezione**  
+**PRECORE_RUN**
+
+**Scopo**  
+Fornire primitive runtime sicure, atomiche e portabili per gestione history, manifest multimodale, tmp, sessioni e cache usate dall’intero script.
+
+**Responsabilità principali**
+- Rotazione e salvataggio atomico della history: `rotate_history`, `save_to_history`.  
+- Creazione e aggiornamento manifest base64-compatibile: `manifest_create`, `manifest_add_part`, `manifest_read`.  
+- Helper file/permessi/firma: `_get_perm_string`, `_get_owner`, `_get_file_signature`, `getfile_signature`, `_is_world_writable`.  
+- Creazione sicura tmp: `make_tmpdir`, `_tmpf`.  
+- Sessione MVP e cache: `session_validate_id`, `session_now_ts`, `session_messages_tmp_path`, `session_read_window`, `session_append`, `session_sanitize_cmd`, `session_marker_create` (marker logic integrata), `session_cache_key`, `session_cache_get`, `session_cache_set`, `session_cache_invalidate`.  
+- Normalizzazione runtime e variabili booleane.
+
+**Non-responsabilità**
+- Non esegue output API come comandi; non usa eval.  
+- Non effettua chiamate API di rete in questa sezione.  
+- Non fornisce UI di alto livello né sandbox multi‑tenant.
+
+---
+
+### INVARIANTI E GARANZIE
+**Invarianti prima/dopo**
+- Operazioni critiche avvengono sotto lock; dopo ritorno i file target sono coerenti o l’operazione è stata annullata senza lasciare artefatti globali.
+- File creati hanno permessi restrittivi (umask 077, chmod 600/700 quando possibile).
+- Tmpfile/tmpdir sono creati nello stesso filesystem della destinazione per mv atomiche.
+
+**Assunzioni ambiente**
+- `GROQBASH_TMPDIR`, `RUN_TMPDIR`, `GROQBASH_HISTORY_DIR`, `GROQBASH_CONFIG_DIR`, `GROQBASH_DIR` e lock timeout (`GROQBASH_LOCK_TIMEOUT_*`) sono configurati e scrivibili dall’utente esecutore.
+- Binari obbligatori nel PATH: `bash`, coreutils, `find`, `awk`, `curl`, `jq`; opzionali per funzionalità: `sha256sum` o `openssl`.
+- L’utente controlla la directory dello script; nessun utente non fidato può scriverci.
+
+**Garanzie offerte**
+- Atomicità delle scritture su history, manifest e sessioni tramite lock e mv atomico.  
+- Idempotenza append sessione per `message_id` tramite marker directory e controllo sotto lock.  
+- Tmp e file con permessi restrittivi; nessun uso di `/tmp` di sistema come default.  
+- Cache sessione con TTL e invalidazione deterministica.
+
+---
+
+### DIPENDENZE IMPORTANTI
+**Variabili d’ambiente lette**
+- History e rotazione: `GROQBASH_ROTATE_HISTORY`, `GROQBASH_HISTORY_MAX_FILES`, `GROQBASH_HISTORY_MAX_BYTES`, `GROQBASH_HISTORY_KEEP_DAYS`, `GROQBASH_HISTORY_DIR`, `GROQBASH_LOCK_TIMEOUT_HISTORY`.  
+- Tmp e lock: `GROQBASH_TMPDIR`, `RUN_TMPDIR`, `TMP_LOCK`, `GROQBASH_LOCK_TIMEOUT_TMP`, `HISTORY_LOCK`.  
+- Manifest: `B64_WRAP_OPT`, `B64_DECODE_OPT`, `GROQBASH_LOCK_TIMEOUT_MODELS`.  
+- Runtime: `GROQBASH_CONFIG_DIR`, `GROQBASH_DIR`, `GROQBASH_SOURCE_ONLY`, `DEBUG`, `DRY_RUN`, `ALLOW_API_CALLS`, `GROQBASH_SIG_HASH`.  
+- Session runtime defaults: `SESSION_DIR`, `LAST_CHECK_LINES`.
+
+**File letti**
+- History files sotto `${GROQBASH_HISTORY_DIR}`.  
+- Session NDJSON `${history_dir}/sessions/${sid}.ndjson`.  
+- Manifest `${manifest}` e `${manifest}.b64`.  
+- UI state sotto `${GROQBASH_CONFIG_DIR%/}/ui_state`.
+
+**Funzioni esterne richieste**
+- `lock_exec`, `ui_state_write`, `ensure_run_tmpdir`, `ensure_config_dir`, `b64encode`, `b64decode`, `file_size`, `is_truthy`, `log_error`, `log_warn`, `log_info`.  
+- Comandi esterni: `jq`, `mktemp`, `stat`, `find`, `grep`, `awk`, `sed`, `tail`, `sort`, `head`, `mv`, `cp`, `chmod`, `rm`, `mkdir`, `flock`, `date`, `sha256sum` o `openssl` (opzionali).
+
+**Output e side‑effect principali**
+- Variabili esportate: normalizzazione booleane `ALLOW_API_CALLS`, `DRY_RUN`, `DEBUG`.  
+- File creati: history files, `last_history.json`, manifest e `.b64`, parti base64, tmpfile/tmpdir, session NDJSON e lockfile, marker dir, cache files in `session_cache`.  
+- Log su stdout/stderr tramite `log_*`.  
+- Exit code delle funzioni per segnalare successo/fallimento.
+
+---
+
+### API COMPATTA DEL MODULO
+Per ogni funzione esposta, ruolo e contratti essenziali
+
+- **rotate_history**  
+  Ruolo: compattare history rispettando max files, max bytes, keep days sotto `HISTORY_LOCK`.  
+  Contratto: ritorna 0 su successo; rimuove file eccedenti; può fallire con exit non-zero se lock o I/O critico fallisce.
+
+- **save_to_history**  
+  Ruolo: salvare contenuto in file history atomico e aggiornare `last_history.json`; opzionalmente chiamare `rotate_history`.  
+  Contratto: ritorna 0 su successo; garantisce permessi 600; pulisce tmp su errore.
+
+- **manifest_create / manifest_add_part / manifest_read**  
+  Ruolo: creare manifest JSON + staging base64, aggiungere parti codificate e leggere manifest.  
+  Contratto: operazioni atomiche sotto lock; `manifest_add_part` richiede file sorgente esistente; errori segnalati via exit code.
+
+- **_get_perm_string / _get_owner / _get_file_signature / getfile_signature / _is_world_writable**  
+  Ruolo: interrogazioni portabili su permessi, owner e firma file; controllo world-writable.  
+  Contratto: restituiscono stringhe o exit code; non abortano il processo principale su stat fallito.
+
+- **make_tmpdir / _tmpf**  
+  Ruolo: creare tmpdir/tmpfile sicuri sotto `GROQBASH_TMPDIR` con permessi restrittivi e lock.  
+  Contratto: stampano percorso su stdout; falliscono con `GROQBASHERRTMP` se base non disponibile.
+
+- **session_validate_id / session_now_ts / session_messages_tmp_path / session_sanitize_cmd**  
+  Ruolo: validazione id, timestamp UTC, path tmp per sessione, sanitizzazione comandi.  
+  Contratto: semplici helper; `session_validate_id` ritorna 0/1.
+
+- **session_read_window**  
+  Ruolo: estrarre ultime N entry NDJSON di una sessione, normalizzare ruoli e scrivere `{"messages":[...]}` in out file in modo atomico.  
+  Contratto: richiede `RUN_TMPDIR` scrivibile; aggiorna `ui_state` in best-effort; ritorna non-zero su errori I/O o parametri mancanti.
+
+- **session_append**  
+  Ruolo: append idempotente di record NDJSON in file sessione; previene duplicati tramite `message_id` marker e flock.  
+  Contratto: garantisce idempotenza cross-processo per `message_id`; aggiorna `ui_state` e sessions index; ritorna non-zero su lock o I/O falliti; pulisce marker su fallimento.
+
+- **session_cache_key / session_cache_get / session_cache_set / session_cache_invalidate**  
+  Ruolo: generare chiave cache, leggere hit con TTL, scrivere cache atomica, invalidare.  
+  Contratto: cache memorizzata in `${GROQBASH_CONFIG_DIR}/session_cache`; `session_cache_get` rimuove file scaduti; ritorna 0 su hit.
+
+---
+
+### FLUSSI PRINCIPALI (sintesi)
+- **Init runtime**  
+  1. `ensure_run_tmpdir` viene chiamata; se fallisce exit con errore tmp.  
+  2. Impostazione opzioni curl e default runtime.  
+  3. `_normalize_bool_env` esporta booleani 0/1.
+
+- **Salvataggio history**  
+  1. `save_to_history` crea tmp in history dir.  
+  2. Muove atomico in destinazione sotto `HISTORY_LOCK`.  
+  3. Aggiorna `last_history.json` via `ui_state_write`.  
+  4. Se abilitato, chiama `rotate_history`.
+
+- **Append sessione idempotente**  
+  1. Preparazione session dir e file.  
+  2. Generazione `message_id` se assente.  
+  3. Creazione marker dir; se esiste skip.  
+  4. Acquisizione flock su `session_file`; controllo duplicato; append NDJSON; rilascio lock.  
+  5. Lascia marker `done` e aggiorna `ui_state`.
+
+- **Aggiunta parte manifest**  
+  1. Codifica file sorgente in base64 e stage atomico.  
+  2. Lock su `${manifest}.lock`, decodifica manifest.b64 o legge manifest.  
+  3. Aggiorna JSON con jq e riscrive manifest + manifest.b64 atomicamente.
+
+---
+
+### ERROR HANDLING E POLICY ESSENZIALI
+**Strategia**  
+- Lock e mv atomici per evitare TOCTOU; best‑effort per metadata; pulizia tmp su fallimento; log strutturato per diagnostica.
+
+**Validazioni critiche**
+- `session_validate_id` prima di operare su sessioni.  
+- Verifica scrivibilità di `RUN_TMPDIR`/`GROQBASH_TMPDIR` prima di creare tmp.  
+- Esistenza file sorgente per `manifest_add_part`.  
+- Normalizzazione `meta_json` con `jq` prima di append.
+
+**Policy di sicurezza**
+- Permessi restrittivi su tmp e file creati (umask 077, chmod 600/700).  
+- Evitare `/tmp` di sistema come default; usare `GROQBASH_TMPDIR`/`RUN_TMPDIR`.  
+- Nessuna esecuzione di contenuti esterni; sanitizzazione comandi per rimozione token e coppie env-like.  
+- Timeout configurabili per lock (`GROQBASH_LOCK_TIMEOUT_*`) per prevenire deadlock.
+
+---
+
+Questa versione compatta contiene i nomi delle funzioni, le dipendenze critiche, le invarianti e le garanzie necessarie per ragionare sull’architettura e sul comportamento della sezione PRECORE_RUN senza codice né dettagli superflui.
