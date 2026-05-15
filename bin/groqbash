@@ -3025,9 +3025,9 @@ autoselectmodelgroq() { auto_select_model_groq "$@"; }
 # SECTION: PROVIDER - END
 ########################################
 ########################################
-# SECTION: CORE - BEGIN
+# SECTION: CORE_SETUP - BEGIN
 ########################################
-#--1<---[ SECTION: CORE_DISPATCH_HELPERS ]--->1--
+#--1<---[ SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
 # Core helpers and CLI wiring (public interfaces preserved)
 
 # Dispatch helper: call provider-specific function by name if available
@@ -3090,7 +3090,7 @@ auto_select_model_dispatch() {
   fi
   return 1
 }
-#--1<---[ /SECTION: CORE_DISPATCH_HELPERS ]--->1--
+#--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
 
 # resolve_model: determina MODEL finale seguendo ordine di priorità e validando
 # Risultato: imposta la variabile globale FINAL_MODEL (stringa) o vuota se non risolta.
@@ -3233,7 +3233,7 @@ build_payload_from_vars() {
   fi
 }
 
-#--2<---[ SECTION: CORE_API_CALL ]--->2--
+#--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
 # API call wrappers (non-streaming and streaming)
 call_api_once() {
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
@@ -3346,7 +3346,7 @@ detect_empty_edge_case() {
 
   return 0
 }
-#--2<---[ /SECTION: CORE_API_CALL ]--->2--
+#--2<---[ /SECTION: CORE_SETUP_API_CALL ]--->2--
 
 # ---------------------------------------------------------------------------
 # Finalize and output (fixed tmp usage and save logic)
@@ -3491,7 +3491,7 @@ perform_request_once() {
   return "$GROQBASHERRAPI"
 }
 
-#--3<---[ SECTION: CORE_INPUT_HELPERS ]--->3--
+#--3<---[ SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
 # Input helpers
 collect_input_from_files() {
   local out="" first=1 f
@@ -3522,7 +3522,7 @@ file_readable() { [ -r "$1" ] && [ -f "$1" ]; }
 trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
 
 is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
-#--3<---[ /SECTION: CORE_INPUT_HELPERS ]--->3--
+#--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
 
 is_supported_model() {
   # Return 0 if model name appears to support text-only usage.
@@ -3602,7 +3602,7 @@ validate_model_core() {
   return 0
 }
 
-#--4<---[ SECTION: CORE_CLI_PARSE ]--->4--
+#--4<---[ SECTION: CORE_SETUP_CLI_PARSE ]--->4--
 # CLI parsing (flags, normalization, immediate actions)
 # ---------------------------------------------------------------------------
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
@@ -3694,9 +3694,9 @@ while [ $# -gt 0 ]; do
     *) ARGS+=("$1"); shift ;;
   esac
 done
-#--4<---[ /SECTION: CORE_CLI_PARSE ]--->4--
+#--4<---[ /SECTION: CORE_SETUP_CLI_PARSE ]--->4--
 
-#--5<---[ SECTION: CORE_SESSION_ENGINE ]--->5--
+#--5<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 # Session Engine: safe sourcing and robust fallback
 # - If the module extras/session/session_engine.sh exists, we source it.
 # - We never execute the file as a script; we verify the presence of the required functions.
@@ -3741,9 +3741,9 @@ fi
 
 # Usage note: callers should attempt session_engine_* only when SE_AVAILABLE=1,
 # and otherwise call legacy session_read_window/session_append as fallback.
-#--5<---[ /SECTION: CORE_SESSION_ENGINE ]--->5--
+#--5<---[ /SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 
-#--6<---[ SECTION: CORE_NORM_FLAGS ]--->6--
+#--6<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
 # Normalize boolean-like flags
 for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
   if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
@@ -3813,9 +3813,8 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
     exit 2
   fi
 fi
-#--6<---[ /SECTION: CORE_NORM_FLAGS ]--->6--
-
-#--7<---[ SECTION: CORE_ACTIONS ]--->7--
+#--6<---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
+#--7<---[ SECTION: CORE_SETUP_ACTIONS ]--->7--
 # Immediate actions: list providers/models, set-default, install-extras
 # Note: explicit --refresh-models handling has been moved to after provider load.
 # ---------------------------------------------------------------------------
@@ -4042,7 +4041,7 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
 
   exit 0
 fi
-#--7<---[ /SECTION: CORE_ACTIONS ]--->7--
+#--7<---[ /SECTION: CORE_SETUP_ACTIONS ]--->7--
 
 # ---------------------------------------------------------------------------
 # Load local config and whitelist
@@ -4084,7 +4083,13 @@ is_tty_out() {
   [ -t 1 ]
 }
 
-#--8<---[ SECTION: CORE_PROVIDER ]--->8--
+########################################
+# SECTION: CORE_SETUP - END
+########################################
+########################################
+# SECTION: CORE_PROVIDER - BEGIN
+########################################
+#--1<---[ SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
 # Provider discovery and loading (keeps behavior compatible)
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
@@ -4314,9 +4319,9 @@ if [ ! -s "${MODELS_FILE:-}" ]; then
     refresh_models_dispatch "$MODELS_FILE" || true
   fi
 fi
-#--8<---[ /SECTION: CORE_PROVIDER ]--->8--
+#--1<---[ /SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
 
-#--9<---[ SECTION: CORE_SHOW ]--->9--
+#--2<---[ SECTION: CORE_PROVIDER_SHOW ]--->2--
 # Show config / diagnostics
 if [ "${PRINT_CONFIG_DIR:-0}" -eq 1 ]; then
   printf '%s\n' "$(canonical_config_dir)"
@@ -4420,9 +4425,9 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   printf '\nDiagnostics complete.\n'
   exit 0
 fi
-#--9<---[ /SECTION: CORE_SHOW ]--->9--
+#--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
 
-#--10<---[ SECTION: CORE_MAIN ]--->10--
+#--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--
 # Main flow: assemble content, select model, and execute request(s)
 load_local_config
 load_whitelist
@@ -4924,9 +4929,9 @@ else
     exit "$GROQBASHERRAPI"
   fi
 fi
-#--10<---[ /SECTION: CORE_MAIN ]--->10--
+#--3<---[ /SECTION: CORE_PROVIDER_MAIN ]--->3--
+########################################
+# SECTION: CORE_PROVIDER - END
+########################################
 
-########################################
-# SECTION: CORE - END
-########################################
 # End of file
