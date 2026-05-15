@@ -1,3 +1,5 @@
+# GroqBash - SPEC TECNICA STRUTTURALE
+
 ### IDENTITÀ DELLA SEZIONE
 - **Nome sezione**  
 #  PRECORE_BOOT
