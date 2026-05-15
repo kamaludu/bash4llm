@@ -11,7 +11,6 @@ groqbash è compatibile con ambienti Unix‑like:
 - WSL, Cygwin (Windows)
 - Termux (Android)
 
-
 groqbash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 - bash
 - coreutils
@@ -20,6 +19,7 @@ groqbash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 - gawk
 - curl
 - jq
+
 Tutti questi pacchetti vanno considerati requisiti obbligatori: se ne manca uno, groqbash fallisce von errore chiaro.
 In quanto requisiti obbligatori, nessun pacchetto richiede fallback.
 Nessuna dipendenza ulteriore è consentita.
