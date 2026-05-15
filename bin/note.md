@@ -21,7 +21,7 @@ groqbash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 - curl
 - jq
 
-Tutti questi pacchetti vanno considerati requisiti obbligatori: se ne manca uno, groqbash fallisce von errore chiaro.
+Tutti questi pacchetti vanno considerati requisiti obbligatori: se ne manca uno, groqbash fallisce con errore chiaro.
 In quanto requisiti obbligatori, nessun pacchetto richiede fallback.
 Nessuna dipendenza ulteriore è consentita.
 
