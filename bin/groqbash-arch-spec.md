@@ -374,3 +374,179 @@ Per ogni funzione esposta, ruolo e contratti essenziali
 Questa versione compatta contiene i nomi delle funzioni, le dipendenze critiche, le invarianti e le garanzie necessarie per ragionare sull’architettura e sul comportamento della sezione PRECORE_RUN senza codice né dettagli superflui.
 
 ---
+
+### 1. IDENTITÀ DELLA SEZIONE
+**Nome sezione**  
+# PROVIDER 
+(implementazione provider `groq`)
+
+**Scopo**  
+Fornire l’integrazione completa e autonoma con l’API compatibile OpenAI di Groq: costruzione payload, chiamate HTTP (streaming e non‑streaming), gestione e refresh della lista modelli, validazione e selezione automatica dei modelli.
+
+**Responsabilità principali**
+- Costruire payload JSON coerenti per le chat (`buildpayload_groq`).
+- Eseguire chiamate HTTP non‑streaming verso l’endpoint provider con gestione diagnostica (`call_api_groq`).
+- Eseguire chiamate HTTP in streaming (SSE) e aggregare chunk JSON in output finali (`call_api_streaming_groq`).
+- Recuperare e normalizzare la lista dei modelli remoti e salvarla in modo atomico (`refresh_models_groq`).
+- Validare che un modello richiesto sia presente e supportato (`validate_model_groq`).
+- Selezionare automaticamente un modello valido dalla lista locale (`auto_select_model_groq`).
+- Fornire alias compatibili (es. `buildpayloadgroq`, `refreshmodelsgroq`, `validatemodelgroq`, `autoselectmodelgroq`, `call_api_streaming_groq_legacy`).
+
+**Non‑responsabilità (cosa NON fa)**
+- Non gestisce UI, interazione utente o parsing CLI esterno alla sezione.
+- Non implementa risoluzione globale dell’URL provider (si affida a `resolve_provider_url` esterno).
+- Non esegue comandi shell provenienti dalle risposte API; non usa eval.
+- Non fornisce fallback a pacchetti mancanti: assume che gli strumenti richiesti esistano.
+- Non scrive file al di fuori della gerarchia temporanea controllata (`RUN_TMPDIR`) e dei file esplicitamente indicati (MODELS_FILE, RESP, ecc.).
+
+---
+
+### 2. INVARIANTI E MODELLO MENTALE
+**Invarianti di stato prima/dopo**
+- Prima di ogni funzione che tocca filesystem temporaneo: `ensure_run_tmpdir` deve avere creato e reso disponibile `RUN_TMPDIR`.
+- Dopo `buildpayload_groq`: esiste un file payload valido (o una versione .b64) referenziato da `GROQBASH_TMP_PAYLOAD` o `PAYLOAD`.
+- Dopo `call_api_groq` / `call_api_streaming_groq`: esiste un file di risposta finale in `RESP` (diagnostico se errore).
+- Dopo `refresh_models_groq`: `MODELS_FILE` esiste e contiene una lista normalizzata non vuota (se la chiamata ha avuto successo).
+
+**Assunzioni su ambiente / file / variabili**
+- `RUN_TMPDIR`, `MODELS_FILE`, `MODELS_LOCK`, `MAX_MODELS`, `CURL_BASE_OPTS`, `DEBUG`, `DRY_RUN`, `GROQBASH_API_KEY`, `PROVIDER`, `GROQBASH_PROVIDER_URL` possono essere presenti e influenzano il comportamento.
+- `GROQ_API_KEY` può essere fornita direttamente o tramite `PROVIDER_API_ENV_groq` che punta a un env var contenente la chiave.
+- Strumenti esterni obbligatori: bash, coreutils, findutils, util-linux, gawk, curl, jq; helper locali come `b64decode`, `b64_atomic_write`, `stage_b64`, `lock_exec`, `is_truthy`, `is_valid_json_string`, `is_valid_json_file`, `is_supported_model`, `ensure_run_tmpdir`, `_mktemp_in_dir`, `resolve_provider_url`, `ui_state_write`, `log_*` devono esistere altrove nello script.
+- L’utente controlla la directory contenente lo script; non ci sono utenti non fidati che possono modificare i file usati.
+
+**Garanzie offerte al resto del sistema**
+- Produce payload JSON validi o fallisce con diagnostica chiara.
+- Non lascia payload temporanei non rimossi (cleanup gestito).
+- Fornisce file di risposta `RESP` sempre: risposta reale o JSON diagnostico con motivo dell’errore.
+- Quando possibile, scrive `MODELS_FILE` in modo atomico e sotto lock per evitare corruzione concorrente.
+- Non espone chiavi API nei log a meno che `DEBUG=1` non richieda diagnostica (ma codice evita di stampare chiavi).
+
+---
+
+### 3. DIPENDENZE
+**Dipendenze in ingresso**
+
+- *Variabili d’ambiente lette*
+  - `GROQ_API_KEY`, `PROVIDER_API_ENV_groq`, `GROQBASH_API_KEY`, `GROQBASH_PROVIDER_URL`, `PROVIDER`, `MODELS_FILE`, `MODELS_LOCK`, `MAX_MODELS`, `CURL_BASE_OPTS`, `DEBUG`, `DRY_RUN`, `PAYLOAD`, `GROQBASH_TMP_PAYLOAD`, `RESP`, `RUN_TMPDIR`, `TURE`, `MAX_TOKENS`, `MESSAGES_JSON`, `BUILD_MESSAGES_FILE`, `JSON_INPUT`, `CONTENT`, `STREAM_MODE`, `MODELS_FILE`, `MODELS_LOCK`, `GROQBASH_EDGE_EMPTY`, `CURL_BASE_OPTS`, `B64_DECODE_OPT`.
+
+- *File letti*
+  - `BUILD_MESSAGES_FILE` (se specificato), eventuali payload `.b64` staged, `MODELS_FILE` per validazione/auto‑selezione, file temporanei in `RUN_TMPDIR`.
+
+- *Funzioni esterne chiamate (altre macro‑sezioni / helper)*
+  - `ensure_run_tmpdir`, `_mktemp_in_dir`, `is_truthy`, `is_valid_json_string`, `is_valid_json_file`, `b64decode`, `stage_b64`, `b64_atomic_write`, `lock_exec`, `resolve_provider_url`, `is_supported_model`, `ui_state_write`, `log_info`, `log_warn`, `log_error`, `show_payload_head`.
+
+**Dipendenze in uscita**
+
+- *Variabili globali impostate o modificate*
+  - `GROQBASH_TMP_PAYLOAD` (setta percorso payload), `PAYLOAD` (se non già impostata), `RESP` (se non già impostata viene popolata), `MODELS_FILE` (aggiornato da `refresh_models_groq`), `ui_state` tramite `ui_state_write` (last_api.json).
+
+- *File creati/scritti*
+  - Payload temporanei (`payload.json`, `.b64`, decoded payload), `resp.json`, `resp.raw`, `resp.lines`, `resp.valid.jsons`, `resp.chunks.json`, `resp.text.txt`, `MODELS_FILE` (atomico), lock files temporanei, vari file diagnostici in `RUN_TMPDIR`.
+
+- *Side‑effects*
+  - Rete: richieste HTTP verso `GROQBASH_PROVIDER_URL` o derivati (`/openai/v1/chat/completions`, `/openai/v1/models`).
+  - Stdout: emissione incrementale del contenuto durante streaming (per `call_api_streaming_groq`).
+  - Stderr: logging diagnostico tramite `log_*` e scrittura di file di errore curl.
+  - Exit code / return value: ogni funzione ritorna codici specifici (0 successo, codici di errore predefiniti per problemi di tmp, API key, curl, ecc.).
+
+---
+
+### 4. API ESPOSTA (vista come modulo)
+Per ogni funzione rilevante: ruolo, input, output, errori.
+
+**buildpayload_groq**  
+- **Ruolo**: costruisce il payload JSON per la chiamata chat e produce un file payload (raw o .b64) referenziato da `GROQBASH_TMP_PAYLOAD`/`PAYLOAD`.  
+- **Input**: variabili globali: `MODEL`, `TURE`, `MAX_TOKENS`, `MESSAGES_JSON`, `BUILD_MESSAGES_FILE`, `STREAM_MODE`, `JSON_INPUT`, `CONTENT`; helper esterni e `RUN_TMPDIR`.  
+- **Output / side‑effect**: crea file payload in `RUN_TMPDIR` o file .b64; imposta `GROQBASH_TMP_PAYLOAD` e `PAYLOAD` se non già impostata; ritorna 0 su successo.  
+- **Errori / fallimenti**: fallisce con codice di errore temporaneo se `ensure_run_tmpdir` fallisce, se `jq` non riesce a costruire il payload, o se payload risultante è vuoto; scrive messaggi diagnostici via `log_error`/`log_warn`.
+
+**call_api_groq**  
+- **Ruolo**: esegue chiamata HTTP non‑streaming verso provider, salva risposta in `RESP` e fornisce diagnostica.  
+- **Input**: `GROQBASH_TMP_PAYLOAD` o `PAYLOAD`, `GROQ_API_KEY`/`GROQBASH_API_KEY`/`PROVIDER_API_ENV_groq`, `GROQBASH_PROVIDER_URL` (o `resolve_provider_url`), `RUN_TMPDIR`, `CURL_BASE_OPTS`, `DRY_RUN`, `DEBUG`.  
+- **Output / side‑effect**: scrive file di risposta `RESP` (o diagnostico), scrive file di errore curl, ritorna il codice di ritorno del processo curl (0 se trasporto OK).  
+- **Errori / fallimenti**: segnala e ritorna codici specifici per: mancanza payload, payload vuoto, mancanza API key, mancanza provider URL, fallimento decodifica .b64, fallimento curl (rc non zero). In ogni caso produce un `RESP` diagnostico quando possibile.
+
+**call_api_streaming_groq**  
+- **Ruolo**: esegue chiamata streaming SSE, emette contenuto incrementale su stdout, aggrega chunk JSON e scrive `RESP` finale.  
+- **Input**: come `call_api_groq` più `STREAM_MODE` implicito; `GROQBASH_TMP_PAYLOAD`/`PAYLOAD`, `GROQ_API_KEY`, `GROQBASH_PROVIDER_URL`, `RUN_TMPDIR`, `DEBUG`, `DRY_RUN`.  
+- **Output / side‑effect**: streaming su stdout del contenuto estratto dai chunk; file temporanei `resp.raw`, `resp.lines`, `resp.valid.jsons`, `resp.chunks.json`, `resp.text.txt`; scrive `RESP` finale o diagnostico; ritorna rc di curl (pipeline).  
+- **Errori / fallimenti**: segnala mancanza payload, payload vuoto, mancanza API key, mancanza provider URL; se stream non contiene JSON validi scrive `RESP` diagnostico; ritorna codice di curl o codice di errore specifico.
+
+**refresh_models_groq**  
+- **Ruolo**: recupera `/openai/v1/models`, normalizza e salva la lista in `MODELS_FILE` in modo atomico e sotto lock.  
+- **Input**: `GROQ_API_KEY` (o `PROVIDER_API_ENV_groq`), `GROQBASH_PROVIDER_URL` (o `resolve_provider_url`), `MAX_MODELS`, `MODELS_FILE`, `MODELS_LOCK`, `CURL_BASE_OPTS`, `RUN_TMPDIR`.  
+- **Output / side‑effect**: scrive `MODELS_FILE` (atomico via `.b64` e `lock_exec`), ritorna 0 su successo.  
+- **Errori / fallimenti**: fallisce se mancano API key, provider URL, se curl fallisce, se JSON non valido, se parsing produce lista vuota, o se scrittura atomica fallisce; ritorna codici di errore distinti e log di diagnostica.
+
+**validate_model_groq**  
+- **Ruolo**: verifica che un modello richiesto sia presente nella `MODELS_FILE` (se esiste) e che sia supportato testualmente.  
+- **Input**: parametro `model` (arg1), `MODELS_FILE`, helper `is_supported_model`.  
+- **Output / side‑effect**: ritorna 0 se valido; scrive messaggi di errore su stderr in caso di invalidità.  
+- **Errori / fallimenti**: fallisce con codice 1 e messaggio su stderr se `model` mancante, non presente in `MODELS_FILE` (quando file esiste e non vuoto), o non supportato da `is_supported_model`.
+
+**auto_select_model_groq**  
+- **Ruolo**: scorre `MODELS_FILE` e stampa il primo modello normalizzato che `is_supported_model` accetta.  
+- **Input**: `MODELS_FILE`, `MAX_MODELS`, helper `is_supported_model`.  
+- **Output / side‑effect**: stampa il modello selezionato su stdout e ritorna 0; ritorna 1 se nessun modello valido trovato.  
+- **Errori / fallimenti**: ritorna 1 se file mancante o nessun candidato valido.
+
+---
+
+### 5. FLUSSI PRINCIPALI
+**Flusso A — Costruzione payload e chiamata non‑streaming (normale)**
+1. `ensure_run_tmpdir` crea `RUN_TMPDIR`.
+2. `buildpayload_groq` valida input (JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, CONTENT) e costruisce payload JSON; produce `GROQBASH_TMP_PAYLOAD` o `PAYLOAD`.
+3. Verifica `enforce_network_policy` (chiamata esterna) e `DRY_RUN`/`DEBUG`.
+4. `call_api_groq` verifica presenza API key e `GROQBASH_PROVIDER_URL` (o chiama `resolve_provider_url`).
+5. Decodifica payload .b64 se necessario, esegue `curl` con opzioni e salva output in `resp_tmp`.
+6. Normalizza e valida JSON di risposta; scrive `RESP` o JSON diagnostico; ritorna rc di curl.
+
+**Flusso B — Streaming SSE**
+1. `ensure_run_tmpdir`.
+2. `buildpayload_groq` prepara payload con `stream:true`.
+3. `call_api_streaming_groq` verifica network policy e API key.
+4. Decodifica payload .b64 se necessario; lancia `curl` in modalità streaming e pipe verso loop di parsing.
+5. Per ogni linea `data: ...` estrae JSON e stampa contenuto incrementale su stdout.
+6. Alla fine aggrega chunk validi in `resp.chunks.json` e `resp.text.txt`, scrive `RESP` finale o diagnostico; ritorna rc.
+
+**Flusso C — Refresh lista modelli**
+1. Verifica `GROQ_API_KEY` (o `PROVIDER_API_ENV_groq`).
+2. `ensure_run_tmpdir` e crea temp dir.
+3. Determina `api_url` derivando l’origine da `GROQBASH_PROVIDER_URL` o fallisce.
+4. Esegue `curl` per `/openai/v1/models` e salva output.
+5. Valida JSON con `jq`; estrae nomi candidati e normalizza (rimuove prefissi).
+6. Scrive lista normalizzata in modo atomico via `b64_atomic_write` e `lock_exec` su `MODELS_FILE`.
+
+**Flusso D — Validazione / Auto‑selezione modello**
+1. `validate_model_groq` normalizza input e, se `MODELS_FILE` esiste e non vuoto, verifica presenza (raw o normalizzata).
+2. Chiama `is_supported_model` per garantire compatibilità testuale.
+3. `auto_select_model_groq` scorre `MODELS_FILE`, normalizza ogni riga e restituisce il primo modello supportato.
+
+---
+
+### 6. ERROR HANDLING E POLICY
+**Strategia generale**
+- Fallimenti sono segnalati con codici di ritorno specifici e messaggi log tramite `log_error`/`log_warn`/`log_info`.
+- Quando possibile, la sezione produce un file `RESP` diagnostico contenente motivo, timestamp e frammento di stderr per consentire al caller di distinguere errori di trasporto da errori applicativi.
+- Operazioni su file sensibili sono eseguite con permessi restrittivi (chmod 600) quando possibile.
+
+**Punti di validazione importanti**
+- Validità JSON di input (`is_valid_json_string`, `is_valid_json_file`) prima di usarlo come `.messages`.
+- Validità numerica di `TURE` e `MAX_TOKENS` prima di passare a `jq`.
+- Presenza e non‑vuotezza del payload prima di chiamare `curl`.
+- Presenza di `GROQ_API_KEY` o `GROQBASH_API_KEY` prima di chiamate di rete.
+- Validità JSON della risposta prima di considerarla definitiva; estrazione conservativa di prefissi JSON se la risposta contiene dati extra.
+- Normalizzazione e validazione della lista modelli prima di scriverla.
+
+**Policy particolari**
+- **Rete**: tutte le chiamate sono soggette a `enforce_network_policy`; in `DRY_RUN` le chiamate reali sono evitate e possono essere simulate per diagnostica.
+- **Sicurezza**: non usare `/tmp` di sistema per file temporanei; usare `RUN_TMPDIR` controllato; permessi file impostati restrittivi; non stampare chiavi API nei log (diagnostica evita esposizione).
+- **Atomicità**: scrittura di `MODELS_FILE` tramite staging base64 e lock per evitare corruzione; movimenti di file preferiti via `mv` con fallback a `cp`.
+- **Streaming**: parsing conservativo dei chunk SSE; emissione incrementale su stdout senza eseguire contenuto; aggregazione dei chunk validi in file finali.
+- **Diagnostica**: in caso di output non JSON, estrazione di un prefisso JSON valido e salvataggio del resto in file di trailing diagnostici; `RESP` contiene sempre informazioni utili per il caller.
+
+--- 
+
+Fine della specifica tecnica strutturale per la macro‑sezione **PROVIDER**.
+
+---
