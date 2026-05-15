@@ -1,6 +1,6 @@
 ### IDENTITÀ DELLA SEZIONE
 - **Nome sezione**  
-##  PRECORE_BOOT
+#  PRECORE_BOOT
 - **Scopo**  
   Inizializzare l'ambiente di esecuzione di groqbash e fornire helper fondamentali per il bootstrap. Garantire che requisiti, percorsi e risorse locali siano validi e sicuri prima dell'esecuzione del core.
 - **Responsabilità principali**  
@@ -221,7 +221,7 @@ Per le funzioni rilevanti esposte come modulo.
 
 ### IDENTITÀ DELLA SEZIONE
 **Nome sezione**  
-**PRECORE_RUN**
+# PRECORE_RUN
 
 **Scopo**  
 Fornire primitive runtime sicure, atomiche e portabili per gestione history, manifest multimodale, tmp, sessioni e cache usate dall’intero script.
@@ -372,3 +372,5 @@ Per ogni funzione esposta, ruolo e contratti essenziali
 ---
 
 Questa versione compatta contiene i nomi delle funzioni, le dipendenze critiche, le invarianti e le garanzie necessarie per ragionare sull’architettura e sul comportamento della sezione PRECORE_RUN senza codice né dettagli superflui.
+
+---
