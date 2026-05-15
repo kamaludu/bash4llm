@@ -1601,9 +1601,9 @@ _tmpf() {
     return "$GROQBASHERRTMP"
   fi
 }
-#--9<---[ /SECTION: PRECORE_UTIL_HELPERS ]--->9--
+#--4<---[ /SECTION: PRECORE_UTIL_HELPERS ]--->4--
 
-#--10<---[ SECTION: PRECORE_SESSION_MVP ]--->10--
+#--5<---[ SECTION: PRECORE_SESSION_MVP ]--->5--
 # Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
 # - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ
@@ -1972,8 +1972,8 @@ session_append() {
 
 # Default parameters for session helpers (configurable via env)
 : "${LAST_CHECK_LINES:=50}"
-#--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
-#--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
+#--5<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->5--
+#--6<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->6--
 # Session cache helpers
 # - session_cache_key <sid> <params_string> -> prints key
 # - session_cache_get <sid> <params_string> <out_file> -> returns 0 if cache hit and not expired
@@ -2066,8 +2066,8 @@ session_cache_invalidate() {
   fi
   return 0
 }
-#--5<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
-#--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOB ]--->6--
+#--6<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->6--
+#--7<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->7--
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
 # NOTE: Do not assign RUN_TMPDIR/RESP/PAYLOAD/ERRF to empty strings here.
@@ -2141,7 +2141,7 @@ _normalize_bool_env() {
   done
 }
 _normalize_bool_env
-#--6<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOB ]--->6--
+#--7<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->7--
 ########################################
 # SECTION: PRECORE_RUN - END
 ########################################
