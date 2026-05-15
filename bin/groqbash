@@ -9,9 +9,9 @@
 # Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
 
 ########################################
-# SECTION: PRECORE - BEGIN
+# SECTION: PRECORE_BOOT - BEGIN
 ########################################
-#--1<---[ SECTION: PRECORE_SETUP_SHELL ]--->1--
+#--1<---[ SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 set -euo pipefail
 
 SCRIPT_NAME="groqbash"
@@ -36,8 +36,8 @@ GROQBASHERRINVALID_JSON=$GROQBASH_ERR_INVALID_JSON
 GROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT
 GROQBASHERRTMP=$GROQBASH_ERR_TMP
 GROQBASHERRAPI=$GROQBASH_ERR_API
-#--1<---[ /SECTION: PRECORE_SETUP_SHELL ]--->1--
-#--2<---[ SECTION: PRECORE_SETUP_ENV_CMDS ]--->2--
+#--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
+#--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
 # ---------------------------------------------------------------------------
 # Dev/Test guard for sourcing only
 # ---------------------------------------------------------------------------
@@ -58,8 +58,8 @@ for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort
     exit 1
   fi
 done
-#--2<---[ /SECTION: PRECORE_SETUP_ENV_CMDS ]--->2--
-#--3<---[ SECTION: PRECORE_EARLY_HELPERS ]--->3--
+#--2<---[ /SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
+#--3<---[ SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 # Early Helpers 
 resolve_script_dir() {
   local src="$0" rl dir
@@ -190,9 +190,9 @@ enforce_network_policy() {
   return 0
 }
 #--3<---[ /SUBSECTION: API_NET ]--->3--
-#--3<---[ /SECTION: PRECORE_EARLY_HELPERS ]--->3--
+#--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 
-#--4<---[ SECTION: PRECORE_DIR_PATH ]--->4--
+#--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 SCRIPTDIR="$(resolve_script_dir)"
 # Allow external override of repository root via GROQBASH_ROOT.
 # Priority: explicit GROQBASH_DIR env > GROQBASH_ROOT env > SCRIPTDIR-derived default.
@@ -231,7 +231,7 @@ GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR%/}"
 if [ -z "$GROQBASH_CONFIG_DIR" ]; then
   GROQBASH_CONFIG_DIR="${GROQBASH_DIR%/}/config"
 fi
-#--4<---[ /SECTION: PRECORE_DIR_PATH ]--->4--
+#--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 
 # Helper: ensure config dir exists and is usable before any writes
 ensure_config_dir() {
@@ -337,7 +337,7 @@ fi
 # Canonical PROVIDER_FILE path built only from GROQBASH_CONFIG_DIR
 PROVIDER_FILE="$(canonical_provider_file)"
 
-#--5<---[ SECTION: PRECORE_HELPERS ]--->5--
+#--5<---[ SECTION: PRECORE_BOOT_HELPERS ]--->5--
 # Provider API key helpers (available early)
 # - provider_api_env_var_name <prov> -> prints canonical env var name (e.g., GROQ_API_KEY)
 # - ensure_api_key_for_provider <prov> -> ensures API key is set (may prompt interactively)
@@ -925,8 +925,8 @@ ui_state_write() {
   fi
   return 0
 }
-#--5<---[ /SECTION: PRECORE_HELPERS ]--->5--
-#--6<---[ SECTION: PRECORE_CLI_HELPERS ]--->6--
+#--5<---[ /SECTION: PRECORE_BOOT_HELPERS ]--->5--
+#--6<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
 # Internal CLI helpers: print canonical config paths (safe, single-file)
 # These flags are handled early and exit immediately after printing.
 # Supported forms:
@@ -1202,9 +1202,15 @@ jq_safe() {
   fi
   return 0
 }
-#--6<---[ /SECTION: PRECORE_CLI_HELPERS ]--->6--
+#--6<---[ /SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
+########################################
+# SECTION: PRECORE_BOOT - END
+########################################
+########################################
+# SECTION: PRECORE_RUN - BEGIN
+########################################
 
-#--7<---[ SECTION: PRECORE_HISTORY ]--->7--
+#--1<---[ SECTION: PRECORE_RUN_HISTORY ]--->1--
 # History rotation and compaction (portable)
 # ---------------------------------------------------------------------------
 GROQBASH_ROTATE_HISTORY="${GROQBASH_ROTATE_HISTORY:-0}"
@@ -1338,8 +1344,8 @@ save_to_history() {
   fi
   return 0
 }
-#--7<---[ /SECTION: PRECORE_HISTORY ]--->7--
-#--8<---[ SECTION: PRECORE_MANIFEST ]--->8--
+#--2<---[ /SECTION: PRECORE_RUN_HISTORY ]--->2--
+#--3<---[ SECTION: PRECORE_RUN_MANIFEST ]--->3--
 # ---------------------------------------------------------------------------
 # Manifest multimodale helpers (atomic, jq --arg usage)
 # - manifest_create <manifest_path> [timeout]
@@ -1441,9 +1447,8 @@ manifest_read() {
   fi
   return 1
 }
-#--8<---[ /SECTION: PRECORE_MANIFEST ]--->8--
-
-#--9<---[ SECTION: PRECORE_UTIL_HELPERS ]--->9--
+#--3<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->3--
+#--4<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->4--
 # Utility helpers
 _get_perm_string() {
   local path="$1" perm=""
@@ -1967,9 +1972,8 @@ session_append() {
 
 # Default parameters for session helpers (configurable via env)
 : "${LAST_CHECK_LINES:=50}"
-#--10<---[ /SECTION: PRECORE_SESSION_MVP ]--->10--
-
-#--11<---[ SECTION: PRECORE_SESSION_CACHE ]--->11--
+#--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
+#--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
 # Session cache helpers
 # - session_cache_key <sid> <params_string> -> prints key
 # - session_cache_get <sid> <params_string> <out_file> -> returns 0 if cache hit and not expired
@@ -2062,8 +2066,8 @@ session_cache_invalidate() {
   fi
   return 0
 }
-#--11<---[ /SECTION: PRECORE_SESSION_CACHE ]--->11--
-#--12<---[ SECTION: PRECORE_RUNTIME_GLOB ]--->12--
+#--5<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
+#--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOB ]--->6--
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
 # NOTE: Do not assign RUN_TMPDIR/RESP/PAYLOAD/ERRF to empty strings here.
@@ -2137,9 +2141,9 @@ _normalize_bool_env() {
   done
 }
 _normalize_bool_env
-#--12<---[ /SECTION: PRECORE_RUNTIME_GLOB ]--->12--
+#--6<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOB ]--->6--
 ########################################
-# SECTION: PRECORE - END
+# SECTION: PRECORE_RUN - END
 ########################################
 
 ########################################
