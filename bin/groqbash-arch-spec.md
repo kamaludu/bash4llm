@@ -743,8 +743,7 @@ Per ogni funzione rilevante: ruolo, input, output, errori.
 
 ### IDENTITÀ DELLA SEZIONE
 - **Nome sezione**  
-  **CORE_PROVIDER**
-
+# CORE_PROVIDER**
 - **Scopo**  
   Gestire la scoperta, selezione, caricamento e validazione del provider API; esporre comandi diagnostici e operazioni correlate ai modelli (refresh, visualizzazione). Fornire persistenza della scelta provider e risolvere l’URL del provider.
 
