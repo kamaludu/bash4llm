@@ -11,6 +11,7 @@ groqbash è compatibile con ambienti Unix‑like:
 - WSL, Cygwin (Windows)
 - Termux (Android)
 
+
 groqbash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 - bash
 - coreutils
@@ -34,10 +35,7 @@ shell locali
 
 
 groqbash non è progettato per:
-server multi‑tenant o ostili
-ambienti dove utenti non fidati possono modificare il filesystem
-sistemi dove le variabili d’ambiente possono essere manipolate da terzi
-scenari che richiedono sandboxing forte o separazione dei privilegi
+server multi‑tenant o ambienti ostili, dove utenti non fidati possono modificare il filesystem, sistemi dove le variabili d’ambiente possono essere manipolate da terzi, scenari che richiedono sandboxing forte o separazione dei privilegi
 
 
 groqbash assume che:
