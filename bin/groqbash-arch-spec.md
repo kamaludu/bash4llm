@@ -371,10 +371,6 @@ Per ogni funzione esposta, ruolo e contratti essenziali
 
 ---
 
-Questa versione compatta contiene i nomi delle funzioni, le dipendenze critiche, le invarianti e le garanzie necessarie per ragionare sull’architettura e sul comportamento della sezione PRECORE_RUN senza codice né dettagli superflui.
-
----
-
 ### 1. IDENTITÀ DELLA SEZIONE
 **Nome sezione**  
 # PROVIDER 
@@ -544,10 +540,6 @@ Per ogni funzione rilevante: ruolo, input, output, errori.
 - **Atomicità**: scrittura di `MODELS_FILE` tramite staging base64 e lock per evitare corruzione; movimenti di file preferiti via `mv` con fallback a `cp`.
 - **Streaming**: parsing conservativo dei chunk SSE; emissione incrementale su stdout senza eseguire contenuto; aggregazione dei chunk validi in file finali.
 - **Diagnostica**: in caso di output non JSON, estrazione di un prefisso JSON valido e salvataggio del resto in file di trailing diagnostici; `RESP` contiene sempre informazioni utili per il caller.
-
---- 
-
-Fine della specifica tecnica strutturale per la macro‑sezione **PROVIDER**.
 
 ---
 
@@ -737,6 +729,182 @@ Fine della specifica tecnica strutturale per la macro‑sezione **PROVIDER**.
 - *"resolve_model: determina MODEL finale seguendo ordine di priorità e validando"*.   
 - *"Build payload from current vars (delegates to provider)"*. 
 
-Se vuoi, posso ora generare una mappa delle variabili globali critiche (nomi, origine, uso) o una checklist di test automatici per verificare i punti di sicurezza e i flussi principali.
+---
+
+### IDENTITÀ DELLA SEZIONE
+- **Nome sezione**  
+  **CORE_PROVIDER**
+
+- **Scopo**  
+  Gestire la scoperta, selezione, caricamento e validazione del provider API; esporre comandi diagnostici e operazioni correlate ai modelli (refresh, visualizzazione). Fornire persistenza della scelta provider e risolvere l’URL del provider.
+
+- **Responsabilità principali**
+  - Scoprire provider disponibili (builtin + extras) e costruire `SUPPORTED_PROVIDERS`.
+  - Applicare priorità di selezione: persistito su file, override CLI, selezione interattiva.
+  - Persistere la scelta provider in modo atomico e con permessi restrittivi.
+  - Caricare il modulo provider tramite `load_provider_module` e risolvere l’URL tramite `resolve_provider_url`.
+  - Validare l’interfaccia del provider (funzioni richieste/optional) tramite `validate_provider_interface`.
+  - Gestire refresh dei modelli (`REFRESH_MODELS`) e refresh automatico se whitelist locale mancante.
+  - Esporre operazioni di diagnostica/config (`PRINT_CONFIG_DIR`, `SHOW_CONFIG`, `DIAGNOSTICS`, ecc.).
+
+- **Non‑responsabilità (cosa NON fa)**
+  - Non implementa chiamate API concrete (delegate al provider: `call_api_*`).
+  - Non gestisce parsing o invio di prompt; non costruisce payload (delegate a `buildpayload_*`).
+  - Non esegue operazioni di rete dirette oltre a quelle delegate (non usa curl direttamente qui).
+  - Non modifica la logica interna dei provider né i file di modello oltre a rimuovere cache quando cambia provider.
+
+> Estratto rilevante dal codice sorgente: "Provider discovery and loading (keeps behavior compatible)".   
+> Estratto rilevante dal codice sorgente: "local required=( \"buildpayload_${p}\" \"call_api_${p}\" )". 
+
+---
+
+### INVARIANTI E MODELLO MENTALE
+- **Invarianti di stato prima/dopo**
+  - Prima dell’esecuzione: variabili globali di configurazione (es. `PROVIDER`, `PROVIDERS_DIR`, `GROQBASH_MODELS_DIR`) possono essere impostate esternamente; `SUPPORTED_PROVIDERS` non è ancora popolato.
+  - Dopo l’esecuzione: `SUPPORTED_PROVIDERS` è popolato; `PROVIDER` riflette la scelta finale (persistita se necessario); il modulo provider è caricato e validato; `GROQBASH_PROVIDER_URL` può essere risolto.
+  - Se `PROVIDER_MODULE_LOADED` è 1, allora l’interfaccia provider è stata validata con successo.
+
+- **Assunzioni su ambiente / file / variabili**
+  - Esistenza di helper esterni: `canonical_provider_file`, `canonical_provider_url_file`, `canonical_model_file`, `ensure_config_dir`, `atomic_write`, `load_provider_module`, `resolve_provider_url`, `ensure_api_key_for_provider`, `refresh_models_dispatch`, `log_error`, `log_info`, `trim`.
+  - Directory `PROVIDERS_DIR` può contenere script provider `.sh` (extras).
+  - File di persistenza provider è leggibile/scrivibile dall’utente; permessi possono essere impostati a 600.
+  - Variabili d’ambiente come `PROVIDER_CLI`, `PROVIDER_INTERACTIVE`, `REFRESH_MODELS`, `PRINT_CONFIG_DIR`, `SHOW_CONFIG`, `DIAGNOSTICS`, `MODELS_FILE`, `MODEL`, `ALLOWED_MODELS` sono usate come input di controllo.
+  - L’utente controlla la directory di installazione; ambiente single‑user (non multi‑tenant).
+
+- **Garanzie offerte al resto del sistema**
+  - Fornisce un provider coerente e persistente per l’intera esecuzione.
+  - Garantisce che il modulo provider caricato implementi le funzioni richieste (`buildpayload_*`, `call_api_*`) prima che il resto del sistema tenti di usarle.
+  - Se la selezione provider è cambiata, la cache dei modelli (`MODELS_FILE`) viene invalidata per evitare incoerenze.
+  - Fornisce diagnostica e informazioni canoniche sui file di configurazione e percorsi.
+
+---
+
+### DIPENDENZE
+- **Dipendenze in ingresso**
+  - *Variabili d’ambiente lette*
+    - `PROVIDER`, `PROVIDER_CLI`, `PROVIDER_INTERACTIVE`, `PROVIDER_INTERACTIVE_SELECTED` (set internamente), `REFRESH_MODELS`, `PRINT_CONFIG_DIR`, `PRINT_PROVIDER_FILE`, `PRINT_MODEL_FILE`, `SHOW_CONFIG`, `DIAGNOSTICS`, `MODELS_FILE`, `MODEL`, `MODEL_CLI_SET`, `GROQBASH_MODELS_DIR`, `GROQBASH_TMPDIR`, `GROQBASH_HISTORY_DIR`, `GROQBASH_CONFIG_DIR`, `GROQBASH_EXTRAS_DIR`, `ALLOWED_MODELS`, `DEBUG`, `QUIET`, `DRY_RUN`, eventuali provider‑specific env come `${PROV}_API_KEY` o `PROVIDER_API_ENV_${PROVIDER}`.
+  - *File letti*
+    - File persistente provider: `$(canonical_provider_file)` (se esiste).
+    - File provider-url: `$(canonical_provider_url_file)` (per embedded default logic).
+    - Eventuali script provider in `PROVIDERS_DIR/*.sh`.
+    - File modello persistente: `MODELS_FILE` (per refresh/invalidate).
+    - File modello per provider: `canonical_model_file`.
+  - *Funzioni esterne chiamate (altre macro‑sezioni / helper)*
+    - `canonical_provider_file`, `canonical_provider_url_file`, `canonical_model_file`, `ensure_config_dir`, `atomic_write`, `load_provider_module`, `resolve_provider_url`, `ensure_api_key_for_provider`, `refresh_models_dispatch`, `log_error`, `log_info`, `trim`, `atomic_write`, `write_provider_url_if_missing`, `type` (builtin shell), `sed`, `awk`, `printf`, `grep`.
+
+- **Dipendenze in uscita**
+  - *Variabili globali impostate o modificate*
+    - `SUPPORTED_PROVIDERS` (stringa)
+    - `PROVIDER` (scelta finale)
+    - `PROVIDER_INTERACTIVE_SELECTED` (flag)
+    - `PROVIDER_MODULE_LOADED` è atteso essere impostato da `load_provider_module` (non direttamente qui)
+    - `GROQBASH_PROVIDER_URL` (tramite `resolve_provider_url`)
+    - Possibile aggiornamento di `MODELS_FILE` (rimozione) quando provider cambia
+  - *File creati/scritti*
+    - Persistenza scelta provider: file `canonical_provider_file` scritto tramite `atomic_write` e chmod 600.
+    - Best‑effort: provider-url file scritto tramite `write_provider_url_if_missing`.
+    - Rimozione file `MODELS_FILE` quando necessario.
+  - *Side‑effects*
+    - Stampa su `stderr`/`stdout` per prompt interattivi, messaggi di info/errore e diagnostica.
+    - Exit con codici specifici (`$GROQBASHERRTMP`, `$GROQBASHERRAPI`, `$GROQBASHERRNOAPIKEY`, 0) in caso di errori o operazioni terminate.
+    - Possibile rete indiretta: `refresh_models_dispatch` può effettuare chiamate di rete (delegato al provider).
+
+---
+
+### API ESPOSTA (vista come modulo)
+> Nota: la sezione definisce principalmente funzioni helper e flussi; le funzioni rilevanti esposte sono quelle chiamate o definite qui.
+
+- **validate_provider_interface**
+  - **Ruolo**: Verificare che il modulo provider definisca le funzioni richieste e segnalare mancanze.
+  - **Input**: parametro posizionale `p` (nome provider); legge `DEBUG` per logging opzionale.
+  - **Output**: ritorna `0` se tutte le funzioni richieste sono presenti; ritorna non‑zero se mancano funzioni richieste.
+  - **Side‑effect**: chiama `log_error` per ogni funzione richiesta mancante; chiama `log_info` per funzioni opzionali mancanti se `DEBUG=1`.
+  - **Errori**: segnala mancanze impostando `missing=1` e ritorna codice di errore; il chiamante esegue `exit` con `$GROQBASHERRAPI` se fallisce.
+
+- **load_provider_module** *(invocata ma non definita in questa sezione)*
+  - **Ruolo**: caricare il file modulo del provider e impostare `PROVIDER_MODULE_LOADED`.
+  - **Input**: `PROVIDER` (nome provider).
+  - **Output**: valore booleano/exit code; qui la sezione verifica il successo e fa `exit` su fallimento.
+  - **Errori**: fallimento causa log e `exit $GROQBASHERRTMP`.
+
+- **resolve_provider_url** *(invocata ma non definita qui)*
+  - **Ruolo**: risolvere `GROQBASH_PROVIDER_URL` da ENV > provider-url file > embedded default.
+  - **Input**: `PROVIDER`.
+  - **Output**: imposta `GROQBASH_PROVIDER_URL` come side‑effect; ritorna successo/fallimento (qui ignorato con `|| true`).
+  - **Errori**: non critici in questa sezione (silenziosamente ignorati).
+
+- **refresh_models_dispatch** *(invocata ma non definita qui)*
+  - **Ruolo**: aggiornare la lista modelli provider‑specifica e scriverla in `MODELS_FILE`.
+  - **Input**: `MODELS_FILE`.
+  - **Output**: ritorna successo/fallimento; qui la sezione esegue `exit` o continua in base al contesto.
+  - **Errori**: fallimento può causare `exit $GROQBASHERRAPI` quando esplicitamente richiesto; in refresh automatico è tollerato.
+
+- **ensure_api_key_for_provider** *(invocata ma non definita qui)*
+  - **Ruolo**: verificare che sia presente una API key valida per il provider.
+  - **Input**: `PROVIDER`.
+  - **Output**: booleano; usato per decidere se eseguire refresh modelli.
+  - **Errori**: assenza di API key porta a log e `exit $GROQBASHERRNOAPIKEY` quando richiesta.
+
+- **atomic_write** *(helper esterno)*
+  - **Ruolo**: scrivere file in modo atomico con retry.
+  - **Input**: contenuto via stdin, percorso file, timeout/retry.
+  - **Output**: successo/fallimento; fallimento qui causa log e exit.
+
+---
+
+### FLUSSI PRINCIPALI
+- **Bootstrap provider discovery e selezione (non interattivo)**
+  1. Popola `_supported_providers_arr` con "groq" e con gli script `.sh` trovati in `PROVIDERS_DIR`.
+  2. Costruisce `SUPPORTED_PROVIDERS` come stringa separata da spazi.
+  3. Se esiste file persistito provider e non c’è override CLI/interactive, legge e imposta `PROVIDER`.
+  4. Se `PROVIDER_CLI` è fornito (non "list"), valida che sia in `SUPPORTED_PROVIDERS`; imposta `PROVIDER` e persiste la scelta con `atomic_write`.
+  5. Se il provider è cambiato, rimuove `MODELS_FILE` per invalidare cache.
+
+- **Selezione provider interattiva**
+  1. Costruisce array `_prov_arr` da `SUPPORTED_PROVIDERS`.
+  2. Determina `current_default` da `PROVIDER` o file persistito.
+  3. Stampa elenco e legge selezione utente da stdin.
+  4. Mappa input numerico o nome a `chosen`; valida scelta.
+  5. Assicura `ensure_config_dir`, persiste scelta con `atomic_write`, imposta `PROVIDER` e `PROVIDER_INTERACTIVE_SELECTED`.
+  6. Carica modulo provider (`load_provider_module`) e rimuove `MODELS_FILE` se provider cambiato.
+  7. Se l’invocazione era solo per cambiare provider (nessun argomento), stampa conferma ed esce 0.
+
+- **Caricamento e validazione modulo provider**
+  1. Chiama `load_provider_module` per il `PROVIDER` finale; fallimento => log + exit.
+  2. Chiama `resolve_provider_url` per impostare `GROQBASH_PROVIDER_URL`.
+  3. Esegue `validate_provider_interface` per assicurare presenza di `buildpayload_*` e `call_api_*`.
+  4. Se validazione fallisce => exit con `$GROQBASHERRAPI`.
+
+- **Refresh modelli esplicito e implicito**
+  1. Se `REFRESH_MODELS=1`: verifica API key con `ensure_api_key_for_provider`; se assente => exit con `$GROQBASHERRNOAPIKEY`.
+  2. Se presente API key, chiama `refresh_models_dispatch` su `MODELS_FILE`; fallimento => exit con `$GROQBASHERRAPI`.
+  3. Se `MODELS_FILE` non esiste o è vuoto e API key presente, chiama `refresh_models_dispatch` ma ignora errori (best‑effort).
+
+- **Mostra configurazione / diagnostica**
+  1. Se flag `PRINT_CONFIG_DIR`/`PRINT_PROVIDER_FILE`/`PRINT_MODEL_FILE` impostati, stampa percorso corrispondente ed esce.
+  2. Se `SHOW_CONFIG=1`, stampa riepilogo configurazione e stato file modello persistente.
+  3. Se `DIAGNOSTICS=1`, verifica esistenza directory, presenza funzioni provider, whitelist modello, API key e tmpdir; stampa risultati ed esce.
+
+---
+
+### ERROR HANDLING E POLICY
+- **Strategia generale**
+  - Fail‑fast per errori critici (impossibilità di persistere provider, caricamento modulo fallito, validazione interfaccia mancante) con logging e exit con codici specifici.
+  - Tolleranza per operazioni non critiche: best‑effort per scrittura provider‑url, refresh modelli automatico non bloccante se manca API key.
+  - Uso coerente di helper `log_error`/`log_info` per messaggi diagnostici.
+
+- **Punti di validazione importanti**
+  - Validazione che `PROVIDER_CLI` sia in `SUPPORTED_PROVIDERS`.
+  - Verifica che `ensure_config_dir` ritorni successo prima di persistere.
+  - `atomic_write` deve riuscire per considerare la persistenza valida; altrimenti exit.
+  - `load_provider_module` deve riuscire e impostare `PROVIDER_MODULE_LOADED`.
+  - `validate_provider_interface` deve confermare la presenza di `buildpayload_*` e `call_api_*`.
+
+- **Policy particolari**
+  - **Sicurezza file**: file persistiti (provider file) sono scritti con permessi restrittivi (chmod 600).
+  - **No /tmp globale**: la sezione rispetta la policy di non usare `/tmp` di sistema per file temporanei (gestito a livello globale).
+  - **Non esecuzione di codice remoto**: la sezione non esegue output proveniente da provider come comandi shell; delega solo a funzioni provider verificate.
+  - **Minimizzare privilegi**: scritture su file di configurazione avvengono solo dopo `ensure_config_dir` e con atomicità.
+  - **Rete**: chiamate di rete per refresh modelli sono delegate al provider e richiedono API key; la sezione non effettua chiamate di rete dirette.
 
 ---
