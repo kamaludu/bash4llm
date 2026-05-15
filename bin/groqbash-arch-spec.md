@@ -550,3 +550,193 @@ Per ogni funzione rilevante: ruolo, input, output, errori.
 Fine della specifica tecnica strutturale per la macro‑sezione **PROVIDER**.
 
 ---
+
+### 1. IDENTITÀ DELLA SEZIONE
+- **Nome sezione:**
+# CORE_SETUP  
+- **Scopo:** inizializzare e normalizzare lo stato CLI e di runtime necessario al core; validare e risolvere il modello attivo; orchestrare chiamate API (wrapper) e gestione output/ritentativi; fornire helper di input e parsing CLI.  
+- **Responsabilità principali**
+  - Dispatch verso implementazioni provider-specifiche (invocazione dinamica di funzioni provider).  
+  - Risoluzione del modello finale secondo priorità (CLI, persistito per provider, auto‑select, file MODELS_FILE, legacy config, ALLOWED_MODELS).  
+  - Costruzione del payload delegata al provider e invocazione delle chiamate API (streaming e non‑streaming) con modalità DRY_RUN.  
+  - Gestione della risposta: estrazione testo, rilevamento edge case (empty completion), salvataggio output lungo, scrittura stato UI fallback.  
+  - Parsing e normalizzazione delle opzioni CLI, azioni immediate (--list, --set-default, --install-extras), caricamento config locale e whitelist.  
+  - Helpers di input (lettura file, espansione argomenti), validazione modelli test‑only.  
+- **Non‑responsabilità (cosa NON fa)**
+  - Non implementa logica provider‑specifica (solo dispatch).  
+  - Non esegue richieste HTTP direttamente (usa provider modules per call_api_*).  
+  - Non esegue comandi shell provenienti da risposte API; non effettua eval.  
+  - Non gestisce persistenti di lunga durata oltre i file di configurazione canonici; non effettua sandboxing di sistema.
+
+
+
+---
+
+### 2. INVARIANTI E MODELLO MENTALE
+- **Invarianti di stato prima/dopo**
+  - Prima dell’esecuzione: variabili globali di configurazione possono essere vuote; MODELS_FILE e GROQBASH_CONFIG_DIR possono esistere o meno.  
+  - Dopo le funzioni di setup: variabili booleane normalizzate (DRY_RUN, STREAM_MODE, ecc.) sono 0/1; SUPPORTED_PROVIDERS è popolato; FINAL_MODEL è impostato o vuoto; SE_AVAILABLE riflette disponibilità engine sessione.  
+  - Le funzioni non lasciano file temporanei in /tmp di sistema; ogni scrittura persistente avviene sotto canonical config/extras/history.  
+- **Assunzioni su ambiente / file / variabili**
+  - L’ambiente è trusted: l’utente controlla le directory dove risiede GroqBash; nessun utente non fidato può scrivere nella directory dello script.  
+  - Esistenza di strumenti esterni obbligatori nel PATH (bash, curl, jq, awk, coreutils, ecc.) — mancati strumenti causano fallimenti espliciti altrove.  
+  - Variabili d’ambiente come GROQ_API_KEY sono configurazione fidata; ALLOW_API_CALLS può bloccare chiamate reali.  
+  - Canonical config dir e file (canonical_config_dir, canonical_provider_file, canonical_model_file, MODELS_FILE) sono punti di verità per persistenti.  
+- **Garanzie offerte al resto del sistema**
+  - Fornisce un modello coerente di quale *provider* e *model* usare (FINAL_MODEL) o fallisce in modo deterministico.  
+  - Normalizza flag CLI in valori booleani 0/1 e costruisce SUPPORTED_PROVIDERS.  
+  - Espone wrapper sicuri per chiamate API che rispettano DRY_RUN e delegano al provider; segnala errori provider‑missing con codici di errore standard.  
+  - Garantisce che output lunghi vengano salvati tramite meccanismi atomici (save_to_history) e che lo stato UI abbia un fallback last_api.json.
+
+
+
+---
+
+### 3. DIPENDENZE
+- **Dipendenze in ingresso**
+  - *Variabili d’ambiente lette:* MODEL, MODEL_CLI_SET, PROVIDER, PROVIDER_CLI, GROQ_API_KEY, ALLOW_API_CALLS, DEBUG, DRY_RUN, STREAM_MODE, OUTPUT_MODE, GROQBASH_CONFIG_DIR, GROQBASH_EXTRAS_DIR, PROVIDERS_DIR, MODELS_FILE, GROQBASH_HISTORY_DIR, RUN_TMPDIR, MAX_MODELS, THRESHOLD, INSTALL_EXTRAS_SRC, LEGACY_EXTRAS_DIR, SESSION_ID, SESSION_WINDOW, FORCE_SAVE_MODE, OUT_PATH, ALLOWED_MODELS, SCRIPTDIR, SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE, GROQBASHERR* (error codes).  
+  - *File letti:* MODELS_FILE, canonical provider/model files (canonical_provider_file, canonical_model_file), ${GROQBASH_CONFIG_DIR}/config, extras files under extras/providers, help file under extras/docs/help.txt, session engine module file.  
+  - *Funzioni esterne chiamate (altre macro‑sezioni / provider):* call_provider (invoca funzioni provider come refresh_models_<prov>, validate_model_<prov>, auto_select_model_<prov>, buildpayload_<prov>, call_api_<prov>, call_api_streaming_<prov>), ensure_run_tmpdir, is_truthy, canonical_config_dir, canonical_provider_file, canonical_model_file, is_valid_json_file, extract_text_from_resp, ui_state_write, save_to_history, atomic_write, _get_owner, session_engine_* (se caricati), log_error/log_warn/log_info, show_payload_head.  
+- **Dipendenze in uscita**
+  - *Variabili globali impostate/modificate:* FINAL_MODEL, MODEL_PROVIDER_CFG, SUPPORTED_PROVIDERS, SE_AVAILABLE, ALLOWED_MODELS, various normalized flags (DRY_RUN, STREAM_MODE, ...), GROQBASH_EDGE_* diagnostics, RESP (assunto scritto da provider), PAYLOAD (usata per DRY_RUN diagnostics), ui_last fallback content.  
+  - *File creati/scritti:* target_model_file (quando --set-default), files under DEST_BASE when --install-extras, ui_state last_api.json fallback, files under GROQBASH_HISTORY_DIR via save_to_history.  
+  - *Side‑effects:* rete (delegata ai provider), stdout/stderr (help text, info/warn/error messages, model lists), exit codes (script may exit early for actions like --list, --set-default, --install-extras, invalid args), atomic writes via atomic_write, chmod operations.
+
+---
+
+### 4. API ESPOSTA (vista come modulo)
+> Sono elencate le funzioni rilevanti esposte dalla sezione; micro‑helper locali non elencati.
+
+- **call_provider**
+  - **Ruolo:** invocare dinamicamente una funzione per nome se definita (dispatch generico).  
+  - **Input:** primo argomento = nome funzione; argomenti successivi passati in avanti. ENV non rilevanti.  
+  - **Output:** exit code della funzione invocata; 127 se la funzione non esiste.  
+  - **Errori:** ritorna 127 quando la funzione non è definita.
+
+- **refresh_models_dispatch**
+  - **Ruolo:** orchestrare il refresh della lista modelli delegando a refresh_models_<PROVIDER>.  
+  - **Input:** opzionale destfile (default MODELS_FILE o groqbash.d/models.txt); legge PROVIDER, DEBUG.  
+  - **Output:** 0 se refresh ok; 127 se provider non implementa la funzione; altrimenti ritorna rc del provider.  
+  - **Errori:** log_error e ritorno 127 se funzione provider mancante; log_error con rc se fallisce.
+
+- **validate_model_dispatch**
+  - **Ruolo:** chiamare validate_model_<PROVIDER> se presente; fallback permissivo.  
+  - **Input:** model name.  
+  - **Output:** exit code della validazione provider o 0 se non implementata.  
+  - **Errori:** propagazione del codice di errore del provider.
+
+- **auto_select_model_dispatch**
+  - **Ruolo:** tentare di ottenere un modello suggerito dal provider (auto_select_model_<PROVIDER>).  
+  - **Input:** nessuno diretto; usa PROVIDER.  
+  - **Output:** ritorna 0 se call_provider ha successo (stdout può contenere candidate); 1 altrimenti.  
+  - **Errori:** fallimento silenzioso (ritorno 1).
+
+- **resolve_model**
+  - **Ruolo:** determinare e validare FINAL_MODEL seguendo priorità multiple.  
+  - **Input:** variabili globali (MODEL, MODEL_CLI_SET, PROVIDER_CLI, PROVIDER, MODELS_FILE, ALLOWED_MODELS, GROQBASH_CONFIG_DIR, MAX_MODELS).  
+  - **Output:** imposta FINAL_MODEL (stringa) e ritorna 0 se risolto; imposta FINAL_MODEL="" e ritorna 1 se non risolto.  
+  - **Errori:** non esce direttamente; log_warn/log_error per condizioni di sicurezza (es. canonical_config_dir invalida). Fallimenti di validate_model_core/dispatch impediscono la selezione.
+
+- **build_payload_from_vars**
+  - **Ruolo:** assicurare tmp runtime e delegare la costruzione del payload al provider (buildpayload_<PROVIDER>).  
+  - **Input:** variabili globali di contesto (PROVIDER, PAYLOAD, RUN_TMPDIR).  
+  - **Output:** 0 se provider costruisce payload; se provider mancante log_error e exit con GROQBASHERRAPI; altrimenti ritorna rc provider.  
+  - **Errori:** exit immediato con codice GROQBASHERRAPI se provider non implementa la funzione.
+
+- **call_api_once / call_api_streaming**
+  - **Ruolo:** wrapper per invocare la chiamata API provider-specifica, rispettando DRY_RUN.  
+  - **Input:** PAYLOAD, PROVIDER, DRY_RUN, DEBUG.  
+  - **Output:** 0 su successo; se provider mancante exit con GROQBASHERRAPI; altrimenti ritorna rc provider.  
+  - **Errori:** gestione DRY_RUN (nessuna chiamata reale), log_error e exit su provider non implementato.
+
+- **extract_api_error**
+  - **Ruolo:** estrarre messaggio di errore leggibile dal file RESP.  
+  - **Input:** RESP file path.  
+  - **Output:** stampa su stdout la prima stringa di errore trovata; exit 0.  
+  - **Errori:** se RESP non JSON restituisce la prima riga non vuota; nessun errore critico.
+
+- **detect_empty_edge_case**
+  - **Ruolo:** rilevare completions "vuote" e popolare variabili diagnostiche GROQBASH_EDGE_*.  
+  - **Input:** RESP file path.  
+  - **Output:** imposta GROQBASH_EDGE_EMPTY e variabili correlate; ritorna 0.  
+  - **Errori:** nessuno; comportamento conservativo (considera non‑JSON come edge empty).
+
+- **finalize_and_output**
+  - **Ruolo:** emettere output in modalità richiesta (json/pretty/text/raw) e salvare output lunghi tramite save_to_history.  
+  - **Input:** mode, text; legge RESP, FORCE_SAVE_MODE, THRESHOLD, OUT_PATH, GROQBASH_HISTORY_DIR, RUN_TMPDIR.  
+  - **Output:** stampa su stdout; ritorna 0 o GROQBASHERRTMP su errori di tmp/salvataggio.  
+  - **Errori:** segnala e ritorna GROQBASHERRTMP se RESP mancante per json/pretty o se RUN_TMPDIR non disponibile per salvataggio.
+
+- **perform_request_once**
+  - **Ruolo:** ciclo di tentativi per eseguire la richiesta API con retry e gestione degli errori/edge cases.  
+  - **Input:** MAX_RETRIES, DRY_RUN, DEBUG, OUTPUT_MODE, RESP, PAYLOAD.  
+  - **Output:** 0 su successo; GROQBASHERRAPI su fallimenti; stampa diagnostica su stderr.  
+  - **Errori:** distingue errori di rete (GROQBASHERRCURL_FAILED) da errori API (GROQBASHERRAPI) e non‑retry per errori API.
+
+- **list_models_cli / validate_model_core / is_supported_model / load_local_config / load_whitelist / is_tty_out**
+  - **Ruolo:** utilities pubbliche per listing, validazione e caricamento config.  
+  - **Input/Output/Errori:** comportamenti documentati nel codice; errori segnalati via stderr e codici di ritorno non‑zero.
+
+---
+
+### 5. FLUSSI PRINCIPALI
+- **Bootstrap normale (invocazione CLI senza azioni immediate)**
+  1. Normalizzazione variabili e parsing CLI (popola DRY_RUN, STREAM_MODE, ARGS, FILE_INPUTS, ecc.).  
+  2. Costruzione SUPPORTED_PROVIDERS leggendo extras/providers e aggiungendo "groq".  
+  3. Caricamento config locale (load_local_config) e whitelist (load_whitelist).  
+  4. Risoluzione modello tramite resolve_model (applica priorità e validazioni).  
+  5. Chiamata a build_payload_from_vars (delegata al provider).  
+  6. Esecuzione perform_request_once che invoca call_api_once o call_api_streaming; gestione retries e finalize_and_output.  
+
+- **Azione immediata: --list-models / --list-providers**
+  1. Parsing CLI imposta LIST_MODELS o LIST_PROVIDERS.  
+  2. Se LIST_PROVIDERS: stampa elenco providers e tenta leggere default model persistito; esce 0.  
+  3. Se LIST_MODELS: chiama list_models_cli che legge MODELS_FILE e stampa; esce 0/errore.  
+
+- **Persist default model (--set-default)**
+  1. Verifica e crea canonical_config_dir; rifiuta se è symlink.  
+  2. Determina target_provider (PROVIDER_CLI > persisted provider file > PROVIDER).  
+  3. Scrive target_model_file con atomic_write e imposta permessi 600; log e exit 0.  
+
+- **Install extras (--install-extras)**
+  1. Determina SRC_BASE e DEST_BASE; canonicalizza path.  
+  2. Controlli di sicurezza: legacy dir, symlink, source inside dest, source==dest.  
+  3. Raccoglie file regolari con find; valida ownership e tipi.  
+  4. Copia atomica dei file in DEST_BASE preservando layout; imposta permessi restrittivi.  
+  5. Stampa riepilogo e verifica sintassi provider installati; exit 0.  
+
+- **Chiamata API con retry e edge detection**
+  1. build_payload_from_vars prepara PAYLOAD.  
+  2. perform_request_once tenta call_api_once; se DRY_RUN simula e ritorna.  
+  3. Dopo risposta, extract_text_from_resp e detect_empty_edge_case.  
+  4. Se necessario, scrive fallback last_api.json.  
+  5. Se testo vuoto e non JSON/pretty, estrae api_err o segnala edge empty; altrimenti finalize_and_output e ritorna 0.
+
+---
+
+### 6. ERROR HANDLING E POLICY
+- **Strategia generale**
+  - *Fail‑fast* per condizioni di sicurezza o incoerenze critiche (es. config dir symlink, provider module mancante per operazioni richieste).  
+  - *Delegazione degli errori provider* al chiamante: quando una funzione provider manca si logga e si ritorna/exit con codici specifici (127 o GROQBASHERRAPI).  
+  - *Retry* per errori non‑API (perform_request_once usa MAX_RETRIES e backoff lineare).  
+  - *Diagnostica dettagliata* quando DEBUG=1 (stampa head di RESP, log_info/log_warn).  
+- **Punti di validazione importanti**
+  - Validazione modello: validate_model_core verifica presenza in MODELS_FILE e pattern test‑only; validate_model_dispatch permette controlli provider‑specifici.  
+  - Sicurezza filesystem: rifiuto di usare canonical_config_dir se invalido o root; rifiuto di scrivere se config dir è symlink.  
+  - Install extras: verifica che sorgente non sia symlink, che i file siano regolari e di proprietà dell’utente corrente.  
+  - API call: DRY_RUN blocca chiamate reali; ALLOW_API_CALLS impedisce chiamate se GROQ_API_KEY è impostata ma ALLOW_API_CALLS non è vero.  
+- **Policy particolari**
+  - **Rete:** tutte le chiamate HTTP sono delegate ai provider; CORE_SETUP non effettua chiamate dirette; DRY_RUN impedisce rete reale.  
+  - **Permessi:** file persistenti creati con permessi restrittivi (600 per file sensibili, 700 per dir extras); atomic_write usato quando disponibile.  
+  - **Sicurezza:** non leggere file di configurazione se canonical_config_dir è sospetto; non eseguire codice proveniente da extras (solo sourcing controllato con bash -n e verifica di funzioni richieste).  
+  - **Non‑esecuzione delle risposte:** il sistema non esegue output API come comandi shell; nessun uso di eval.
+
+---
+
+**Estratto rilevante dal codice analizzato:**  
+- *"resolve_model: determina MODEL finale seguendo ordine di priorità e validando"*.   
+- *"Build payload from current vars (delegates to provider)"*. 
+
+Se vuoi, posso ora generare una mappa delle variabili globali critiche (nomi, origine, uso) o una checklist di test automatici per verificare i punti di sicurezza e i flussi principali.
+
+---
