@@ -3,9 +3,9 @@
 ***Macro Sezioni***
 - **[PRECORE_BOOT](#section-precore_boot)**
 - **[PRECORE_RUN](#section-precore_run)**
-- **[PROVIDER](#PROVIDER)**
-- **[CORE_SETUP](#CORE_SETUP)**
-- **[CORE_PROVIDER](#CORE_PROVIDER)**
+- **[PROVIDER](#section-provider)**
+- **[CORE_SETUP](#section-core_setup)**
+- **[CORE_PROVIDER](#section-core_provider)**
 
 ---
 
