@@ -1,6 +1,6 @@
 
 
-"name": "_detect_base64_opts"  
+**name**: "_detect_base64_opts"  
 
 **file**: "groqbash"  
 
