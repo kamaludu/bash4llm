@@ -1,3 +1,5 @@
+## GroqBash - Inventario Funzioni
+
 
 **name**: "_detect_base64_opts"  
 
