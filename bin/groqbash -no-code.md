@@ -1,3 +1,6 @@
+## GroqBash - Spec tecnica LLM readable
+**(groqbash senza codice)**
+
 ### Panoramica globale del sistema
 
 **GroqBash** è un singolo script Bash, auto‑contenuto e auditabile, che fornisce un wrapper CLI sicuro per l’API Chat Completions compatibile OpenAI di Groq. Progettato per ambienti single‑user Unix‑like, GroqBash centralizza: inizializzazione sicura dell’ambiente, gestione atomica di tmp/history/sessioni/manifest, integrazione provider (builtin `groq` + extras), costruzione payload, chiamate HTTP streaming e non‑streaming via `curl`, e salvataggio/diagnostica delle risposte. Tutte le operazioni critiche sono atomiche, protette da lock e soggette a policy di rete centralizzate.
