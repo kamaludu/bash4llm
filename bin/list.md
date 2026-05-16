@@ -1,5 +1,14 @@
 ## GroqBash - Inventario Funzioni
 
+***Macro Sezioni***
+- **[PRECORE_BOOT](#PRECORE_BOOT)**
+- **[PRECORE_RUN](#PRECORE_RUN)**
+- **[PROVIDER](#PROVIDER)**
+- **[CORE_SETUP](#CORE_SETUP)**
+- **[CORE_PROVIDER](#CORE_PROVIDER)**
+
+---
+
 ### SECTION: PRECORE_BOOT
 
 ---
