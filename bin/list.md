@@ -1,6 +1,7 @@
 ## GroqBash - Inventario Funzioni
 
-***Macro Sezioni***
+Diviso per macro sezioni, poi in ordine alfabetico.
+
 - **[PRECORE_BOOT](#section-precore_boot)**
 ```sh
 _detect_base64_opts
