@@ -2,10 +2,119 @@
 
 ***Macro Sezioni***
 - **[PRECORE_BOOT](#section-precore_boot)**
+```sh
+_detect_base64_opts
+_file_mtime
+_mktemp_in_dir                            atomic_write
+b64_atomic_read
+b64_atomic_write                          b64decode
+b64encode                                 canonical_config_dir
+canonical_model_file                      canonical_provider_file
+canonical_provider_url_file
+cleanup_run_tmp_on_exit
+cleanup_tmp
+dbg
+enforce_network_policy
+ensure_api_key_for_provider
+ensure_config_dir
+ensure_run_tmpdir
+extract_text_from_resp
+file_size
+is_truthy
+is_valid_json_file
+is_valid_json_string
+jq_safe
+list_files_sorted_by_mtime
+load_provider_module
+lock_exec
+log_error
+log_info
+log_prefix
+log_warn
+provider_api_env_var_name
+resolve_provider_url
+resolve_script_dir
+show_payload_head
+stage_b64
+tac_fallback
+ui_state_write
+write_provider_url_if_missing
+```
 - **[PRECORE_RUN](#section-precore_run)**
+```sh
+_get_file_signature
+_get_owner
+_get_perm_string
+_is_world_writable
+_normalize_bool_env
+_session_hash
+_tmpf
+getfile_signature
+make_tmpdir
+manifest_add_part
+manifest_create
+manifest_read
+rotate_history
+save_to_history
+session_append
+session_cache_get
+session_cache_invalidate
+session_cache_key
+session_cache_set
+session_messages_tmp_path
+session_now_ts
+session_read_window
+session_sanitize_cmd
+session_validate_id
+```
 - **[PROVIDER](#section-provider)**
+```sh
+_cleanup_local_tmp
+auto_select_model_groq
+autoselectmodelgroq
+buildpayload_groq
+buildpayloadgroq
+call_api_groq
+call_api_streaming_groq
+call_api_streaming_groq_legacy
+refresh_models_groq
+refreshmodelsgroq
+validate_model_groq
+validatemodelgroq
+```
 - **[CORE_SETUP](#section-core_setup)**
+```sh
+ARGS
+auto_select_model_dispatch
+build_payload_from_vars
+call_api_once
+call_api_streaming
+call_provider
+collect_input_from_files
+detect_empty_edge_case
+expand_args_to_content
+extract_api_error
+FILE_INPUTS
+file_readable
+finalize_and_output
+is_number
+is_supported_model
+is_tty_out
+list_models_cli
+load_local_config
+load_whitelist
+perform_request_once
+refresh_models_dispatch
+resolve_model
+trim
+validate_model_core
+validate_model_dispatch
+```
 - **[CORE_PROVIDER](#section-core_provider)**
+```sh
+assemble_content
+validate_provider_interface
+```
 
 ---
 
