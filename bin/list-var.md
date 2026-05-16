@@ -1,3 +1,6 @@
+## GroqBash - Inventario Variabili d’ambiente canoniche
+
+---
 
 **name**: "GROQBASHERRTMP"  
 
