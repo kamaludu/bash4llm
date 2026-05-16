@@ -58,8 +58,6 @@
 
 ---
 
----
-
 ## Sezioni principali
 
 ### PRECORE_BOOT
