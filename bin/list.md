@@ -1,8 +1,8 @@
 ## GroqBash - Inventario Funzioni
 
-### SECTION: PRECORE_BOOT  
+### SECTION: PRECORE_BOOT
 
-
+---
 
 **name**: "_detect_base64_opts"  
 
