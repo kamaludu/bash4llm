@@ -134,11 +134,13 @@
 
 ---
 
-**name**: "./groqbash:1233:HISTORY_LOCK"  
+**name**: "HISTORY_LOCK"  
 
 **type**: "string"  
 
-**source**: ""  
+**source**: "groqbash"  
+
+**first_line**: 1233  
 
 **occurrences**: 
 
@@ -192,31 +194,37 @@
 
 ---
 
-**name**: "./groqbash:1367:B64_WRAP_OPT"  
+**name**: "B64_WRAP_OPT"  
 
 **type**: "string"  
 
-**source**: ""  
+**source**: "groqbash"  
+
+**first_line**: 1367  
 
 **occurrences**: 
 
 ---
 
-**name**: "./groqbash:1412:B64_DECODE_OPT"  
+**name**: "B64_DECODE_OPT"  
 
 **type**: "string"  
 
-**source**: ""  
+**source**: "groqbash"  
+
+**first_line**: 1412  
 
 **occurrences**: 
 
 ---
 
-**name**: "./groqbash:1423:B64_WRAP_OPT"  
+**name**: "B64_WRAP_OPT"  
 
 **type**: "string"  
 
 **source**: ""  
+
+**first_line**: 1423  
 
 **occurrences**: 
 
@@ -258,11 +266,13 @@
 
 ---
 
-**name**: "./groqbash:1831:RANDOM"  
+**name**: "RANDOM"  
 
 **type**: "string"  
 
-**source**: ""  
+**source**: "groqbash"  
+
+**first_line**: 1831  
 
 **occurrences**: 
 
@@ -2021,4 +2031,3 @@
 **first_line**: 106  
 
 **occurrences**: 106, 122, 123, 154, 155, 342, 2157, 2160, 2357, 2359, 2360, 2436, 2437, 2591, 2593, 2594, 2658, 2817, 2819, 2820, 2861, 3754, 3755
-
