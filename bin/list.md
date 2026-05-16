@@ -806,6 +806,10 @@
 
 ---
 
+### SECTION: PRECORE_RUN
+
+---
+
 **name**: "_get_file_signature"  
 
 **file**: "groqbash"  
@@ -1286,6 +1290,10 @@
 
 ---
 
+### SECTION: PROVIDER
+
+---
+
 **name**: "_cleanup_local_tmp"  
 
 **file**: "groqbash"  
@@ -1540,6 +1548,10 @@ g); print g}' \"$MODELS_FILE\" | grep -x -F -q \"$norm_model\" 2>/dev/null; then
 ```sh
 # source: groqbash:2997\nvalidatemodelgroq() { validate_model_groq \"$@\"; }"
 ```
+
+---
+
+### SECTION: CORE_SETUP
 
 ---
 
@@ -2040,6 +2052,10 @@ g); print g}' \"$MODELS_FILE\" | grep -x -F -q \"$norm_model\" 2>/dev/null; then
 ```sh
 # source: groqbash:3075\nvalidate_model_dispatch() {\n  local model=\"$1\"\n  local fn=\"validate_model_${PROVIDER}\"\n  if type \"$fn\" >/dev/null 2>&1; then\n    \"$fn\" \"$model\"\n    return $?\n  fi\n  # Default permissive behavior if provider does not implement validation\n  return 0\n}"
 ```
+
+---
+
+### SECTION: CORE_PROVIDER
 
 ---
 
