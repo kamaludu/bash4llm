@@ -1,4 +1,4 @@
-# groqbash senza codice — Documento architetturale unificato
+## groqbash senza codice — Documento architetturale unificato
 
 ### 1 Panoramica globale del sistema
 **Descrizione sintetica**  
