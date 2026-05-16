@@ -78,8 +78,6 @@ GroqBash è un singolo script Bash, auto‑contenuto e auditabile, che fornisce 
 
 ---
 
----
-
 ### 5 Sezioni principali
 
 #### PRECORE_BOOT
