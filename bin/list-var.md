@@ -1350,9 +1350,19 @@ TURE="${TURE:-${TEMPERATURE:-1.0}}"
 **name**: "VALID_MESSAGES_JSON"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 2183    
+**kind**: "literal"  
+**declaration**:
+```sh
+# Declared as a local variable in the payload-building function
+local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs
+
+# Canonical assignments observed in the function:
+VALID_MESSAGES_JSON=""
+VALID_MESSAGES_JSON="$msgs"
+VALID_MESSAGES_JSON="$(jq -c -n --arg content "$content_val" '[{role:"user",content:$content}]')"
+occurre
+```
 **occurrences**: 2183, 2217, 2223, 2228, 2233, 2234, 2237, 2238, 2242, 2243, 2247, 2248, 2253, 2254, 2255, 2271
 
 ---
