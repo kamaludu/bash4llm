@@ -1,4 +1,4 @@
-## GroqBash - Variabile canoniche
+## GroqBash - Variabili canoniche
 
 ---
 
