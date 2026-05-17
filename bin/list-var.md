@@ -946,9 +946,22 @@ PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0
 **name**: "PROVIDER_DIR"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 1032    
+**kind**: "literal"  
+**declaration**:
+```sh
+PROVIDER_MODULE_PATH="$PROVIDERS_DIR/${provider}.sh"
+PROVIDER_DIR="$PROVIDERS_DIR"
+
+if [ ! -d "$PROVIDER_DIR" ]; then
+  mkdir -p "$PROVIDER_DIR" 2>/dev/null || { log_error "PROVIDER" "cannot create provider directory."; return 1; }
+fi
+
+if _is_world_writable "$PROVIDER_DIR"; then
+  log_error "SEC" "provider directory is world-writable."
+  return 1
+fi
+```
 **occurrences**: 1032, 1034, 1035, 1038, 1045
 
 ---
