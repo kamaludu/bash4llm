@@ -533,9 +533,24 @@ GROQBASH_MODELS_DIR="${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}"
 **name**: "GROQBASH_PROVIDER_URL"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 305    
+**kind**: "function"  
+**declaration**:
+```sh
+# Prefer environment override; fall back to provider-file or embedded default for groq
+if [ -n "${GROQBASH_API_URL:-}" ]; then
+  GROQBASH_PROVIDER_URL="${GROQBASH_API_URL}"
+  export GROQBASH_PROVIDER_URL
+  return 0
+fi
+
+# Embedded default for groq
+if [ "${prov:-}" = "groq" ]; then
+  GROQBASH_PROVIDER_URL="https://api.groq.com/openai/v1/chat/completions"
+  export GROQBASH_PROVIDER_URL
+  return 0
+fi
+```
 **occurrences**: 299, 305, 306, 309, 317, 318, 324, 325, 2365, 2366, 2370, 2372, 2611, 2612, 2616, 2618, 2831, 2834, 2836, 2843, 2845, 4261
 
 ---
