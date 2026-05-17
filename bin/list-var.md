@@ -216,11 +216,18 @@ DRY_RUN="${DRY_RUN:-0}"
 **name**: "ERRF"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
+**declaration_line**: 740    
+**kind**: "paramexp"  
 **declaration**:
 ```sh
-  ERRF="${RUN_TMPDIR%/}/curl.err"
+# Canonical default (ensure_run_tmpdir): set ERRF to a per-run err.log if unset
+: "${ERRF:=$RUN_TMPDIR/err.log}"
+
+# In specific code paths (e.g., preparing curl temporary files) ERRF may be set
+# to a more specific filename for that operation:
+resp_tmp="${RUN_TMPDIR%/}/resp.json"
+ERRF="${RUN_TMPDIR%/}/curl.err"
+: > "$ERRF" 2>/dev/null || true
 ```
 **occurrences**: 724, 740, 744, 745, 746, 781, 783, 787, 788, 836, 1190, 1197, 1198, 1199, 2073, 2114, 2330, 2411, 2412, 2442, 2444, 2454, 2457, 2458, 2460, 2546, 2558, 2573, 2628, 2629, 2640, 2641, 2658, 2666, 2674, 2692, 2694, 2695, 2697, 2773, 2785
 
@@ -256,8 +263,21 @@ GROQ_API_KEY="${GROQ_API_KEY:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Provided by the environment as an alternative API key for GROQ requests.
+# Not explicitly assigned in groqbash; used as a fallback when GROQ_API_KEY is unset.
+# Example usage when building curl headers:
+#   if [ -n "${GROQ_API_KEY:-}" ]; then
+#     CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
+#   elif [ -n "${GROQBASH_API_KEY:-}" ]; then
+#     CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQBASH_API_KEY}" )
+#   fi
+#
+# If you want an explicit declaration in the repository, a conservative canonical form is:
+#   GROQBASH_API_KEY="${GROQBASH_API_KEY:-}"
+```
 **occurrences**: 2359, 2360, 2438, 2439, 2593, 2594, 2658
 
 ---
