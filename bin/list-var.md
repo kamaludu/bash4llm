@@ -308,9 +308,16 @@ GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
 **name**: "GROQBASH_DEBUG"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 411    
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Normalize debug variable: prefer DEBUG, but respect GROQBASH_DEBUG if DEBUG unset
+if [ -n "${GROQBASH_DEBUG:-}" ] && [ -z "${DEBUG:-}" ]; then
+  DEBUG="${GROQBASH_DEBUG}"
+fi
+DEBUG="${DEBUG:-0}"
+```
 **occurrences**: 409, 411, 412
 
 ---
