@@ -1,4 +1,4 @@
-## GroqBash - Variabili canoniche
+## GroqBash - Variabile canoniche
 
 ---
 
@@ -6,8 +6,8 @@
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2411  
-**kind**: "special"
-**declaration**: null  
+**kind**: "special"  
+**declaration** null  
 **occurrences**: 347, 512, 640, 884, 1300, 1338, 1373, 1430, 1545, 1620, 1690, 2909, 2938, 4406
 
 ---
@@ -49,8 +49,8 @@
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2083  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 BATCH_FILE="${BATCH_FILE:-}"
 ```
@@ -62,8 +62,8 @@ BATCH_FILE="${BATCH_FILE:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 4598  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
 ```
@@ -75,8 +75,8 @@ BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 208  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
 ```
@@ -88,8 +88,8 @@ CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2084  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 CHAT_MODE="${CHAT_MODE:-0}"
 ```
@@ -101,8 +101,8 @@ CHAT_MODE="${CHAT_MODE:-0}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2076  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 CONTENT="${CONTENT:-}"
 ```
@@ -114,8 +114,8 @@ CONTENT="${CONTENT:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 4647  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 CONVERSATION=""
 ```
@@ -127,8 +127,8 @@ CONVERSATION=""
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 412  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 DEBUG="${GROQBASH_DEBUG}"
 ```
@@ -140,8 +140,8 @@ DEBUG="${GROQBASH_DEBUG}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3928  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 DEST_BASE="$(cd "${GROQBASH_EXTRAS_DIR%/}" >/dev/null 2>&1 && pwd || printf '%s' "${GROQBASH_EXTRAS_DIR%/}")"
 ```
@@ -153,8 +153,8 @@ DEST_BASE="$(cd "${GROQBASH_EXTRAS_DIR%/}" >/dev/null 2>&1 && pwd || printf '%s'
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3931  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 DEST_PROV="${PROVIDERS_DIR:-${DEST_BASE:-$(canonical_config_dir)}/providers}"
 ```
@@ -166,8 +166,8 @@ DEST_PROV="${PROVIDERS_DIR:-${DEST_BASE:-$(canonical_config_dir)}/providers}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2099  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 DRY_RUN="${DRY_RUN:-0}"
 ```
@@ -192,8 +192,8 @@ DRY_RUN="${DRY_RUN:-0}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3866  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 FINAL_MODEL="$candidate"
 ```
@@ -205,8 +205,8 @@ FINAL_MODEL="$candidate"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2157  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQ_API_KEY="${GROQ_API_KEY:-}"
 ```
@@ -238,8 +238,8 @@ GROQ_API_KEY="${GROQ_API_KEY:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 221  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
 ```
@@ -261,8 +261,8 @@ GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 202  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_DIR="${GROQBASH_ROOT%/}/groqbash.d"
 ```
@@ -274,8 +274,8 @@ GROQBASH_DIR="${GROQBASH_ROOT%/}/groqbash.d"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 30  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_API=16
 ```
@@ -287,8 +287,8 @@ GROQBASH_ERR_API=16
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 25  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_BAD_MODEL=11
 ```
@@ -300,8 +300,8 @@ GROQBASH_ERR_BAD_MODEL=11
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 26  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_CURL_FAILED=12
 ```
@@ -313,8 +313,8 @@ GROQBASH_ERR_CURL_FAILED=12
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 27  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_INVALID_JSON=13
 ```
@@ -326,8 +326,8 @@ GROQBASH_ERR_INVALID_JSON=13
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 24  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_NO_API_KEY=10
 ```
@@ -339,8 +339,8 @@ GROQBASH_ERR_NO_API_KEY=10
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 28  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_NO_PROMPT=14
 ```
@@ -352,8 +352,8 @@ GROQBASH_ERR_NO_PROMPT=14
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 29  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_ERR_TMP=15
 ```
@@ -365,8 +365,8 @@ GROQBASH_ERR_TMP=15
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 212  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 ```
@@ -378,8 +378,8 @@ GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 224  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 ```
@@ -391,8 +391,8 @@ GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1018  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 ```
@@ -404,8 +404,8 @@ GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1017  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
 ```
@@ -417,8 +417,8 @@ GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1016  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_LOCK_TIMEOUT_TMP="${GROQBASH_LOCK_TIMEOUT_TMP:-10}"
 ```
@@ -430,8 +430,8 @@ GROQBASH_LOCK_TIMEOUT_TMP="${GROQBASH_LOCK_TIMEOUT_TMP:-10}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 419  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
 ```
@@ -443,8 +443,8 @@ GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 222  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_MODELS_DIR="${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}"
 ```
@@ -466,8 +466,8 @@ GROQBASH_MODELS_DIR="${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 223  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
 ```
@@ -479,8 +479,8 @@ GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 225  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 ```
@@ -492,8 +492,8 @@ GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 38  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASHERRAPI=$GROQBASH_ERR_API
 ```
@@ -505,8 +505,8 @@ GROQBASHERRAPI=$GROQBASH_ERR_API
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 33  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASHERRBAD_MODEL=$GROQBASH_ERR_BAD_MODEL
 ```
@@ -518,8 +518,8 @@ GROQBASHERRBAD_MODEL=$GROQBASH_ERR_BAD_MODEL
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 34  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASHERRCURL_FAILED=$GROQBASH_ERR_CURL_FAILED
 ```
@@ -531,8 +531,8 @@ GROQBASHERRCURL_FAILED=$GROQBASH_ERR_CURL_FAILED
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 36  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT
 ```
@@ -544,8 +544,8 @@ GROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 32  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASHERRNOAPIKEY=$GROQBASH_ERR_NO_API_KEY
 ```
@@ -557,8 +557,8 @@ GROQBASHERRNOAPIKEY=$GROQBASH_ERR_NO_API_KEY
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 37  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 GROQBASHERRTMP=$GROQBASH_ERR_TMP
 ```
@@ -570,8 +570,8 @@ GROQBASHERRTMP=$GROQBASH_ERR_TMP
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1012  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
 ```
@@ -583,8 +583,8 @@ HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2077  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 JSON_INPUT="${JSON_INPUT:-}"
 ```
@@ -596,8 +596,8 @@ JSON_INPUT="${JSON_INPUT:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 209  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 ```
@@ -609,8 +609,8 @@ LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3936  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 LEGACY_REAL="$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' "${LEGACY_EXTRAS_DIR}")"
 ```
@@ -622,8 +622,8 @@ LEGACY_REAL="$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' "
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2087  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 LIST_MODELS="${LIST_MODELS:-0}"
 ```
@@ -635,8 +635,8 @@ LIST_MODELS="${LIST_MODELS:-0}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3609  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 ```
@@ -648,8 +648,8 @@ LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 227  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 MAX_MODELS="${MAX_MODELS:-200}"
 ```
@@ -661,8 +661,8 @@ MAX_MODELS="${MAX_MODELS:-200}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2103  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 MAX_RETRIES="${MAX_RETRIES:-3}"
 ```
@@ -674,8 +674,8 @@ MAX_RETRIES="${MAX_RETRIES:-3}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2094  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 ```
@@ -697,8 +697,8 @@ MAX_TOKENS="${MAX_TOKENS:-4096}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2095  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 MODEL="${MODEL:-}"
 ```
@@ -710,8 +710,8 @@ MODEL="${MODEL:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3860  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 MODEL_PROVIDER_CFG="$(canonical_model_file "${active_provider}")"
 ```
@@ -723,8 +723,8 @@ MODEL_PROVIDER_CFG="$(canonical_model_file "${active_provider}")"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 226  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 ```
@@ -736,8 +736,8 @@ MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1011  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
 ```
@@ -749,8 +749,8 @@ MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2089  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 OUT_PATH="${OUT_PATH:-}"
 ```
@@ -762,8 +762,8 @@ OUT_PATH="${OUT_PATH:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2101  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 OUTPUT_MODE="${OUTPUT_MODE:-text}"
 ```
@@ -795,8 +795,8 @@ OUTPUT_MODE="${OUTPUT_MODE:-text}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2105  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 PROVIDER="${PROVIDER:-groq}"
 ```
@@ -808,8 +808,8 @@ PROVIDER="${PROVIDER:-groq}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3611  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 ```
@@ -831,8 +831,8 @@ PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3611  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 ```
@@ -844,8 +844,8 @@ PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 4036  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
 ```
@@ -857,8 +857,8 @@ PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 215  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 PROVIDERS_DIR="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
 ```
@@ -880,8 +880,8 @@ PROVIDERS_DIR="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2098  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 QUIET="${QUIET:-0}"
 ```
@@ -923,8 +923,8 @@ QUIET="${QUIET:-0}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 19  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SCRIPT_DATE="2026-05-07"
 ```
@@ -936,8 +936,8 @@ SCRIPT_DATE="2026-05-07"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 17  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SCRIPT_NAME="groqbash"
 ```
@@ -949,8 +949,8 @@ SCRIPT_NAME="groqbash"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 18  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SCRIPT_VERSION="2.0.0"
 ```
@@ -962,8 +962,8 @@ SCRIPT_VERSION="2.0.0"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 196  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SCRIPTDIR="$(resolve_script_dir)"
 ```
@@ -975,8 +975,8 @@ SCRIPTDIR="$(resolve_script_dir)"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3704  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SE_ENGINE_PATH="${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh"
 ```
@@ -988,8 +988,8 @@ SE_ENGINE_PATH="${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1984  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SESSION_CACHE_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}/session_cache"
 ```
@@ -1001,8 +1001,8 @@ SESSION_CACHE_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}/session_cache"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 987  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 ```
@@ -1014,8 +1014,8 @@ SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2079  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 SESSION_ID="${SESSION_ID:-}"
 ```
@@ -1027,8 +1027,8 @@ SESSION_ID="${SESSION_ID:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2080  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 SESSION_WINDOW="${SESSION_WINDOW:-}"
 ```
@@ -1040,8 +1040,8 @@ SESSION_WINDOW="${SESSION_WINDOW:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2085  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 ```
@@ -1053,8 +1053,8 @@ SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 3917  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 SRC_BASE="${INSTALL_EXTRAS_SRC%/}"
 ```
@@ -1066,8 +1066,8 @@ SRC_BASE="${INSTALL_EXTRAS_SRC%/}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 4462  
-**kind**: "literal"
-**declaration**:
+**kind**: "literal"  
+**declaration**
 ```sh
 STDIN_CONTENT=""
 ```
@@ -1079,8 +1079,8 @@ STDIN_CONTENT=""
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2100  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 STREAM_MODE="${STREAM_MODE:-0}"
 ```
@@ -1092,8 +1092,8 @@ STREAM_MODE="${STREAM_MODE:-0}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2104  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 ```
@@ -1105,8 +1105,8 @@ SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2092  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 TEMPERATURE="${TEMPERATURE:-${TURE:-1.0}}"
 ```
@@ -1118,8 +1118,8 @@ TEMPERATURE="${TEMPERATURE:-${TURE:-1.0}}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2082  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 TEMPLATE="${TEMPLATE:-}"
 ```
@@ -1131,8 +1131,8 @@ TEMPLATE="${TEMPLATE:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2102  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 THRESHOLD="${THRESHOLD:-1000}"
 ```
@@ -1144,7 +1144,7 @@ THRESHOLD="${THRESHOLD:-1000}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 1013  
-**kind**: "paramexp"
+**kind**: "paramexp"  
 **declaration**:
 ```sh
 TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
@@ -1157,8 +1157,8 @@ TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: 2091  
-**kind**: "paramexp"
-**declaration**:
+**kind**: "paramexp"  
+**declaration**
 ```sh
 TURE="${TURE:-${TEMPERATURE:-1.0}}"
 ```
