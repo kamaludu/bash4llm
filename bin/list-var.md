@@ -64,9 +64,21 @@ fi
 **name**: "B64_WRAP_OPT"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 1118    
+**kind**: "literal"  
+**declaration**:
+```sh
+# Default conservative options
+B64_WRAP_OPT=""
+B64_DECODE_OPT="-d"
+
+# Detect encode option that prevents line wrapping (GNU coreutils)
+if printf '' | base64 -w0 >/dev/null 2>&1; then
+  B64_WRAP_OPT="-w0"
+else
+  B64_WRAP_OPT=""
+fi
+```
 **occurrences**: 364, 365, 502, 503, 1118, 1123, 1125, 1137, 1366, 1367, 1422, 1423
 
 ---
