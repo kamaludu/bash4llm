@@ -780,8 +780,22 @@ MAX_TOKENS="${MAX_TOKENS:-4096}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Messages payload: typically supplied via environment, CLI, or populated from a file at runtime.
+# No single canonical top-level assignment found at the first usage site; treat as optional input.
+MESSAGES_JSON="${MESSAGES_JSON:-}"
+
+# Example population patterns used in the script (illustrative):
+# MESSAGES_JSON="$(cat "${MESSAGES_FILE:-$RUN_TMPDIR/messages.json}" 2>/dev/null || true)"
+# or populated via BUILD_MESSAGES_FILE / staged payload logic before sending.
+
+# VALID_MESSAGES_JSON is set later when MESSAGES_JSON contains valid JSON:
+# if [ -z "$VALID_MESSAGES_JSON" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
+#   VALID_MESSAGES_JSON="${MESSAGES_JSON}"
+# fi
+```
 **occurrences**: 2182, 2213, 2233, 2234, 2249
 
 ---
