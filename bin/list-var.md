@@ -286,8 +286,21 @@ GROQ_API_KEY="${GROQ_API_KEY:-}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Provider URL may be supplied via environment. groqbash prefers explicit env vars:
+#   GROQBASH_API_URL (preferred) or GROQBASH_PROVIDER_URL
+# Used by resolve_provider_url() to set GROQBASH_PROVIDER_URL when present:
+#   if [ -n "${GROQBASH_API_URL:-}" ]; then
+#     GROQBASH_PROVIDER_URL="${GROQBASH_API_URL}"
+#     export GROQBASH_PROVIDER_URL
+#     return 0
+#   fi
+#
+# Conservative canonical form (if you want an explicit declaration in-source):
+#   GROQBASH_API_URL="${GROQBASH_API_URL:-}"
+```
 **occurrences**: 299, 304, 305
 
 ---
