@@ -881,9 +881,16 @@ OUTPUT_MODE="${OUTPUT_MODE:-text}"
 **name**: "PAYLOAD"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 724    
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Canonical default set when preparing/ensuring a per-run tmpdir
+: "${PAYLOAD:=$RUN_TMPDIR/payload}"
+
+# Example usage: functions often accept a path argument defaulting to $PAYLOAD
+# local path="${1:-$PAYLOAD}" lines="${2:-200}"
+```
 **occurrences**: 582, 724, 738, 746, 779, 836, 2073, 2114, 2166, 2249, 2254, 2264, 2273, 2280, 2288, 2289, 2300, 2304, 2313, 2316, 2329, 2335, 2337, 2346, 2380, 2400, 2572, 2581, 2598, 2600, 3242, 3264, 3406
 
 ---
@@ -892,8 +899,20 @@ OUTPUT_MODE="${OUTPUT_MODE:-text}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Optional environment override: when set, script prints the canonical model file for the given provider and exits.
+# Expected to contain a provider name (e.g., "openai", "groq").
+# Example usage in the script:
+# if [ -n "${PRINT_MODEL_FILE:-}" ]; then
+#   printf '%s\n' "$(canonical_model_file "${PRINT_MODEL_FILE}")"
+#   exit 0
+# fi
+#
+# Conservative canonical form (if you want an explicit in-source declaration):
+#   PRINT_MODEL_FILE="${PRINT_MODEL_FILE:-}"
+```
 **occurrences**: 4336, 4337, 4338
 
 ---
