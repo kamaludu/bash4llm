@@ -15,11 +15,16 @@
 **name**: "ALLOWED_MODELS"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
+**declaration_line**: 4070    
+**kind**: "paramexp"  
 **declaration**:
 ```sh
-    # Keep one model per line in ALLOWED_MODELS
+ALLOWED_MODELS="${ALLOWED_MODELS:-}"
+if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
+  # Normalize entries: strip leading "models/" and trim whitespace
+  # Keep one model per line in ALLOWED_MODELS
+  ALLOWED_MODELS="$(awk '{ gsub(/^models\//,""); sub(/^[[:space:]]+/,""); sub(/[[:space:]]+$/,""); if (NF) print }' "$MODELS_FILE" 2>/dev/null || true)"
+fi
 ```
 **occurrences**: 3194, 3195, 3208, 4067, 4070, 4071, 4373, 4399, 4556, 4557, 4559, 4561
 
