@@ -238,7 +238,7 @@ ERRF="${RUN_TMPDIR%/}/curl.err"
 **source**: "groqbash"  
 **declaration_line**: 3866  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 FINAL_MODEL="$candidate"
 ```
@@ -251,7 +251,7 @@ FINAL_MODEL="$candidate"
 **source**: "groqbash"  
 **declaration_line**: 2157  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 GROQ_API_KEY="${GROQ_API_KEY:-}"
 ```
@@ -340,7 +340,7 @@ DEBUG="${DEBUG:-0}"
 **source**: "groqbash"  
 **declaration_line**: 202  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_DIR="${GROQBASH_ROOT%/}/groqbash.d"
 ```
@@ -353,7 +353,7 @@ GROQBASH_DIR="${GROQBASH_ROOT%/}/groqbash.d"
 **source**: "groqbash"  
 **declaration_line**: 30  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_API=16
 ```
@@ -366,7 +366,7 @@ GROQBASH_ERR_API=16
 **source**: "groqbash"  
 **declaration_line**: 25  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_BAD_MODEL=11
 ```
@@ -379,7 +379,7 @@ GROQBASH_ERR_BAD_MODEL=11
 **source**: "groqbash"  
 **declaration_line**: 26  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_CURL_FAILED=12
 ```
@@ -392,7 +392,7 @@ GROQBASH_ERR_CURL_FAILED=12
 **source**: "groqbash"  
 **declaration_line**: 27  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_INVALID_JSON=13
 ```
@@ -405,7 +405,7 @@ GROQBASH_ERR_INVALID_JSON=13
 **source**: "groqbash"  
 **declaration_line**: 24  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_NO_API_KEY=10
 ```
@@ -418,7 +418,7 @@ GROQBASH_ERR_NO_API_KEY=10
 **source**: "groqbash"  
 **declaration_line**: 28  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_NO_PROMPT=14
 ```
@@ -431,7 +431,7 @@ GROQBASH_ERR_NO_PROMPT=14
 **source**: "groqbash"  
 **declaration_line**: 29  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_ERR_TMP=15
 ```
@@ -444,7 +444,7 @@ GROQBASH_ERR_TMP=15
 **source**: "groqbash"  
 **declaration_line**: 212  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 ```
@@ -457,7 +457,7 @@ GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 **source**: "groqbash"  
 **declaration_line**: 224  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 ```
@@ -470,7 +470,7 @@ GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
 **source**: "groqbash"  
 **declaration_line**: 1018  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 ```
