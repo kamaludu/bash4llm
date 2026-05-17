@@ -1,3 +1,5 @@
+## GroqBash - Inventario Variabili canoniche
+
 ---
 **name**: "_"
 **type**: "string"
