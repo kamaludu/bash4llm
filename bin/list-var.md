@@ -33,9 +33,30 @@ fi
 **name**: "B64_DECODE_OPT"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 1119    
+**kind**: "literal"  
+**declaration**:
+```sh
+# Default conservative options
+B64_WRAP_OPT=""
+B64_DECODE_OPT="-d"
+
+# Detect encode option that prevents line wrapping (GNU coreutils)
+if printf '' | base64 -w0 >/dev/null 2>&1; then
+  B64_WRAP_OPT="-w0"
+else
+  B64_WRAP_OPT=""
+fi
+
+# Detect decode option (-d vs -D) and prefer the working one
+if printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then
+  B64_DECODE_OPT="-d"
+elif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then
+  B64_DECODE_OPT="-D"
+else
+  B64_DECODE_OPT="-d"
+fi
+```
 **occurrences**: 373, 374, 1119, 1130, 1132, 1134, 1137, 1412, 2936
 
 ---
