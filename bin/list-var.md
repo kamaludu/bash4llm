@@ -1061,9 +1061,20 @@ QUIET="${QUIET:-0}"
 **name**: "RESP"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 740    
+**kind**: "paramexp"  
+**declaration**:
+```sh
+# Canonical default set when preparing/ensuring a per-run tmpdir
+: "${RESP:=$RUN_TMPDIR/resp.json}"
+
+# Example usage: response extraction helper reads RESP path
+# local resp_file="${RESP:-}"
+# if [ -z "${resp_file:-}" ]; then
+#   log_error "EXTRACT" "RESP path not set"
+#   return 1
+# fi
+```
 **occurrences**: 657, 660, 662, 664, 669, 680, 713, 724, 739, 742, 743, 746, 780, 783, 785, 786, 836, 2073, 2114, 2119, 2329, 2374, 2382, 2395, 2403, 2506, 2514, 2515, 2516, 2518, 2520, 2522, 2523, 2524, 2526, 2529, 2530, 2532, 2536, 2538, 2539, 2541, 2544, 2548, 2553, 2555, 2560, 2572, 2606, 2620, 2738, 2741, 2742, 2743, 2745, 2748, 2749, 2750, 2752, 2755, 2756, 2758, 2762, 2764, 2765, 2767, 2770, 2775, 2780, 2782, 2787, 2793, 2794, 3284, 3286, 3293, 3295, 3306, 3356, 3357, 3362, 3363, 3425, 3427, 3428, 3433, 3434, 3460, 3479, 4754, 4775, 4776, 4777, 4891, 4892
 
 ---
@@ -1071,9 +1082,20 @@ QUIET="${QUIET:-0}"
 **name**: "RUN_TMPDIR"  
 **type**: "string"  
 **source**: "groqbash"  
-**declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**declaration_line**: 724    
+**kind**: "function"  
+**declaration**:
+```sh
+# RUN_TMPDIR is created/ensured by ensure_run_tmpdir(); when present it is reused:
+# if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+#   tmp="$(mktemp -p "${RUN_TMPDIR}" provider-url.XXXX 2>/dev/null || true)"
+# fi
+#
+# ensure_run_tmpdir also sets/exports PAYLOAD, RESP, ERRF via parameter expansion:
+# : "${PAYLOAD:=$RUN_TMPDIR/payload}"
+# : "${RESP:=$RUN_TMPDIR/resp.json}"
+# : "${ERRF:=$RUN_TMPDIR/err.log}"
+```
 **occurrences**: 280, 281, 282, 450, 481, 482, 718, 724, 725, 735, 736, 737, 738, 739, 740, 746, 749, 769, 775, 776, 779, 780, 781, 793, 808, 812, 813, 815, 817, 822, 836, 838, 841, 848, 849, 851, 908, 1610, 1614, 1631, 1647, 1808, 1818, 1831, 1840, 1953, 2073, 2114, 2119, 2122, 2186, 2329, 2374, 2382, 2390, 2395, 2403, 2410, 2411, 2516, 2572, 2606, 2620, 2624, 2625, 2626, 2627, 2628, 2638, 2724, 2727, 2729, 2734, 2739, 2743, 2826, 3386, 3387, 4437, 4493, 4596, 4598, 4676, 4723, 4841
 
 ---
