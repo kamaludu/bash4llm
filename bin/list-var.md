@@ -7,7 +7,7 @@
 **source**: "groqbash"  
 **declaration_line**: 2411  
 **kind**: "special"  
-**declaration** null  
+**declaration**: null  
 **occurrences**: 347, 512, 640, 884, 1300, 1338, 1373, 1430, 1545, 1620, 1690, 2909, 2938, 4406
 
 ---
@@ -127,7 +127,7 @@ CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
 **source**: "groqbash"  
 **declaration_line**: 2084  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 CHAT_MODE="${CHAT_MODE:-0}"
 ```
@@ -140,7 +140,7 @@ CHAT_MODE="${CHAT_MODE:-0}"
 **source**: "groqbash"  
 **declaration_line**: 2076  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 CONTENT="${CONTENT:-}"
 ```
@@ -153,7 +153,7 @@ CONTENT="${CONTENT:-}"
 **source**: "groqbash"  
 **declaration_line**: 4647  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 CONVERSATION=""
 ```
@@ -166,7 +166,7 @@ CONVERSATION=""
 **source**: "groqbash"  
 **declaration_line**: 412  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 DEBUG="${GROQBASH_DEBUG}"
 ```
