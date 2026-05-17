@@ -1,4 +1,6 @@
-## GroqBash - Variabili canoniche
+## GroqBash - Inventario Variabili
+
+In ordine alfabetico.
 
 ---
 
