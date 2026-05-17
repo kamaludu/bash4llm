@@ -1009,8 +1009,18 @@ PROVIDERS_DIR="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**kind**: "builtin"  
+**declaration**:
+```sh
+# PWD is the shell-provided current working directory (no explicit assignment in groqbash).
+# The script reads it as a fallback for per-user data directories and tmp paths:
+#   local dir="${GROQBASH_HISTORY_DIR:-$PWD/groqbash.d/history}"
+#   local history_dir="${GROQBASH_HISTORY_DIR:-$PWD/groqbash.d/history}"
+#   local tmpdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-$PWD/groqbash.d/tmp}}"
+#
+# If you want an explicit in-repo declaration for documentation purposes:
+#   PWD="${PWD:-$(pwd)}"
+```
 **occurrences**: 1228, 1645, 1647
 
 ---
@@ -1032,8 +1042,18 @@ QUIET="${QUIET:-0}"
 **type**: "string"  
 **source**: "groqbash"  
 **declaration_line**: null    
-**kind**: null  
-**declaration**: null  
+**kind**: "builtin"  
+**declaration**:
+```sh
+# RANDOM is a shell-provided pseudorandom integer (no explicit assignment in groqbash).
+# Used to generate unique temporary filenames/dirs, e.g.:
+#   tmp_b64="${workdir%/}/.groq-b64.$$.$RANDOM"
+#   tmp="$destdir/.groq-atomic.$$.$RANDOM"
+#   tmpd="$base/groq.$$.$RANDOM"
+#   marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-$$-${RANDOM}.lockdir"
+#
+# If you need a deterministic value for testing, set a variable (e.g., SEEDED_RANDOM) and use that instead.
+```
 **occurrences**: 501, 625, 873, 1312, 1540, 1584, 1593, 1672, 1789, 1831
 
 ---
