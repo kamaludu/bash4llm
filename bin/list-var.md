@@ -971,7 +971,7 @@ fi
 **source**: "groqbash"  
 **declaration_line**: 3611  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 ```
@@ -984,7 +984,7 @@ PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0
 **source**: "groqbash"  
 **declaration_line**: 4036  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
 ```
@@ -997,7 +997,7 @@ PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
 **source**: "groqbash"  
 **declaration_line**: 215  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 PROVIDERS_DIR="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
 ```
@@ -1030,7 +1030,7 @@ PROVIDERS_DIR="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
 **source**: "groqbash"  
 **declaration_line**: 2098  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 QUIET="${QUIET:-0}"
 ```
@@ -1105,7 +1105,7 @@ QUIET="${QUIET:-0}"
 **source**: "groqbash"  
 **declaration_line**: 19  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SCRIPT_DATE="2026-05-07"
 ```
@@ -1118,7 +1118,7 @@ SCRIPT_DATE="2026-05-07"
 **source**: "groqbash"  
 **declaration_line**: 17  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SCRIPT_NAME="groqbash"
 ```
@@ -1131,7 +1131,7 @@ SCRIPT_NAME="groqbash"
 **source**: "groqbash"  
 **declaration_line**: 18  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SCRIPT_VERSION="2.0.0"
 ```
@@ -1144,7 +1144,7 @@ SCRIPT_VERSION="2.0.0"
 **source**: "groqbash"  
 **declaration_line**: 196  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SCRIPTDIR="$(resolve_script_dir)"
 ```
@@ -1157,7 +1157,7 @@ SCRIPTDIR="$(resolve_script_dir)"
 **source**: "groqbash"  
 **declaration_line**: 3704  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SE_ENGINE_PATH="${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh"
 ```
@@ -1170,7 +1170,7 @@ SE_ENGINE_PATH="${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh"
 **source**: "groqbash"  
 **declaration_line**: 1984  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SESSION_CACHE_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}/session_cache"
 ```
@@ -1183,7 +1183,7 @@ SESSION_CACHE_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}/session_cache"
 **source**: "groqbash"  
 **declaration_line**: 987  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 ```
@@ -1196,7 +1196,7 @@ SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 **source**: "groqbash"  
 **declaration_line**: 2079  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 SESSION_ID="${SESSION_ID:-}"
 ```
@@ -1209,7 +1209,7 @@ SESSION_ID="${SESSION_ID:-}"
 **source**: "groqbash"  
 **declaration_line**: 2080  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 SESSION_WINDOW="${SESSION_WINDOW:-}"
 ```
@@ -1222,7 +1222,7 @@ SESSION_WINDOW="${SESSION_WINDOW:-}"
 **source**: "groqbash"  
 **declaration_line**: 2085  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 ```
@@ -1235,7 +1235,7 @@ SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 **source**: "groqbash"  
 **declaration_line**: 3917  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 SRC_BASE="${INSTALL_EXTRAS_SRC%/}"
 ```
@@ -1248,7 +1248,7 @@ SRC_BASE="${INSTALL_EXTRAS_SRC%/}"
 **source**: "groqbash"  
 **declaration_line**: 4462  
 **kind**: "literal"  
-**declaration**
+**declaration**:
 ```sh
 STDIN_CONTENT=""
 ```
@@ -1261,7 +1261,7 @@ STDIN_CONTENT=""
 **source**: "groqbash"  
 **declaration_line**: 2100  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 STREAM_MODE="${STREAM_MODE:-0}"
 ```
@@ -1274,7 +1274,7 @@ STREAM_MODE="${STREAM_MODE:-0}"
 **source**: "groqbash"  
 **declaration_line**: 2104  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 ```
@@ -1287,7 +1287,7 @@ SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 **source**: "groqbash"  
 **declaration_line**: 2092  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 TEMPERATURE="${TEMPERATURE:-${TURE:-1.0}}"
 ```
@@ -1300,7 +1300,7 @@ TEMPERATURE="${TEMPERATURE:-${TURE:-1.0}}"
 **source**: "groqbash"  
 **declaration_line**: 2082  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 TEMPLATE="${TEMPLATE:-}"
 ```
@@ -1313,7 +1313,7 @@ TEMPLATE="${TEMPLATE:-}"
 **source**: "groqbash"  
 **declaration_line**: 2102  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 THRESHOLD="${THRESHOLD:-1000}"
 ```
@@ -1339,7 +1339,7 @@ TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
 **source**: "groqbash"  
 **declaration_line**: 2091  
 **kind**: "paramexp"  
-**declaration**
+**declaration**:
 ```sh
 TURE="${TURE:-${TEMPERATURE:-1.0}}"
 ```
