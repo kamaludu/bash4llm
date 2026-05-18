@@ -124,7 +124,7 @@ Step (C005): Script registers cleanup trap for EXIT/INT/TERM
       return 0
     fi
     if [ -n "${RUN_TMPDIR:-}" ]; then
-```sh
+```
 
   Evidence:   EVID_TRAP_1154:groqbash/groqbash:805; EVID_TRAP_1155:groqbash/groqbash:831; EVID_TRAP_1156:groqbash/list/cli_parsing_blocks.txt:301; 
 
