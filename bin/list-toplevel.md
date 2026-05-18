@@ -10,6 +10,7 @@ Method: conservative synthesis
 Short summary:
 
 Step-by-step flow (claims referenced):
+
 Step (C001): Script sets strict shell options and shebang
   Evidence:   EVID_SHEBANG_0001:groqbash:15; EVID_SHEBANG_0002:groqbash:1; EVID_SHEBANG_0003:groqbash/list/auto_fill_decls.py:1; 
 
