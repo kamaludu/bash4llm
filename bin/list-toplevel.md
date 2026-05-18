@@ -57,7 +57,7 @@ Step (C002): Script enforces required system commands at startup
  - EVID_REQCMD_0046:groqbash:1163
  - EVID_REQCMD_0047:groqbash:1457
 
-# # SHARED_SNIPPET: C002,C010,C016,C017,C019
+#### # SHARED_SNIPPET: C002,C010,C016,C017,C019
 ```sh
 # SHARED_SNIPPET: C002,C010,C016,C017,C019
 
@@ -88,7 +88,7 @@ Step (C003): Script defines helper functions for encoding, JSON validation, and 
  - EVID_HELP_0315:groqbash:1039
  - EVID_HELP_0316:groqbash:1060
 
-# # SHARED_SNIPPET: C003,C009,C013
+#### # SHARED_SNIPPET: C003,C009,C013
 ```sh
 # SHARED_SNIPPET: C003,C009,C013
 
@@ -147,7 +147,7 @@ Step (C005): Script registers cleanup trap for EXIT/INT/TERM
  - EVID_TRAP_1154:groqbash:805
  - EVID_TRAP_1155:groqbash:831
 
-# # SHARED_SNIPPET: C005,C018
+#### # SHARED_SNIPPET: C005,C018
 ```sh
 # SHARED_SNIPPET: C005,C018
 
@@ -178,7 +178,7 @@ Step (C006): Script uses RUN_TMPDIR/GROQBASH_TMPDIR for staging
  - EVID_TMP_1192:groqbash:1013
  - EVID_TMP_1193:groqbash:1190
 
-# # SHARED_SNIPPET: C006,C011,C014
+#### # SHARED_SNIPPET: C006,C011,C014
 ```sh
 # SHARED_SNIPPET: C006,C011,C014
 
@@ -209,7 +209,7 @@ Step (C007): Script exposes long CLI flags and parsing markers
  - EVID_CLIPARSE_28724:groqbash:1000
  - EVID_CLIPARSE_28725:groqbash:1001
 
-# # SHARED_SNIPPET: C007,C008,C012,C015
+#### # SHARED_SNIPPET: C007,C008,C012,C015
 ```sh
 # SHARED_SNIPPET: C007,C008,C012,C015
 
@@ -240,7 +240,7 @@ Step (C008): Script supports print-only flags that avoid network calls
  - EVID_CLIPARSE_28724:groqbash:1000
  - EVID_CLIPARSE_28725:groqbash:1001
 
-# # SHARED_SNIPPET: C007,C008,C012,C015
+#### # SHARED_SNIPPET: C007,C008,C012,C015
 ```sh
 # SHARED_SNIPPET: C007,C008,C012,C015
 
@@ -271,7 +271,7 @@ Step (C009): Script resolves provider and canonical model paths
  - EVID_HELP_0315:groqbash:1039
  - EVID_HELP_0316:groqbash:1060
 
-# # SHARED_SNIPPET: C003,C009,C013
+#### # SHARED_SNIPPET: C003,C009,C013
 ```sh
 # SHARED_SNIPPET: C003,C009,C013
 
@@ -302,7 +302,7 @@ Step (C010): Script checks provider directory ownership/permissions
  - EVID_REQCMD_0046:groqbash:1163
  - EVID_REQCMD_0047:groqbash:1457
 
-# # SHARED_SNIPPET: C002,C010,C016,C017,C019
+#### # SHARED_SNIPPET: C002,C010,C016,C017,C019
 ```sh
 # SHARED_SNIPPET: C002,C010,C016,C017,C019
 
@@ -333,7 +333,7 @@ Step (C011): Network calls are encapsulated in dedicated functions (call_api_gro
  - EVID_TMP_1192:groqbash:1013
  - EVID_TMP_1193:groqbash:1190
 
-# # SHARED_SNIPPET: C006,C011,C014
+#### # SHARED_SNIPPET: C006,C011,C014
 ```sh
 # SHARED_SNIPPET: C006,C011,C014
 
@@ -364,7 +364,7 @@ Step (C012): Script uses here-docs or subshells for payload staging
  - EVID_CLIPARSE_28724:groqbash:1000
  - EVID_CLIPARSE_28725:groqbash:1001
 
-# # SHARED_SNIPPET: C007,C008,C012,C015
+#### # SHARED_SNIPPET: C007,C008,C012,C015
 ```sh
 # SHARED_SNIPPET: C007,C008,C012,C015
 
@@ -395,7 +395,7 @@ Step (C013): Top-level uppercase variables are defined
  - EVID_HELP_0315:groqbash:1039
  - EVID_HELP_0316:groqbash:1060
 
-# # SHARED_SNIPPET: C003,C009,C013
+#### # SHARED_SNIPPET: C003,C009,C013
 ```sh
 # SHARED_SNIPPET: C003,C009,C013
 
@@ -426,7 +426,7 @@ Step (C014): Script creates/removes directories and files for config/history/tmp
  - EVID_TMP_1192:groqbash:1013
  - EVID_TMP_1193:groqbash:1190
 
-# # SHARED_SNIPPET: C006,C011,C014
+#### # SHARED_SNIPPET: C006,C011,C014
 ```sh
 # SHARED_SNIPPET: C006,C011,C014
 
@@ -457,7 +457,7 @@ Step (C015): Print-only branches do not perform HTTP
  - EVID_CLIPARSE_28724:groqbash:1000
  - EVID_CLIPARSE_28725:groqbash:1001
 
-# # SHARED_SNIPPET: C007,C008,C012,C015
+#### # SHARED_SNIPPET: C007,C008,C012,C015
 ```sh
 # SHARED_SNIPPET: C007,C008,C012,C015
 
@@ -488,7 +488,7 @@ Step (C016): Script requires core tools like jq/curl/mktemp
  - EVID_REQCMD_0046:groqbash:1163
  - EVID_REQCMD_0047:groqbash:1457
 
-# # SHARED_SNIPPET: C002,C010,C016,C017,C019
+#### # SHARED_SNIPPET: C002,C010,C016,C017,C019
 ```sh
 # SHARED_SNIPPET: C002,C010,C016,C017,C019
 
@@ -522,7 +522,7 @@ Step (C017): If GROQBASH_SOURCE_ONLY is set, main runtime does not execute
  - EVID_CLIPARSE_28724:groqbash:1000
  - EVID_CLIPARSE_28725:groqbash:1001
 
-# # SHARED_SNIPPET: C002,C010,C016,C017,C019
+#### # SHARED_SNIPPET: C002,C010,C016,C017,C019
 ```sh
 # SHARED_SNIPPET: C002,C010,C016,C017,C019
 
@@ -556,7 +556,7 @@ Step (C018): Temporary artifacts are removed on exit unless debug-preserve
  - EVID_TMP_1192:groqbash:1013
  - EVID_TMP_1193:groqbash:1190
 
-# # SHARED_SNIPPET: C005,C018
+#### # SHARED_SNIPPET: C005,C018
 ```sh
 # SHARED_SNIPPET: C005,C018
 
@@ -587,7 +587,7 @@ Step (C019): Provider modules are validated before sourcing
  - EVID_REQCMD_0046:groqbash:1163
  - EVID_REQCMD_0047:groqbash:1457
 
-# # SHARED_SNIPPET: C002,C010,C016,C017,C019
+#### # SHARED_SNIPPET: C002,C010,C016,C017,C019
 ```sh
 # SHARED_SNIPPET: C002,C010,C016,C017,C019
 
