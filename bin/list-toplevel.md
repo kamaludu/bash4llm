@@ -48,6 +48,7 @@ Step (C012): Script uses here-docs or subshells for payload staging
 ### 2) Top-Level State Model
 
 Top-level variables (conservative list with inferred role and evidence pointers):
+
  - groqbash:1011:MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}" — role: inferred; configurable via ENV: unknown — evidence: (evidence: none found)
  - groqbash:1012:HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}" — role: inferred; configurable via ENV: unknown — evidence: (evidence: none found)
  - groqbash:1013:TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}" — role: inferred; configurable via ENV: unknown — evidence: (evidence: none found)
@@ -155,11 +156,10 @@ Observed side-effects (each with conservative description):
 ### 4) Top-Level Control Flow
 
 Main branches (conservative):
+
  - Print-only / dry-run: recognized by long flags; avoids network calls.
  - Normal run: parse CLI → resolve provider → prepare tmp → build payload → call API → handle response → cleanup.
  - Early exit: help/version, source-only, missing deps, invalid provider perms.
-
-For each branch, see claims_map.tsv for evidence pointers.
 
 ---
 
@@ -189,16 +189,11 @@ Behavior: script checks for required commands and exits early if missing.
 
 ---
 
-### Appendix: key analysis files (for traceability)
- - groqbash/list/analysis/evidence_master.tsv
- - groqbash/list/analysis/claims_map.tsv
- - groqbash/list/analysis/*_raw.txt
-
-End of file.
-
----
+### Appendix: key analysis files (for traceability)  
 
 Evidence snippets (one per VERIFIED claim)
+
+---
 
 Claim: C001
 Mapping: C001	VERIFIED	EVID_SHEBANG_0001:groqbash:15|EVID_SHEBANG_0002:groqbash:1|EVID_SHEBANG_0003:groqbash/list/auto_fill_decls.py:1
