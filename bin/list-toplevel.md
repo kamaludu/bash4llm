@@ -1,16 +1,11 @@
 ## GroqBash Top‑Level Execution Map
 
+GroqBash Top-Level Execution Model Generated: 2026-05-18T15:19:28Z (UTC)
+Method: conservative synthesis
 
-GroqBash Top-Level Execution Model (FULL)
+---
 
-Source: groqbash/ and groqbash/list/ (analysis produced under groqbash/list/analysis/)
-Generated: 2026-05-18T15:19:28Z (UTC)
-
-Method: conservative synthesis from claims_map.tsv and evidence_master.tsv
-
-===
-
-1) Execution Order Overview
+### 1) Execution Order Overview
 
 Short summary:
 
@@ -48,9 +43,9 @@ Step (C011): Network calls are encapsulated in dedicated functions (call_api_gro
 Step (C012): Script uses here-docs or subshells for payload staging
   Evidence:   EVID_CLIPARSE_28724:groqbash:1000; EVID_CLIPARSE_28725:groqbash:1001; EVID_CLIPARSE_28726:groqbash:1002; 
 
-===
+---
 
-2) Top-Level State Model
+### 2) Top-Level State Model
 
 Top-level variables (conservative list with inferred role and evidence pointers):
  - groqbash:1011:MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}" — role: inferred; configurable via ENV: unknown — evidence: (evidence: none found)
@@ -148,16 +143,16 @@ Top-level variables (conservative list with inferred role and evidence pointers)
 Relationships (conservative):
  - RUN_TMPDIR contains PAYLOAD, RESP, ERRF; DEBUG influences cleanup behavior.
 
-===
+---
 
-3) Top-Level Side-Effects
+### 3) Top-Level Side-Effects
 
 Observed side-effects (each with conservative description):
  - Creates directories for tmp, sessions, ui_state; writes payload/response/error files; uses lock files to coordinate.
 
-===
+---
 
-4) Top-Level Control Flow
+### 4) Top-Level Control Flow
 
 Main branches (conservative):
  - Print-only / dry-run: recognized by long flags; avoids network calls.
@@ -166,16 +161,16 @@ Main branches (conservative):
 
 For each branch, see claims_map.tsv for evidence pointers.
 
-===
+---
 
-5) Top-Level Dependencies
+### 5) Top-Level Dependencies
 
 Conservative list of required tools (typical): bash, jq, curl, mktemp, stat, flock, base64, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf.
 Behavior: script checks for required commands and exits early if missing.
 
-===
+---
 
-6) Top-Level Behavioral Guarantees (Invariants)
+### 6) Top-Level Behavioral Guarantees (Invariants)
 
  - If GROQBASH_SOURCE_ONLY is set, main runtime does not execute
    Evidence:   EVID_REQCMD_0046:groqbash:1163; EVID_REQCMD_0047:groqbash:1457; EVID_REQCMD_0048:groqbash:1466; 
@@ -192,16 +187,16 @@ Behavior: script checks for required commands and exits early if missing.
  - Script registers cleanup trap for EXIT/INT/TERM
    Evidence:   EVID_TRAP_1154:groqbash:805; EVID_TRAP_1155:groqbash:831; EVID_TRAP_1156:groqbash/list/cli_parsing_blocks.txt:301; 
 
-===
+---
 
-Appendix: key analysis files (for traceability)
+### Appendix: key analysis files (for traceability)
  - groqbash/list/analysis/evidence_master.tsv
  - groqbash/list/analysis/claims_map.tsv
  - groqbash/list/analysis/*_raw.txt
 
 End of file.
 
-===
+---
 
 Evidence snippets (one per VERIFIED claim)
 
