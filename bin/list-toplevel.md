@@ -17,6 +17,7 @@ Step-by-step flow (claims referenced):
 Step (C001): Script sets strict shell options and shebang
 
 >>> Evidence snippet for C001:
+```sh
 # =============================================================================
 # Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
 
@@ -32,14 +33,14 @@ SCRIPT_DATE="2026-05-07"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
-
+```
 
   Evidence:   EVID_SHEBANG_0001:groqbash/groqbash:15; EVID_SHEBANG_0002:groqbash/groqbash:1; EVID_SHEBANG_0003:groqbash/list/auto_fill_decls.py:1; 
 
 Step (C002): Script enforces required system commands at startup
 
 >>> Evidence snippet for C002:
-
+```sh
 # ---------------------------------------------------------------------------
 # tac_fallback: portable reverse file lines (fallback to awk)
 # Usage: tac_fallback <file>
@@ -54,13 +55,14 @@ tac_fallback() {
   awk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' "$f"
   return 0
 }
-
+```
 
   Evidence:   EVID_REQCMD_0046:groqbash/groqbash:1163; EVID_REQCMD_0047:groqbash/groqbash:1457; EVID_REQCMD_0048:groqbash/groqbash:1466; 
 
 Step (C003): Script defines helper functions for encoding, JSON validation, and logging
 
 >>> Evidence snippet for C003:
+```sh
   PROVIDER_DIR="$PROVIDERS_DIR"
 
   if [ ! -d "$PROVIDER_DIR" ]; then
@@ -76,13 +78,14 @@ Step (C003): Script defines helper functions for encoding, JSON validation, and 
   current_user="$(id -un 2>/dev/null || printf '')"
   owner="$(_get_owner "$PROVIDER_DIR")"
   [ -n "$owner" ] && [ "$owner" != "$current_user" ] && log_warn "SEC" "provider directory owned by $owner"
-
+```
 
   Evidence:   EVID_HELP_0315:groqbash/groqbash:1039; EVID_HELP_0316:groqbash/groqbash:1060; EVID_HELP_0317:groqbash/groqbash:1071; 
 
 Step (C004): Script normalizes DEBUG from GROQBASH_DEBUG/DEBUG
 
 >>> Evidence snippet for C004:
+```sh
   local f="$1"
   [ -f "$f" ] || return 1
   [ -s "$f" ] || return 1
@@ -98,13 +101,14 @@ fi
 DEBUG="${DEBUG:-0}"
 
 # ---------------------------------------------------------------------------
-
+```
 
   Evidence:   EVID_DEBUG_0901:groqbash/list/cli_parsing_blocks.txt:49; EVID_DEBUG_0902:groqbash/list/cli_parsing_blocks.txt:51; EVID_DEBUG_0903:groqbash/list/cli_parsing_blocks.txt:52; 
 
 Step (C005): Script registers cleanup trap for EXIT/INT/TERM
 
 >>> Evidence snippet for C005:
+```sh
           log_info "TMP" "Removed empty staging file: $f"
         fi
       fi
@@ -120,13 +124,14 @@ Step (C005): Script registers cleanup trap for EXIT/INT/TERM
       return 0
     fi
     if [ -n "${RUN_TMPDIR:-}" ]; then
-
+```sh
 
   Evidence:   EVID_TRAP_1154:groqbash/groqbash:805; EVID_TRAP_1155:groqbash/groqbash:831; EVID_TRAP_1156:groqbash/list/cli_parsing_blocks.txt:301; 
 
 Step (C006): Script uses RUN_TMPDIR/GROQBASH_TMPDIR for staging
 
 >>> Evidence snippet for C006:
+```sh
 # The immediate-action install-extras logic will perform the final legacy checks in context of chosen source.
 
 # ---------------------------------------------------------------------------
@@ -142,14 +147,14 @@ GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
 GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 
 # Load and validate provider module for given provider name
-
+```
 
   Evidence:   EVID_TMP_1192:groqbash/groqbash:1013; EVID_TMP_1193:groqbash/groqbash:1190; EVID_TMP_1194:groqbash/groqbash:1197; 
 
 Step (C007): Script exposes long CLI flags and parsing markers
 
 >>> Evidence snippet for C007:
-
+```sh
 # Ensure directories are not symlinks and have strict perms
 for d in "$GROQBASH_DIR" "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
   if [ -L "$d" ]; then
@@ -163,7 +168,7 @@ done
 # Legacy extras handling (fail only when a legacy dir exists outside the chosen source/destination)
 # Note: do not treat SCRIPTDIR/extras as fatal if it will be used as the explicit source for install.
 # The immediate-action install-extras logic will perform the final legacy checks in context of chosen source.
-
+```
 
 
   Evidence:   EVID_CLIPARSE_28724:groqbash/groqbash:1000; EVID_CLIPARSE_28725:groqbash/groqbash:1001; EVID_CLIPARSE_28726:groqbash/groqbash:1002; 
@@ -171,7 +176,7 @@ done
 Step (C008): Script supports print-only flags that avoid network calls
 
 >>> Evidence snippet for C008:
-
+```sh
 # Ensure directories are not symlinks and have strict perms
 for d in "$GROQBASH_DIR" "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
   if [ -L "$d" ]; then
@@ -185,7 +190,7 @@ done
 # Legacy extras handling (fail only when a legacy dir exists outside the chosen source/destination)
 # Note: do not treat SCRIPTDIR/extras as fatal if it will be used as the explicit source for install.
 # The immediate-action install-extras logic will perform the final legacy checks in context of chosen source.
-
+```
 
 
   Evidence:   EVID_CLIPARSE_28724:groqbash/groqbash:1000; EVID_CLIPARSE_28725:groqbash/groqbash:1001; EVID_CLIPARSE_28726:groqbash/groqbash:1002; 
@@ -193,6 +198,7 @@ done
 Step (C009): Script resolves provider and canonical model paths
 
 >>> Evidence snippet for C009:
+```sh
   PROVIDER_DIR="$PROVIDERS_DIR"
 
   if [ ! -d "$PROVIDER_DIR" ]; then
@@ -208,13 +214,14 @@ Step (C009): Script resolves provider and canonical model paths
   current_user="$(id -un 2>/dev/null || printf '')"
   owner="$(_get_owner "$PROVIDER_DIR")"
   [ -n "$owner" ] && [ "$owner" != "$current_user" ] && log_warn "SEC" "provider directory owned by $owner"
-
+```
 
   Evidence:   EVID_HELP_0315:groqbash/groqbash:1039; EVID_HELP_0316:groqbash/groqbash:1060; EVID_HELP_0317:groqbash/groqbash:1071; 
 
 Step (C011): Network calls are encapsulated in dedicated functions (call_api_groq)
 
 >>> Evidence snippet for C011:
+```sh
 # The immediate-action install-extras logic will perform the final legacy checks in context of chosen source.
 
 # ---------------------------------------------------------------------------
@@ -230,14 +237,14 @@ GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
 GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
 
 # Load and validate provider module for given provider name
-
+```
 
   Evidence:   EVID_TMP_1192:groqbash/groqbash:1013; EVID_TMP_1193:groqbash/groqbash:1190; EVID_TMP_1194:groqbash/groqbash:1197; 
 
 Step (C012): Script uses here-docs or subshells for payload staging
 
 >>> Evidence snippet for C012:
-
+```sh
 # Ensure directories are not symlinks and have strict perms
 for d in "$GROQBASH_DIR" "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
   if [ -L "$d" ]; then
@@ -251,7 +258,7 @@ done
 # Legacy extras handling (fail only when a legacy dir exists outside the chosen source/destination)
 # Note: do not treat SCRIPTDIR/extras as fatal if it will be used as the explicit source for install.
 # The immediate-action install-extras logic will perform the final legacy checks in context of chosen source.
-
+```
 
 
   Evidence:   EVID_CLIPARSE_28724:groqbash/groqbash:1000; EVID_CLIPARSE_28725:groqbash/groqbash:1001; EVID_CLIPARSE_28726:groqbash/groqbash:1002; 
