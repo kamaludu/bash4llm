@@ -973,6 +973,7 @@ tac_fallback() {
 ### 3) Top‑Level Side‑Effects, Control Flow, Dependencies, Invariants 
 
 #### 3.1 Side‑Effects (conservative summary from evidence):  
+
 ```sh
 groqbash:1000:  mkdir -p "$d" 2>/dev/null || { printf 'groqbash: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$GROQBASHERRTMP"; }
 groqbash:1011:MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
@@ -1092,9 +1093,11 @@ groqbash:987:SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 groqbash:988:mkdir -p "$SESSION_DIR" 2>/dev/null || true
 groqbash:992:mkdir -p "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers" 2>/dev/null || true
 ```
+
 ---
 
 #### 3.2 Dependencies / Required tools:  
+
 ```sh
 groqbash:1163:  if command -v tac >/dev/null 2>&1; then
 groqbash:1457:    *) if command -v stat >/dev/null 2>&1; then perm="$(stat -c %A "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then perm="$(find "$path" -maxdepth 0 -printf '%M' 2>/dev/null || true)"; fi ;;
@@ -1113,13 +1116,15 @@ groqbash:56:  if ! command -v "$cmd" >/dev/null 2>&1; then
 groqbash:57:    printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
 groqbash:66:  if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
 ```
+
 ---
 
 ### Appendices 
 
-#### Appendix A: claims_map (compact)  
+#### Appendix A: claims_map (compact)
 
-C001	VERIFIED	EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1||EVID_SHEBANG_0003:/data/data/com.termux/files/home/groqbash/list/auto_fill_decls.py:1
+C001	VERIFIED	 
+EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1||EVID_SHEBANG_0003:/data/data/com.termux/files/home/groqbash/list/auto_fill_decls.py:1
 C002	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
 C003	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
 C004	VERIFIED	EVID_DEBUG_0901:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:49||EVID_DEBUG_0902:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:51||EVID_DEBUG_0903:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:52
