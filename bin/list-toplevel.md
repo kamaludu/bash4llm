@@ -1,27 +1,25 @@
-## GroqBash Top‑Level Execution Map
-
-# GroqBash Top‑Level Inventory for LLM
+## GroqBash Top‑Level Inventory for LLM
 
 Generated: 2026-05-18T22:14:35Z (UTC)
-Sources: groqbash/list/groqbash_top_level_execution_model_FULL_PRUNED_fixed.txt ; groqbash/list/groqbash_top_level_execution_model_FULL_INLINE_SNIPPETS_fixed.txt ; groqbash/list/analysis/claims_map.tsv ; groqbash/list/analysis/snippets/.index.fixed ; groqbash/list/analysis/vars_top_level_raw.txt
 
 ### TL;DR 
-Step (C001): Script sets strict shell options and shebang
-Step (C002): Script enforces required system commands at startup
-Step (C003): Script defines helper functions for encoding, JSON validation, and logging
-Step (C004): Script normalizes DEBUG from GROQBASH_DEBUG/DEBUG
-Step (C005): Script registers cleanup trap for EXIT/INT/TERM
-Step (C006): Script uses RUN_TMPDIR/GROQBASH_TMPDIR for staging
-Step (C007): Script exposes long CLI flags and parsing markers
-Step (C008): Script supports print-only flags that avoid network calls
-Step (C009): Script resolves provider and canonical model paths
-Step (C010): Script checks provider directory ownership/permissions
-Step (C011): Network calls are encapsulated in dedicated functions (call_api_groq)
-Step (C012): Script uses here-docs or subshells for payload staging
+- Step (C001): Script sets strict shell options and shebang
+- Step (C002): Script enforces required system commands at startup
+- Step (C003): Script defines helper functions for encoding, JSON validation, and logging
+- Step (C004): Script normalizes DEBUG from GROQBASH_DEBUG/DEBUG
+- Step (C005): Script registers cleanup trap for EXIT/INT/TERM
+- Step (C006): Script uses RUN_TMPDIR/GROQBASH_TMPDIR for staging
+- Step (C007): Script exposes long CLI flags and parsing markers
+- Step (C008): Script supports print-only flags that avoid network calls
+- Step (C009): Script resolves provider and canonical model paths
+- Step (C010): Script checks provider directory ownership/permissions
+- Step (C011): Network calls are encapsulated in dedicated functions (call_api_groq)
+- Step (C012): Script uses here-docs or subshells for payload staging
 
 ---
 
 ### 1) Execution Order Overview 
+
 #### Step (C001):
 Step (C001): Script sets strict shell options and shebang
 
@@ -30,7 +28,7 @@ Step (C001): Script sets strict shell options and shebang
  - EVID_SHEBANG_0002:groqbash:1
 
 ```sh
-# ---=========
+# =============================================================================
 # Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
 
 ########################################
@@ -614,7 +612,7 @@ tac_fallback() {
 
 ### 2) Top‑Level State Model 
 
-2.1 Variables referenced by claims (inferred from evidence file:line references)
+#### 2.1 Variables referenced by claims (inferred from evidence file:line references)
 
  - ALLOWED_MODELS — evidence: referenced in claims
  - ALLOW_API_CALLS — evidence: referenced in claims
@@ -876,7 +874,7 @@ tac_fallback() {
 
 ---
 
-2.2 Appendix: Unreferenced Top‑Level Vars
+#### 2.2 Appendix: Unreferenced Top‑Level Vars
 
  - groqbash:1011:MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
  - groqbash:1012:HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
@@ -974,7 +972,7 @@ tac_fallback() {
 
 ### 3) Top‑Level Side‑Effects, Control Flow, Dependencies, Invariants 
 
-3.1 Side‑Effects (conservative summary from evidence):  
+#### 3.1 Side‑Effects (conservative summary from evidence):  
 
 groqbash:1000:  mkdir -p "$d" 2>/dev/null || { printf 'groqbash: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$GROQBASHERRTMP"; }
 groqbash:1011:MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
@@ -1096,7 +1094,7 @@ groqbash:992:mkdir -p "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBAS
 
 ---
 
-3.2 Dependencies / Required tools:  
+#### 3.2 Dependencies / Required tools:  
 
 groqbash:1163:  if command -v tac >/dev/null 2>&1; then
 groqbash:1457:    *) if command -v stat >/dev/null 2>&1; then perm="$(stat -c %A "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then perm="$(find "$path" -maxdepth 0 -printf '%M' 2>/dev/null || true)"; fi ;;
@@ -1119,7 +1117,7 @@ groqbash:66:  if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
 
 ### Appendices 
 
-Appendix A: claims_map (compact)  
+#### Appendix A: claims_map (compact)  
 
 C001	VERIFIED	EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1||EVID_SHEBANG_0003:/data/data/com.termux/files/home/groqbash/list/auto_fill_decls.py:1
 C002	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
@@ -1143,7 +1141,7 @@ C019	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EV
 
 ---
 
-Appendix B: snippet index (compact)  
+#### Appendix B: snippet index (compact)  
 
 C001	EVID_SHEBANG_0001	groqbash:15
 C002	EVID_REQCMD_0046	groqbash:1163
@@ -1167,7 +1165,7 @@ C019	EVID_REQCMD_0046	groqbash:1163
 
 ---
 
-Appendix C: notes  
+#### Appendix C: notes  
 
 - Snippets annotated with '# SHARED_SNIPPET:' are shared across claims; the annotation is preserved.
 - Evidence entries prefer references to groqbash/groqbash when available.
