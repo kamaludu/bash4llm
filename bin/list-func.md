@@ -6,11 +6,15 @@ Diviso per macro sezioni, poi in ordine alfabetico.
 ```sh
 _detect_base64_opts
 _file_mtime
-_mktemp_in_dir                            atomic_write
+_mktemp_in_dir
+atomic_write
 b64_atomic_read
-b64_atomic_write                          b64decode
-b64encode                                 canonical_config_dir
-canonical_model_file                      canonical_provider_file
+b64_atomic_write
+b64decode
+b64encode
+canonical_config_dir
+canonical_model_file
+canonical_provider_file
 canonical_provider_url_file
 cleanup_run_tmp_on_exit
 cleanup_tmp
