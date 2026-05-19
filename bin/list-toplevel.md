@@ -973,7 +973,7 @@ tac_fallback() {
 ### 3) Top‑Level Side‑Effects, Control Flow, Dependencies, Invariants 
 
 #### 3.1 Side‑Effects (conservative summary from evidence):  
-
+```sh
 groqbash:1000:  mkdir -p "$d" 2>/dev/null || { printf 'groqbash: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$GROQBASHERRTMP"; }
 groqbash:1011:MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
 groqbash:1012:HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
@@ -1091,11 +1091,11 @@ groqbash:984:mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || true
 groqbash:987:SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
 groqbash:988:mkdir -p "$SESSION_DIR" 2>/dev/null || true
 groqbash:992:mkdir -p "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers" 2>/dev/null || true
-
+```
 ---
 
 #### 3.2 Dependencies / Required tools:  
-
+```sh
 groqbash:1163:  if command -v tac >/dev/null 2>&1; then
 groqbash:1457:    *) if command -v stat >/dev/null 2>&1; then perm="$(stat -c %A "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then perm="$(find "$path" -maxdepth 0 -printf '%M' 2>/dev/null || true)"; fi ;;
 groqbash:1466:    *) if command -v stat >/dev/null 2>&1; then owner="$(stat -c %U "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then owner="$(find "$path" -maxdepth 0 -printf '%u' 2>/dev/null || true)"; fi ;;
@@ -1112,7 +1112,7 @@ groqbash:55:for cmd in bash jq curl mktemp stat flock base64 find awk sed grep x
 groqbash:56:  if ! command -v "$cmd" >/dev/null 2>&1; then
 groqbash:57:    printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
 groqbash:66:  if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
-
+```
 ---
 
 ### Appendices 
