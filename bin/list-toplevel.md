@@ -1123,7 +1123,7 @@ groqbash:66:  if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
 
 #### Appendix A: claims_map (compact)
 
-- C001	VERIFIED	EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1||EVID_SHEBANG_0003:/data/data/com.termux/files/home/groqbash/list/auto_fill_decls.py:1  
+- C001	VERIFIED	EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1
 - C002	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
 - C003	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
 - C004	VERIFIED	EVID_DEBUG_0901:groqbash:404||EVID_DEBUG_0902:groqbash:406||EVID_DEBUG_0903:groqbash:407
