@@ -1,4 +1,4 @@
-## GroqBash Top‑Level Inventory for LLM
+## GroqBash Top‑Level Inventory (for LLM)
 
 Generated: 2026-05-18T22:14:35Z (UTC)
 
