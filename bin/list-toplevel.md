@@ -5,7 +5,7 @@
 Generated: 2026-05-18T22:14:35Z (UTC)
 Sources: groqbash/list/groqbash_top_level_execution_model_FULL_PRUNED_fixed.txt ; groqbash/list/groqbash_top_level_execution_model_FULL_INLINE_SNIPPETS_fixed.txt ; groqbash/list/analysis/claims_map.tsv ; groqbash/list/analysis/snippets/.index.fixed ; groqbash/list/analysis/vars_top_level_raw.txt
 
-=== TL;DR ===
+### TL;DR 
 Step (C001): Script sets strict shell options and shebang
 Step (C002): Script enforces required system commands at startup
 Step (C003): Script defines helper functions for encoding, JSON validation, and logging
@@ -21,7 +21,7 @@ Step (C012): Script uses here-docs or subshells for payload staging
 
 ---
 
-=== 1) Execution Order Overview ===
+### 1) Execution Order Overview 
 #### Step (C001):
 Step (C001): Script sets strict shell options and shebang
 
@@ -612,7 +612,7 @@ tac_fallback() {
 ---
 
 
-=== 2) Top‑Level State Model ===
+### 2) Top‑Level State Model 
 
 2.1 Variables referenced by claims (inferred from evidence file:line references)
 
@@ -972,7 +972,7 @@ tac_fallback() {
 
 ---
 
-=== 3) Top‑Level Side‑Effects, Control Flow, Dependencies, Invariants ===
+### 3) Top‑Level Side‑Effects, Control Flow, Dependencies, Invariants 
 
 3.1 Side‑Effects (conservative summary from evidence):  
 
@@ -1117,7 +1117,7 @@ groqbash:66:  if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
 
 ---
 
-=== Appendices ===
+### Appendices 
 
 Appendix A: claims_map (compact)  
 
