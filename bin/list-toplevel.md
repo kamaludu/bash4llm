@@ -1123,50 +1123,49 @@ groqbash:66:  if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
 
 #### Appendix A: claims_map (compact)
 
-C001	VERIFIED	 
-EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1||EVID_SHEBANG_0003:/data/data/com.termux/files/home/groqbash/list/auto_fill_decls.py:1
-C002	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
-C003	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
-C004	VERIFIED	EVID_DEBUG_0901:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:49||EVID_DEBUG_0902:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:51||EVID_DEBUG_0903:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:52
-C005	VERIFIED	EVID_TRAP_1154:groqbash:805||EVID_TRAP_1155:groqbash:831||EVID_TRAP_1156:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:301
-C006	VERIFIED	EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
-C007	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
-C008	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
-C009	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
-C010	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
-C011	VERIFIED	EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
-C012	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
-C013	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
-C014	VERIFIED	EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
-C015	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
-C016	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
-C017	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466||EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
-C018	VERIFIED	EVID_TRAP_1154:groqbash:805||EVID_TRAP_1155:groqbash:831||EVID_TRAP_1156:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:301||EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
-C019	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
+- C001	VERIFIED	EVID_SHEBANG_0001:groqbash:15||EVID_SHEBANG_0002:groqbash:1||EVID_SHEBANG_0003:/data/data/com.termux/files/home/groqbash/list/auto_fill_decls.py:1  
+- C002	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
+- C003	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
+- C004	VERIFIED	EVID_DEBUG_0901:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:49||EVID_DEBUG_0902:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:51||EVID_DEBUG_0903:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:52
+- C005	VERIFIED	EVID_TRAP_1154:groqbash:805||EVID_TRAP_1155:groqbash:831||EVID_TRAP_1156:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:301
+- C006	VERIFIED	EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
+- C007	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
+- C008	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
+- C009	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
+- C010	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
+- C011	VERIFIED	EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
+- C012	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
+- C013	VERIFIED	EVID_HELP_0315:groqbash:1039||EVID_HELP_0316:groqbash:1060||EVID_HELP_0317:groqbash:1071
+- C014	VERIFIED	EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
+- C015	VERIFIED	EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
+- C016	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
+- C017	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466||EVID_CLIPARSE_28724:groqbash:1000||EVID_CLIPARSE_28725:groqbash:1001||EVID_CLIPARSE_28726:groqbash:1002
+- C018	VERIFIED	EVID_TRAP_1154:groqbash:805||EVID_TRAP_1155:groqbash:831||EVID_TRAP_1156:/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:301||EVID_TMP_1192:groqbash:1013||EVID_TMP_1193:groqbash:1190||EVID_TMP_1194:groqbash:1197
+- C019	VERIFIED	EVID_REQCMD_0046:groqbash:1163||EVID_REQCMD_0047:groqbash:1457||EVID_REQCMD_0048:groqbash:1466
 
 ---
 
 #### Appendix B: snippet index (compact)  
 
-C001	EVID_SHEBANG_0001	groqbash:15
-C002	EVID_REQCMD_0046	groqbash:1163
-C003	EVID_HELP_0315	groqbash:1039
-C004	EVID_DEBUG_0901	/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:49
-C005	EVID_TRAP_1154	groqbash:805
-C006	EVID_TMP_1192	groqbash:1013
-C007	EVID_CLIPARSE_28724	groqbash:1000
-C008	EVID_CLIPARSE_28724	groqbash:1000
-C009	EVID_HELP_0315	groqbash:1039
-C010	EVID_REQCMD_0046	groqbash:1163
-C011	EVID_TMP_1192	groqbash:1013
-C012	EVID_CLIPARSE_28724	groqbash:1000
-C013	EVID_HELP_0315	groqbash:1039
-C014	EVID_TMP_1192	groqbash:1013
-C015	EVID_CLIPARSE_28724	groqbash:1000
-C016	EVID_REQCMD_0046	groqbash:1163
-C017	EVID_REQCMD_0046	groqbash:1163
-C018	EVID_TRAP_1154	groqbash:805
-C019	EVID_REQCMD_0046	groqbash:1163
+- C001	EVID_SHEBANG_0001	groqbash:15
+- C002	EVID_REQCMD_0046	groqbash:1163
+- C003	EVID_HELP_0315	groqbash:1039
+- C004	EVID_DEBUG_0901	/data/data/com.termux/files/home/groqbash/list/cli_parsing_blocks.txt:49
+- C005	EVID_TRAP_1154	groqbash:805
+- C006	EVID_TMP_1192	groqbash:1013
+- C007	EVID_CLIPARSE_28724	groqbash:1000
+- C008	EVID_CLIPARSE_28724	groqbash:1000
+- C009	EVID_HELP_0315	groqbash:1039
+- C010	EVID_REQCMD_0046	groqbash:1163
+- C011	EVID_TMP_1192	groqbash:1013
+- C012	EVID_CLIPARSE_28724	groqbash:1000
+- C013	EVID_HELP_0315	groqbash:1039
+- C014	EVID_TMP_1192	groqbash:1013
+- C015	EVID_CLIPARSE_28724	groqbash:1000
+- C016	EVID_REQCMD_0046	groqbash:1163
+- C017	EVID_REQCMD_0046	groqbash:1163
+- C018	EVID_TRAP_1154	groqbash:805
+- C019	EVID_REQCMD_0046	groqbash:1163
 
 ---
 
