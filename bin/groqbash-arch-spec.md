@@ -350,7 +350,7 @@ Per ogni funzione esposta, ruolo e contratti essenziali
   1. `save_to_history` crea tmp in history dir.  
   2. Muove atomico in destinazione sotto `HISTORY_LOCK`.  
   3. Aggiorna `last_history.json` via `ui_state_write`.  
-  4. Se abilitato, chiama `rotate_history`.
+  4. Chiama `rotate_history` solo se i limiti history sono superati.
 
 - **Append sessione idempotente**  
   1. Preparazione session dir e file.  
