@@ -190,6 +190,39 @@ enforce_network_policy() {
   return 0
 }
 #--3<---[ /SUBSECTION: API_NET ]--->3--
+
+# Logging structured (activabile via DEBUG o GROQBASH_LOG)
+DEBUG="${DEBUG:-0}"
+GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
+
+log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; }
+
+log_info() {
+  local code="${1:-INFO}" msg="${2:-}"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  fi
+  if [ -n "$GROQBASH_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+}
+
+log_warn() {
+  local code="${1:-WARN}" msg="${2:-}"
+  printf '%sWARN: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  if [ -n "$GROQBASH_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+}
+
+log_error() {
+  local code="${1:-ERROR}" msg="${2:-}"
+  printf '%sERROR: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  if [ -n "$GROQBASH_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+}
+
+# debug helper: if DEBUG is (1)
+dbg() {
+  if [ "${DEBUG:-0}" -ne 0 ]; then
+    printf '%s\n' "$*" >&2
+  fi
+}
 #--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 
 #--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
@@ -226,11 +259,37 @@ GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
 MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
 MAX_MODELS="${MAX_MODELS:-200}"
 
+# Validate GROQBASH_DIR / GROQBASH_TMPDIR invariants
+if [ -z "${GROQBASH_DIR:-}" ]; then
+  log_error "TMP" "GROQBASH_DIR is empty; cannot derive GROQBASH_TMPDIR"
+  exit "${GROQBASHERRTMP:-1}"
+fi
+
+# Forbid using /tmp or subpaths of /tmp as GROQBASH_TMPDIR
+case "${GROQBASH_TMPDIR:-}" in
+  /tmp|/tmp/*)
+    log_error "TMP" "GROQBASH_TMPDIR must not be /tmp or under /tmp: ${GROQBASH_TMPDIR}"
+    exit "${GROQBASHERRTMP:-1}"
+    ;;
+esac
+
+# Enforce GROQBASH_TMPDIR inside GROQBASH_DIR perimeter
+case "${GROQBASH_TMPDIR:-}" in
+  "${GROQBASH_DIR}"|"${GROQBASH_DIR}"/*)
+    : # ok
+    ;;
+  *)
+    log_error "TMP" "GROQBASH_TMPDIR must be inside GROQBASH_DIR: ${GROQBASH_TMPDIR} (root: ${GROQBASH_DIR})"
+    exit "${GROQBASHERRTMP:-1}"
+    ;;
+esac
+
 # Defensive normalization: ensure GROQBASH_CONFIG_DIR is non-empty and normalized
 GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR%/}"
 if [ -z "$GROQBASH_CONFIG_DIR" ]; then
   GROQBASH_CONFIG_DIR="${GROQBASH_DIR%/}/config"
 fi
+
 #--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 
 # Helper: ensure config dir exists and is usable before any writes
@@ -413,40 +472,6 @@ if [ -n "${GROQBASH_DEBUG:-}" ] && [ -z "${DEBUG:-}" ]; then
 fi
 DEBUG="${DEBUG:-0}"
 
-# ---------------------------------------------------------------------------
-# Logging structured (activabile via DEBUG o GROQBASH_LOG)
-DEBUG="${DEBUG:-0}"
-GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
-
-log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; }
-
-log_info() {
-  local code="${1:-INFO}" msg="${2:-}"
-  if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  fi
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
-}
-
-log_warn() {
-  local code="${1:-WARN}" msg="${2:-}"
-  printf '%sWARN: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
-}
-
-log_error() {
-  local code="${1:-ERROR}" msg="${2:-}"
-  printf '%sERROR: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
-}
-
-# debug helper: if DEBUG is (1)
-dbg() {
-  if [ "${DEBUG:-0}" -ne 0 ]; then
-    printf '%s\n' "$*" >&2
-  fi
-}
-
 # stage_b64: read stdin, write atomic base64 staging file under RUN_TMPDIR or destdir
 # Usage: stage_b64 <dest_b64_path> <max_bytes>
 stage_b64() {
@@ -568,7 +593,7 @@ _mktemp_in_dir() {
     return "$GROQBASHERRTMP"
   fi
   # Delegate to _tmpf which already enforces umask/perms and returns a path
-  tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null || true)"
+  tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null)"
   if [ -z "$tmp" ]; then
     log_error "TMP" "_mktemp_in_dir: failed to create temp in $base"
     return "$GROQBASHERRTMP"
@@ -733,6 +758,22 @@ ensure_run_tmpdir() {
   fi
 
   # If RUN_TMPDIR already set and valid, reuse it (do not clobber existing values)
+  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+    # P0: ensure existing RUN_TMPDIR stays inside GROQBASH_TMPDIR perimeter
+    if [ -n "${GROQBASH_TMPDIR:-}" ]; then
+      case "$RUN_TMPDIR" in
+        "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+          : # ok
+          ;;
+        *)
+          log_warn "TMP" "existing RUN_TMPDIR outside GROQBASH_TMPDIR; discarding: $RUN_TMPDIR"
+          RUN_TMPDIR=""
+          # fall through to fresh creation below
+          ;;
+      esac
+    fi
+  fi
+
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
     : "${PAYLOAD:=$RUN_TMPDIR/payload}"
@@ -1246,7 +1287,14 @@ rotate_history() {
       # Build list of files with mtime and size
       files_list="$(mktemp -p "$(dirname "$dir")" groq-rot.XXXX 2>/dev/null || true)"
       if [ -z "$files_list" ]; then
-        files_list="/tmp/groq-rot.$$"
+        # P0: avoid /tmp; prefer RUN_TMPDIR, then GROQBASH_TMPDIR, then dir itself
+        if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
+          files_list="${RUN_TMPDIR%/}/groq-rot.$$"
+        elif [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
+          files_list="${GROQBASH_TMPDIR%/}/groq-rot.$$"
+        else
+          files_list="${dir%/}/groq-rot.$$"
+        fi
       fi
       : > "$files_list"
       find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d "" f; do
@@ -1570,10 +1618,13 @@ _tmpf() {
 
   # Ensure base is inside GROQBASH_TMPDIR for safety
   case "$base" in
-    "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR") ;;
+    "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+      : # ok
+      ;;
     *)
-      # If base is not under GROQBASH_TMPDIR, prefer GROQBASH_TMPDIR
-      base="${GROQBASH_TMPDIR:-$base}"
+      if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
+        base="$GROQBASH_TMPDIR"
+      fi
       ;;
   esac
 
