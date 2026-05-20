@@ -979,8 +979,8 @@ ui_state_write() {
 if [ "$#" -gt 0 ]; then
   # Iterate through args to support flags anywhere on the command line
   i=1
-  while [ $i -le $# ]; do
-    eval "arg=\${$i}"
+  while [ "$i" -le "$#" ]; do
+    arg="${!i}"
     case "$arg" in
       --print-config-dir)
         printf '%s\n' "$(canonical_config_dir)"
@@ -991,17 +991,16 @@ if [ "$#" -gt 0 ]; then
         exit 0
         ;;
       --print-model-file)
-        # next positional must be provider name
         next_index=$((i+1))
-        if [ $next_index -le $# ]; then
-          eval "prov=\${$next_index}"
+        if [ "$next_index" -le "$#" ]; then
+          prov="${!next_index}"
           printf '%s\n' "$(canonical_model_file "$prov")"
           exit 0
         else
           printf 'groqbash: ERROR: usage: --print-model-file <provider>\n' >&2
           exit 2
         fi
-        ;;
+        ;;        
       --print-model-file=*)
         prov="${arg#--print-model-file=}"
         printf '%s\n' "$(canonical_model_file "$prov")"
