@@ -18,7 +18,8 @@
   - Risolvere e normalizzare percorsi di script, config, tmp, extras e provider.  
   - Creare e proteggere directory e file di configurazione con permessi restrittivi.  
   - Fornire helper di basso livello per gestione temp, lock, base64, logging e validazione JSON.  
-  - Caricare e validare moduli provider esterni in modo sicuro.  
+  - Caricare e validare moduli provider esterni in modo sicuro.
+  - ensure_run_tmpdir pulisce automaticamente RUN_TMPDIR al termine, salvo DEBUG_PRESERVE=1
 - **Non-responsabilità**  
   - Non esegue chiamate API remote direttamente salvo tramite provider che devono rispettare enforce_network_policy.  
   - Non implementa la logica di buildpayload o call_api per provider specifici.  
