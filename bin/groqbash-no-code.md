@@ -71,6 +71,15 @@ Inizializzare ambiente, validare requisiti, normalizzare percorsi, fornire helpe
 - Fornitura helper: atomic_write, b64_atomic_write/read, _mktemp_in_dir, lock_exec, ensure_run_tmpdir, ui_state_write.
 - Validazione e caricamento sicuro dei moduli provider; scrittura provider_capabilities.json.
 - Centralizzazione enforce_network_policy.
+- Validazione rigorosa di GROQBASH_TMPDIR:
+    - deve esistere o essere creabile;
+    - deve essere dentro GROQBASH_DIR;
+    - deve avere permessi 700;
+    - non può essere un symlink;
+    - non può puntare a /tmp o a filesystem esterni;
+    - in caso di invalidità → fail‑fast con GROQBASHERRTMP.
+- ensure_run_tmpdir scarta automaticamente qualsiasi RUN_TMPDIR invalido (non esistente, non 700, fuori da GROQBASH_TMPDIR, oppure sotto /tmp) e ne crea uno nuovo sotto GROQBASH_TMPDIR.
+- RUN_TMPDIR viene rimosso automaticamente al termine dell’esecuzione, salvo DEBUG_PRESERVE=1
 
 **Dipendenze**
 - PATH con: bash, coreutils, findutils, util‑linux, gawk, curl, jq.
@@ -110,6 +119,9 @@ Primitive runtime atomiche per history, manifest, tmp, sessioni e cache.
 - Session engine NDJSON: validazione id, append idempotente, lettura window atomica.
 - Cache sessione con TTL e invalidazione.
 - Utility permessi/firma: _get_perm_string, _get_owner, _get_file_signature, getfile_signature, _is_world_writable.
+- rotate_history viene invocata da save_to_history solo quando vengono superati i limiti GROQBASH_HISTORY_MAX_BYTES, GROQBASH_HISTORY_MAX_FILES o GROQBASH_HISTORY_KEEP_DAYS
+- _tmpf forza sempre la creazione del file temporaneo sotto GROQBASH_TMPDIR, ignorando directory esterne non sicure.
+- _mktemp_in_dir propaga il fallimento se la directory non è scrivibile o non valida; nessun fallback a /tmp
 
 **Dipendenze**
 - ENV: GROQBASH_HISTORY_DIR, GROQBASH_TMPDIR, RUN_TMPDIR, GROQBASH_LOCK_TIMEOUT_*, SESSION_DIR, LAST_CHECK_LINES.
@@ -132,6 +144,11 @@ Primitive runtime atomiche per history, manifest, tmp, sessioni e cache.
 - `save_to_history`: staging + mv atomico sotto HISTORY_LOCK → rotate_history se necessario.
 - `manifest_add_part`: verifica sorgente → b64_atomic_write → aggiornamento manifest sotto lock.
 - `session_append`: crea marker dir per message_id → flock → evita duplicati → append NDJSON atomico → aggiorna index e ui_state.
+- Ordine di fallback per la directory di staging della rotazione:
+    1. RUN_TMPDIR (se valido)
+    2. GROQBASH_TMPDIR (se valido)
+    3. GROQBASH_HISTORY_DIR (fallback finale)
+    Nessun uso di /tmp è mai consentito.
 
 ---
 
@@ -240,13 +257,18 @@ Scoperta, selezione, persistenza e validazione del provider; orchestrazione refr
 ## Glossario e convenzioni
 
 **Termini chiave**
-- **RUN_TMPDIR**: tmp per singola esecuzione, creato da ensure_run_tmpdir.
+- **RUN_TMPDIR**: directory temporanea per singola esecuzione, creata da ensure_run_tmpdir.
+Deve essere sotto GROQBASH_TMPDIR, con permessi 700.
+Se RUN_TMPDIR è invalido (non esiste, non 700, fuori perimetro, sotto /tmp), viene scartato e ricreato.
+Viene rimosso automaticamente al termine salvo DEBUG_PRESERVE=1
 - **GROQBASH_TMPDIR**: base tmp sotto config; non è `/tmp`.
 - **PAYLOAD / GROQBASH_TMP_PAYLOAD**: file JSON inviato all’API.
 - **RESP**: file risposta aggregata (JSON o diagnostico).
 - **MODELS_FILE**: file persistente con lista modelli normalizzata.
 - **provider_capabilities.json**: metadata scritto dopo load_provider_module.
 - **edge empty**: completions vuote rilevate da detect_empty_edge_case.
+- rotate_history non viene invocata ad ogni chiamata, ma solo quando la history supera i limiti configurati.
+La rotazione avviene in modo atomico e non utilizza mai /tmp.
 
 **Codici di errore canonici**
 - **0**: successo.
@@ -316,8 +338,6 @@ Scoperta, selezione, persistenza e validazione del provider; orchestrazione refr
 
 ---
 
----
-
 ## Appendici
 
 ### Timeout / Retry defaults
@@ -360,6 +380,11 @@ Scoperta, selezione, persistenza e validazione del provider; orchestrazione refr
 - **Backup e pulizia**:
   - Eseguire backup periodico di `GROQBASH_CONFIG_DIR` e `GROQBASH_HISTORY_DIR`.
   - Monitorare dimensione MODELS_FILE e history; regolare `GROQBASH_HISTORY_*` e `MAX_MODELS`.
+
+### Limitazioni ambientali (ARG_MAX, Termux)
+In ambienti con limiti bassi di ARG_MAX (es. Termux), input molto grandi passati via STDIN possono causare errori jq: Argument list too long.
+Questo non è un errore di GroqBash ma del sistema.
+Le risposte lunghe del provider non sono soggette a questo limite.
 
 ---
 
