@@ -148,6 +148,7 @@ Primitive runtime atomiche per history, manifest, tmp, sessioni e cache.
     1. RUN_TMPDIR (se valido)
     2. GROQBASH_TMPDIR (se valido)
     3. GROQBASH_HISTORY_DIR (fallback finale)
+
 Nessun uso di /tmp è mai consentito.
 
 ---
