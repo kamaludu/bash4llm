@@ -335,6 +335,8 @@ Per ogni funzione esposta, ruolo e contratti essenziali
   Ruolo: generare chiave cache, leggere hit con TTL, scrivere cache atomica, invalidare.  
   Contratto: cache memorizzata in `${GROQBASH_CONFIG_DIR}/session_cache`; `session_cache_get` rimuove file scaduti; ritorna 0 su hit.
 
+- **_tmpf** ignora qualsiasi directory esterna e forza sempre l’uso di `GROQBASH_TMPDIR`
+
 ---
 
 ### FLUSSI PRINCIPALI (sintesi)
