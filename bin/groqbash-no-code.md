@@ -253,8 +253,6 @@ Scoperta, selezione, persistenza e validazione del provider; orchestrazione refr
 
 ---
 
----
-
 ## Glossario e convenzioni
 
 **Termini chiave**
