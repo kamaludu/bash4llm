@@ -148,7 +148,7 @@ Primitive runtime atomiche per history, manifest, tmp, sessioni e cache.
     1. RUN_TMPDIR (se valido)
     2. GROQBASH_TMPDIR (se valido)
     3. GROQBASH_HISTORY_DIR (fallback finale)
-    Nessun uso di /tmp è mai consentito.
+Nessun uso di /tmp è mai consentito.
 
 ---
 
@@ -267,7 +267,7 @@ Viene rimosso automaticamente al termine salvo DEBUG_PRESERVE=1
 - **MODELS_FILE**: file persistente con lista modelli normalizzata.
 - **provider_capabilities.json**: metadata scritto dopo load_provider_module.
 - **edge empty**: completions vuote rilevate da detect_empty_edge_case.
-- rotate_history non viene invocata ad ogni chiamata, ma solo quando la history supera i limiti configurati.
+- **rotate_history** non viene invocata ad ogni chiamata, ma solo quando la history supera i limiti configurati.
 La rotazione avviene in modo atomico e non utilizza mai /tmp.
 
 **Codici di errore canonici**
