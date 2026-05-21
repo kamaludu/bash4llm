@@ -40,7 +40,8 @@
 - **Garanzie offerte al resto del sistema**  
   - Fornisce percorsi canonici e helper per leggere/scrivere in modo atomico e sicuro.  
   - Garantisce che i file di configurazione e provider non siano world-writable e che i provider caricati siano sintatticamente validi e non modificati durante il caricamento.  
-  - Espone funzioni per validare JSON, gestire base64 e locking coerente con timeout configurabili.  
+  - Espone funzioni per validare JSON, gestire base64 e locking coerente con timeout configurabili.
+  - Il pre‑scan CLI usa solo indirect expansion Bash (`${!i}`) per leggere argomenti posizionali, evitando completamente `eval`.
 
 ---
 
