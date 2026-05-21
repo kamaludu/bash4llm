@@ -1113,22 +1113,75 @@ load_provider_module() {
 
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
 
+  # --- SAFE LOAD: isolate provider in subshell, export only functions ---
+  # Provider contract:
+  #   - Nessun side‑effect top‑level deve essere necessario al funzionamento.
+  #   - Nessuno stato globale definito nel provider deve essere richiesto.
+  #   - Tutte le funzioni richieste devono essere pure e autosufficienti.
+  #
+  # Questo blocco:
+  #   1. sourcia il provider in una subshell isolata
+  #   2. verifica che le funzioni richieste esistano
+  #   3. esporta SOLO le definizioni delle funzioni tramite declare -f
+  #   4. importa il dump nel main shell senza eseguire codice top‑level del provider
   if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-    . "$PROVIDER_MODULE_PATH"
+    # tmp file sicuro per il dump delle funzioni
+    dump_file="$(_mktemp_in_dir "$GROQBASH_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
+    [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return 1; }
+
+    # Subshell isolata
+    (
+      set -e
+
+      # Sourcing isolato
+      . "$PROVIDER_MODULE_PATH"
+
+      # Funzioni richieste
+      req1="buildpayload_${provider}"
+      req2="call_api_${provider}"
+
+      # Funzioni opzionali
+      opt1="call_api_streaming_${provider}"
+      opt2="refresh_models_${provider}"
+      opt3="validate_model_${provider}"
+      opt4="auto_select_model_${provider}"
+
+      # Controllo funzioni richieste
+      for f in "$req1" "$req2"; do
+        if ! type "$f" >/dev/null 2>&1; then
+          printf 'ERROR: provider %s missing required function: %s\n' "$provider" "$f" >&2
+          exit 99
+        fi
+      done
+
+      # Dump funzioni richieste
+      declare -f "$req1" >> "$dump_file"
+      declare -f "$req2" >> "$dump_file"
+
+      # Dump funzioni opzionali se presenti
+      for f in "$opt1" "$opt2" "$opt3" "$opt4"; do
+        if type "$f" >/dev/null 2>&1; then
+          declare -f "$f" >> "$dump_file"
+        fi
+      done
+    )
+    rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+      log_error "PROVIDER" "provider module failed isolation load (rc=$rc)"
+      rm -f "$dump_file" 2>/dev/null || true
+      return 1
+    fi
+
+    # Import sicuro nel main shell
+    . "$dump_file"
     PROVIDER_MODULE_LOADED=1
+    rm -f "$dump_file" 2>/dev/null || true
 
-    invalid_provider=0
-    for _req in "buildpayload_${provider}" "call_api_${provider}"; do
-      type "$_req" >/dev/null 2>&1 || invalid_provider=1
-    done
-
+    # Verifica firma post-load
     aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
     [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return 1; }
 
-    if [ "$invalid_provider" -eq 1 ]; then
-      log_warn "PROVIDER" "provider module incomplete; falling back to embedded provider."
-      PROVIDER_MODULE_LOADED=0
-    fi
   else
     log_warn "PROVIDER" "provider module invalid; falling back to embedded provider."
     PROVIDER_MODULE_LOADED=0
