@@ -12,7 +12,7 @@
 **Invarianti globali**
 - Directory canoniche esistono e hanno permessi **700**; file sensibili **600**.
 - Nessun tmp principale creato direttamente in `/tmp` di sistema; RUN_TMPDIR è sotto GROQBASH_TMPDIR.
-- Nessuna esecuzione di contenuti provenienti da API; nessun uso di `eval`.
+- Nessuna esecuzione di contenuti provenienti da API; nessun uso di `eval` in nessuna fase del parsing CLI o del runtime.
 - Locking esplicito per tutte le operazioni concorrenti critiche; timeout configurabili.
 - Provider caricati solo dopo validazione di owner, permessi, non‑symlink e firma invariata dopo sourcing.
 
