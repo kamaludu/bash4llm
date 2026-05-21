@@ -1443,8 +1443,8 @@ save_to_history() {
   fi
   return 0
 }
-#--2<---[ /SECTION: PRECORE_RUN_HISTORY ]--->2--
-#--3<---[ SECTION: PRECORE_RUN_MANIFEST ]--->3--
+#--1<---[ /SECTION: PRECORE_RUN_HISTORY ]--->1--
+#--2<---[ SECTION: PRECORE_RUN_MANIFEST ]--->2--
 # ---------------------------------------------------------------------------
 # Manifest multimodale helpers (atomic, jq --arg usage)
 # - manifest_create <manifest_path> [timeout]
@@ -1546,8 +1546,8 @@ manifest_read() {
   fi
   return 1
 }
-#--3<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->3--
-#--4<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->4--
+#--2<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->2--
+#--3<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
 # Utility helpers
 _get_perm_string() {
   local path="$1" perm=""
@@ -1703,9 +1703,8 @@ _tmpf() {
     return "$GROQBASHERRTMP"
   fi
 }
-#--4<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->4--
-
-#--5<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->5--
+#--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
+#--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
 # Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
 # - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ
@@ -2074,8 +2073,8 @@ session_append() {
 
 # Default parameters for session helpers (configurable via env)
 : "${LAST_CHECK_LINES:=50}"
-#--5<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->5--
-#--6<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->6--
+#--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
+#--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
 # Session cache helpers
 # - session_cache_key <sid> <params_string> -> prints key
 # - session_cache_get <sid> <params_string> <out_file> -> returns 0 if cache hit and not expired
@@ -2168,8 +2167,8 @@ session_cache_invalidate() {
   fi
   return 0
 }
-#--6<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->6--
-#--7<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->7--
+#--5<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
+#--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
 # NOTE: Do not assign RUN_TMPDIR/RESP/PAYLOAD/ERRF to empty strings here.
@@ -2243,7 +2242,7 @@ _normalize_bool_env() {
   done
 }
 _normalize_bool_env
-#--7<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->7--
+#--6<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 ########################################
 # SECTION: PRECORE_RUN - END
 ########################################
