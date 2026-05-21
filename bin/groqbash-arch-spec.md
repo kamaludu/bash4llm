@@ -225,7 +225,7 @@ Per le funzioni rilevanti esposte come modulo.
   - Rete: enforce_network_policy centralizza il blocco delle chiamate HTTP quando DRY_RUN o GROQBASH_SKIP_NETWORK sono attivi.  
   - Sicurezza file: directory e file creati con permessi restrittivi 700 per directory e 600 per file.  
   - Nessun uso di /tmp di sistema per file temporanei principali; tutti i tmp sono sotto GROQBASH_TMPDIR.  
-  - Nessuna esecuzione automatica delle risposte API e nessun uso di eval.  
+  - Nessuna esecuzione automatica delle risposte API e nessun uso di eval in nessuna fase del parsing CLI o del runtime.
   - Locking obbligatorio per operazioni atomiche tramite lock_exec con timeout configurabile.  
 
 ---
@@ -735,7 +735,7 @@ Per ogni funzione rilevante: ruolo, input, output, errori.
   - **Rete:** tutte le chiamate HTTP sono delegate ai provider; CORE_SETUP non effettua chiamate dirette; DRY_RUN impedisce rete reale.  
   - **Permessi:** file persistenti creati con permessi restrittivi (600 per file sensibili, 700 per dir extras); atomic_write usato quando disponibile.  
   - **Sicurezza:** non leggere file di configurazione se canonical_config_dir è sospetto; non eseguire codice proveniente da extras (solo sourcing controllato con bash -n e verifica di funzioni richieste).  
-  - **Non‑esecuzione delle risposte:** il sistema non esegue output API come comandi shell; nessun uso di eval.
+  - **Non‑esecuzione delle risposte:** il sistema non esegue output API come comandi shell; nessun uso di eval in nessuna fase del parsing CLI o del runtime.
 
 ---
 
