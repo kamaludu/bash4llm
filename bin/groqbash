@@ -534,7 +534,10 @@ stage_b64() {
   # Atomic move into place under lock if available
   lockfile="${workdir%/}/.groqbash.lock"
   if type lock_exec >/dev/null 2>&1; then
-    lock_exec "$lockfile" 10 -- sh -c 'set -e; mv -f -- "$1" "$2"; chmod 600 "$2" 2>/dev/null || true' _ "$tmp_b64" "$dst" || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+    lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" \
+      || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+    chmod 600 "$dst" 2>/dev/null || true
+ true
   else
     mv -f "$tmp_b64" "$dst" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
   fi
@@ -658,11 +661,9 @@ atomic_write() {
 
   # If lock_exec available, use it to perform the mv under lock; otherwise mv directly
   if type lock_exec >/dev/null 2>&1; then
-    lock_exec "$lockfile" "$timeout" -- sh -c '
-      set -e
-      mv -f -- "$1" "$2"
-      chmod 600 "$2" 2>/dev/null || true
-    ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+    lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" \
+      || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+    chmod 600 "$dest" 2>/dev/null || true
   else
     if mv -f -- "$tmp" "$dest" 2>/dev/null; then
       chmod 600 "$dest" 2>/dev/null || true
@@ -918,11 +919,9 @@ b64_atomic_write() {
     return "$GROQBASHERRTMP"
   fi
   chmod 600 "$tmp" 2>/dev/null || true
-  lock_exec "$lockfile" "$timeout" -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-  ' _ "$tmp" "$dest" || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+  lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" \
+    || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+  chmod 600 "$dest" 2>/dev/null || true
   return 0
 }
 
@@ -1651,9 +1650,9 @@ _tmpf() {
     return "$GROQBASHERRTMP"
   fi
 }
-#--4<---[ /SECTION: PRECORE_UTIL_HELPERS ]--->4--
+#--4<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->4--
 
-#--5<---[ SECTION: PRECORE_SESSION_MVP ]--->5--
+#--5<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->5--
 # Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
 # - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ
@@ -2979,13 +2978,8 @@ refresh_models_groq() {
   fi
 
   lockfile="$MODELS_LOCK"
-  lock_exec "$lockfile" 10 -- sh -c '
-    set -e
-    manifest_b64="$1"
-    dest="$2"
-    base64 ${B64_DECODE_OPT} < "$manifest_b64" > "$dest"
-    chmod 600 "$dest" 2>/dev/null || true
-  ' _ "${MODELS_FILE}.b64" "$MODELS_FILE" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+  lock_exec "$lockfile" 10 -- base64 ${B64_DECODE_OPT} < "${MODELS_FILE}.b64" > "$MODELS_FILE" \
+    || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
 
@@ -3663,6 +3657,7 @@ SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
 MODEL_CLI_SET="${MODEL_CLI_SET:-0}"
 INSTALL_EXTRAS_SRC=""
+BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -3739,6 +3734,10 @@ while [ $# -gt 0 ]; do
       help_file="$GROQBASH_EXTRAS_DIR/docs/help.txt"
       if [ -f "$help_file" ]; then cat "$help_file"; else printf 'Help file not found: %s\n' "$help_file" >&2; fi
       exit 0 ;;
+    --bootstrap-only)
+      BOOTSTRAP_ONLY=1
+      shift
+      ;;
     --) shift; break ;;
     -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$GROQBASHERRTMP" ;;
     *) ARGS+=("$1"); shift ;;
@@ -4479,6 +4478,13 @@ fi
 
 #--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--
 # Main flow: assemble content, select model, and execute request(s)
+
+# If requested, perform only structural bootstrap (PRECORE_BOOT + PRECORE_RUN + provider defs)
+# and exit before any runtime side-effect (config load, model resolution, API, sessions, history).
+if [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
+  exit 0
+fi
+
 load_local_config
 load_whitelist
 
