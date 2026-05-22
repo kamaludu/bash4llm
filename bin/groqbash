@@ -2660,21 +2660,11 @@ call_api_groq() {
           log_info "RESP" "Wrote RESP from resp_tmp: ${RESP}"
         fi
       else
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_warn "RESP" "mv failed; attempting cp to write RESP"
-        fi
-        if cp -f "$resp_tmp" "${RESP}" 2>/dev/null; then
-          chmod 600 "${RESP}" 2>/dev/null || true
-          if [ "${DEBUG:-0}" -eq 1 ]; then
-            log_info "RESP" "Wrote RESP via cp: ${RESP}"
-          fi
-        else
-          log_error "RESP" "failed to write RESP from resp_tmp; writing diagnostic RESP"
-          now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
-          jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
-            '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
-        fi
+        log_error "RESP" "mv failed; writing diagnostic RESP"
+        now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+        jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
+          '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
       fi
     fi
   else
@@ -2886,22 +2876,11 @@ call_api_streaming_groq() {
           log_info "CALL_STREAM" "Wrote RESP from streaming output: ${RESP}"
         fi
       else
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_warn "CALL_STREAM" "mv failed; attempting cp to write RESP"
-        fi
-        if cp -f "$resp_tmp" "${RESP}" 2>/dev/null; then
-          chmod 600 "${RESP}" 2>/dev/null || true
-          if [ "${DEBUG:-0}" -eq 1 ]; then
-            log_info "CALL_STREAM" "Wrote RESP via cp: ${RESP}"
-          fi
-        else
-          log_error "CALL_STREAM" "failed to write RESP from streaming output"
-          # fallback diagnostic write
-          now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
-          jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
-            '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
-        fi
+        log_error "CALL_STREAM" "mv failed; writing diagnostic RESP"
+        now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+        jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
+          '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
       fi
     fi
   else
