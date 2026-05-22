@@ -1487,14 +1487,17 @@ manifest_add_part() {
   destdir="$(dirname "$manifest")"
   tmpstamp="$(date +%s)-$$"
   part_b64="$destdir/parts-$(basename "$file_path").${tmpstamp}.b64"
-  tmp_part="$GROQBASH_TMPDIR/part.tmp.$$"
+  tmp_part="$(_tmpf file "$GROQBASH_TMPDIR" part 2>/dev/null)" || {
+    log_error "TMP" "manifest_add_part: _tmpf failed for GROQBASH_TMPDIR"
+    return 1
+  }
 
-  # write base64 staging atomically into RUN tmp then move into destdir
   if ! b64encode < "$file_path" > "$tmp_part"; then
     rm -f "$tmp_part" 2>/dev/null || true
     log_error "B64FAIL" "manifest_add_part: b64 encode failed"
     return 1
   fi
+
   mv -f "$tmp_part" "$part_b64" 2>/dev/null || { rm -f "$tmp_part" 2>/dev/null || true; log_error "MANIFESTFAIL" "cannot move staged part to $part_b64"; return 1; }
   chmod 600 "$part_b64" 2>/dev/null || true
 
@@ -1789,8 +1792,7 @@ session_read_window() {
   fi
 
   # Create a tmpf inside tmpdir (no /tmp, no /dev/null)
-  tmpf="${tmpdir%/}/session.read.$$.$RANDOM"
-  : > "$tmpf" 2>/dev/null || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create tmpf %s\n' "$tmpf" >&2; fi; return 1; }
+  tmpf="$(_tmpf file "$tmpdir" session.read 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create tmpf\n' >&2; fi; return 1; }
 
   # Extract last N records robustly (records separated by blank line)
   if [ -f "$session_file" ]; then
@@ -1815,7 +1817,7 @@ session_read_window() {
   fi
 
   # Prepare atomic output in same dir as out
-  out_tmp="${out}.tmp.$$"
+  out_tmp="$(_tmpf file "$(dirname "$out")" out.tmp 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create out_tmp\n' >&2; fi; return 1; }
   mkdir -p "$(dirname "$out")" 2>/dev/null || true
   : > "$out_tmp"
   chmod 600 "$out_tmp" 2>/dev/null || true
@@ -1925,8 +1927,8 @@ session_append() {
   chmod 700 "$sess_dir" 2>/dev/null || true
 
   if [ ! -f "$session_file" ]; then
-    tmp_init="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/session.init.$$"
-    : > "$tmp_init" 2>/dev/null || true
+    tmp_init="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.init 2>/dev/null)" || true
+    : > "${tmp_init:-/dev/null}" 2>/dev/null || true
     if ! mv -f "$tmp_init" "$session_file" 2>/dev/null; then
       cp -f "$tmp_init" "$session_file" 2>/dev/null || true
     fi
@@ -1957,7 +1959,7 @@ session_append() {
   fi
 
   # Prepare tmp file for any transient checks (kept minimal)
-  tmpf="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.append.XXXX 2>/dev/null || true)"
+  tmpf="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.append 2>/dev/null)" || true
   : > "${tmpf:-/dev/null}" 2>/dev/null || true
 
   timeout="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
@@ -2070,7 +2072,7 @@ session_append() {
         : # already present
       else
         # append sid
-        tmp_idx="$(mktemp -p "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" uiidx.XXXX 2>/dev/null || true)"
+        tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" uiidx 2>/dev/null)" || true
         if [ -n "$tmp_idx" ]; then
           jq --arg sid "$sid" '.sessions = ((.sessions // []) + [$sid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null && mv -f "${tmp_idx}.new" "$tmp_idx" && ui_state_write "sessions/index.json" "$(cat "$tmp_idx")" || true
           rm -f "$tmp_idx" 2>/dev/null || true
@@ -2164,8 +2166,13 @@ session_cache_set() {
     else
       cat -
     fi
-  } > "${file}.tmp.$$" 2>/dev/null || return 1
-  mv -f "${file}.tmp.$$" "$file" 2>/dev/null || { rm -f "${file}.tmp.$$" 2>/dev/null || true; return 1; }
+  } > "$(_tmpf file "${SESSION_CACHE_DIR%/}" session.cache 2>/dev/null)" || return 1
+
+  mv -f "$(_tmpf file "${SESSION_CACHE_DIR%/}" session.cache 2>/dev/null)" "$file" 2>/dev/null || {
+    rm -f "$(_tmpf file "${SESSION_CACHE_DIR%/}" session.cache 2>/dev/null)" 2>/dev/null || true
+    return 1
+  }
+
   chmod 600 "$file" 2>/dev/null || true
   return 0
 }
@@ -2728,7 +2735,6 @@ call_api_streaming_groq() {
   # Use canonical provider URL resolved earlier by resolve_provider_url.
   # Do not reconstruct provider_url locally; rely on GROQBASH_PROVIDER_URL.
   if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
-    # Best-effort: attempt to populate canonical provider URL now.
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   fi
   provider_url="${GROQBASH_PROVIDER_URL:-}"
@@ -2747,13 +2753,12 @@ call_api_streaming_groq() {
   : > "$ERRF" 2>/dev/null || true
   rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" 2>/dev/null || true
 
-  # Diagnostic: log streaming call only when DEBUG=1
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CALL_STREAM" "Invoking streaming curl to $provider_url (payload: $tmp_payload)"
   fi
 
-  # Prepare decoded payload if payload is base64 staged
-  decoded_payload="${RUN_TMPDIR%/}/payload.dec.$$"
+  decoded_payload="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || true
+
   if printf '%s' "${tmp_payload}" | grep -qE '\.b64$'; then
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$ERRF"; then
       log_error "B64DECODE" "base64 decode failed for payload; see $ERRF"
@@ -2765,29 +2770,24 @@ call_api_streaming_groq() {
     send_payload="$tmp_payload"
   fi
 
-  # Build curl command (use http1.1 to avoid some server buffering issues)
   if command -v stdbuf >/dev/null 2>&1; then
     CURL_CMD=(stdbuf -oL curl --http1.1 -sS -N)
   else
     CURL_CMD=(curl --http1.1 -sS -N)
   fi
 
-  # Stream: capture raw stream to file and process lines for "data: " JSON chunks
   "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY:-${GROQBASH_API_KEY:-}}" -H "Content-Type: application/json" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | tee -a "$resp_raw" | \
   while IFS= read -r line; do
-    # Normalize and emit content to stdout for interactive consumption
     case "$line" in
       'data: [DONE]'|'data:[DONE]') break ;;
       data:\ * )
         json="${line#data: }"
-        # Try to parse JSON and extract incremental content safely
         content="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true)"
         if [ -n "$content" ]; then
           printf '%s' "$content"
         fi
         ;;
       *)
-        # Some streams may emit raw JSON lines without "data: " prefix
         if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
           content="$(printf '%s' "$line" | jq -r '(.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$ERRF" || true)"
           if [ -n "$content" ]; then
@@ -2798,13 +2798,10 @@ call_api_streaming_groq() {
     esac
   done
 
-  # Capture curl exit code from pipeline
   rc=${PIPESTATUS[0]:-0}
 
-  # Cleanup decoded payload if used
   rm -f "$decoded_payload" 2>/dev/null || true
 
-  # Diagnostics: sizes and stderr head (only printed when DEBUG=1)
   local resp_size errf_size
   resp_size=0; [ -f "$resp_raw" ] && resp_size=$(wc -c < "$resp_raw" 2>/dev/null || echo 0)
   errf_size=0; [ -f "$ERRF" ] && errf_size=$(wc -c < "$ERRF" 2>/dev/null || echo 0)
@@ -2820,12 +2817,10 @@ call_api_streaming_groq() {
     fi
   fi
 
-  # Extract lines starting with "data:" into resp.lines
   if [ -s "$resp_raw" ]; then
     grep -E '^data:' "$resp_raw" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$resp_lines" 2>/dev/null || true
   fi
 
-  # Validate JSON lines and collect valid ones
   : > "$resp_valid" 2>/dev/null || true
   if [ -f "$resp_lines" ] && [ -s "$resp_lines" ]; then
     while IFS= read -r _line; do
@@ -2835,35 +2830,28 @@ call_api_streaming_groq() {
     done < "$resp_lines"
   fi
 
-  # If we have valid JSONs, assemble into chunks array
   if [ -s "$resp_valid" ]; then
     jq -s '.' "$resp_valid" > "$resp_chunks" 2>/dev/null || true
-    # produce a concatenated text file for convenience
     jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$resp_chunks" > "${RUN_TMPDIR%/}/resp.text.txt" 2>/dev/null || true
-    # write final JSON: prefer last object as final response
     if jq -e 'type=="array"' "$resp_chunks" >/dev/null 2>&1; then
       jq -c '.[-1]' "$resp_chunks" > "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
     else
       cp -f "$resp_chunks" "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
     fi
   else
-    # If no data: lines but resp_raw itself is valid JSON, copy it
     if jq -e . "$resp_raw" >/dev/null 2>&1; then
       cp -f "$resp_raw" "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
     fi
   fi
 
-  # Finalize RESP: move resp.json -> RESP if present, else write diagnostic
   resp_tmp="${RUN_TMPDIR%/}/resp.json"
 
-  # Defensive RESP fallback and directory creation
   if [ -z "${RESP:-}" ]; then
     RESP="${RUN_TMPDIR%/}/resp.json"
   fi
   mkdir -p "$(dirname "$RESP")" 2>/dev/null || true
 
   if [ -s "$resp_tmp" ]; then
-    # If resp_tmp and RESP are identical paths, skip mv/cp (nothing to do)
     if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
       chmod 600 "${RESP}" 2>/dev/null || true
       if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2884,7 +2872,6 @@ call_api_streaming_groq() {
       fi
     fi
   else
-    # No final JSON extracted: write diagnostic RESP (only in this case)
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_warn "CALL_STREAM" "No JSON chunks extracted from stream; writing diagnostic RESP"
     fi
@@ -2894,7 +2881,6 @@ call_api_streaming_groq() {
       '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
   fi
 
-  # Write last API metadata to ui_state (best-effort)
   if ensure_run_tmpdir >/dev/null 2>&1; then
     http_code=200
     finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "${RESP}" 2>/dev/null || echo "")"
@@ -2935,24 +2921,18 @@ refresh_models_groq() {
   tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX)" || return "$GROQBASHERRTMP"
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
-  # Derive models API URL from the canonical provider URL (GROQBASH_PROVIDER_URL).
-  # Do not introduce new env var semantics; attempt to resolve provider URL if needed.
+
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
-    # Extract origin (scheme + host[:port]) and append canonical models path.
     origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
     api_url="${origin%/}/openai/v1/models"
   else
-    # Fallback to embedded groq models endpoint only if provider is groq (preserve prior behavior).
     if [ "${PROVIDER:-}" = "groq" ]; then
-      # Do not introduce new env var semantics; attempt to resolve provider URL if needed.
       resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
       if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
-        # Extract origin (scheme + host[:port]) and append canonical models path.
         origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
         api_url="${origin%/}/openai/v1/models"
       else
-        # No canonical provider URL available: fail (do not use hardcoded endpoint).
         log_error "MODELREFRESH" "no provider URL available to refresh models"
         rm -rf "$tmpd"
         return "$GROQBASHERRAPI"
@@ -2986,7 +2966,6 @@ refresh_models_groq() {
   tmp_parsed="$tmpd/parsed_models.txt"
   : > "$tmp_parsed"
 
-  # Extract candidate names: prefer .data[].name, then .data[].id, then top-level array .[].name/.id
   jq -r '
     if (has("data") and (.data|type) == "array") then
       .data[]? | (.name // .id // empty)
@@ -3006,13 +2985,11 @@ refresh_models_groq() {
     return "$GROQBASHERRAPI"
   fi
 
-  # Normalize entries: strip common prefixes like "models/" and "groq:"; validate allowed chars
   tmp_trim="$tmpd/parsed_trimmed.txt"
   awk '{
     g=$0
     sub(/^models\//,"",g)
     sub(/^groq[:\/-]*/,"",g)
-    # keep only plausible model names (alnum and common separators)
     if (g ~ /^[[:alnum:]._\/:-]+$/) print g
   }' "$tmp_parsed" | awk -v M="$MAX_MODELS" 'NR<=M{print}' > "$tmp_trim" || true
 
@@ -3022,10 +2999,10 @@ refresh_models_groq() {
     return "$GROQBASHERRAPI"
   fi
 
-  # Ensure destination dir exists and write atomically via base64 staging
   mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
-  tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" 2>/dev/null || true)"
-  [ -n "$tmpout" ] || tmpout="$MODELS_FILE.tmp"
+  tmpout="$(_mktemp_in_dir "$(dirname "$MODELS_FILE")" 2>/dev/null)" || true
+  [ -n "$tmpout" ] || tmpout="$(_tmpf file "$(dirname "$MODELS_FILE")" models 2>/dev/null)"
+
   cat "$tmp_trim" > "$tmpout"
 
   if ! b64_atomic_write "${MODELS_FILE}.b64" 10 < "$tmpout"; then
@@ -3041,7 +3018,6 @@ refresh_models_groq() {
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
 
-  # Informational only when DEBUG=1
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
   fi
