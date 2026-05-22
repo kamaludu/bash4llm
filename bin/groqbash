@@ -475,36 +475,38 @@ DEBUG="${DEBUG:-0}"
 # stage_b64: read stdin, write atomic base64 staging file under RUN_TMPDIR or destdir
 # Usage: stage_b64 <dest_b64_path> <max_bytes>
 stage_b64() {
-  # Dual-mode stage_b64:
-  # - If called with two args: stage_b64 /path/to/src /path/to/dst.b64
-  # - If called with one arg: stage_b64 /path/to/dst.b64  (reads stdin)
-  local src dst max_bytes tmp_local tmp_b64 workdir size b64_opts
+  local src dst max_bytes tmp_local tmp_b64 workdir size tmp_local_is_temp=0 lockfile
+
   if [ "$#" -eq 2 ]; then
     src="$1"; dst="$2"
   elif [ "$#" -eq 1 ]; then
-    dst="$1"
-    src=""
+    dst="$1"; src=""
   else
     log_error "STAGE" "stage_b64 usage: stage_b64 [src] dst"
     return 1
   fi
 
-  max_bytes="${MAX_STAGE_BYTES:-10485760}" # default 10MB
+  max_bytes="${MAX_STAGE_BYTES:-10485760}"
   [ -n "$dst" ] || return 1
-  workdir="$(dirname "$dst")"
-  mkdir -p "$workdir" 2>/dev/null || { log_error "STAGE" "cannot create workdir $workdir"; return 1; }
 
-  # If src provided, validate it; else read stdin into tmp_local
+  workdir="$(dirname "$dst")"
+  mkdir -p "$workdir" 2>/dev/null || {
+    log_error "STAGE" "cannot create workdir $workdir"
+    return 1
+  }
+
+  # Acquire tmp_local
   if [ -n "$src" ]; then
     if [ ! -f "$src" ] || [ ! -s "$src" ]; then
       log_error "STAGE" "stage_b64: source payload missing or empty: $src"
       return 1
     fi
     tmp_local="$src"
-    tmp_local_is_temp=0
   else
-    tmp_local="$(mktemp "${RUN_TMPDIR%/}/payload.tmp.XXXXXX" 2>/dev/null || true)"
-    [ -n "$tmp_local" ] || tmp_local="${RUN_TMPDIR%/}/payload.tmp.$$"
+    tmp_local="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" payload.tmp 2>/dev/null)" || {
+      log_error "STAGE" "failed to allocate tmp_local"
+      return 1
+    }
     if ! cat - > "$tmp_local" 2>/dev/null; then
       rm -f -- "$tmp_local" 2>/dev/null || true
       log_error "STAGE" "failed to write staging payload from stdin"
@@ -521,28 +523,43 @@ stage_b64() {
     return 1
   fi
 
-  # Create base64 staging file atomically in workdir
-  tmp_b64="$(mktemp "${workdir%/}/.groq-b64.XXXXXX" 2>/dev/null || true)"
-  [ -n "$tmp_b64" ] || tmp_b64="${workdir%/}/.groq-b64.$$.$RANDOM"
+  # Create tmp_b64 inside GROQBASH_TMPDIR (safe), then move into workdir atomically
+  tmp_b64="$(_tmpf file "$GROQBASH_TMPDIR" .groq-b64 2>/dev/null)" || {
+    [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
+    log_error "STAGE" "failed to allocate tmp_b64"
+    return 1
+  }
+
   if [ -n "${B64_WRAP_OPT:-}" ]; then
-    base64 ${B64_WRAP_OPT} "$tmp_local" > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+    base64 ${B64_WRAP_OPT} "$tmp_local" > "$tmp_b64" 2>/dev/null || {
+      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
+      return 1
+    }
   else
-    base64 "$tmp_local" > "$tmp_b64" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+    base64 "$tmp_local" > "$tmp_b64" 2>/dev/null || {
+      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
+      return 1
+    }
   fi
   chmod 600 "$tmp_b64" 2>/dev/null || true
 
-  # Atomic move into place under lock if available
+  # Atomic move into final dst
   lockfile="${workdir%/}/.groqbash.lock"
   if type lock_exec >/dev/null 2>&1; then
-    lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" \
-      || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
-    chmod 600 "$dst" 2>/dev/null || true
- true
+    lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" || {
+      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
+      return 1
+    }
   else
-    mv -f "$tmp_b64" "$dst" 2>/dev/null || { rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true; return 1; }
+    mv -f "$tmp_b64" "$dst" 2>/dev/null || {
+      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
+      return 1
+    }
   fi
+  chmod 600 "$dst" 2>/dev/null || true
 
   [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
+
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "STAGE" "staged base64 payload: $dst (size $(wc -c < "$dst" 2>/dev/null)B)"
   fi
@@ -741,88 +758,72 @@ extract_text_from_resp() {
 }
 
 # Ensure and create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
-# Robust fallback chain: reuse RUN_TMPDIR if valid -> mktemp -> make_tmpdir -> timestamped dir.
-# Enforces strict perms and avoids /tmp usage. Removes empty groq.b64 staging files safely.
+# Now uses _tmpf (dir) as the single source of truth. No predictable fallbacks, no /tmp.
 DEBUG_PRESERVE="${DEBUG_PRESERVE:-0}"
 
 ensure_run_tmpdir() {
-  # Usage:
-  #   ensure_run_tmpdir            -> create/export RUN_TMPDIR PAYLOAD RESP ERRF in-process
-  #   ensure_run_tmpdir --print    -> print RUN_TMPDIR to stdout (no trap, safe for subshell capture)
   local print_only=0 subshell=0 tmpdir
   if [ "${1:-}" = "--print" ]; then print_only=1; fi
 
-  # Detect subshell: prefer comparing BASHPID to $$ (reliable in bash)
-  # If BASHPID differs from $$ we are in a subshell; treat as subshell context.
+  # Detect subshell
   if [ -n "${BASHPID:-}" ] && [ "${BASHPID:-}" != "$$" ]; then
     subshell=1
   fi
 
-  # If RUN_TMPDIR already set and valid, reuse it (do not clobber existing values)
+  # Reuse existing RUN_TMPDIR if valid and inside GROQBASH_TMPDIR
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    # P0: ensure existing RUN_TMPDIR stays inside GROQBASH_TMPDIR perimeter
-    if [ -n "${GROQBASH_TMPDIR:-}" ]; then
-      case "$RUN_TMPDIR" in
-        "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
-          : # ok
-          ;;
-        *)
-          log_warn "TMP" "existing RUN_TMPDIR outside GROQBASH_TMPDIR; discarding: $RUN_TMPDIR"
-          RUN_TMPDIR=""
-          # fall through to fresh creation below
-          ;;
-      esac
-    fi
+    case "$RUN_TMPDIR" in
+      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+        chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
+        : "${PAYLOAD:=$RUN_TMPDIR/payload}"
+        : "${RESP:=$RUN_TMPDIR/resp.json}"
+        : "${ERRF:=$RUN_TMPDIR/err.log}"
+        if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
+          : > "$RESP" 2>/dev/null || true
+          chmod 600 "$RESP" 2>/dev/null || true
+          : > "$ERRF" 2>/dev/null || true
+          chmod 600 "$ERRF" 2>/dev/null || true
+          export RUN_TMPDIR PAYLOAD RESP ERRF
+        fi
+        [ "$print_only" -eq 1 ] && printf '%s' "$RUN_TMPDIR"
+        return 0
+        ;;
+      *)
+        log_warn "TMP" "existing RUN_TMPDIR outside GROQBASH_TMPDIR; discarding: $RUN_TMPDIR"
+        RUN_TMPDIR=""
+        ;;
+    esac
   fi
 
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
-    : "${PAYLOAD:=$RUN_TMPDIR/payload}"
-    : "${RESP:=$RUN_TMPDIR/resp.json}"
-    : "${ERRF:=$RUN_TMPDIR/err.log}"
-    if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
-      : > "$RESP" 2>/dev/null || true
-      chmod 600 "$RESP" 2>/dev/null || true
-      : > "$ERRF" 2>/dev/null || true
-      chmod 600 "$ERRF" 2>/dev/null || true
-      export RUN_TMPDIR PAYLOAD RESP ERRF
-    fi
-    if [ "$print_only" -eq 1 ]; then
-      printf '%s' "$RUN_TMPDIR"
-    fi
-    return 0
-  fi
-
-  # Ensure base tmpdir exists and has strict perms
+  # Validate GROQBASH_TMPDIR
   if [ -z "${GROQBASH_TMPDIR:-}" ]; then
     log_error "TMP" "GROQBASH_TMPDIR not set"
     return "$GROQBASHERRTMP"
   fi
-  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || { log_error "TMP" "cannot create base tmpdir $GROQBASH_TMPDIR"; return 1; }
+  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || {
+    log_error "TMP" "cannot create base tmpdir $GROQBASH_TMPDIR"
+    return "$GROQBASHERRTMP"
+  }
   chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
-
-  # Try mktemp under GROQBASH_TMPDIR, fallback to make_tmpdir, then timestamped dir
-  tmpdir="$(mktemp -d "${GROQBASH_TMPDIR%/}/run.XXXXXX" 2>/dev/null || true)"
-  if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
-    tmpdir="$(make_tmpdir 2>/dev/null || true)"
-  fi
-  if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
-    tmpdir="${GROQBASH_TMPDIR%/}/run-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-    mkdir -p "$tmpdir" 2>/dev/null || { log_error "TMP" "cannot create fallback RUN_TMPDIR $tmpdir"; return 1; }
+  if [ -L "$GROQBASH_TMPDIR" ]; then
+    log_error "TMP" "GROQBASH_TMPDIR is a symlink: $GROQBASH_TMPDIR"
+    return "$GROQBASHERRTMP"
   fi
 
-  # Enforce strict perms
-  chmod 700 "$tmpdir" 2>/dev/null || true
+  # Create RUN_TMPDIR exclusively via _tmpf (dir)
+  tmpdir="$(_tmpf dir "$GROQBASH_TMPDIR" run 2>/dev/null)" || {
+    log_error "TMP" "ensure_run_tmpdir: _tmpf failed to create run tmpdir"
+    return "$GROQBASHERRTMP"
+  }
 
-  # Assign into RUN_TMPDIR local then export if requested
   RUN_TMPDIR="$tmpdir"
 
-  # Provider-agnostic payload path (set only if unset)
+  # Provider-agnostic payload paths
   : "${PAYLOAD:=$RUN_TMPDIR/payload}"
   : "${RESP:=$RUN_TMPDIR/resp.json}"
   : "${ERRF:=$RUN_TMPDIR/err.log}"
 
-  # Create RESP/ERRF files only in main process and when not print-only
+  # Create RESP/ERRF only in main process
   if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
     : > "$RESP" 2>/dev/null || true
     chmod 600 "$RESP" 2>/dev/null || true
@@ -830,55 +831,34 @@ ensure_run_tmpdir() {
     chmod 600 "$ERRF" 2>/dev/null || true
   fi
 
-  # Remove any empty groq.b64 staging files inside GROQBASH_TMPDIR to avoid confusing later logic
-  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
-    for f in "${GROQBASH_TMPDIR%/}/"*.b64 "${RUN_TMPDIR%/}/"*.b64; do
-      [ -e "$f" ] || continue
-      if [ ! -s "$f" ]; then
-        rm -f -- "$f" 2>/dev/null || true
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "TMP" "Removed empty staging file: $f"
-        fi
-      fi
-    done
-  fi
-
-  # Define cleanup function but install trap only when running in main process
+  # Cleanup function
   cleanup_run_tmp_on_exit() {
     if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
-      if [ "${DEBUG:-0}" -eq 1 ]; then
-        log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
-      fi
+      [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
       return 0
     fi
     if [ -n "${RUN_TMPDIR:-}" ]; then
       case "$RUN_TMPDIR" in
         "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
           rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
-          if [ "${DEBUG:-0}" -eq 1 ]; then
-            log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
-          fi
+          [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
           ;;
         *)
-          if [ "${DEBUG:-0}" -eq 1 ]; then
-            log_info "TMP" "RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR"
-          fi
+          [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR"
           ;;
       esac
     fi
   }
 
-  # Install trap only if we are in the main shell and not in print-only mode
+  # Install trap only in main process
   if [ "$subshell" -eq 0 ] && [ "$print_only" -eq 0 ]; then
     trap cleanup_run_tmp_on_exit EXIT INT TERM
   fi
 
-  # Export variables in main process (if not print-only)
+  # Export variables
   if [ "$print_only" -eq 0 ]; then
     export RUN_TMPDIR PAYLOAD RESP ERRF
-    if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
-    fi
+    [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
   else
     printf '%s' "$RUN_TMPDIR"
   fi
@@ -905,22 +885,42 @@ b64_atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
   shift 2 || true
-  [ -n "$dest" ] || { log_error "B64FAIL" "b64_atomic_write: dest required"; return "$GROQBASHERRTMP"; }
+
+  [ -n "$dest" ] || {
+    log_error "B64FAIL" "b64_atomic_write: dest required"
+    return "$GROQBASHERRTMP"
+  }
+
   local destdir tmp lockfile
   destdir="$(dirname -- "$dest")"
-  mkdir -p "$destdir" 2>/dev/null || { log_error "B64FAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
-  # Use a lock specific to the destination directory to avoid global contention
+
+  mkdir -p "$destdir" 2>/dev/null || {
+    log_error "B64FAIL" "cannot create dir $destdir"
+    return "$GROQBASHERRTMP"
+  }
+
   lockfile="${destdir%/}/.groqbash.lock"
-  tmp="$(mktemp -p "$destdir" .groq-b64.XXXXXX 2>/dev/null || true)"
-  [ -n "$tmp" ] || tmp="$destdir/.groq-b64.$$.$RANDOM"
+
+  # Allocate tmp inside GROQBASH_TMPDIR (safe), not inside destdir
+  tmp="$(_tmpf file "$GROQBASH_TMPDIR" .groq-b64 2>/dev/null)" || {
+    log_error "B64FAIL" "failed to allocate tmp for b64_atomic_write"
+    return "$GROQBASHERRTMP"
+  }
+
   if ! b64encode > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "B64FAIL" "base64 encoding failed"
     return "$GROQBASHERRTMP"
   fi
   chmod 600 "$tmp" 2>/dev/null || true
-  lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" \
-    || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
+
+  # Atomic move into final destination
+  lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" || {
+    rc=$?
+    rm -f -- "$tmp" 2>/dev/null || true
+    return "$rc"
+  }
+
   chmod 600 "$dest" 2>/dev/null || true
   return 0
 }
@@ -1322,125 +1322,125 @@ rotate_history() {
   local max_bytes="${GROQBASH_HISTORY_MAX_BYTES:-104857600}"
   local keep_days="${GROQBASH_HISTORY_KEEP_DAYS:-90}"
 
-  lock_exec "${HISTORY_LOCK}" "$timeout" -- sh -c '
-    set -e
-    dir="$1"
-    max_files="$2"
-    max_bytes="$3"
-    keep_days="$4"
+  # ------------------------------
+  # 1. Rimozione file troppo vecchi
+  # ------------------------------
+  mapfile -t old_files < <(find "$dir" -type f -mtime +"$keep_days" 2>/dev/null)
+  if [ "${#old_files[@]}" -gt 0 ]; then
+    for f in "${old_files[@]}"; do
+      lock_exec "$HISTORY_LOCK" "$timeout" -- sh -c 'rm -f -- "$1"' _ "$f"
+    done
+  fi
 
-    # Remove files older than keep_days first
-    find "$dir" -type f -mtime +"$keep_days" -print0 | xargs -0 -r rm -f --
+  # ------------------------------
+  # 2. Rimozione per soglia byte
+  # ------------------------------
+  while :; do
+    mapfile -t entries < <(
+      find "$dir" -type f -printf "%T@|%s|%p\n" 2>/dev/null | sort -n
+    )
 
-    # Compute total bytes and remove oldest until under threshold
-    while :; do
-      total=0
-      # Build list of files with mtime and size
-      files_list="$(mktemp -p "$(dirname "$dir")" groq-rot.XXXX 2>/dev/null || true)"
-      if [ -z "$files_list" ]; then
-        # P0: avoid /tmp; prefer RUN_TMPDIR, then GROQBASH_TMPDIR, then dir itself
-        if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-          files_list="${RUN_TMPDIR%/}/groq-rot.$$"
-        elif [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
-          files_list="${GROQBASH_TMPDIR%/}/groq-rot.$$"
-        else
-          files_list="${dir%/}/groq-rot.$$"
-        fi
-      fi
-      : > "$files_list"
-      find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d "" f; do
-        if [ -f "$f" ]; then
-          # portable size
-          case "$(uname 2>/dev/null || echo Linux)" in
-            Darwin) size="$(stat -f %z "$f" 2>/dev/null || echo 0)" ;;
-            *) size="$(stat -c %s "$f" 2>/dev/null || echo 0)" ;;
-          esac
-          mtime=0
-          case "$(uname 2>/dev/null || echo Linux)" in
-            Darwin) mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)" ;;
-            *) mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)" ;;
-          esac
-          printf "%s|%s|%s\n" "$mtime" "$size" "$f" >> "$files_list"
-        fi
-      done
+    local total=0
+    local line mtime size path
 
-      # Sum sizes
-      if [ -s "$files_list" ]; then
-        while IFS='|' read -r mtime size path; do
-          total=$((total + (size + 0)))
-        done < "$files_list"
-      fi
-
-      # If under limit, break
-      if [ "$total" -le "$max_bytes" ]; then
-        rm -f "$files_list" 2>/dev/null || true
-        break
-      fi
-
-      # Remove oldest file
-      oldest="$(sort -n "$files_list" | head -n1 | awk -F"|" '\''{print $3}'\'')"
-      if [ -z "$oldest" ]; then
-        rm -f "$files_list" 2>/dev/null || true
-        break
-      fi
-      rm -f -- "$oldest" 2>/dev/null || true
-      rm -f "$files_list" 2>/dev/null || true
+    for line in "${entries[@]}"; do
+      IFS='|' read -r mtime size path <<< "$line"
+      total=$((total + size))
     done
 
-    # Enforce max files count
-    while :; do
-      count=$(find "$dir" -type f 2>/dev/null | wc -l | tr -d " ")
-      if [ "$count" -le "$max_files" ]; then break; fi
-      # find oldest and remove
-      oldest="$(find "$dir" -type f -printf "%T@ %p\n" 2>/dev/null | sort -n | head -n1 | awk '\''{print $2}'\'')"
-      [ -z "$oldest" ] && break
-      rm -f -- "$oldest" 2>/dev/null || true
-    done
-  ' _ "$dir" "$max_files" "$max_bytes" "$keep_days"
-  return $?
+    [ "$total" -le "$max_bytes" ] && break
+
+    # file più vecchio
+    IFS='|' read -r _ _ oldest <<< "${entries[0]}"
+
+    lock_exec "$HISTORY_LOCK" "$timeout" -- sh -c 'rm -f -- "$1"' _ "$oldest"
+  done
+
+  # ------------------------------
+  # 3. Rimozione per numero massimo file
+  # ------------------------------
+  while :; do
+    mapfile -t entries < <(
+      find "$dir" -type f -printf "%T@ %p\n" 2>/dev/null | sort -n
+    )
+
+    local count="${#entries[@]}"
+    [ "$count" -le "$max_files" ] && break
+
+    oldest="$(echo "${entries[0]}" | awk '{print $2}')"
+
+    lock_exec "$HISTORY_LOCK" "$timeout" -- sh -c 'rm -f -- "$1"' _ "$oldest"
+  done
+
+  return 0
 }
 
 save_to_history() {
   local content="$1"
   local filename
   filename="$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
+
   mkdir -p "$GROQBASH_HISTORY_DIR" 2>/dev/null || true
+
   local tmpf dest lockfile
-  # Create tmp file in history dir to ensure same-filesystem atomic mv
-  tmpf="$(mktemp -p "$GROQBASH_HISTORY_DIR" groq-out.XXXX 2>/dev/null || true)"
-  [ -n "$tmpf" ] || tmpf="$GROQBASH_HISTORY_DIR/.groq-out.$$.$RANDOM"
-  if ! : > "$tmpf" 2>/dev/null; then
-    log_error "HISTORYFAIL" "save_to_history: cannot create tmp file in $GROQBASH_HISTORY_DIR"
+  tmpf="$(_tmpf file "$GROQBASH_HISTORY_DIR" groq-out 2>/dev/null)"
+  if [ -z "$tmpf" ]; then
+    log_error "HISTORYFAIL" "save_to_history: cannot allocate tmp file in $GROQBASH_HISTORY_DIR"
     return "$GROQBASHERRTMP"
   fi
-  printf '%s\n' "$content" > "$tmpf"
+
+  if ! printf '%s\n' "$content" > "$tmpf" 2>/dev/null; then
+    rm -f -- "$tmpf" 2>/dev/null || true
+    log_error "HISTORYFAIL" "save_to_history: cannot write tmp file $tmpf"
+    return "$GROQBASHERRTMP"
+  fi
+
   dest="$GROQBASH_HISTORY_DIR/$filename"
   lockfile="$HISTORY_LOCK"
-  lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_HISTORY" -- sh -c '
-    set -e
-    mv -f -- "$1" "$2"
-    chmod 600 "$2" 2>/dev/null || true
-    
-    # --- Write last_history metadata to ui_state ---
-    if [ -f "$dest" ]; then
-      size_bytes="$(file_size "$dest" 2>/dev/null || echo 0)"
-      ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      basename="$(basename "$dest")"
-      history_json="$(jq -c -n --arg path "$dest" --arg base "$basename" --arg ts "$ts" --argjson size "$size_bytes" '{saved:true, path:$path, basename:$base, ts:$ts, size_bytes:$size}')"
-      ui_state_write "last_history.json" "$history_json" || log_warn "UI_STATE" "failed to write last_history.json"
-    else
-      ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      history_json="$(jq -c -n --arg ts "$ts" '{saved:false, ts:$ts}')"
-      ui_state_write "last_history.json" "$history_json" || true
-    fi
 
-  ' _ "$tmpf" "$dest" || { rc=$?; rm -f -- "$tmpf" 2>/dev/null || true; return "$rc"; }
+  # --- atomic move only ---
+  if ! lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_HISTORY" -- sh -c '
+      set -e
+      mv -f -- "$1" "$2"
+      chmod 600 "$2" 2>/dev/null || true
+    ' _ "$tmpf" "$dest"
+  then
+    rc=$?
+    rm -f -- "$tmpf" 2>/dev/null || true
+    return "$rc"
+  fi
+
+  # --- metadata update in main shell (functions available) ---
+  if [ -f "$dest" ]; then
+    local size_bytes ts base history_json
+    size_bytes="$(file_size "$dest" 2>/dev/null || echo 0)"
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    base="$(basename "$dest")"
+
+    history_json="$(jq -c -n \
+      --arg path "$dest" \
+      --arg base "$base" \
+      --arg ts "$ts" \
+      --argjson size "$size_bytes" \
+      '{saved:true, path:$path, basename:$base, ts:$ts, size_bytes:$size}')"
+
+    ui_state_write "last_history.json" "$history_json" \
+      || log_warn "UI_STATE" "failed to write last_history.json"
+  else
+    local ts history_json
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    history_json="$(jq -c -n --arg ts "$ts" '{saved:false, ts:$ts}')"
+    ui_state_write "last_history.json" "$history_json" || true
+  fi
+
   if [ "${GROQBASH_ROTATE_HISTORY:-0}" -eq 1 ]; then
     rotate_history "$GROQBASH_LOCK_TIMEOUT_HISTORY" || true
   fi
+
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "HISTORY_SAVE" "$dest"
   fi
+
   return 0
 }
 #--1<---[ /SECTION: PRECORE_RUN_HISTORY ]--->1--
@@ -1626,22 +1626,29 @@ _is_world_writable() {
 }
 
 # Tmpdir creation under TMP_LOCK to avoid races
+# Now delegates entirely to _tmpf (dir), removing all predictable fallbacks.
 make_tmpdir() {
   umask 077
   local tmpd lockfile
   lockfile="$TMP_LOCK"
+
+  # Ensure base tmpdir exists before locking
   mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || return "$GROQBASHERRTMP"
+  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
+
   lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_TMP" -- sh -c '
     set -e
     base="$1"
-    tmpd="$(mktemp -d -p "$base" groq.XXXX 2>/dev/null || true)"
-    if [ -z "$tmpd" ]; then
-      tmpd="$base/groq.$$.$RANDOM"
-      mkdir -p "$tmpd"
-    fi
-    chmod 700 "$tmpd" 2>/dev/null || true
+
+    # Use _tmpf as the single source of truth for secure tmpdir creation
+    tmpd="$(_tmpf dir "$base" groq 2>/dev/null)" || {
+      log_error "TMP" "make_tmpdir: _tmpf failed for base=$base"
+      exit "$GROQBASHERRTMP"
+    }
+
     printf "%s" "$tmpd"
   ' _ "$GROQBASH_TMPDIR"
+
   return $?
 }
 
@@ -1650,32 +1657,44 @@ make_tmpdir() {
 #   _tmpf file <base_dir> <prefix>
 #   _tmpf dir  <base_dir> <prefix>
 # Returns path on stdout or non-zero on failure.
-# Guarantees: uses GROQBASH_TMPDIR as fallback, enforces umask/permissions.
+# Guarantees: uses GROQBASH_TMPDIR as fallback, enforces umask/permissions, no predictable paths.
 _tmpf() {
   local mode="$1" base="$2" prefix="${3:-groq}" tmp
-  if [ -z "$mode" ] || [ -z "$base" ]; then
+
+  if [ -z "$mode" ]; then
     log_error "TMP" "_tmpf usage: _tmpf <file|dir> <base_dir> [prefix]"
     return "$GROQBASHERRTMP"
   fi
 
-  # Prefer provided base, else GROQBASH_TMPDIR
-  if [ -z "$base" ] || [ ! -d "$base" ]; then
-    base="${GROQBASH_TMPDIR:-}"
-  fi
-  if [ -z "$base" ] || [ ! -d "$base" ]; then
-    log_error "TMP" "tmp base directory not available: $base"
+  # Validate GROQBASH_TMPDIR as canonical tmp base
+  if [ -z "${GROQBASH_TMPDIR:-}" ]; then
+    log_error "TMP" "_tmpf: GROQBASH_TMPDIR not set"
     return "$GROQBASHERRTMP"
   fi
+  if [ ! -d "$GROQBASH_TMPDIR" ]; then
+    log_error "TMP" "_tmpf: GROQBASH_TMPDIR does not exist: $GROQBASH_TMPDIR"
+    return "$GROQBASHERRTMP"
+  fi
+  # Reject symlinks for GROQBASH_TMPDIR
+  if [ -L "$GROQBASH_TMPDIR" ]; then
+    log_error "TMP" "_tmpf: GROQBASH_TMPDIR is a symlink: $GROQBASH_TMPDIR"
+    return "$GROQBASHERRTMP"
+  fi
+  # Enforce strict perms (700) on GROQBASH_TMPDIR
+  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
 
-  # Ensure base is inside GROQBASH_TMPDIR for safety
+  # Prefer provided base if it is an existing directory; otherwise fall back to GROQBASH_TMPDIR
+  if [ -z "$base" ] || [ ! -d "$base" ]; then
+    base="$GROQBASH_TMPDIR"
+  fi
+
+  # Ensure base is inside GROQBASH_TMPDIR perimeter
   case "$base" in
     "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
       : # ok
       ;;
     *)
-      if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
-        base="$GROQBASH_TMPDIR"
-      fi
+      base="$GROQBASH_TMPDIR"
       ;;
   esac
 
@@ -1683,8 +1702,8 @@ _tmpf() {
   if [ "$mode" = "file" ]; then
     tmp="$(mktemp -p "$base" "${prefix}.XXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
-      tmp="${base%/}/${prefix}.$$.$RANDOM"
-      : > "$tmp" 2>/dev/null || true
+      log_error "TMP" "_tmpf: mktemp failed for file in $base"
+      return "$GROQBASHERRTMP"
     fi
     chmod 600 "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
@@ -1692,8 +1711,8 @@ _tmpf() {
   elif [ "$mode" = "dir" ]; then
     tmp="$(mktemp -d -p "$base" "${prefix}.XXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
-      tmp="${base%/}/${prefix}.$$.$RANDOM"
-      mkdir -p "$tmp" 2>/dev/null || true
+      log_error "TMP" "_tmpf: mktemp failed for dir in $base"
+      return "$GROQBASHERRTMP"
     fi
     chmod 700 "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
@@ -2488,14 +2507,21 @@ call_api_groq() {
   send_payload="$tmp_payload"
   decoded_payload=""
   if printf '%s' "$tmp_payload" | grep -qE '\.b64$'; then
-    decoded_payload="${RUN_TMPDIR%/}/payload.dec.$$"
-    if ! b64decode < "$tmp_payload" > "$decoded_payload" 2> /dev/null; then
+    decoded_payload="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" payload.dec 2>/dev/null)" || {
+      log_error "B64DECODE" "failed to allocate decoded_payload tmp"
+      now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      jq -c -n --arg ts "$now_ts" --arg note "tmp_alloc_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      return "$GROQBASHERRTMP"
+    }
+
+    if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>/dev/null; then
       log_error "B64DECODE" "base64 decode failed for payload; aborting non-streaming call"
       rm -f "$decoded_payload" 2>/dev/null || true
       now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       jq -c -n --arg ts "$now_ts" --arg note "b64_decode_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
       return "$GROQBASHERRTMP"
     fi
+
     # ensure decoded payload is non-empty
     if [ ! -s "$decoded_payload" ]; then
       log_error "PAYLOAD" "decoded payload is empty; aborting"
@@ -2504,6 +2530,7 @@ call_api_groq() {
       jq -c -n --arg ts "$now_ts" --arg note "empty_decoded_payload" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
       return 1
     fi
+
     send_payload="$decoded_payload"
   fi
 
