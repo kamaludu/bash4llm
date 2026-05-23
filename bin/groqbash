@@ -708,9 +708,14 @@ extract_text_from_resp() {
     return 1
   fi
 
+  # Leggere sempre da copia atomica
+  local tmp_copy
+  tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" resp_copy 2>/dev/null)" || return 1
+  cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return 1
+  resp_file="$tmp_copy"
+
   if ! is_valid_json_file "$resp_file"; then
     log_warn "EXTRACT" "RESP missing or not valid JSON: $resp_file"
-    # If file exists but not JSON, output raw content as fallback
     if [ -f "$resp_file" ]; then
       cat "$resp_file" 2>/dev/null || true
       return 0
@@ -718,25 +723,21 @@ extract_text_from_resp() {
     return 1
   fi
 
-  # If diagnostic JSON, bail with info
   if jq -e 'has("diagnostic") and .diagnostic==true' "$resp_file" >/dev/null 2>&1; then
     log_warn "EXTRACT" "RESP is diagnostic JSON; skipping text extraction"
     return 2
   fi
 
-  # 1) choices[].message.content or choices[].delta.content
   if jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.message?.content // .delta?.content // "") ] | map(select(.!="")) | length > 0 )' "$resp_file" >/dev/null 2>&1; then
     jq -r '[.choices[]? | (.message?.content // .delta?.content // "")] | map(select(.!="")) | join("\n\n")' "$resp_file" 2>/dev/null || return 1
     return 0
   fi
 
-  # 2) choices[].text (older formats)
   if jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.text? // "") ] | map(select(.!="")) | length > 0 )' "$resp_file" >/dev/null 2>&1; then
     jq -r '[.choices[]?.text? // empty] | map(select(.!="")) | join("\n\n")' "$resp_file" 2>/dev/null || return 1
     return 0
   fi
 
-  # 3) output_text or data[].text
   if jq -e '(.output_text? // empty) != "" or (.data and (.data|length>0) and ( [ .data[]? | (.text? // "") ] | map(select(.!="")) | length > 0 ))' "$resp_file" >/dev/null 2>&1; then
     if [ "$(jq -r '.output_text // empty' "$resp_file" 2>/dev/null)" != "" ]; then
       jq -r '.output_text' "$resp_file" 2>/dev/null || return 1
@@ -747,7 +748,6 @@ extract_text_from_resp() {
     fi
   fi
 
-  # 4) fallback: any string scalars concatenated
   if jq -e 'paths(scalars) as $p | getpath($p) | type=="string"' "$resp_file" >/dev/null 2>&1; then
     jq -r '[.. | scalars | select(type=="string")] | join("\n\n")' "$resp_file" 2>/dev/null || return 1
     return 0
@@ -833,10 +833,13 @@ ensure_run_tmpdir() {
 
   # Cleanup function
   cleanup_run_tmp_on_exit() {
+    rc_in=$?   # <-- preserva codice di uscita originale
+
     if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
       [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
-      return 0
+      return "$rc_in"
     fi
+
     if [ -n "${RUN_TMPDIR:-}" ]; then
       case "$RUN_TMPDIR" in
         "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
@@ -848,6 +851,8 @@ ensure_run_tmpdir() {
           ;;
       esac
     fi
+
+    return "$rc_in"   # <-- restituisce SEMPRE il codice originale
   }
 
   # Install trap only in main process
@@ -3173,6 +3178,7 @@ auto_select_model_dispatch() {
 # resolve_model: determina MODEL finale seguendo ordine di priorità e validando
 # Risultato: imposta la variabile globale FINAL_MODEL (stringa) o vuota se non risolta.
 resolve_model() {
+  ALLOWED_MODELS="${ALLOWED_MODELS:-}"
   # Guard: warn if MODEL is present in environment but not provided via -m/--set-default.
   # This helps CI/users who export MODEL expecting it to behave like -m.
   if [ -n "${MODEL:-}" ] && [ "${MODEL_CLI_SET:-0}" -ne 1 ]; then
@@ -3387,24 +3393,27 @@ detect_empty_edge_case() {
   GROQBASH_EDGE_FINISH_REASON=""
   GROQBASH_EDGE_COMPLETION_TOKENS=0
 
+  # FIX P9: leggere sempre da copia atomica
+  local tmp_copy
+  tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" resp_copy 2>/dev/null)" || return 1
+  cp -f "$resp" "$tmp_copy" 2>/dev/null || return 1
+  resp="$tmp_copy"
+
   if [ -z "${resp:-}" ] || [ ! -s "$resp" ]; then
     GROQBASH_EDGE_EMPTY=1
     return 0
   fi
 
-  # If not valid JSON, consider it empty for edge detection
   if ! is_valid_json_file "$resp"; then
     GROQBASH_EDGE_EMPTY=1
     return 0
   fi
 
-  # If diagnostic JSON, mark as empty
   if jq -e 'has("diagnostic") and .diagnostic==true' "$resp" >/dev/null 2>&1; then
     GROQBASH_EDGE_EMPTY=1
     return 0
   fi
 
-  # Extract fields safely
   local content finish_reason completion_tokens req_id
   content="$(jq -r '.choices[0]?.message?.content // .choices[0]?.delta?.content // ""' "$resp" 2>/dev/null || echo "")"
   finish_reason="$(jq -r '.choices[0]?.finish_reason // ""' "$resp" 2>/dev/null || echo "")"
@@ -3415,7 +3424,6 @@ detect_empty_edge_case() {
   GROQBASH_EDGE_FINISH_REASON="${finish_reason:-}"
   GROQBASH_EDGE_COMPLETION_TOKENS="${completion_tokens:-0}"
 
-  # Heuristic: empty content with finish_reason "stop" and very small completion tokens (1) => edge empty
   if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "${completion_tokens:-0}" -le 1 ]; then
     GROQBASH_EDGE_EMPTY=1
   else
@@ -3431,14 +3439,24 @@ detect_empty_edge_case() {
 # ---------------------------------------------------------------------------
 finalize_and_output() {
   local mode="$1" text="$2"
-  if { [ "$mode" = "json" ] || [ "$mode" = "pretty" ]; } && [ ! -s "${RESP:-}" ]; then
+
+  # FIX P9: leggere sempre da copia atomica di RESP
+  local resp_file tmp_copy
+  resp_file="${RESP:-}"
+  if [ -n "$resp_file" ]; then
+    tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" resp_copy 2>/dev/null)" || return "$GROQBASHERRTMP"
+    cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return "$GROQBASHERRTMP"
+    resp_file="$tmp_copy"
+  fi
+
+  if { [ "$mode" = "json" ] || [ "$mode" = "pretty" ]; } && [ ! -s "$resp_file" ]; then
     log_error "RESP" "response file missing or empty: ${RESP:-<unset>}"
     return "$GROQBASHERRTMP"
   fi
 
   case "$mode" in
-    json) cat "$RESP" ;;
-    pretty) if jq -e . "$RESP" >/dev/null 2>&1; then jq . "$RESP"; else cat "$RESP"; fi ;;
+    json) cat "$resp_file" ;;
+    pretty) if jq -e . "$resp_file" >/dev/null 2>&1; then jq . "$resp_file"; else cat "$resp_file"; fi ;;
     raw) printf '%s' "$text" ;;
     text) printf '%s\n' "$text" ;;
     *) printf '%s\n' "$text" ;;
@@ -3457,8 +3475,17 @@ finalize_and_output() {
     fi
     if [ "$do_save" -eq 1 ]; then
       if [ -n "$OUT_PATH" ]; then
-        if [ -d "$OUT_PATH" ]; then dest_dir="$OUT_PATH"; dest_path="$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"; else dest_path="$OUT_PATH"; dest_dir="$(dirname "$dest_path")"; fi
-      else dest_dir="$GROQBASH_HISTORY_DIR"; dest_path="$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"; fi
+        if [ -d "$OUT_PATH" ]; then
+          dest_dir="$OUT_PATH"
+          dest_path="$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
+        else
+          dest_path="$OUT_PATH"
+          dest_dir="$(dirname "$dest_path")"
+        fi
+      else
+        dest_dir="$GROQBASH_HISTORY_DIR"
+        dest_path="$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
+      fi
       mkdir -p "$dest_dir" 2>/dev/null || true
 
       if [ -z "${RUN_TMPDIR:-}" ] || [ ! -d "$RUN_TMPDIR" ]; then
@@ -3466,7 +3493,6 @@ finalize_and_output() {
         return "$GROQBASHERRTMP"
       fi
 
-      # Save via save_to_history which handles atomic tmp creation and rotation
       save_to_history "$text" || log_warn "HISTORY" "Failed to save output to history."
     fi
   fi
@@ -3827,11 +3853,6 @@ fi
 #--5<---[ /SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 
 #--6<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
-# Normalize boolean-like flags
-for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
-  if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
-done
-
 # Guard: prevent accidental real API calls (ALLOW_API_CALLS defaults to 1)
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
@@ -3906,51 +3927,14 @@ if [ "$LIST_PROVIDERS" -eq 1 ]; then
   printf '  - groq (embedded)\n' >&2
   extras_prov_dir="$PROVIDERS_DIR"
   if [ -d "$extras_prov_dir" ]; then
-    found=0
     for f in "$extras_prov_dir"/*.sh; do
       [ -e "$f" ] || continue
       base="$(basename "$f" .sh)"
       [ "$base" = "groq" ] && continue
       printf '  - %s\n' "$base" >&2
-      found=1
     done
   fi
-
-  # Determine active provider robustly for provider-specific default lookup:
-  # Precedence: PROVIDER_CLI -> persisted provider file under canonical config dir -> $PROVIDER -> fallback groq
-  if [ -n "${PROVIDER_CLI:-}" ]; then
-    active_provider="${PROVIDER_CLI}"
-  elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
-    active_provider="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
-    active_provider="$(printf '%s' "$active_provider" | awk '{$1=$1;print}')"
-    [ -z "$active_provider" ] && active_provider="${PROVIDER:-groq}"
-  else
-    active_provider="${PROVIDER:-groq}"
-  fi
-
-  # 2) provider-specific persisted default (model.<active_provider>)
-  # Determine active provider robustly: precedence PROVIDER_CLI -> persisted provider file -> $PROVIDER -> fallback groq
-  if [ -n "${PROVIDER_CLI:-}" ]; then
-    active_provider="${PROVIDER_CLI}"
-  elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
-    active_provider="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
-    active_provider="$(printf '%s' "$active_provider" | awk '{$1=$1;print}')"
-    [ -z "$active_provider" ] && active_provider="${PROVIDER:-groq}"
-  else
-    active_provider="${PROVIDER:-groq}"
-  fi
-
-  MODEL_PROVIDER_CFG="$(canonical_model_file "${active_provider}")"
-  if [ -s "$MODEL_PROVIDER_CFG" ]; then
-    candidate="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
-    candidate="$(printf '%s' "$candidate" | awk '{$1=$1;print}')"
-    if [ -n "$candidate" ] && is_supported_model "$candidate"; then
-      if validate_model_core "$candidate" >/dev/null 2>&1 && validate_model_dispatch "$candidate" >/dev/null 2>&1; then
-        FINAL_MODEL="$candidate"
-        return 0
-      fi
-    fi
-  fi
+  exit 0
 fi
 
 if [ "$LIST_MODELS" -eq 1 ]; then
@@ -4124,6 +4108,11 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
 
   exit 0
 fi
+
+# Normalize boolean-like flags
+for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do
+  if is_truthy "${!flag:-0}"; then printf -v "$flag" 1; else printf -v "$flag" 0; fi
+done
 #--7<---[ /SECTION: CORE_SETUP_ACTIONS ]--->7--
 
 # ---------------------------------------------------------------------------
@@ -4147,7 +4136,7 @@ load_local_config() {
 }
 
 load_whitelist() {
-  ALLOWED_MODELS="${ALLOWED_MODELS:-}"
+  ALLOWED_MODELS=""
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
     # Normalize entries: strip leading "models/" and trim whitespace
     # Keep one model per line in ALLOWED_MODELS
@@ -4424,6 +4413,7 @@ fi
 
 # Show full configuration (existing behavior), but use canonical helpers for model file lookup
 if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
+  : "${ALLOWED_MODELS:=}"
   printf 'GroqBash configuration:\n'
   printf '  Version: %s (%s)\n' "$SCRIPT_VERSION" "$SCRIPT_DATE"
   printf '  Provider: %s\n' "$PROVIDER"
@@ -4458,6 +4448,7 @@ if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
 fi
 
 if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
+  : "${ALLOWED_MODELS:=}"
   printf 'GroqBash diagnostics:\n'
 
   printf '\n[Directories]\n'
