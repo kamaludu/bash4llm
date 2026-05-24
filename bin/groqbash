@@ -2315,7 +2315,9 @@ buildpayload_groq() {
   local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
-  tmp_payload="$(_mktemp_in_dir "$RUN_TMPDIR" payload.XXXXXX.json 2>/dev/null || printf '%s' "$RUN_TMPDIR/payload.json")"
+
+  # always allocate a random tmp file; never use deterministic fallback
+  tmp_payload="$(_mktemp_in_dir "$RUN_TMPDIR" payload.XXXXXX.json 2>/dev/null || _tmpf file "$RUN_TMPDIR" payload.json)"
 
   # Normalize stream_json to a JSON boolean literal (true/false)
   if is_truthy "${STREAM_MODE:-0}"; then
@@ -2349,12 +2351,10 @@ buildpayload_groq() {
   VALID_MESSAGES_JSON=""
 
   if [ -n "${JSON_INPUT:-}" ] && is_valid_json_string "${JSON_INPUT}"; then
-    # Prefer explicit .messages array in JSON_INPUT
     msgs="$(printf '%s' "$JSON_INPUT" | jq -c '.messages // empty' 2>/dev/null || true)"
     if [ -n "$msgs" ]; then
       VALID_MESSAGES_JSON="$msgs"
     else
-      # Try to extract a single content/prompt field and wrap it
       content_val="$(printf '%s' "$JSON_INPUT" | jq -r '.content // .prompt // empty' 2>/dev/null || true)"
       if [ -n "$content_val" ]; then
         VALID_MESSAGES_JSON="$(jq -c -n --arg content "$content_val" '[{role:"user",content:$content}]')"
@@ -2370,24 +2370,20 @@ buildpayload_groq() {
     VALID_MESSAGES_JSON="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
   fi
 
-  # If still empty, but CONTENT present (from args/stdin), use it
   if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${CONTENT:-}" ]; then
     VALID_MESSAGES_JSON="$(jq -c -n --arg content "$CONTENT" '[{role:"user",content:$content}]')"
   fi
 
-  # Final fallback: single empty user message to avoid --argjson errors
   if [ -z "$VALID_MESSAGES_JSON" ]; then
     VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
     log_warn "PAYLOAD" "MESSAGES_JSON invalid or missing; using fallback single empty user message"
   fi
 
-  # Ensure messages is a non-empty array; if empty, fallback to single empty user message
   if ! printf '%s' "$VALID_MESSAGES_JSON" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
     log_warn "PAYLOAD" "VALID_MESSAGES_JSON is empty or not an array; using fallback single empty user message"
     VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
   fi
 
-  # If MODEL not set, try to read from BUILD_MESSAGES_FILE (if present and valid)
   if [ -z "${MODEL:-}" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
     model_from_file="$(jq -r '.model // .provider?.model // empty' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
     if [ -n "$model_from_file" ]; then
@@ -2398,7 +2394,6 @@ buildpayload_groq() {
     fi
   fi
 
-  # Build payload using validated values; pass messages via validated JSON string
   if ! jq -n --arg model "${MODEL:-}" --argjson stream "$stream_json" --arg ture "$TURE" --arg max_tokens "$MAX_TOKENS" \
        --argjson messages "$(printf '%s' "$VALID_MESSAGES_JSON")" \
        '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload" 2>/dev/null; then
@@ -2407,14 +2402,12 @@ buildpayload_groq() {
     return "$GROQBASHERRTMP"
   fi
 
-  # Ensure tmp_payload is non-empty before proceeding
   if [ ! -s "$tmp_payload" ]; then
     log_error "PAYLOAD" "tmp_payload is empty after jq; aborting"
     rm -f "$tmp_payload" 2>/dev/null || true
     return "$GROQBASHERRTMP"
   fi
 
-  # Diagnostic: show payload path and content on stderr only when DEBUG=1 (safe: do not print API keys)
   if [ "${DEBUG:-0}" -eq 1 ]; then
     payload_size=$(wc -c < "$tmp_payload" 2>/dev/null || echo 0)
     log_info "PAYLOAD" "tmp_payload path: $tmp_payload size=${payload_size}B"
@@ -2422,12 +2415,13 @@ buildpayload_groq() {
     head -c 2000 "$tmp_payload" >&2 || true
   fi
 
-  # If stage_b64 helper exists, create a base64-staged payload and prefer it (keeps backward compatibility)
   staged_b64=""
   if type stage_b64 >/dev/null 2>&1; then
     tmp_b64="${tmp_payload}.b64"
     if stage_b64 < "$tmp_payload" > "$tmp_b64" 2>/dev/null; then
       staged_b64="$tmp_b64"
+      # remove original JSON payload after successful staging
+      rm -f "$tmp_payload" 2>/dev/null || true
       if [ "${DEBUG:-0}" -eq 1 ]; then
         log_info "PAYLOAD" "Created base64-staged payload: $staged_b64"
       fi
@@ -2439,7 +2433,6 @@ buildpayload_groq() {
     fi
   fi
 
-  # Provide tmp_payload path for caller to use (do not export)
   if [ -n "$staged_b64" ]; then
     GROQBASH_TMP_PAYLOAD="$staged_b64"
     PAYLOAD="${PAYLOAD:-$staged_b64}"
@@ -2473,7 +2466,6 @@ call_api_groq() {
   # Network policy: same semantics as streaming path
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
-      # show_payload_head is diagnostic; show only when DEBUG=1
       if [ "${DEBUG:-0}" -eq 1 ]; then
         show_payload_head "${PAYLOAD:-}" 200 || true
         log_info "DRYRUN" "DRY-RUN: skipping non-streaming HTTP call"
@@ -2494,9 +2486,7 @@ call_api_groq() {
   fi
 
   # Use canonical provider URL resolved earlier by resolve_provider_url.
-  # Do not reconstruct provider_url locally; rely on GROQBASH_PROVIDER_URL.
   if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
-    # Best-effort: attempt to populate canonical provider URL now.
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   fi
   provider_url="${GROQBASH_PROVIDER_URL:-}"
@@ -2534,7 +2524,6 @@ call_api_groq() {
       return "$GROQBASHERRTMP"
     fi
 
-    # ensure decoded payload is non-empty
     if [ ! -s "$decoded_payload" ]; then
       log_error "PAYLOAD" "decoded payload is empty; aborting"
       rm -f "$decoded_payload" 2>/dev/null || true
@@ -2546,10 +2535,11 @@ call_api_groq() {
     send_payload="$decoded_payload"
   fi
 
-  # Prepare tmp files
-  resp_tmp="${RUN_TMPDIR%/}/resp.json"
-  ERRF="${RUN_TMPDIR%/}/curl.err"
+  # Prepare tmp files (use random names)
+  ERRF="$(_tmpf file "$RUN_TMPDIR" curl.err 2>/dev/null)"
   : > "$ERRF" 2>/dev/null || true
+
+  resp_tmp="$(_tmpf file "$RUN_TMPDIR" resp.json 2>/dev/null)"
   rm -f "$resp_tmp" 2>/dev/null || true
 
   # Diagnostic: log call only when DEBUG=1
@@ -2557,8 +2547,7 @@ call_api_groq() {
     log_info "CALL" "Invoking curl to provider (payload: $send_payload) -> $provider_url"
   fi
 
-  # Choose Authorization header if key present
-  # Build curl command: prefer http1.1, follow redirects for non-streaming, include CURL_BASE_OPTS if set
+  # Build curl command
   CURL_CMD_ARR=()
   if command -v stdbuf >/dev/null 2>&1; then
     CURL_CMD_ARR+=(stdbuf -oL curl --http1.1 -sS -L)
@@ -2566,12 +2555,10 @@ call_api_groq() {
     CURL_CMD_ARR+=(curl --http1.1 -sS -L)
   fi
 
-  # Append any global base opts if defined
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
     CURL_CMD_ARR+=("${CURL_BASE_OPTS[@]}")
   fi
 
-  # Always include Content-Type header and Authorization if available
   CURL_CMD_ARR+=( -H "Content-Type: application/json" )
   if [ -n "${GROQ_API_KEY:-}" ]; then
     CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
@@ -2579,17 +2566,16 @@ call_api_groq() {
     CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQBASH_API_KEY}" )
   fi
 
-  # Execute curl: write body to resp_tmp, capture http_code via -w, stderr to ERRF
-  # Do NOT use --fail (we want body even on 4xx/5xx)
+  # Execute curl
   http_code="$("${CURL_CMD_ARR[@]}" -o "$resp_tmp" -w '%{http_code}' --data-binary @"$send_payload" "$provider_url" 2> "$ERRF")"
   rc=$?
 
-  # Cleanup decoded payload if used
+  # remove decoded payload immediately after curl
   if [ -n "$decoded_payload" ]; then
     rm -f "$decoded_payload" 2>/dev/null || true
   fi
 
-  # Capture diagnostics immediately
+  # Capture diagnostics
   resp_size=0; [ -f "$resp_tmp" ] && resp_size=$(wc -c < "$resp_tmp" 2>/dev/null || echo 0)
   errf_size=0; [ -f "$ERRF" ] && errf_size=$(wc -c < "$ERRF" 2>/dev/null || echo 0)
 
@@ -2606,8 +2592,6 @@ call_api_groq() {
   fi
 
   if [ -s "$resp_tmp" ]; then
-    # Ensure file ends with newline to avoid concatenation with subsequent output
-    # Use tail -c1 if available, otherwise use awk to check last character
     last_char=""
     if command -v tail >/dev/null 2>&1; then
       last_char="$(tail -c 1 "$resp_tmp" 2>/dev/null || printf '')"
@@ -2619,10 +2603,10 @@ call_api_groq() {
       resp_size=$((resp_size + 1)) 2>/dev/null || true
     fi
 
-    # If resp_tmp is not valid JSON, attempt a conservative diagnostic extraction:
     if ! jq -e . "$resp_tmp" >/dev/null 2>&1; then
-      prefix_file="${resp_tmp}.json_prefix"
-      tail_file="${resp_tmp}.tail"
+      prefix_file="$(_tmpf file "$RUN_TMPDIR" prefix.json 2>/dev/null)"
+      tail_file="$(_tmpf file "$RUN_TMPDIR" tail.txt 2>/dev/null)"
+
       awk '
         BEGIN { in_str=0; depth=0; started=0; }
         {
@@ -2639,14 +2623,11 @@ call_api_groq() {
         }' "$resp_tmp" > "$prefix_file" 2>/dev/null || true
 
       if [ -s "$prefix_file" ] && jq -e . "$prefix_file" >/dev/null 2>&1; then
-        # Save trailing content for manual inspection (files only; messages suppressed unless DEBUG)
         printf '--- TRAILING NON-JSON DATA (diagnostic) ---\n' > "$tail_file" 2>/dev/null || true
         cat "$resp_tmp" >> "$tail_file" 2>/dev/null || true
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "RESP" "Created diagnostic prefix/tail files: ${prefix_file} ${tail_file}"
-        fi
       else
         rm -f "$prefix_file" 2>/dev/null || true
+        rm -f "$tail_file" 2>/dev/null || true
       fi
     fi
   fi
@@ -2657,20 +2638,13 @@ call_api_groq() {
   fi
   mkdir -p "$(dirname "$RESP")" 2>/dev/null || true
 
-  # Attempt to move resp_tmp -> RESP, fallback to cp, then diagnostic
+  # Move resp_tmp → RESP
   if [ -s "$resp_tmp" ]; then
-    # If resp_tmp and RESP are identical paths, skip mv/cp (nothing to do)
     if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
       chmod 600 "$RESP" 2>/dev/null || true
-      if [ "${DEBUG:-0}" -eq 1 ]; then
-        log_info "RESP" "RESP already at resp_tmp: ${RESP}"
-      fi
     else
       if mv -f "$resp_tmp" "${RESP}" 2>/dev/null; then
         chmod 600 "${RESP}" 2>/dev/null || true
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "RESP" "Wrote RESP from resp_tmp: ${RESP}"
-        fi
       else
         log_error "RESP" "mv failed; writing diagnostic RESP"
         now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -2680,17 +2654,18 @@ call_api_groq() {
       fi
     fi
   else
-    # resp_tmp empty: write diagnostic RESP (only in this case) and log clearly (log suppressed unless DEBUG)
-    if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_warn "RESP" "resp_tmp empty; writing diagnostic RESP (no body received). This is diagnostic only and does not mask real responses."
-    fi
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
     jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
       '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
   fi
 
-  # Return transport rc (0 if curl succeeded at transport level)
+  # remove resp_tmp if still present
+  rm -f "$resp_tmp" 2>/dev/null || true
+
+  # remove ERRF after diagnostics
+  rm -f "$ERRF" 2>/dev/null || true
+
   return "${rc:-0}"
 }
 
@@ -2704,7 +2679,6 @@ call_api_streaming_groq() {
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
 
-  # Network policy and API key checks (preserve existing repo semantics)
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
       if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2737,8 +2711,6 @@ call_api_streaming_groq() {
     return 1
   fi
 
-  # Use canonical provider URL resolved earlier by resolve_provider_url.
-  # Do not reconstruct provider_url locally; rely on GROQBASH_PROVIDER_URL.
   if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   fi
@@ -2750,11 +2722,11 @@ call_api_streaming_groq() {
     return 1
   fi
 
-  resp_raw="${RUN_TMPDIR%/}/resp.raw"
-  resp_lines="${RUN_TMPDIR%/}/resp.lines"
-  resp_valid="${RUN_TMPDIR%/}/resp.valid.jsons"
-  resp_chunks="${RUN_TMPDIR%/}/resp.chunks.json"
-  ERRF="${RUN_TMPDIR%/}/curl_stream.err"
+  resp_raw="$(_tmpf file "$RUN_TMPDIR" resp.raw 2>/dev/null)"
+  resp_lines="$(_tmpf file "$RUN_TMPDIR" resp.lines 2>/dev/null)"
+  resp_valid="$(_tmpf file "$RUN_TMPDIR" resp.valid.jsons 2>/dev/null)"
+  resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
+  ERRF="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
   : > "$ERRF" 2>/dev/null || true
   rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" 2>/dev/null || true
 
@@ -2837,19 +2809,28 @@ call_api_streaming_groq() {
 
   if [ -s "$resp_valid" ]; then
     jq -s '.' "$resp_valid" > "$resp_chunks" 2>/dev/null || true
-    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$resp_chunks" > "${RUN_TMPDIR%/}/resp.text.txt" 2>/dev/null || true
+    resp_text_tmp="$(_tmpf file "$RUN_TMPDIR" resp.text.txt 2>/dev/null)"
+    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$resp_chunks" > "$resp_text_tmp" 2>/dev/null || true
+    resp_json_tmp="$(_tmpf file "$RUN_TMPDIR" resp.json 2>/dev/null)"
     if jq -e 'type=="array"' "$resp_chunks" >/dev/null 2>&1; then
-      jq -c '.[-1]' "$resp_chunks" > "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
+      jq -c '.[-1]' "$resp_chunks" > "$resp_json_tmp" 2>/dev/null || true
     else
-      cp -f "$resp_chunks" "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
+      cp -f "$resp_chunks" "$resp_json_tmp" 2>/dev/null || true
     fi
   else
+    resp_json_tmp="$(_tmpf file "$RUN_TMPDIR" resp.json 2>/dev/null)"
     if jq -e . "$resp_raw" >/dev/null 2>&1; then
-      cp -f "$resp_raw" "${RUN_TMPDIR%/}/resp.json" 2>/dev/null || true
+      cp -f "$resp_raw" "$resp_json_tmp" 2>/dev/null || true
     fi
   fi
 
-  resp_tmp="${RUN_TMPDIR%/}/resp.json"
+  rm -f "$resp_raw" 2>/dev/null || true
+  rm -f "$resp_lines" 2>/dev/null || true
+  rm -f "$resp_valid" 2>/dev/null || true
+  rm -f "$resp_chunks" 2>/dev/null || true
+  rm -f "$resp_text_tmp" 2>/dev/null || true
+
+  resp_tmp="$resp_json_tmp"
 
   if [ -z "${RESP:-}" ]; then
     RESP="${RUN_TMPDIR%/}/resp.json"
@@ -2885,6 +2866,9 @@ call_api_streaming_groq() {
     jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
       '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
   fi
+
+  rm -f "$resp_tmp" 2>/dev/null || true
+  rm -f "$ERRF" 2>/dev/null || true
 
   if ensure_run_tmpdir >/dev/null 2>&1; then
     http_code=200
