@@ -3142,20 +3142,19 @@ refresh_models_dispatch() {
 validate_model_dispatch() {
   local model="$1"
   local fn="validate_model_${PROVIDER}"
+
   if type "$fn" >/dev/null 2>&1; then
     "$fn" "$model"
     return $?
   fi
-  # Default permissive behavior if provider does not implement validation
-  return 0
-}
 
-auto_select_model_dispatch() {
-  local fn="auto_select_model_${PROVIDER}"
-  if call_provider "$fn"; then
-    return 0
+  # Fallback permissivo esplicito (una sola volta per run, guardia GLOBALE)
+  if [ -z "${VALIDATE_MODEL_DISPATCH_WARNED:-}" ]; then
+    log_warn "MODEL" "provider '${PROVIDER}' does not implement ${fn}; falling back to permissive validation."
+    VALIDATE_MODEL_DISPATCH_WARNED=1
   fi
-  return 1
+
+  return 0
 }
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
 
@@ -3163,10 +3162,8 @@ auto_select_model_dispatch() {
 # Risultato: imposta la variabile globale FINAL_MODEL (stringa) o vuota se non risolta.
 resolve_model() {
   ALLOWED_MODELS="${ALLOWED_MODELS:-}"
-  # Guard: warn if MODEL is present in environment but not provided via -m/--set-default.
-  # This helps CI/users who export MODEL expecting it to behave like -m.
+
   if [ -n "${MODEL:-}" ] && [ "${MODEL_CLI_SET:-0}" -ne 1 ]; then
-    # Only warn when no provider-specific persisted default exists (avoid noisy logs).
     model_cfg="$(canonical_model_file "${PROVIDER:-groq}")"
     if [ ! -s "$model_cfg" ]; then
       log_warn "MODEL" "MODEL is set in environment but not passed with -m/--set-default; use -m for per-run override or --set-default to persist."
@@ -3175,14 +3172,13 @@ resolve_model() {
 
   FINAL_MODEL=""
 
-  # 1) CLI-specified model (highest priority)
+  # 1) CLI-specified model
   if [ "${MODEL_CLI_SET:-0}" -eq 1 ] && [ -n "${MODEL:-}" ]; then
     FINAL_MODEL="$MODEL"
     return 0
   fi
 
-  # Determine active provider robustly for provider-specific default lookup:
-  # Precedence: PROVIDER_CLI -> persisted provider file under canonical config dir -> $PROVIDER -> fallback groq
+  # Determine active provider
   if [ -n "${PROVIDER_CLI:-}" ]; then
     active_provider="${PROVIDER_CLI}"
   elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
@@ -3193,8 +3189,7 @@ resolve_model() {
     active_provider="${PROVIDER:-groq}"
   fi
 
-  # 2) provider-specific persisted default (model.<active_provider>)
-  # Determine active provider robustly: precedence PROVIDER_CLI -> persisted provider file -> $PROVIDER -> fallback groq
+  # 2) provider-specific persisted default
   if [ -n "${PROVIDER_CLI:-}" ]; then
     active_provider="${PROVIDER_CLI}"
   elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
@@ -3206,43 +3201,53 @@ resolve_model() {
   fi
 
   MODEL_PROVIDER_CFG="$(canonical_model_file "${active_provider}")"
-  # Defensive check: refuse to read model files if canonical config dir is invalid
+
   if [ -z "$(canonical_config_dir)" ] || [ "$(canonical_config_dir)" = "/" ]; then
     log_error "SEC" "refusing to read provider-specific model file: invalid canonical config dir: $(canonical_config_dir)"
   else
     if [ -s "$MODEL_PROVIDER_CFG" ]; then
       candidate="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
       candidate="$(printf '%s' "$candidate" | awk '{$1=$1;print}')"
-      if [ -n "$candidate" ] && is_supported_model "$candidate"; then
-        if validate_model_core "$candidate" >/dev/null 2>&1 && validate_model_dispatch "$candidate" >/dev/null 2>&1; then
-          FINAL_MODEL="$candidate"
+
+      norm="$(printf '%s' "$candidate" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+
+      if [ -n "$norm" ] && is_supported_model "$norm"; then
+        if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
+          FINAL_MODEL="$norm"
           return 0
         fi
       fi
     fi
   fi
 
-  # 3) provider auto-select (only if provider module can provide it)
+  # 3) provider auto-select
   candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
-  if [ -n "$candidate" ] && is_supported_model "$candidate"; then
-    if validate_model_dispatch "$candidate" >/dev/null 2>&1 && validate_model_core "$candidate" >/dev/null 2>&1; then
-      FINAL_MODEL="$candidate"
-      return 0
+  if [ -n "$candidate" ]; then
+    norm="$(printf '%s' "$candidate" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+    if is_supported_model "$norm"; then
+      if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
+        FINAL_MODEL="$norm"
+        return 0
+      fi
     fi
   fi
 
-  # 4) first supported entry in MODELS_FILE (if present)
+  # 4) first supported entry in MODELS_FILE
   if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
     cnt=0
     while IFS= read -r m || [ -n "$m" ]; do
       [ -z "$m" ] && continue
       cnt=$((cnt+1))
-      if is_supported_model "$m"; then
-        if validate_model_core "$m" >/dev/null 2>&1 && validate_model_dispatch "$m" >/dev/null 2>&1; then
-          FINAL_MODEL="$m"
+
+      norm="$(printf '%s' "$m" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+
+      if is_supported_model "$norm"; then
+        if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
+          FINAL_MODEL="$norm"
           return 0
         fi
       fi
+
       [ "$cnt" -ge "$MAX_MODELS" ] && break
     done < "$MODELS_FILE"
   fi
@@ -3251,37 +3256,42 @@ resolve_model() {
   if [ -f "${GROQBASH_CONFIG_DIR%/}/config" ]; then
     cfg_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "${GROQBASH_CONFIG_DIR%/}/config" 2>/dev/null || true)"
     cfg_model="$(printf '%s' "$cfg_model" | awk '{$1=$1;print}')"
-    if [ -n "$cfg_model" ] && is_supported_model "$cfg_model"; then
-      if validate_model_core "$cfg_model" >/dev/null 2>&1 && validate_model_dispatch "$cfg_model" >/dev/null 2>&1; then
-        FINAL_MODEL="$cfg_model"
+
+    norm="$(printf '%s' "$cfg_model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+
+    if [ -n "$norm" ] && is_supported_model "$norm"; then
+      if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
+        FINAL_MODEL="$norm"
         return 0
       fi
     fi
   fi
 
-  # 6) ALLOWED_MODELS fallback (first supported)
+  # 6) ALLOWED_MODELS fallback
   if [ -n "${ALLOWED_MODELS:-}" ]; then
     cnt=0
     while IFS= read -r m || [ -n "$m" ]; do
       [ -z "$m" ] && continue
       cnt=$((cnt+1))
-      if is_supported_model "$m"; then
-        if validate_model_core "$m" >/dev/null 2>&1 && validate_model_dispatch "$m" >/dev/null 2>&1; then
-          FINAL_MODEL="$m"
+
+      norm="$(printf '%s' "$m" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+
+      if is_supported_model "$norm"; then
+        if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
+          FINAL_MODEL="$norm"
           return 0
         fi
       fi
+
       [ "$cnt" -ge "$MAX_MODELS" ] && break
     done <<EOF
 $(printf '%s\n' "$ALLOWED_MODELS")
 EOF
   fi
 
-  # Nothing found
   FINAL_MODEL=""
   return 1
 }
-
 # ---------------------------------------------------------------------------
 # Build payload from current vars (delegates to provider)
 # ---------------------------------------------------------------------------
@@ -3661,14 +3671,19 @@ validate_model_core() {
   # Normalize incoming model for comparison: strip leading "models/" and surrounding whitespace
   norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
+  # *** PATCH P8: allineamento a validate_model_groq ***
+  # Rimuove anche il prefisso groq[:/ -]* come fa validate_model_groq
+  norm_model="$(printf '%s' "$norm_model" | sed -e 's#^groq[:/ -]*##')"
+
   # If MODELS_FILE exists and non-empty, require presence (allow either raw or prefixed forms)
   if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
     # Check exact match first (file may contain provider-specific forms)
     if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
       file_match=1
     else
-      # Check normalized match (strip leading models/ in file entries and compare)
-      if awk '{gsub(/^models\//,""); print}' "$MODELS_FILE" | grep -x -F -q "$norm_model" 2>/dev/null; then
+      # Check normalized match (strip leading models/ and groq prefixes in file entries and compare)
+      if awk '{g=$0; sub(/^models\//,"",g); sub(/^groq[:\/ -]*/,"",g); print g}' "$MODELS_FILE" \
+           | grep -x -F -q "$norm_model" 2>/dev/null; then
         file_match=1
       else
         file_match=0
