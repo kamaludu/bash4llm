@@ -338,7 +338,7 @@ write_provider_url_if_missing() {
   fi
   # Write atomically into RUN_TMPDIR if available, else directly (best-effort)
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    tmp="$(mktemp -p "${RUN_TMPDIR}" provider-url.XXXX 2>/dev/null || true)"
+    tmp="$(mktemp "${RUN_TMPDIR%/}/provider-url.XXXX" 2>/dev/null || true)"
   else
     tmp="$(mktemp 2>/dev/null || true)"
   fi
@@ -666,7 +666,7 @@ atomic_write() {
   mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
   lockfile="${destdir}/.groqbash.lock"
 
-  tmp="$(mktemp -p "$destdir" .groq-atomic.XXXXXX 2>/dev/null || true)"
+  tmp="$(mktemp "$destdir/.groq-atomic.XXXXXX" 2>/dev/null || true)"
   [ -n "$tmp" ] || tmp="$destdir/.groq-atomic.$$.$RANDOM"
 
   if ! cat - > "$tmp"; then
@@ -1464,7 +1464,7 @@ manifest_create() {
   lock_exec "${manifest}.lock" "$timeout" -- sh -c '
    set -e
    manifest="$1"
-   tmp="$(mktemp -p "$(dirname "$manifest")" manifest.tmp.XXXX)"
+   tmp="$(mktemp "$(dirname "$manifest")/manifest.tmp.XXXX")"
    printf "%s" "{\"parts\":[]}" > "$tmp"
    # write base64 staging using base64 binary and exported opts
    if [ -n "${B64_WRAP_OPT:-}" ]; then
@@ -1513,7 +1513,7 @@ manifest_add_part() {
     part_b64="$2"
     name="$3"
     mime="$4"
-    tmp="$(mktemp -p "$(dirname "$manifest")" manifest.edit.XXXX)"
+    tmp="$(mktemp "$(dirname "$manifest")/manifest.edit.XXXX")"
     if [ -f "${manifest}.b64" ]; then
       # decode base64 staging to tmp using exported decode opt
       base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
@@ -1560,8 +1560,16 @@ manifest_read() {
 _get_perm_string() {
   local path="$1" perm=""
   case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin) perm="$(stat -f %Sp "$path" 2>/dev/null || true)" ;;
-    *) if command -v stat >/dev/null 2>&1; then perm="$(stat -c %A "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then perm="$(find "$path" -maxdepth 0 -printf '%M' 2>/dev/null || true)"; fi ;;
+    Darwin)
+      perm="$(stat -f %Sp "$path" 2>/dev/null || true)"
+      ;;
+    *)
+      if command -v stat >/dev/null 2>&1; then
+        perm="$(stat -c %A "$path" 2>/dev/null || true)"
+      elif command -v ls >/dev/null 2>&1; then
+        perm="$(ls -ld -- "$path" 2>/dev/null | awk '{print $1}' || true)"
+      fi
+      ;;
   esac
   printf '%s' "$perm"
 }
@@ -1569,8 +1577,16 @@ _get_perm_string() {
 _get_owner() {
   local path="$1" owner=""
   case "$(uname 2>/dev/null || echo Linux)" in
-    Darwin) owner="$(stat -f %Su "$path" 2>/dev/null || true)" ;;
-    *) if command -v stat >/dev/null 2>&1; then owner="$(stat -c %U "$path" 2>/dev/null || true)"; elif command -v find >/dev/null 2>&1; then owner="$(find "$path" -maxdepth 0 -printf '%u' 2>/dev/null || true)"; fi ;;
+    Darwin)
+      owner="$(stat -f %Su "$path" 2>/dev/null || true)"
+      ;;
+    *)
+      if command -v stat >/dev/null 2>&1; then
+        owner="$(stat -c %U "$path" 2>/dev/null || true)"
+      elif command -v ls >/dev/null 2>&1; then
+        owner="$(ls -ld -- "$path" 2>/dev/null | awk '{print $3}' || true)"
+      fi
+      ;;
   esac
   printf '%s' "$owner"
 }
@@ -1708,7 +1724,7 @@ _tmpf() {
 
   umask 077
   if [ "$mode" = "file" ]; then
-    tmp="$(mktemp -p "$base" "${prefix}.XXXX" 2>/dev/null || true)"
+    tmp="$(mktemp "$base/${prefix}.XXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
       log_error "TMP" "_tmpf: mktemp failed for file in $base"
       return "$GROQBASHERRTMP"
@@ -1717,7 +1733,7 @@ _tmpf() {
     printf '%s' "$tmp"
     return 0
   elif [ "$mode" = "dir" ]; then
-    tmp="$(mktemp -d -p "$base" "${prefix}.XXXX" 2>/dev/null || true)"
+    tmp="$(mktemp -d "$base/${prefix}.XXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
       log_error "TMP" "_tmpf: mktemp failed for dir in $base"
       return "$GROQBASHERRTMP"
@@ -2907,7 +2923,7 @@ refresh_models_groq() {
   local workdir tmpd out errf api_url tmp_parsed tmp_trim tmpout rc
   workdir="${RUN_TMPDIR:-}"
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmpd="$(mktemp -d -p "$workdir" groq-models.XXXX)" || return "$GROQBASHERRTMP"
+  tmpd="$(mktemp -d "$workdir/groq-models.XXXX")" || return "$GROQBASHERRTMP"
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
 
