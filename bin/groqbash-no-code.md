@@ -1,390 +1,394 @@
-## GroqBash - Spec tecnica LLM readable
-**(groqbash senza codice)**
-
-### Panoramica globale del sistema
-
-**GroqBash** è un singolo script Bash, auto‑contenuto e auditabile, che fornisce un wrapper CLI sicuro per l’API Chat Completions compatibile OpenAI di Groq. Progettato per ambienti single‑user Unix‑like, GroqBash centralizza: inizializzazione sicura dell’ambiente, gestione atomica di tmp/history/sessioni/manifest, integrazione provider (builtin `groq` + extras), costruzione payload, chiamate HTTP streaming e non‑streaming via `curl`, e salvataggio/diagnostica delle risposte. Tutte le operazioni critiche sono atomiche, protette da lock e soggette a policy di rete centralizzate.
-
----
-
-### Invarianti e modello mentale
-
-**Invarianti globali**
-- Directory canoniche esistono e hanno permessi **700**; file sensibili **600**.
-- Nessun tmp principale creato direttamente in `/tmp` di sistema; RUN_TMPDIR è sotto GROQBASH_TMPDIR.
-- Nessuna esecuzione di contenuti provenienti da API; nessun uso di `eval` in nessuna fase del parsing CLI o del runtime.
-- Locking esplicito per tutte le operazioni concorrenti critiche; timeout configurabili.
-- Provider caricati solo dopo validazione di owner, permessi, non‑symlink e firma invariata dopo sourcing.
-
-**Modello mentale per LLM/analisi**
-- **Single‑user trusted environment**: l’utente controlla le directory; variabili d’ambiente sono configurazione fidata.
-- **Atomicità prima di tutto**: ogni scrittura persistente usa staging + mv atomico o flock.
-- **Sezioni separate per responsabilità**: PRECORE_BOOT (bootstrap e sicurezza), PRECORE_RUN (runtime atomico e sessioni), PROVIDER (integrazione API), CORE_SETUP (orchestrazione CLI e request), CORE_PROVIDER (selezione/persistenza provider).
-- **Fail‑fast per sicurezza**: condizioni critiche (mancanza comandi obbligatori, permessi errati, firma provider mutata) causano exit immediato con codici canonici.
-
----
-
-### Dipendenze tra macro‑sezioni
-
-| Consumer | Dipende da | Tipo di dipendenza |
-|---|---:|---|
-| PRECORE_RUN | PRECORE_BOOT | helper tmp, lock_exec, ensure_run_tmpdir |
-| PROVIDER | PRECORE_BOOT, PRECORE_RUN | tmp, b64 helpers, lock_exec, ensure_run_tmpdir |
-| CORE_SETUP | PRECORE_BOOT, PROVIDER, PRECORE_RUN | dispatch provider, resolve_model, save_to_history |
-| CORE_PROVIDER | PRECORE_BOOT, PRECORE_RUN | canonical paths, atomic_write, load_provider_module |
-| Tutte | sistema: bash, coreutils, findutils, util‑linux, gawk, curl, jq | requisiti obbligatori |
-
----
-
-### Flusso di esecuzione end‑to‑end
-
-1. **Bootstrap (PRECORE_BOOT)**  
-   - Verifica comandi obbligatori; risolve SCRIPTDIR e directory canoniche; crea e protegge config, models, templates, history, extras; imposta opzioni base64 e lock names; prepara helper atomici e enforce_network_policy.
-
-2. **Preparazione runtime (PRECORE_RUN)**  
-   - ensure_run_tmpdir crea RUN_TMPDIR; installa trap di cleanup; inizializza history, manifest e session engine; abilita cache sessione.
-
-3. **Selezione provider (CORE_PROVIDER)**  
-   - Popola SUPPORTED_PROVIDERS; applica provider persistente o CLI; valida interfaccia provider; carica modulo provider con load_provider_module; risolve GROQBASH_PROVIDER_URL; opzionale refresh modelli.
-
-4. **Risoluzione modello e costruzione payload (CORE_SETUP + PROVIDER)**  
-   - resolve_model determina FINAL_MODEL; build_payload_from_vars delega a buildpayload_<prov> che produce GROQBASH_TMP_PAYLOAD/PAYLOAD.
-
-5. **Esecuzione richiesta (CORE_SETUP → PROVIDER)**  
-   - enforce_network_policy; call_api_once o call_api_streaming che invocano call_api_<prov> o call_api_streaming_<prov>; streaming emesso su stdout; aggregazione chunk e scrittura RESP.
-
-6. **Post‑processing e persistenza**  
-   - extract_text_from_resp, detect_empty_edge_case, finalize_and_output; save_to_history per output lunghi; ui_state_write best‑effort.
-
----
-
-## Sezioni principali
-
-### PRECORE_BOOT
-**Scopo**  
-Inizializzare ambiente, validare requisiti, normalizzare percorsi, fornire helper atomici e policy di sicurezza.
-
-**Responsabilità**
-- Fail‑fast su comandi obbligatori mancanti.
-- Risoluzione SCRIPTDIR, GROQBASH_DIR, GROQBASH_CONFIG_DIR, PROVIDERS_DIR, GROQBASH_TMPDIR.
-- Creazione e protezione directory/file canonici con permessi 700/600.
-- Fornitura helper: atomic_write, b64_atomic_write/read, _mktemp_in_dir, lock_exec, ensure_run_tmpdir, ui_state_write.
-- Validazione e caricamento sicuro dei moduli provider; scrittura provider_capabilities.json.
-- Centralizzazione enforce_network_policy.
-- Validazione rigorosa di GROQBASH_TMPDIR:
-    - deve esistere o essere creabile;
-    - deve essere dentro GROQBASH_DIR;
-    - deve avere permessi 700;
-    - non può essere un symlink;
-    - non può puntare a /tmp o a filesystem esterni;
-    - in caso di invalidità → fail‑fast con GROQBASHERRTMP.
-- ensure_run_tmpdir scarta automaticamente qualsiasi RUN_TMPDIR invalido (non esistente, non 700, fuori da GROQBASH_TMPDIR, oppure sotto /tmp) e ne crea uno nuovo sotto GROQBASH_TMPDIR.
-- RUN_TMPDIR viene rimosso automaticamente al termine dell’esecuzione, salvo DEBUG_PRESERVE=1
-
-**Dipendenze**
-- PATH con: bash, coreutils, findutils, util‑linux, gawk, curl, jq.
-- ENV letti: GROQBASH_DIR, GROQBASH_CONFIG_DIR, PROVIDERS_DIR, GROQBASH_TMPDIR, DEBUG, DRY_RUN, GROQBASH_SKIP_NETWORK, ecc.
-
-**API esposta**
-- `resolve_script_dir`
-- `canonical_config_dir`, `canonical_provider_file`, `canonical_model_file`, `canonical_provider_url_file`
-- `provider_api_env_var_name`
-- `ensure_api_key_for_provider`
-- `enforce_network_policy`
-- `ensure_config_dir`
-- `write_provider_url_if_missing`
-- `is_valid_json_string`, `is_valid_json_file`, `jq_safe`
-- `b64encode`, `b64decode`, `b64_atomic_write`, `b64_atomic_read`, `stage_b64`
-- `lock_exec`, `_mktemp_in_dir`, `atomic_write`, `_tmpf`
-- `ensure_run_tmpdir`, `cleanup_run_tmp_on_exit`, `ui_state_write`
-- `load_provider_module`, `getfile_signature`, `_get_owner`, `_get_perm_string`, `_is_world_writable`
-
-**Side‑effect**
-- Creazione di directory e file canonici; esport di variabili SCRIPTDIR, RUN_TMPDIR; scrittura provider_capabilities.json; log su stderr.
-
-**Flussi principali**
-- Bootstrap normale: verifica comandi → ensure_config_dir → set opts base64/lock → pronto per load_provider_module o ensure_run_tmpdir.
-- Flag `--print-*`: stampa percorso canonico e exit.
-- Caricamento provider: validazione permessi/owner/symlink → bash -n + source → verifica funzioni richieste → scrittura provider_capabilities.json.
-
----
-
-### PRECORE_RUN
-**Scopo**  
-Primitive runtime atomiche per history, manifest, tmp, sessioni e cache.
-
-**Responsabilità**
-- Gestione history con rotazione atomica.
-- Creazione e aggiornamento manifest multimodale con staging base64.
-- Session engine NDJSON: validazione id, append idempotente, lettura window atomica.
-- Cache sessione con TTL e invalidazione.
-- Utility permessi/firma: _get_perm_string, _get_owner, _get_file_signature, getfile_signature, _is_world_writable.
-- rotate_history viene invocata da save_to_history solo quando vengono superati i limiti GROQBASH_HISTORY_MAX_BYTES, GROQBASH_HISTORY_MAX_FILES o GROQBASH_HISTORY_KEEP_DAYS
-- _tmpf forza sempre la creazione del file temporaneo sotto GROQBASH_TMPDIR, ignorando directory esterne non sicure.
-- _mktemp_in_dir propaga il fallimento se la directory non è scrivibile o non valida; nessun fallback a /tmp
-
-**Dipendenze**
-- ENV: GROQBASH_HISTORY_DIR, GROQBASH_TMPDIR, RUN_TMPDIR, GROQBASH_LOCK_TIMEOUT_*, SESSION_DIR, LAST_CHECK_LINES.
-- Funzioni esterne: lock_exec, ui_state_write, ensure_run_tmpdir, b64encode/decode, file_size, is_truthy, log_*.
-- Comandi: jq, mktemp, stat, find, grep, awk, sed, tail, sort, head, mv, cp, chmod, rm, mkdir, flock, date, sha256sum/openssl opzionale.
-
-**API esposta**
-- `rotate_history`, `save_to_history`
-- `manifest_create`, `manifest_add_part`, `manifest_read`
-- `make_tmpdir`, `_tmpf`
-- `session_validate_id`, `session_now_ts`, `session_messages_tmp_path`, `session_sanitize_cmd`
-- `session_read_window`, `session_append`
-- `session_cache_key`, `session_cache_get`, `session_cache_set`, `session_cache_invalidate`
-- `_get_perm_string`, `_get_owner`, `_get_file_signature`, `getfile_signature`, `_is_world_writable`
-
-**Side‑effect**
-- File history, manifest (.b64), session NDJSON, session_cache files; lockfiles sotto RUN_TMPDIR; ui_state updates best‑effort.
-
-**Flussi principali**
-- `save_to_history`: staging + mv atomico sotto HISTORY_LOCK → rotate_history se necessario.
-- `manifest_add_part`: verifica sorgente → b64_atomic_write → aggiornamento manifest sotto lock.
-- `session_append`: crea marker dir per message_id → flock → evita duplicati → append NDJSON atomico → aggiorna index e ui_state.
-- Ordine di fallback per la directory di staging della rotazione:
-    1. RUN_TMPDIR (se valido)
-    2. GROQBASH_TMPDIR (se valido)
-    3. GROQBASH_HISTORY_DIR (fallback finale)
-
-Nessun uso di /tmp è mai consentito.
-
----
-
-### PROVIDER (implementazione `groq`)
-**Scopo**  
-Integrazione con API Groq: costruzione payload, chiamate HTTP streaming/non‑streaming, gestione modelli.
-
-**Responsabilità**
-- `buildpayload_groq`: costruzione payload chat JSON.
-- `call_api_groq`: chiamata non‑streaming e salvataggio RESP.
-- `call_api_streaming_groq`: streaming SSE, emissione su stdout, aggregazione chunk.
-- `refresh_models_groq`: fetch `/openai/v1/models`, normalizzazione e scrittura MODELS_FILE.
-- `validate_model_groq`, `auto_select_model_groq`.
-
-**Dipendenze**
-- ENV: GROQ_API_KEY, PROVIDER_API_ENV_groq, GROQBASH_PROVIDER_URL, MODELS_FILE, CURL_BASE_OPTS, RUN_TMPDIR, STREAM_MODE, B64_DECODE_OPT.
-- Helper: ensure_run_tmpdir, _mktemp_in_dir, is_truthy, is_valid_json_*, b64decode, stage_b64, b64_atomic_write, lock_exec, resolve_provider_url, is_supported_model, ui_state_write, log_*.
-
-**API esposta**
-- `buildpayload_groq` / `buildpayloadgroq`
-- `call_api_groq`
-- `call_api_streaming_groq` / `call_api_streaming_groq_legacy`
-- `refresh_models_groq` / `refreshmodelsgroq`
-- `validate_model_groq` / `validatemodelgroq`
-- `auto_select_model_groq` / `autoselectmodelgroq`
-
-**Side‑effect**
-- Creazione payload files, resp.raw/resp.lines/resp.json/resp.text, MODELS_FILE atomico; emissione streaming su stdout; scrittura last_api.json via ui_state_write.
-
-**Flussi principali**
-- Non‑streaming: buildpayload → enforce_network_policy → curl → validate JSON → scrivi RESP.
-- Streaming: buildpayload(stream) → curl SSE → parse `data:` lines → stampa incrementale → aggrega chunk → scrivi RESP.
-- Refresh modelli: curl `/openai/v1/models` → jq normalize → b64_atomic_write sotto MODELS_LOCK.
-
----
-
-### CORE_SETUP
-**Scopo**  
-Orchestrare stato CLI/runtime, risolvere modello, dispatch provider, wrapper chiamate API, gestione output e salvataggio.
-
-**Responsabilità**
-- Normalizzazione flag CLI e popolamento SUPPORTED_PROVIDERS.
-- Risoluzione modello con `resolve_model`.
-- Dispatch dinamico a provider tramite `call_provider`.
-- Wrapper `call_api_once`, `call_api_streaming`, retry loop `perform_request_once`.
-- Estrazione testo da RESP, rilevamento edge empty, finalize_and_output.
-
-**Dipendenze**
-- ENV: MODEL, PROVIDER, DRY_RUN, STREAM_MODE, OUTPUT_MODE, GROQBASH_CONFIG_DIR, RUN_TMPDIR, THRESHOLD.
-- Funzioni: call_provider, ensure_run_tmpdir, is_truthy, canonical_* , is_valid_json_file, extract_text_from_resp, ui_state_write, save_to_history, session_engine_*.
-
-**API esposta**
-- `call_provider`
-- `refresh_models_dispatch`
-- `validate_model_dispatch`
-- `auto_select_model_dispatch`
-- `resolve_model`
-- `build_payload_from_vars`
-- `call_api_once`, `call_api_streaming`
-- `extract_api_error`, `detect_empty_edge_case`
-- `finalize_and_output`
-- `perform_request_once`
-- `list_models_cli`, `validate_model_core`, `load_local_config`, `load_whitelist`, `is_tty_out`
-
-**Side‑effect**
-- Impostazione FINAL_MODEL, MODEL_PROVIDER_CFG, normalized flags; scrittura fallback ui_state/last_api.json; salvataggio history.
-
-**Flussi principali**
-- CLI parse → load config/whitelist → resolve_model → build_payload_from_vars → perform_request_once → finalize_and_output.
-
----
-
-### CORE_PROVIDER
-**Scopo**  
-Scoperta, selezione, persistenza e validazione del provider; orchestrazione refresh modelli e comandi diagnostici.
-
-**Responsabilità**
-- Popolare SUPPORTED_PROVIDERS (builtin + PROVIDERS_DIR/*.sh).
-- Applicare provider persistente o override CLI/interactive.
-- Validare interfaccia provider e caricare modulo con load_provider_module.
-- Risolvere GROQBASH_PROVIDER_URL e persistere provider file atomico.
-- Invalida cache modelli su cambio provider; orchestrare refresh_models_dispatch.
-
-**Dipendenze**
-- ENV: PROVIDER, PROVIDER_CLI, PROVIDER_INTERACTIVE, REFRESH_MODELS, MODELS_FILE.
-- Funzioni: canonical_provider_file, canonical_provider_url_file, ensure_config_dir, atomic_write, load_provider_module, resolve_provider_url, ensure_api_key_for_provider, refresh_models_dispatch, write_provider_url_if_missing.
-
-**API esposta**
-- `validate_provider_interface(p)`
-- `load_provider_module(PROVIDER)`
-- `resolve_provider_url(PROVIDER)`
-- `ensure_api_key_for_provider(PROVIDER)`
-- `refresh_models_dispatch(MODELS_FILE)`
-- `write_provider_url_if_missing(provider, url)`
-
-**Side‑effect**
-- Persistenza provider file atomica; possibile rimozione MODELS_FILE; impostazione GROQBASH_PROVIDER_URL; stdout/stderr diagnostici.
-
-**Flussi principali**
-- Determina provider → persist atomic → load_provider_module → validate interface → resolve_provider_url → optional refresh_models_dispatch.
-
----
-
-## Glossario e convenzioni
-
-**Termini chiave**
-- **RUN_TMPDIR**: directory temporanea per singola esecuzione, creata da ensure_run_tmpdir.
-Deve essere sotto GROQBASH_TMPDIR, con permessi 700.
-Se RUN_TMPDIR è invalido (non esiste, non 700, fuori perimetro, sotto /tmp), viene scartato e ricreato.
-Viene rimosso automaticamente al termine salvo DEBUG_PRESERVE=1
-- **GROQBASH_TMPDIR**: base tmp sotto config; non è `/tmp`.
-- **PAYLOAD / GROQBASH_TMP_PAYLOAD**: file JSON inviato all’API.
-- **RESP**: file risposta aggregata (JSON o diagnostico).
-- **MODELS_FILE**: file persistente con lista modelli normalizzata.
-- **provider_capabilities.json**: metadata scritto dopo load_provider_module.
-- **edge empty**: completions vuote rilevate da detect_empty_edge_case.
-- **rotate_history** non viene invocata ad ogni chiamata, ma solo quando la history supera i limiti configurati.
-La rotazione avviene in modo atomico e non utilizza mai /tmp.
-
-**Codici di errore canonici**
-- **0**: successo.
-- **1**: errore generico / validazione fallita.
-- **2**: JSON/diagnostica non valida.
-- **124**: timeout lock (lock_exec).
-- **127**: funzione provider mancante (dispatch).
-- **GROQBASHERRNOAPIKEY**: mancanza API key quando richiesta.
-- **GROQBASHERRAPI**: errore API generico.
-- **GROQBASHERRTMP**: errori tmp/I/O.
-
-**Schema minimo RESP diagnostico (JSON)**
-```json
 {
-  "timestamp": "ISO8601",
-  "provider": "groq",
-  "request_id": "string|null",
-  "status": "ok|error|partial",
-  "http_code": 0,
-  "error": {"message":"string","type":"string","detail":"string|null"},
-  "resp_snippet": "string|null",
-  "raw_path": "path/to/resp.raw"
+  "compact_file_type": "groqbash_compact_no_code",
+  "language": "it",
+  "generated_from": "attached_document_aggregated",
+  "expand_flags": ["fn", "vars", "cm"],
+  "meta": {
+    "name": "groqbash",
+    "size_bytes": 191346,
+    "sha256": "d5c92cd7637d5d0b78d65c37aaf4afae28be02f5307656b5b580a025dbf9ec4c",
+    "line_count": 5033,
+    "shebang": "#!/usr/bin/env bash",
+    "author": "Cristian Evangelisti",
+    "license": "GNU GPL v3+"
+  },
+  "note": "Questo file compatto non contiene codice sorgente. Sono incluse descrizioni estese di funzioni, variabili e mappatura del codice (code_map) come richiesto.",
+  "functions_expanded": [
+    {
+      "name": "resolve_script_dir",
+      "signature": "resolve_script_dir()",
+      "purpose_it": "Restituisce la directory canonica dello script in esecuzione risolvendo eventuali symlink."
+    },
+    {
+      "name": "canonical_config_dir",
+      "signature": "canonical_config_dir()",
+      "purpose_it": "Restituisce la directory di configurazione canonica senza slash finale."
+    },
+    {
+      "name": "provider_api_env_var_name",
+      "signature": "provider_api_env_var_name <prov>",
+      "purpose_it": "Calcola il nome canonico della variabile d'ambiente per la chiave API del provider (es. GROQ_API_KEY)."
+    },
+    {
+      "name": "ensure_api_key_for_provider",
+      "signature": "ensure_api_key_for_provider <prov>",
+      "purpose_it": "Garantisce la presenza della chiave API per il provider; prompt interattivo se necessario; fallisce in non-interattivo salvo DRY_RUN."
+    },
+    {
+      "name": "enforce_network_policy",
+      "signature": "enforce_network_policy()",
+      "purpose_it": "Controllo centrale che impedisce chiamate HTTP quando DRY_RUN o GROQBASH_SKIP_NETWORK sono attivi; ritorna non-zero per bloccare la rete."
+    },
+    {
+      "name": "log_info / log_warn / log_error",
+      "signature": "log_info(code,msg); log_warn(code,msg); log_error(code,msg)",
+      "purpose_it": "Helper per logging strutturato; rispettano DEBUG e l'eventuale file GROQBASH_LOG."
+    },
+    {
+      "name": "b64encode / b64decode",
+      "signature": "b64encode(); b64decode()",
+      "purpose_it": "Wrapper portabili per base64 che normalizzano le opzioni tra piattaforme."
+    },
+    {
+      "name": "stage_b64",
+      "signature": "stage_b64 [src] dst",
+      "purpose_it": "Legge payload (stdin o file), lo codifica in base64 e scrive in modo atomico un file di staging sotto RUN_TMPDIR o destdir con controlli di dimensione."
+    },
+    {
+      "name": "lock_exec",
+      "signature": "lock_exec <lockfile> <timeout> -- <command> [args...]",
+      "purpose_it": "Acquisisce un lock esclusivo (flock) su lockfile con timeout ed esegue il comando in una subshell; fallisce chiaramente se flock non disponibile."
+    },
+    {
+      "name": "_mktemp_in_dir",
+      "signature": "_mktemp_in_dir <dir> [prefix]",
+      "purpose_it": "Wrapper di compatibilità che delega a _tmpf per creare file temporanei sicuri in una directory."
+    },
+    {
+      "name": "atomic_write",
+      "signature": "atomic_write <dest> [timeout]",
+      "purpose_it": "Scrive stdin in un file temporaneo e poi lo sposta in modo atomico in dest, opzionalmente sotto lock."
+    },
+    {
+      "name": "extract_text_from_resp",
+      "signature": "extract_text_from_resp()",
+      "purpose_it": "Estrae contenuto testuale da RESP JSON usando euristiche jq; supporta più forme di risposta e gestione diagnostica."
+    },
+    {
+      "name": "ensure_run_tmpdir",
+      "signature": "ensure_run_tmpdir [--print]",
+      "purpose_it": "Crea una run-specific temporary directory sotto GROQBASH_TMPDIR, imposta PAYLOAD/RESP/ERRF e installa il trap di cleanup."
+    },
+    {
+      "name": "b64_atomic_write / b64_atomic_read",
+      "signature": "b64_atomic_write <dest.b64> [timeout]; b64_atomic_read <src.b64>",
+      "purpose_it": "Helper per scritture/letture atomiche base64 usando GROQBASH_TMPDIR e lock_exec per spostamenti sicuri."
+    },
+    {
+      "name": "ui_state_write",
+      "signature": "ui_state_write <relpath> <json-string>",
+      "purpose_it": "Scrive lo stato UI JSON in modo atomico in $GROQBASH_CONFIG_DIR/ui_state con permessi restrittivi; non-fatal su errore."
+    },
+    {
+      "name": "load_provider_module",
+      "signature": "load_provider_module <provider>",
+      "purpose_it": "Carica in sicurezza un modulo provider: controlli di sicurezza, sourcing in subshell isolata, importa solo definizioni di funzione e registra capacità in ui_state."
+    },
+    {
+      "name": "_detect_base64_opts",
+      "signature": "_detect_base64_opts()",
+      "purpose_it": "Rileva opzioni base64 specifiche della piattaforma ed esporta B64_WRAP_OPT e B64_DECODE_OPT."
+    },
+    {
+      "name": "list_files_sorted_by_mtime",
+      "signature": "list_files_sorted_by_mtime <dir>",
+      "purpose_it": "Elenca file con righe mtime|path ordinate ascendentemente (stat portabile)."
+    },
+    {
+      "name": "tac_fallback",
+      "signature": "tac_fallback <file>",
+      "purpose_it": "Fallback portabile per invertire le righe di un file usando tac o awk."
+    },
+    {
+      "name": "_file_mtime",
+      "signature": "_file_mtime <file>",
+      "purpose_it": "Restituisce la mtime di un file in secondi epoch (portabile)."
+    },
+    {
+      "name": "jq_safe",
+      "signature": "jq_safe <filter> <file>",
+      "purpose_it": "Esegue jq con gestione errori e diagnostica opzionale scritta in ERRF."
+    },
+    {
+      "name": "_cleanup_local_tmp",
+      "signature": "_cleanup_local_tmp(tmp_payload, tmp_b64_local, json_input_file)",
+      "purpose_it": "Rimuove file temporanei locali (payload, staged b64, file json) per evitare artefatti."
+    },
+    {
+      "name": "buildpayload_groq",
+      "signature": "buildpayload_groq()",
+      "purpose_it": "Costruisce e valida il payload JSON per chiamate al provider Groq; supporta staging base64 e imposta variabili globali PAYLOAD/GROQBASH_TMP_PAYLOAD."
+    },
+    {
+      "name": "call_api_groq",
+      "signature": "call_api_groq()",
+      "purpose_it": "Esegue chiamata HTTP non-streaming con curl; gestisce decoding .b64, verifica API key, applica policy di rete e salva RESP e diagnostica."
+    },
+    {
+      "name": "call_api_streaming_groq",
+      "signature": "call_api_streaming_groq()",
+      "purpose_it": "Esegue chiamata streaming, legge chunk 'data:' dal flusso, estrae contenuto incrementale e costruisce RESP JSON finale; gestisce errori e diagnostica."
+    },
+    {
+      "name": "refresh_models_groq",
+      "signature": "refresh_models_groq()",
+      "purpose_it": "Scarica la lista modelli dall'API provider, normalizza i nomi e salva MODELS_FILE in modo atomico; fallisce se chiave API mancante o risposta non valida."
+    },
+    {
+      "name": "validate_model_groq",
+      "signature": "validate_model_groq(model)",
+      "purpose_it": "Verifica la presenza del modello in MODELS_FILE (se esistente) e che sia supportato; normalizza prefissi per confronto."
+    },
+    {
+      "name": "auto_select_model_groq",
+      "signature": "auto_select_model_groq()",
+      "purpose_it": "Scorre MODELS_FILE e restituisce il primo modello supportato (normalizzato)."
+    },
+    {
+      "name": "validate_provider_interface",
+      "signature": "validate_provider_interface(p)",
+      "purpose_it": "Verifica che il modulo provider definisca le funzioni richieste e opzionali; segnala errori e ritorna stato."
+    },
+    {
+      "name": "resolve_provider_url",
+      "signature": "resolve_provider_url(provider)",
+      "purpose_it": "Risoluzione dell'URL del provider seguendo la precedenza ENV > provider-url file > embedded default."
+    },
+    {
+      "name": "session_engine_build_window",
+      "signature": "session_engine_build_window(session_id, window, target_bytes, out_file)",
+      "purpose_it": "Costruisce il file JSON delle messages per la sessione; preferisce engine dedicato, legacy come fallback."
+    },
+    {
+      "name": "session_engine_append",
+      "signature": "session_engine_append(session_id, role, content, meta_json)",
+      "purpose_it": "Appende messaggi alla sessione; usa engine preferito o fallback legacy; usato per user e assistant."
+    }
+  ],
+  "variables_expanded": [
+    {
+      "name": "SCRIPT_NAME / SCRIPT_VERSION / SCRIPT_DATE",
+      "value": "groqbash / 2.0.0 / 2026-05-07",
+      "purpose_it": "Identificativi dello script e versione."
+    },
+    {
+      "name": "DEBUG / GROQBASH_LOG",
+      "value": "DEBUG default 0; GROQBASH_LOG percorso opzionale per log strutturati",
+      "purpose_it": "Controllo diagnostica e destinazione log."
+    },
+    {
+      "name": "MODELS_FILE / MAX_MODELS",
+      "value": "MODELS_FILE default $GROQBASH_MODELS_DIR/models.txt; MAX_MODELS default 200",
+      "purpose_it": "File dove vengono salvati i modelli e limite massimo di modelli memorizzati."
+    },
+    {
+      "name": "LOCK files and timeouts",
+      "value": "MODELS_LOCK, HISTORY_LOCK, TMP_LOCK; GROQBASH_LOCK_TIMEOUT_TMP, GROQBASH_LOCK_TIMEOUT_MODELS, GROQBASH_LOCK_TIMEOUT_HISTORY",
+      "purpose_it": "Variabili per lock e timeout usate nelle operazioni atomiche."
+    },
+    {
+      "name": "RUN_TMPDIR / PAYLOAD / RESP / ERRF",
+      "value": "Run-specific tempdir e percorsi canonici per payload/response/error sotto RUN_TMPDIR",
+      "purpose_it": "Percorsi temporanei per singola esecuzione."
+    },
+    {
+      "name": "B64_WRAP_OPT / B64_DECODE_OPT",
+      "value": "Opzioni base64 rilevate dalla piattaforma esportate da _detect_base64_opts",
+      "purpose_it": "Parametri portabili per codifica/decodifica base64."
+    },
+    {
+      "name": "GROQ_API_KEY",
+      "value": "Chiave API provider Groq (può essere sovrascritta da PROVIDER_API_ENV_groq)",
+      "purpose_it": "Credenziale principale per il provider groq."
+    },
+    {
+      "name": "PROVIDER_API_ENV_groq",
+      "value": "Nome della variabile d'ambiente opzionale che contiene la chiave API per groq",
+      "purpose_it": "Alias per la variabile d'ambiente provider-specifica."
+    },
+    {
+      "name": "GROQBASH_API_KEY",
+      "value": "Chiave API alternativa usata se GROQ_API_KEY non è impostata",
+      "purpose_it": "Fallback generico per chiave API."
+    },
+    {
+      "name": "MODEL / FINAL_MODEL",
+      "value": "MODEL è il modello richiesto; FINAL_MODEL è il risultato di resolve_model() prima della validazione finale",
+      "purpose_it": "Controllo del modello attivo."
+    },
+    {
+      "name": "TURE",
+      "value": "Parametro temperature (stringa numerica), validato e convertito in numero per jq",
+      "purpose_it": "Controllo della temperatura di generazione."
+    },
+    {
+      "name": "MAX_TOKENS",
+      "value": "Massimo numero di token; validato e convertito in numero per jq",
+      "purpose_it": "Limite token per la richiesta."
+    },
+    {
+      "name": "STREAM_MODE",
+      "value": "Flag che determina se il payload deve impostare stream=true",
+      "purpose_it": "Controllo modalità streaming."
+    },
+    {
+      "name": "JSON_INPUT / MESSAGES_JSON / BUILD_MESSAGES_FILE / CONTENT",
+      "value": "Variabili di input usate per costruire il payload secondo la priorità definita",
+      "purpose_it": "Fonti di contenuto per il payload."
+    },
+    {
+      "name": "GROQBASH_PROVIDER_URL",
+      "value": "URL del provider risolto (usato per costruire api_url e per le chiamate)",
+      "purpose_it": "Endpoint effettivo usato per le chiamate API."
+    },
+    {
+      "name": "MODELS_FILE / MODELS_LOCK / MAX_MODELS",
+      "value": "File e lock per la lista modelli e limite massimo di modelli salvati",
+      "purpose_it": "Gestione persistente della lista modelli."
+    },
+    {
+      "name": "RESP",
+      "value": "Percorso del file di risposta JSON dove vengono scritte le risposte/diagnostiche",
+      "purpose_it": "File di output JSON della chiamata."
+    },
+    {
+      "name": "SE_AVAILABLE / SE_ENGINE_PATH",
+      "value": "Contesto per il Session Engine opzionale; SE_AVAILABLE indica preferenza engine",
+      "purpose_it": "Configurazione per engine di sessione alternativo."
+    },
+    {
+      "name": "STREAM_MODE / CHAT_MODE / BATCH_FILE / DRY_RUN / DEBUG / QUIET",
+      "value": "Flag di controllo del flusso: modalità streaming, chat interattiva, batch, dry-run, debug e quiet",
+      "purpose_it": "Controlli di esecuzione e modalità."
+    },
+    {
+      "name": "GROQBASH_ROTATE_HISTORY / GROQBASH_HISTORY_MAX_FILES / GROQBASH_HISTORY_MAX_BYTES / GROQBASH_HISTORY_KEEP_DAYS",
+      "value": "Parametri di history e rotazione (max files, max bytes, keep days)",
+      "purpose_it": "Configurazione per rotazione della cronologia."
+    },
+    {
+      "name": "CURL_BASE_OPTS",
+      "value": "Opzioni base per curl usate dall'applicazione",
+      "purpose_it": "Opzioni conservative per invocazioni curl (es. --silent --show-error --no-buffer --max-time 120)."
+    }
+  ],
+  "code_map_expanded": [
+    {
+      "item": "Precore boot setup and env checks",
+      "description_it": "Impostazioni iniziali (set -euo pipefail), verifica comandi obbligatori e variabili d'ambiente critiche."
+    },
+    {
+      "item": "Config and runtime directory derivation and validation",
+      "description_it": "Derivazione e validazione di GROQBASH_DIR, GROQBASH_TMPDIR e invarianti relativi ai tmp."
+    },
+    {
+      "item": "API key handling and provider URL resolution",
+      "description_it": "Gestione chiavi API (prompt, alias GROQBASH_API_KEY/GROQ_API_KEY) e risoluzione URL provider (ENV > file > default)."
+    },
+    {
+      "item": "Atomic file helpers and staging",
+      "description_it": "Helper atomici per scritture, stage base64, atomic_write, b64_atomic_write/read e lock per movimenti sicuri."
+    },
+    {
+      "item": "Run tmpdir lifecycle and cleanup trap",
+      "description_it": "Creazione di RUN_TMPDIR per esecuzione, impostazione PAYLOAD/RESP/ERRF e trap di pulizia; permessi restrittivi."
+    },
+    {
+      "item": "Provider safe-load and capability reporting",
+      "description_it": "Caricamento sicuro dei moduli provider in subshell, importazione solo di funzioni e report delle capacità in ui_state."
+    },
+    {
+      "item": "Portable utilities",
+      "description_it": "Utility portabili: rilevamento opzioni base64, gestione mtime file, tac fallback, jq_safe."
+    },
+    {
+      "item": "rotate_history, save_to_history, manifest_*",
+      "description_it": "Funzionalità per rotazione della history, salvataggio atomico e manifest multimodale con staging base64."
+    },
+    {
+      "item": "_get_perm_string and tmp helpers",
+      "description_it": "Primitive per permessi, signature file, creazione sicura di tmpdir e _tmpf."
+    },
+    {
+      "item": "session_* helpers",
+      "description_it": "Gestione sessioni NDJSON: validate_id, now_ts, messages_tmp_path, read_window, append idempotente."
+    },
+    {
+      "item": "session_cache_* and _session_hash",
+      "description_it": "Cache di sessione con prima riga expiry epoch e payload; scritture atomiche e rimozione scaduti."
+    },
+    {
+      "item": "Provider-specific payload and API calls",
+      "description_it": "buildpayload_groq, call_api_groq, call_api_streaming_groq, refresh_models_groq: costruzione payload, chiamate streaming/non-streaming e refresh modelli."
+    },
+    {
+      "item": "CORE_SETUP dispatch and request flow",
+      "description_it": "Dispatch verso implementazioni provider-specifiche, resolve_model, perform_request_once, finalize_and_output e wrapper DRY_RUN."
+    },
+    {
+      "item": "CORE_SETUP CLI and extras",
+      "description_it": "Parsing CLI, installazione atomica di extras e caricamento opzionale del Session Engine."
+    },
+    {
+      "item": "Provider discovery and flows",
+      "description_it": "Scoperta e selezione provider, provider-url default, validazione interfaccia, assemble_content, batch/chat/streaming flows e session handling."
+    }
+  ],
+  "defs_summary": [
+    {
+      "title_it": "Codici di errore canonici",
+      "value": "GROQBASH_ERR_* (es. NO_API_KEY=10, BAD_MODEL=11, CURL_FAILED=12, INVALID_JSON=13, NO_PROMPT=14, TMP=15, API=16)"
+    },
+    {
+      "title_it": "Variabili layout directory",
+      "value": "GROQBASH_DIR, GROQBASH_CONFIG_DIR, GROQBASH_MODELS_DIR, GROQBASH_TEMPLATES_DIR, GROQBASH_HISTORY_DIR, GROQBASH_TMPDIR, GROQBASH_EXTRAS_DIR, PROVIDERS_DIR"
+    },
+    {
+      "title_it": "Provider contract (safe-load)",
+      "value": "Provider deve esporre buildpayload_<prov> e call_api_<prov>; opzionali: call_api_streaming_<prov>, refresh_models_<prov>, validate_model_<prov>, auto_select_model_<prov>."
+    },
+    {
+      "title_it": "Tmpfile/tmpdir policy",
+      "value": "Creazione sicura tramite _tmpf; GROQBASH_TMPDIR come perimetro canonico; umask 077; permessi restrittivi; rifiuto symlink."
+    },
+    {
+      "title_it": "Assemble content",
+      "value": "assemble_content costruisce CONTENT da JSON_INPUT, FILE_INPUTS, TEMPLATE, STDIN o ARGS; preserva newline quando sostituisce {{CONTENT}}."
+    }
+  ],
+  "operational_highlights_it": {
+    "os_target": ["Linux", "macOS", "WSL", "Cygwin", "Termux", "BSD"],
+    "bash_version_min": ">=4.0",
+    "dependencies_minime": ["bash", "coreutils", "findutils", "util-linux", "gawk", "curl", "jq"],
+    "tmp_policy_summary": "GROQBASH_TMPDIR deve essere dentro GROQBASH_DIR; /tmp non è consentito per tmp interni; permessi 700/600; uso di _tmpf e lock per operazioni atomiche."
+  },
+  "security_and_risks_it": [
+    "Dipendenza da utilità esterne (curl, jq, gawk): assenza di fallback.",
+    "Gestione chiavi API: prompting interattivo; in non-interattivo mancanza di chiave causa fallimento rapido salvo DRY_RUN.",
+    "Permessi e atomicità: uso estensivo di temp file + mv + lock per evitare leakage di credenziali e race condition.",
+    "No eval: lo script evita l'esecuzione di risposte API."
+  ],
+  "file_summary_it": "groqbash è un orchestratore bash per chiamate a provider LLM (default 'groq'). Fornisce ambiente sicuro, helper atomici per file e base64, gestione sessioni NDJSON e history con rotazione, costruzione payload da molteplici input e supporto per chiamate streaming e non-streaming con diagnostica robusta. Il caricamento dei provider è isolato in subshell e l'interfaccia provider è formalizzata; la risoluzione del modello segue una priorità multilivello.",
+  "outputs_list": [
+    "groqbash.d/history",
+    "GROQBASH_TMP_PAYLOAD",
+    "RESP",
+    "ERRF",
+    "MODELS_FILE",
+    "session cache files",
+    "last_history.json",
+    "provider-url file (per groq se mancante)"
+  ],
+  "generation_notes_it": "Ho espanso le sezioni richieste (funzioni, variabili, code_map) mantenendo l'assenza di codice sorgente come richiesto. Se desideri un formato diverso (YAML, Markdown strutturato, o un file compatto con ulteriori campi), indicami il formato preciso e lo genererò.",
+  "lossy": false
 }
-```
-
----
-
-### Variabili d’ambiente canoniche
-
-**Configurazione directory e runtime**
-- `GROQBASH_DIR`, `SCRIPTDIR`, `GROQBASH_CONFIG_DIR`, `GROQBASH_MODELS_DIR`, `GROQBASH_TEMPLATES_DIR`, `GROQBASH_HISTORY_DIR`, `GROQBASH_TMPDIR`, `RUN_TMPDIR`, `PROVIDERS_DIR`, `GROQBASH_EXTRAS_DIR`
-
-**Provider / API**
-- `GROQ_API_KEY`, `GROQBASH_API_KEY`, `PROVIDER_API_ENV_<prov>`, `GROQBASH_PROVIDER_URL`, `PROVIDER`, `PROVIDER_CLI`, `PROVIDER_INTERACTIVE`
-
-**Runtime flags**
-- `DEBUG`, `DRY_RUN`, `QUIET`, `STREAM_MODE`, `ALLOW_API_CALLS`, `GROQBASH_SKIP_NETWORK`, `GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET`
-
-**Limits / timeouts**
-- `MAX_MODELS`, `MAX_STAGE_BYTES`, `MAX_TOKENS`, `GROQBASH_LOCK_TIMEOUT_HISTORY`, `GROQBASH_LOCK_TIMEOUT_TMP`, `GROQBASH_LOCK_TIMEOUT_MODELS`
-
-**Base64 / encoding**
-- `B64_WRAP_OPT`, `B64_DECODE_OPT`
-
-**Session / history**
-- `SESSION_DIR`, `SESSION_ID`, `SESSION_WINDOW`, `LAST_CHECK_LINES`, `GROQBASH_ROTATE_HISTORY`, `GROQBASH_HISTORY_MAX_FILES`, `GROQBASH_HISTORY_MAX_BYTES`, `GROQBASH_HISTORY_KEEP_DAYS`
-
----
-
-### Percorsi canonici e permessi
-
-**Regole generali**
-- Tutte le directory create da GroqBash: **mode 700**.
-- Tutti i file sensibili creati da GroqBash: **mode 600**.
-- Provider modules e extras: non devono essere symlink; owner deve essere utente esecutore; firma file verificata dopo sourcing.
-- Nessun tmp principale in `/tmp`; RUN_TMPDIR sotto `GROQBASH_TMPDIR` nello stesso filesystem della destinazione.
-
-**Percorsi principali (esempi semantici)**
-- `$(SCRIPTDIR)/groqbash` — script principale.
-- `$(GROQBASH_DIR)/config` — config persistente.
-- `$(GROQBASH_CONFIG_DIR)/ui_state` — ui_state files, `last_api.json`.
-- `$(GROQBASH_CONFIG_DIR)/provider-url` — provider URL persistente, file 600.
-- `$(PROVIDERS_DIR)/*.sh` — provider modules, file 600, non symlink.
-- `$(GROQBASH_MODELS_DIR)/models.b64` — MODELS_FILE atomico.
-- `$(GROQBASH_HISTORY_DIR)/history/*.json` — history files, rotazione gestita.
-- `$(GROQBASH_TMPDIR)/run-<pid>-<ts>` — RUN_TMPDIR, dir 700.
-
----
-
-## Appendici
-
-### Timeout / Retry defaults
-- **Lock timeout default**: `GROQBASH_LOCK_TIMEOUT_*` variabili configurabili; default operativo consigliato: **10s** per tmp/history, **30s** per MODELS_LOCK.
-- **API retry**: `MAX_RETRIES` default consigliato **3**; backoff esponenziale best‑practice.
-- **Curl timeout**: usare `CURL_BASE_OPTS` per impostare `--max-time` coerente con retry.
-
-### Contratto firma provider
-- **Obiettivo**: garantire che il modulo provider non sia stato modificato dopo il sourcing.
-- **Meccanismo**:
-  - Calcolare firma file prima del `source` con `getfile_signature` (sha256).
-  - `bash -n` per validazione sintattica.
-  - `source` in subshell controllata.
-  - Ricalcolare firma e confrontare; mismatch → fail‑fast.
-- **Requisiti file**: non symlink, owner utente, permessi 600, non world‑writable.
-
-### Indice funzioni helper (sintetico)
-- **Bootstrap / sicurezza**: `resolve_script_dir`, `ensure_config_dir`, `atomic_write`, `_mktemp_in_dir`, `lock_exec`, `ensure_run_tmpdir`, `ui_state_write`, `getfile_signature`.
-- **Base64 / staging**: `b64encode`, `b64decode`, `b64_atomic_write`, `b64_atomic_read`, `stage_b64`.
-- **JSON / validation**: `is_valid_json_string`, `is_valid_json_file`, `jq_safe`, `extract_text_from_resp`.
-- **Session / history**: `save_to_history`, `rotate_history`, `manifest_create`, `manifest_add_part`, `session_append`, `session_read_window`, `session_cache_*`.
-- **Provider dispatch**: `load_provider_module`, `validate_provider_interface`, `call_provider`, `refresh_models_dispatch`, `resolve_provider_url`, `ensure_api_key_for_provider`.
-- **Core orchestration**: `resolve_model`, `build_payload_from_vars`, `call_api_once`, `call_api_streaming`, `perform_request_once`, `finalize_and_output`, `detect_empty_edge_case`.
-
-### Runbook operativo minimo
-- **Installazione prerequisiti**: assicurare `bash`, `coreutils`, `findutils`, `util‑linux`, `gawk`, `curl`, `jq` nel PATH.
-- **Posizionamento**: collocare `groqbash` e `groqbash.d/` nello stesso owner; verificare permessi 700 per dir e 600 per file.
-- **Configurazione iniziale**:
-  1. Impostare `GROQBASH_CONFIG_DIR` se non default.
-  2. Posizionare provider modules in `PROVIDERS_DIR` con permessi 600.
-  3. Esportare `GROQ_API_KEY` o usare `ensure_api_key_for_provider` in modalità interattiva.
-- **Esecuzione diagnostica**:
-  - `--print-config-dir`, `--print-provider-file`, `--list-providers`, `--list-models` per verifiche non distruttive.
-- **Aggiornamento modelli**:
-  - Eseguire refresh modelli tramite `refresh_models_dispatch`; verificare MODELS_FILE e permessi.
-- **Recupero errori**:
-  - Lock timeout 124 → verificare processi concorrenti e rimuovere lock stale solo se sicuri.
-  - Firma provider mismatch → ripristinare modulo da fonte fidata.
-  - RESP diagnostico → controllare `resp.raw` e `curl.err` nel RUN_TMPDIR.
-- **Backup e pulizia**:
-  - Eseguire backup periodico di `GROQBASH_CONFIG_DIR` e `GROQBASH_HISTORY_DIR`.
-  - Monitorare dimensione MODELS_FILE e history; regolare `GROQBASH_HISTORY_*` e `MAX_MODELS`.
-
-### Limitazioni ambientali (ARG_MAX, Termux)
-In ambienti con limiti bassi di ARG_MAX (es. Termux), input molto grandi passati via STDIN possono causare errori jq: Argument list too long.
-Questo non è un errore di GroqBash ma del sistema.
-Le risposte lunghe del provider non sono soggette a questo limite.
-
----
-
-Documento concepito come specifica architetturale completa e leggibile da LLM per analisi, verifica e future implementazioni senza accesso al codice sorgente.
