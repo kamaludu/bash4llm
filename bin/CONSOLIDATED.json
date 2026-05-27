@@ -862,7 +862,7 @@
       ]
     },
     {
-      "item": "session_* (validate_id, now_ts, messages_tmp_path, sanitize_cmd, read_window, append)",
+      "item": "session_* (validate_id, now_ts, messages_tmp_path, session_sanitize_cmd, read_window, append)",
       "refs": [
         "PRECORE_RUN Ln1750-Ln2118"
       ]
