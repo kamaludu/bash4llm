@@ -1,0 +1,951 @@
+[
+  {
+    "name": "_cleanup_local_tmp",
+    "signature": "_cleanup_local_tmp(tmp_payload, tmp_b64_local, json_input_file)",
+    "purpose": "Rimuove i file temporanei locali creati durante la preparazione/invio del payload per evitare artefatti residui.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2688-3109"
+    ]
+  },
+  {
+    "name": "_detect_base64_opts",
+    "signature": "_detect_base64_opts()",
+    "purpose": "Rileva le opzioni base64 specifiche della piattaforma ed esporta le variabili di compatibilità.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-1"
+    ]
+  },
+  {
+    "name": "_file_mtime",
+    "signature": "_file_mtime <file>",
+    "purpose": "Restituisce la data di modifica di un file in epoch seconds in modo portabile tra piattaforme.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-90"
+    ]
+  },
+  {
+    "name": "_get_file_signature",
+    "signature": "_get_file_signature <file>",
+    "purpose": "Calcola una firma del file usata per verifiche di integrità o caching.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "_get_owner",
+    "signature": "_get_owner <file>",
+    "purpose": "Recupera l'owner di un file in modo portabile per controlli di permessi.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "_get_perm_string",
+    "signature": "_get_perm_string <file>",
+    "purpose": "Restituisce la stringa dei permessi di un file (es. rwxr-x---) per diagnostica e controlli.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "_is_world_writable",
+    "signature": "_is_world_writable <file>",
+    "purpose": "Verifica se un file o directory è world‑writable per prevenire rischi di sicurezza.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "_mktemp_in_dir",
+    "signature": "_mktemp_in_dir <dir> [prefix]",
+    "purpose": "Wrapper di compatibilità che delega a _tmpf per creare file temporanei sicuri in una directory specificata.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-120"
+    ]
+  },
+  {
+    "name": "_normalize_bool_env",
+    "signature": null,
+    "purpose": null,
+    "macro_section": null,
+    "refs": [PRECORE_RUN Ln-2278-Ln-2290]
+  },
+  {
+    "name": "_session_hash",
+    "signature": "_session_hash <sid|params>",
+    "purpose": "Calcola la chiave di cache della sessione (sid|sha256(params_string)) usata per identificare la cache sessione.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "_tmpf",
+    "signature": "_tmpf <dir> [mode]",
+    "purpose": "Primitive sicura per creare file e directory temporanei con umask e permessi restrittivi secondo la policy tmp.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "ARGS",
+    "signature": "ARGS",
+    "purpose": "Variabile/concetto CLI che rappresenta gli argomenti passati allo script (usata nelle routine di parsing).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175",
+      "CORE_SETUP CORE_SETUP_CHUNK_1 lines 3110-3608"
+    ]
+  },
+  {
+    "name": "assemble_content",
+    "signature": "assemble_content()",
+    "purpose": "Costruisce il campo CONTENT del payload combinando JSON_INPUT, FILE_INPUTS, TEMPLATE, STDIN o ARGS, preservando newline quando necessario.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4561-Ln-4620"
+    ]
+  },
+  {
+    "name": "atomic_write",
+    "signature": "atomic_write <dest> [timeout]",
+    "purpose": "Scrittura atomica tramite tmp file + mv.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT Ln-657-Ln-696"
+    ]
+  },
+  {
+    "name": "auto_select_model_dispatch",
+    "signature": null,
+    "purpose": null,
+    "macro_section": null,
+    "refs": [CORE_SETUP Ln-3240]
+  },
+  {
+    "name": "auto_select_model_groq",
+    "signature": "auto_select_model_groq()",
+    "purpose": "Scorre MODELS_FILE e restituisce il primo modello supportato, normalizzato per l'uso automatico.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "autoselectmodelgroq",
+    "signature": "autoselectmodelgroq()",
+    "purpose": "Alias/variante storica per l'auto-selezione del modello Groq; mantiene compatibilità con chiamate legacy.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "b64_atomic_read",
+    "signature": "b64_atomic_read <src.b64>",
+    "purpose": "Legge in modo sicuro e atomico un file base64 precedentemente scritto con b64_atomic_write.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-520"
+    ]
+  },
+  {
+    "name": "b64_atomic_write",
+    "signature": "b64_atomic_write <dest.b64> [timeout]",
+    "purpose": "Scrive in modo atomico un file base64 usando GROQBASH_TMPDIR e lock_exec per movimenti sicuri.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-520"
+    ]
+  },
+  {
+    "name": "b64decode",
+    "signature": "b64decode()",
+    "purpose": "Wrapper portabile per decodificare base64 usando le opzioni rilevate dalla piattaforma.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-1"
+    ]
+  },
+  {
+    "name": "b64encode",
+    "signature": "b64encode()",
+    "purpose": "Wrapper portabile per codificare in base64 normalizzando le opzioni tra piattaforme diverse.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-320"
+    ]
+  },
+  {
+    "name": "buildpayload_groq",
+    "signature": "buildpayload_groq()",
+    "purpose": "Costruisce e valida il payload JSON per le chiamate al provider Groq, supportando staging base64 e impostando variabili globali PAYLOAD/GROQBASH_TMP_PAYLOAD.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "buildpayloadgroq",
+    "signature": "buildpayloadgroq()",
+    "purpose": "Alias/variante storica di buildpayload_groq per compatibilità con chiamate legacy.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "build_payload_from_vars",
+    "signature": "build_payload_from_vars()",
+    "purpose": "Prepara il payload delegando a buildpayload_<provider>; esce con errore se il provider non fornisce la funzione richiesta.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3331-Ln-3350 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "call_api_groq",
+    "signature": "call_api_groq()",
+    "purpose": "Esegue la chiamata HTTP non‑streaming verso Groq con curl; gestisce decoding .b64, verifica API key, applica policy di rete e salva RESP e diagnostica.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2465-2687"
+    ]
+  },
+  {
+    "name": "call_api_streaming_groq",
+    "signature": "call_api_streaming_groq()",
+    "purpose": "Esegue la chiamata streaming al provider Groq, legge chunk 'data:' dal flusso, estrae contenuto incrementale e costruisce il RESP JSON finale con gestione errori e diagnostica.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "call_api_streaming_groq_legacy",
+    "signature": "call_api_streaming_groq_legacy()",
+    "purpose": "Variante/compatibilità legacy per la chiamata streaming Groq; preserva comportamento storico.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "call_api_once",
+    "signature": "call_api_once()",
+    "purpose": "Wrapper per chiamate API non‑streaming che supporta DRY_RUN e delega all'implementazione provider‑specifica.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3351-Ln-3420 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "call_api_streaming",
+    "signature": "call_api_streaming()",
+    "purpose": "Wrapper per chiamate API in streaming che supporta DRY_RUN e delega a call_api_streaming_<provider> quando disponibile.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3351-Ln-3420 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "call_provider",
+    "signature": "call_provider <fn> [args...]",
+    "purpose": "Wrapper che invoca una funzione provider‑specifica se definita; ritorna 127 se la funzione manca.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3110-Ln-3130 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "canonical_config_dir",
+    "signature": "canonical_config_dir()",
+    "purpose": "Restituisce la directory di configurazione canonica senza slash finale.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-86"
+    ]
+  },
+  {
+    "name": "canonical_model_file",
+    "signature": "canonical_model_file()",
+    "purpose": "Concetto/utility per ottenere il percorso canonico del file dei modelli (usato nella risoluzione dei modelli).",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-110",
+      "CORE_PROVIDER CHUNK 1:Ln-4510-Ln-4560"
+    ]
+  },
+  {
+    "name": "canonical_provider_file",
+    "signature": "canonical_provider_file()",
+    "purpose": "Utility per ottenere il percorso canonico del file che persiste la scelta del provider.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4176-Ln-4440"
+    ]
+  },
+  {
+    "name": "canonical_provider_url_file",
+    "signature": "canonical_provider_url_file()",
+    "purpose": "Utility per ottenere il percorso del file provider-url usato per risolvere endpoint provider persistenti.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4441-Ln-4475"
+    ]
+  },
+  {
+    "name": "cleanup_run_tmp_on_exit",
+    "signature": "cleanup_run_tmp_on_exit()",
+    "purpose": "Pulizia del RUN_TMPDIR e delle risorse temporanee installata come trap all'uscita della run.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-340-Ln-520"
+    ]
+  },
+  {
+    "name": "cleanup_tmp",
+    "signature": "cleanup_tmp()",
+    "purpose": "Routine di pulizia generale per rimuovere file temporanei residui secondo la tmpfile policy.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "collect_input_from_files",
+    "signature": "collect_input_from_files()",
+    "purpose": "Raccoglie e concatena input provenienti da file per costruire il payload o CONTENT.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "dbg",
+    "signature": "dbg(...)",
+    "purpose": "Helper diagnostico per logging o dump di variabili quando DEBUG è attivo.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160-Ln-200"
+    ]
+  },
+  {
+    "name": "detect_empty_edge_case",
+    "signature": "detect_empty_edge_case()",
+    "purpose": "Rileva l'edge case di 'empty completion' impostando variabili diagnostiche globali (GROQBASH_EDGE_*).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3451-Ln-3540 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "enforce_network_policy",
+    "signature": "enforce_network_policy()",
+    "purpose": "Blocca chiamate HTTP se DRY_RUN o SKIP_NETWORK sono attivi.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-120-Ln-160"
+    ]
+  },
+  {
+    "name": "ensure_api_key_for_provider",
+    "signature": "ensure_api_key_for_provider <prov>",
+    "purpose": "Verifica che esista la chiave API per il provider; la richiede interattivamente o fallisce in modalità non‑interattiva; sincronizza alias quando opportuno.",
+    "macro_section": "PRECORE_BOOT / CORE_PROVIDER",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40-Ln-120",
+      "CORE_PROVIDER CHUNK 1:Ln-4500-Ln-4525"
+    ]
+  },
+  {
+    "name": "ensure_config_dir",
+    "signature": "ensure_config_dir()",
+    "purpose": "Crea e verifica la directory di configurazione canonica con permessi restrittivi se mancante.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-80-Ln-160"
+    ]
+  },
+  {
+    "name": "ensure_run_tmpdir",
+    "signature": "ensure_run_tmpdir [--print]",
+    "purpose": "Crea la run-specific temporary directory sotto GROQBASH_TMPDIR, imposta PAYLOAD/RESP/ERRF e installa il trap di cleanup.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-340"
+    ]
+  },
+  {
+    "name": "expand_args_to_content",
+    "signature": "expand_args_to_content()",
+    "purpose": "Espande gli argomenti CLI in CONTENT utilizzabile per la costruzione del payload o template.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175",
+      "CORE_PROVIDER CHUNK 1:Ln-4561-Ln-4620"
+    ]
+  },
+  {
+    "name": "extract_api_error",
+    "signature": "extract_api_error <respfile>",
+    "purpose": "Estrae un messaggio di errore utile dal file RESP; supporta JSON e testo libero per diagnostica.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3421-Ln-3450 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "extract_text_from_resp",
+    "signature": "extract_text_from_resp()",
+    "purpose": "Estrae il contenuto testuale utile dal file RESP JSON usando euristiche jq e supportando diverse forme di risposta e diagnostica.",
+    "macro_section": "PRECORE_BOOT / CORE_PROVIDER",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-260",
+      "CORE_PROVIDER CHUNK 2:Ln-4891-Ln-5031"
+    ]
+  },
+  {
+    "name": "FILE_INPUTS",
+    "signature": "FILE_INPUTS",
+    "purpose": "Variabile/concetto che rappresenta gli input da file usati per costruire il payload.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4561-Ln-4620",
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175"
+    ]
+  },
+  {
+    "name": "file_readable",
+    "signature": "file_readable <file>",
+    "purpose": "Verifica che un file sia leggibile e valido prima di includerlo nel payload o nella pipeline.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175"
+    ]
+  },
+  {
+    "name": "file_size",
+    "signature": "file_size <file>",
+    "purpose": "Restituisce la dimensione di un file in byte per controlli di soglia e staging.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-1-Ln-220",
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "finalize_and_output",
+    "signature": "finalize_and_output()",
+    "purpose": "Gestisce l'output finale (json/pretty/raw/text), salva output testuali in history se necessario e usa copie atomiche di RESP.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3541-Ln-3660 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "getfile_signature",
+    "signature": "getfile_signature <file>",
+    "purpose": "Interfaccia per ottenere la firma di un file usata in controlli di integrità e caching.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "is_number",
+    "signature": "is_number <value>",
+    "purpose": "Verifica se un valore è numerico (usato per validazioni come TEMPERATURE o MAX_TOKENS).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "PROVIDER 2297-2464",
+      "CORE_SETUP Ln-3181-Ln-3330"
+    ]
+  },
+  {
+    "name": "is_supported_model",
+    "signature": "is_supported_model <model>",
+    "purpose": "Controlla se un modello è supportato secondo le regole/whitelist caricate.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3181-Ln-3330",
+      "CORE_PROVIDER CHUNK 1:Ln-4510-Ln-4560"
+    ]
+  },
+  {
+    "name": "is_tty_out",
+    "signature": "is_tty_out()",
+    "purpose": "Determina se l'output corrente è un TTY per abilitare modalità interattive o formati prettificati.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_PROVIDER CHUNK 2:Ln-4761-Ln-4890",
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175"
+    ]
+  },
+  {
+    "name": "is_truthy",
+    "signature": "is_truthy <value>",
+    "purpose": "Valuta se una stringa/variabile è considerata truthy secondo le convenzioni dello script.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-120-Ln-160",
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "is_valid_json_file",
+    "signature": "is_valid_json_file <file>",
+    "purpose": "Verifica che un file contenga JSON valido prima di usarlo come input.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-260",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "is_valid_json_string",
+    "signature": "is_valid_json_string <string>",
+    "purpose": "Verifica che una stringa sia JSON valido (usata per input inline o variabili).",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-260"
+    ]
+  },
+  {
+    "name": "jq_safe",
+    "signature": "jq_safe <filter> <file>",
+    "purpose": "Esegue jq con gestione degli errori e opzionale appending di diagnostica su ERRF per evitare crash non gestiti.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-120"
+    ]
+  },
+  {
+    "name": "list_files_sorted_by_mtime",
+    "signature": "list_files_sorted_by_mtime <dir>",
+    "purpose": "Elenca file con coppie mtime|path ordinate in modo ascendente gestendo in modo portabile le differenze di stat tra sistemi.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-20"
+    ]
+  },
+  {
+    "name": "list_models_cli",
+    "signature": null,
+    "purpose": null,
+    "macro_section": null,
+    "refs": [CORE_SETUP Ln-3658-Ln-3664]
+  },
+  {
+    "name": "load_local_config",
+    "signature": "load_local_config()",
+    "purpose": "Carica configurazioni locali (es. groqbash.d) e valori persistenti usati dal runtime.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-80-Ln-160",
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175"
+    ]
+  },
+  {
+    "name": "load_provider_module",
+    "signature": "load_provider_module <provider>",
+    "purpose": "Carica in modo sicuro il modulo provider in una subshell, importa solo le definizioni di funzione e registra le capacità nel ui_state.",
+    "macro_section": "PRECORE_BOOT / CORE_PROVIDER",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-1-Ln-220",
+      "CORE_PROVIDER CHUNK 1:Ln-4271-Ln-4440"
+    ]
+  },
+  {
+    "name": "load_whitelist",
+    "signature": "load_whitelist()",
+    "purpose": "Carica una whitelist di modelli o risorse usata per validazioni di sicurezza e compatibilità.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175",
+      "CORE_SETUP Ln-3181-Ln-3330"
+    ]
+  },
+  {
+    "name": "lock_exec",
+    "signature": "lock_exec <lockfile> <timeout> -- <command> [args...]",
+    "purpose": "Acquisisce un lock esclusivo su un file con timeout ed esegue il comando in una subshell; fallisce chiaramente se flock non è disponibile.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-40"
+    ]
+  },
+  {
+    "name": "log_error",
+    "signature": "log_error(code,msg)",
+    "purpose": "Logga errori in modo strutturato rispettando DEBUG e scrivendo su GROQBASH_LOG se configurato.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160-Ln-200"
+    ]
+  },
+  {
+    "name": "log_info",
+    "signature": "log_info(code,msg)",
+    "purpose": "Logga informazioni strutturate rispettando la configurazione di debug.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160-Ln-200"
+    ]
+  },
+  {
+    "name": "log_prefix",
+    "signature": "log_prefix()",
+    "purpose": "Genera un prefisso standard per le righe di log (timestamp, livello, codice) usato dai logger.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160-Ln-200"
+    ]
+  },
+  {
+    "name": "log_warn",
+    "signature": "log_warn(code,msg)",
+    "purpose": "Logga avvisi strutturati rispettando la configurazione di debug.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160-Ln-200"
+    ]
+  },
+  {
+    "name": "make_tmpdir",
+    "signature": "make_tmpdir <dir> [mode]",
+    "purpose": "Crea directory temporanee con permessi restrittivi e controlli anti-symlink secondo la tmpfile policy.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "manifest_add_part",
+    "signature": "manifest_add_part <manifest> <part.b64>",
+    "purpose": "Aggiunge una parte codificata in base64 al manifest multimodale in modo atomico aggiornando il JSON del manifest sotto lock.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "manifest_create",
+    "signature": "manifest_create(<dest>)",
+    "purpose": "Crea un nuovo manifest multimodale iniziale e la sua rappresentazione staging base64.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "manifest_read",
+    "signature": "manifest_read(<manifest>)",
+    "purpose": "Legge e decodifica il manifest multimodale, con fallback dalla versione base64 se necessario.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "perform_request_once",
+    "signature": "perform_request_once()",
+    "purpose": "Esegue la richiesta con retry fino a MAX_RETRIES; gestisce diagnostica, edge-case, fallback last_api.json e logging degli errori.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3661-Ln-3900 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "provider_api_env_var_name",
+    "signature": "provider_api_env_var_name <prov>",
+    "purpose": "Calcola il nome canonico della variabile d'ambiente che contiene la chiave API per un dato provider (es. GROQ_API_KEY).",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-300"
+    ]
+  },
+  {
+    "name": "refresh_models_dispatch",
+    "signature": "refresh_models_dispatch()",
+    "purpose": "Dispatch che chiama l'implementazione provider-specifica refresh_models_<provider> con fallback e logging.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3131-Ln-3160 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "refresh_models_groq",
+    "signature": "refresh_models_groq()",
+    "purpose": "Scarica la lista dei modelli dall'API provider Groq, normalizza i nomi e salva MODELS_FILE in modo atomico.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "resolve_model",
+    "signature": "resolve_model()",
+    "purpose": "Determina il modello finale (FINAL_MODEL) seguendo la priorità CLI, provider persisted, auto-select, MODELS_FILE e legacy config; valida con validate_model_core e dispatch provider.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3181-Ln-3330 (CORE_SETUP CHUNK 1)",
+      "CORE_PROVIDER CHUNK 1:Ln-4510-Ln-4560"
+    ]
+  },
+  {
+    "name": "resolve_provider_url",
+    "signature": "resolve_provider_url(provider)",
+    "purpose": "Risoluzione dell'URL del provider seguendo la precedenza ENV > provider-url file > default embedded.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4441-Ln-4475"
+    ]
+  },
+  {
+    "name": "resolve_script_dir",
+    "signature": "resolve_script_dir()",
+    "purpose": "Restituisce la directory canonica dello script in esecuzione risolvendo eventuali symlink.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-80"
+    ]
+  },
+  {
+    "name": "rotate_history",
+    "signature": "rotate_history()",
+    "purpose": "Esegue la procedura atomica di compattazione/rotazione della history: rimozione per età, per soglia byte e per numero di file.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "save_to_history",
+    "signature": "save_to_history(<output>)",
+    "purpose": "Salva output in file storico in modo atomico, aggiorna metadati UI (last_history.json) e opzionalmente invoca rotate_history.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "session_append",
+    "signature": "session_append(session_id, role, content, meta_json)",
+    "purpose": "Appende messaggi alla sessione in modo idempotente usando marker basati su message_id e lock cross-process per evitare duplicati.",
+    "macro_section": "PRECORE_RUN / CORE_PROVIDER",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln2118",
+      "CORE_PROVIDER CHUNK 2:Ln-4891-Ln-5031"
+    ]
+  },
+  {
+    "name": "session_cache_get",
+    "signature": "session_cache_get(key)",
+    "purpose": "Recupera la cache della sessione verificando la scadenza dalla prima riga (expiry epoch) e rimuovendo il file se scaduto.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "session_cache_invalidate",
+    "signature": "session_cache_invalidate(key)",
+    "purpose": "Invalida o rimuove una voce di cache della sessione quando non più valida o aggiornata.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "session_cache_key",
+    "signature": "session_cache_key(sid, params)",
+    "purpose": "Costruisce la chiave di cache per sessione (es. sid|sha256(params_string)).",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "session_cache_set",
+    "signature": "session_cache_set(key,payload,expiry)",
+    "purpose": "Scrive la cache della sessione in modo atomico con tmp file e prima riga contenente l'epoch di scadenza.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "session_engine_append",
+    "signature": "session_engine_append(session_id, role, content, meta_json)",
+    "purpose": "Appende messaggi alla sessione tramite l'engine preferito o il fallback legacy; usato sia per messaggi utente che assistant.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 2:Ln-4891-Ln-5031"
+    ]
+  },
+  {
+    "name": "session_engine_build_window",
+    "signature": "session_engine_build_window(session_id, window, target_bytes, out_file)",
+    "purpose": "Costruisce il file JSON delle messages per la sessione usando l'engine preferito con fallback legacy, rispettando la finestra e il target di byte.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 2:Ln-4621-Ln-4890"
+    ]
+  },
+  {
+    "name": "session_messages_tmp_path",
+    "signature": "session_messages_tmp_path(session_id)",
+    "purpose": "Restituisce il percorso temporaneo usato per costruire o bufferizzare i messaggi di una sessione.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln-2118"
+    ]
+  },
+  {
+    "name": "session_now_ts",
+    "signature": "session_now_ts()",
+    "purpose": "Restituisce il timestamp corrente usato per marcare i messaggi di sessione.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln-2118"
+    ]
+  },
+  {
+    "name": "session_read_window",
+    "signature": "session_read_window(session_id, N)",
+    "purpose": "Estrae le ultime N record NDJSON dalla sessione, normalizza i ruoli e produce un JSON compatto messages array.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln2118"
+    ]
+  },
+  {
+    "name": "session_sanitize_cmd",
+    "signature": "session_sanitize_cmd <cmd>",
+    "purpose": "Sanitizza comandi o input specifici della sessione per evitare caratteri pericolosi o injection.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln-2118"
+    ]
+  },
+  {
+    "name": "session_validate_id",
+    "signature": "session_validate_id <sid>",
+    "purpose": "Valida l'identificatore di sessione secondo le regole attese dallo engine di sessione.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln-2118"
+    ]
+  },
+  {
+    "name": "show_payload_head",
+    "signature": "show_payload_head(<payload>, n)",
+    "purpose": "Mostra le prime righe/byte del payload per diagnostica senza esporre l'intero contenuto.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-1-Ln-220",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "stage_b64",
+    "signature": "stage_b64 [src] dst",
+    "purpose": "Legge un payload da stdin o file, lo codifica in base64 e scrive in modo atomico un file di staging sotto RUN_TMPDIR o nella destdir con controlli di dimensione.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-1"
+    ]
+  },
+  {
+    "name": "tac_fallback",
+    "signature": "tac_fallback <file>",
+    "purpose": "Fornisce un fallback portabile per invertire le righe di un file usando tac o awk quando tac non è disponibile.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-60"
+    ]
+  },
+  {
+    "name": "trim",
+    "signature": "trim <string>",
+    "purpose": "Rimuove spazi bianchi iniziali/finali da una stringa (utility di normalizzazione).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CORE_SETUP_CHUNK_2 lines 3609-4175"
+    ]
+  },
+  {
+    "name": "ui_state_write",
+    "signature": "ui_state_write <relpath> <json-string>",
+    "purpose": "Scrive lo stato JSON della GUI in modo atomico in $GROQBASH_CONFIG_DIR/ui_state con permessi stretti; non fatale su errore.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-640"
+    ]
+  },
+  {
+    "name": "validate_model_core",
+    "signature": "validate_model_core(model)",
+    "purpose": "Validazione centrale del modello (core) usata come parte della pipeline di resolve_model prima del dispatch provider-specifico.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3181-Ln-3330 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "validate_model_dispatch",
+    "signature": "validate_model_dispatch(model)",
+    "purpose": "Invoca validate_model_<provider> se presente; altrimenti emette un warning e accetta permissivamente.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3161-Ln-3180"
+    ]
+  },
+  {
+    "name": "validate_model_groq",
+    "signature": "validate_model_groq(model)",
+    "purpose": "Verifica che il modello richiesto sia presente e supportato nella MODELS_FILE, normalizzando prefissi per il confronto.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "validate_provider_interface",
+    "signature": "validate_provider_interface(p)",
+    "purpose": "Verifica che il modulo provider definisca le funzioni richieste e opzionali; segnala errori e ritorna stato.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4476-Ln-4498"
+    ]
+  },
+  {
+    "name": "validatemodelgroq",
+    "signature": "validatemodelgroq(model)",
+    "purpose": "Alias/variante storica per la validazione del modello Groq; mantiene compatibilità con chiamate legacy.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "write_provider_url_if_missing",
+    "signature": "write_provider_url_if_missing(<provider>, <url>)",
+    "purpose": "Scrive in modo best‑effort il file provider-url con l'endpoint embedded di default se mancante (non fatale).",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4441-Ln-4475"
+    ]
+  }
+]
