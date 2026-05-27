@@ -339,12 +339,12 @@ Per ogni funzione esposta, ruolo e contratti essenziali
 
 - **session_cache_key / session_cache_get / session_cache_set / session_cache_invalidate**  
   Ruolo: generare chiave cache, leggere hit con TTL, scrivere cache atomica, invalidare.  
-  Contratto: cache memorizzata in `${GROQBASH_CONFIG_DIR}/session_cache`; `session_cache_get` rimuove file scaduti; ritorna 0 su hit.  
-  Dettagli formato: i file di cache hanno come prima riga l’epoch di scadenza; le righe successive contengono il payload JSON.  
-  La chiave è `sid|sha256(params_string)`; `session_cache_get` rimuove il file se l’epoch di scadenza è passato.
+  Contratto: cache memorizzata in `${GROQBASH_CONFIG_DIR}/session_cache`; `session_cache_get` rimuove file scaduti; ritorna 0 su hit.
+  I file di cache hanno come prima riga l’epoch di scadenza; le righe successive contengono il payload JSON. La chiave è `sid|sha256(params_string)`
+  `session_cache_get` rimuove il file se l’epoch di scadenza è passato.
 
 - **_tmpf**  
-  Ruolo: ignorare qualsiasi directory esterna e forzare sempre l’uso di `GROQBASH_TMPDIR`.
+  ignora qualsiasi directory esterna e forza sempre l’uso di `GROQBASH_TMPDIR`
 
 ---
 
@@ -904,6 +904,9 @@ Per ogni funzione rilevante: ruolo, input, output, errori.
   1. Se flag `PRINT_CONFIG_DIR`/`PRINT_PROVIDER_FILE`/`PRINT_MODEL_FILE` impostati, stampa percorso corrispondente ed esce.
   2. Se `SHOW_CONFIG=1`, stampa riepilogo configurazione e stato file modello persistente.
   3. Se `DIAGNOSTICS=1`, verifica esistenza directory, presenza funzioni provider, whitelist modello, API key e tmpdir; stampa risultati ed esce.
+
+- **Session Engine preferito**  
+    Se disponibile, viene usato un Session Engine esterno (`SE_AVAILABLE=1`) tramite `session_engine_build_window` e `session_engine_append`; in caso contrario si ricade sul motore legacy basato su NDJSON. L’engine preferito è sempre tentato per primo.
 
 ---
 
