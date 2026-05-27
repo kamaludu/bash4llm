@@ -19,7 +19,8 @@
   - Creare e proteggere directory e file di configurazione con permessi restrittivi.  
   - Fornire helper di basso livello per gestione temp, lock, base64, logging e validazione JSON.  
   - Caricare e validare moduli provider esterni in modo sicuro.
-  - ensure_run_tmpdir pulisce automaticamente RUN_TMPDIR al termine, salvo DEBUG_PRESERVE=1
+  - Caricare i moduli provider in una subshell isolata e importare nella shell principale solo le definizioni di funzione, evitando side‑effect top‑level.
+  - `ensure_run_tmpdir` pulisce automaticamente RUN_TMPDIR al termine, salvo DEBUG_PRESERVE=1
 - **Non-responsabilità**  
   - Non esegue chiamate API remote direttamente salvo tramite provider che devono rispettare enforce_network_policy.  
   - Non implementa la logica di buildpayload o call_api per provider specifici.  
@@ -178,6 +179,7 @@ Per le funzioni rilevanti esposte come modulo.
 
 - **load_provider_module**  
   - Ruolo: caricare e validare modulo provider da PROVIDERS_DIR in modo sicuro.  
+  - Esegue `bash -n` per validità sintattica, carica il modulo in una subshell e importa nella shell principale solo le funzioni dichiarate; scrive le capability del provider in `provider_capabilities.json` tramite `ui_state_write`
   - Input: provider name, PROVIDERS_DIR, funzioni helper di sicurezza come _is_world_writable, _get_owner, _get_perm_string, getfile_signature.  
   - Output: imposta LOADED_PROVIDER_NAME, PROVIDER_MODULE_LOADED, carica il file se valido, scrive provider_capabilities.json tramite ui_state_write.  
   - Errori: ritorna 1 su problemi di sicurezza o I/O, imposta PROVIDER_MODULE_LOADED a 0 se modulo mancante o incompleto, log_error o log_warn a seconda del problema.
@@ -205,7 +207,7 @@ Per le funzioni rilevanti esposte come modulo.
   1. load_provider_module verifica PROVIDERS_DIR e proprietà di sicurezza.  
   2. Controlla esistenza del file provider e che non sia symlink.  
   3. Valida proprietà file owner e permessi.  
-  4. Esegue bash -n per validità sintattica e sourca il file se valido.  
+  4. Esegue bash -n per validità sintattica, carica il modulo in una subshell e importa nella shell principale solo le funzioni dichiarate.
   5. Verifica presenza delle funzioni richieste e scrive provider_capabilities.json; in caso di problemi fallback a provider embedded.  
 
 ---
@@ -225,7 +227,7 @@ Per le funzioni rilevanti esposte come modulo.
 - **Policy particolari**  
   - Rete: enforce_network_policy centralizza il blocco delle chiamate HTTP quando DRY_RUN o GROQBASH_SKIP_NETWORK sono attivi.  
   - Sicurezza file: directory e file creati con permessi restrittivi 700 per directory e 600 per file.  
-  - Nessun uso di /tmp di sistema per file temporanei principali; tutti i tmp sono sotto GROQBASH_TMPDIR.  
+  - GROQBASH_TMPDIR deve essere una directory interna a GROQBASH_DIR; è vietato usare /tmp per i temporanei interni. _tmpf e make_tmpdir rifiutano percorsi esterni.  
   - Nessuna esecuzione automatica delle risposte API e nessun uso di eval in nessuna fase del parsing CLI o del runtime.
   - Locking obbligatorio per operazioni atomiche tramite lock_exec con timeout configurabile.  
 
@@ -240,7 +242,7 @@ Fornire primitive runtime sicure, atomiche e portabili per gestione history, man
 
 **Responsabilità principali**
 - Rotazione e salvataggio atomico della history: `rotate_history`, `save_to_history`.  
-- Creazione e aggiornamento manifest base64-compatibile: `manifest_create`, `manifest_add_part`, `manifest_read`.  
+- Creazione e aggiornamento di un manifest multimodale: file JSON con array `parts` più una versione base64 di staging (`manifest.b64`); `manifest_add_part` codifica la parte in base64 in un file staged e aggiorna il manifest sotto lock usando `jq`
 - Helper file/permessi/firma: `_get_perm_string`, `_get_owner`, `_get_file_signature`, `getfile_signature`, `_is_world_writable`.  
 - Creazione sicura tmp: `make_tmpdir`, `_tmpf`.  
 - Sessione MVP e cache: `session_validate_id`, `session_now_ts`, `session_messages_tmp_path`, `session_read_window`, `session_append`, `session_sanitize_cmd`, `session_marker_create` (marker logic integrata), `session_cache_key`, `session_cache_get`, `session_cache_set`, `session_cache_invalidate`.  
@@ -269,6 +271,8 @@ Fornire primitive runtime sicure, atomiche e portabili per gestione history, man
 - Idempotenza append sessione per `message_id` tramite marker directory e controllo sotto lock.  
 - Tmp e file con permessi restrittivi; nessun uso di `/tmp` di sistema come default.  
 - Cache sessione con TTL e invalidazione deterministica.
+- I file sessione sono NDJSON, un record per riga con struttura `{ts, role, content, meta}`
+- `session_read_window` legge le ultime N righe NDJSON, normalizza i ruoli e produce un JSON compatto `{\"messages\":[...]}`
 
 ---
 
@@ -335,17 +339,19 @@ Per ogni funzione esposta, ruolo e contratti essenziali
 
 - **session_cache_key / session_cache_get / session_cache_set / session_cache_invalidate**  
   Ruolo: generare chiave cache, leggere hit con TTL, scrivere cache atomica, invalidare.  
-  Contratto: cache memorizzata in `${GROQBASH_CONFIG_DIR}/session_cache`; `session_cache_get` rimuove file scaduti; ritorna 0 su hit.
+  Contratto: cache memorizzata in `${GROQBASH_CONFIG_DIR}/session_cache`; `session_cache_get` rimuove file scaduti; ritorna 0 su hit.  
+  Dettagli formato: i file di cache hanno come prima riga l’epoch di scadenza; le righe successive contengono il payload JSON.  
+  La chiave è `sid|sha256(params_string)`; `session_cache_get` rimuove il file se l’epoch di scadenza è passato.
 
 - **_tmpf**  
-  ignora qualsiasi directory esterna e forza sempre l’uso di `GROQBASH_TMPDIR`
+  Ruolo: ignorare qualsiasi directory esterna e forzare sempre l’uso di `GROQBASH_TMPDIR`.
 
 ---
 
 ### FLUSSI PRINCIPALI (sintesi)
 - **Init runtime**  
   1. `ensure_run_tmpdir` viene chiamata; se fallisce exit con errore tmp.  
-  2. Impostazione opzioni curl e default runtime.  
+  2. `CURL_BASE_OPTS` è inizializzato a `--silent --show-error --no-buffer --max-time 120` e viene usato come base per tutte le chiamate HTTP. 
   3. `_normalize_bool_env` esporta booleani 0/1.
 
 - **Salvataggio history**  
@@ -484,7 +490,7 @@ Per ogni funzione rilevante: ruolo, input, output, errori.
 - **Errori / fallimenti**: segnala mancanza payload, payload vuoto, mancanza API key, mancanza provider URL; se stream non contiene JSON validi scrive `RESP` diagnostico; ritorna codice di curl o codice di errore specifico.
 
 **refresh_models_groq**  
-- **Ruolo**: recupera `/openai/v1/models`, normalizza e salva la lista in `MODELS_FILE` in modo atomico e sotto lock.  
+- **Ruolo**: chiama `/openai/v1/models`, normalizza i nomi, filtra i modelli supportati e salva al massimo `MAX_MODELS` voci in `MODELS_FILE`, usando lock e scrittura atomica.  
 - **Input**: `GROQ_API_KEY` (o `PROVIDER_API_ENV_groq`), `GROQBASH_PROVIDER_URL` (o `resolve_provider_url`), `MAX_MODELS`, `MODELS_FILE`, `MODELS_LOCK`, `CURL_BASE_OPTS`, `RUN_TMPDIR`.  
 - **Output / side‑effect**: scrive `MODELS_FILE` (atomico via `.b64` e `lock_exec`), ritorna 0 su successo.  
 - **Errori / fallimenti**: fallisce se mancano API key, provider URL, se curl fallisce, se JSON non valido, se parsing produce lista vuota, o se scrittura atomica fallisce; ritorna codici di errore distinti e log di diagnostica.
