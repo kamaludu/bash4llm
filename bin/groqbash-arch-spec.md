@@ -8,8 +8,6 @@
 
 ### Dipendenze tra macro‑sezioni
 
-<small>
-
 | Consumer | Dipende da | Tipo di dipendenza |
 |---|---:|---|
 | PRECORE_RUN | PRECORE_BOOT | helper tmp, lock_exec, ensure_run_tmpdir |
@@ -17,8 +15,6 @@
 | CORE_SETUP | PRECORE_BOOT, PROVIDER, PRECORE_RUN | dispatch provider, resolve_model, save_to_history |
 | CORE_PROVIDER | PRECORE_BOOT, PRECORE_RUN | canonical paths, atomic_write, load_provider_module |
 | Tutte | sistema: bash, coreutils, findutils, util‑linux, gawk, curl, jq | requisiti obbligatori |
-
-</small>
 
 ---
 
