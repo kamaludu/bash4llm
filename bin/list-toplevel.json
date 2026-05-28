@@ -3,8 +3,8 @@
     "id": "Inventario Top Level",
     "macro_section": "",
     "line_range": {
-      "start":,
-      "end":
+      "start": null,
+      "end": null
     },
     "kind": "document_header",
     "summary": "Titolo del documento",
