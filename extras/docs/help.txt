@@ -1,7 +1,7 @@
 --------------------------------------
-GroqBash 2.0.0 — Bash-first wrapper for the Groq API
+GroqBash 2.x — Bash-first wrapper for the Groq API
 --------------------------------------
-  --version            Groqbash version
+  --version            GroqBash version
   -h, --help           This Help
 
 Usage:
@@ -13,51 +13,58 @@ Usage:
 Options:
 
 Input:
-  -f <file>            Use file as input (repeatable)
-  --json-input <file>  Direct JSON payload (use "-" for stdin)
-  --template <name>    Template from groqbash.d/templates (requires {{CONTENT}})
+  -f <file>            Add file to FILE_INPUTS (repeatable)
+  --json-input <json>  Direct JSON input (literal JSON, not a file)
+  --template <name>    Template from groqbash.d/templates
   --batch <file>       One prompt per non-empty line
 
 Output:
-  --text               Text output (default)
-  --raw                Raw output without newline
+  --text               Text output
+  --raw                Raw output (no formatting)
   --json               Raw JSON output
   --pretty             Pretty-print JSON
   --out <path>         Save output to file or directory
-  --save / --nosave    Force save / disable save
-  --threshold <n>      Autosave threshold (default 1000)
+  --save               Force save
+  --nosave             Disable save
+  --threshold <n>      Autosave threshold (bytes)
 
 Streaming:
-  --stream             Enable SSE streaming (provider must support it)
+  --stream             Enable SSE streaming
   --no-stream          Disable streaming
 
 Provider & Model:
   --provider <name>    Select provider
-  --provider           Interactive provider selection (TTY)
+  --provider           Interactive provider selection
   -m, --model <name>   Select model
   --refresh-models     Refresh provider model list
+  --list-models        List models (interactive)
+  --list-models-raw    List models (raw, one per line)
+  --list-providers     List providers (interactive)
+  --list-providers-raw List providers (raw, one per line)
+  --set-default <m>    Set persistent default model
 
 Sessions:
   --session <id>       Enable persistent session
-  --session-window <n> Number of messages to include (default 10)
+  --session-window [n] Session window size (default 10 if omitted)
 
 Generation parameters:
   --system <text>      System prompt
   --temperature <n>    Temperature (alias: --ture)
+  --ture <n>           Temperature (internal alias)
   --max <n>            Max tokens
 
 General:
   --dry-run            Show payload, skip API call
   --quiet              Reduce output
-  --debug              Extended logging, preserve tmpdir
+  --debug              Enable debug mode
+  --chat               Interactive chat mode
+  --bootstrap-only     Run bootstrap only
 
-Immediate Actions:
-  --list-models        List local models
-  --list-providers     List available providers
-  --set-default <m>    Set default model
-  --install-extras     Install extras into runtime
-  --show-config        Show active configuration
-  --diagnostics        Run diagnostics
+Extras installation:
+  --install-extras           Install extras (all components)
+  --install-extras <dir>     Install extras from directory
+  --install-extras=<dir>     Inline form
+  # (Selective install supported: groqbash --install-extras provider1 templateA)
 
 Examples:
   groqbash "Summarize this text"
