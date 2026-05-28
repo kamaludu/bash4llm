@@ -1,5 +1,11 @@
 [
   {
+    "name": "Inventario delle Variabili",
+    "type": "document_header",
+    "purpose": "Titolo del documento",
+    "refs": []
+  },
+  {
     "name": "ALLOWED_MODELS",
     "type": "unknown",
     "purpose": "Referenced in resolve_model priority list as a possible source for model selection.",
