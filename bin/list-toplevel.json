@@ -1,5 +1,11 @@
 [
   {
+    "name": "Inventario Top Level",
+    "type": "document_header",
+    "purpose": "Titolo del documento",
+    "refs": []
+  },
+  {
     "id": "TLB-001",
     "macro_section": "PRECORE_BOOT",
     "line_range": {
