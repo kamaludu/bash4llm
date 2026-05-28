@@ -1,5 +1,11 @@
 [
   {
+    "name": "Inventario delle Funzioni",
+    "type": "document_header",
+    "purpose": "Titolo del documento",
+    "refs": []
+  },
+  {
     "name": "_cleanup_local_tmp",
     "signature": "_cleanup_local_tmp(tmp_payload, tmp_b64_local, json_input_file)",
     "purpose": "Rimuove i file temporanei locali creati durante la preparazione/invio del payload per evitare artefatti residui.",
