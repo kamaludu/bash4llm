@@ -251,9 +251,7 @@
       "B64_DECODE_OPT"
     ],
     "raw_snippet": "# ---------------------------------------------------------------------------\n# Detect portable base64 encode/decode commands (avoid parsing --help)\n# Sets B64_ENCODE_CMD and B64_DECODE_CMD arrays used by wrappers\n# ---------------------------------------------------------------------------\n_detect_base64_opts()\n{\n  ...\n}\n_detect_base64_opts"
-  }
-]
-[
+  },
   {
     "id": "TLB-001",
     "macro_section": "PRECORE_RUN",
@@ -352,9 +350,7 @@
       "LAST_CHECK_LINES"
     ],
     "raw_snippet": "#--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--\n# Session helpers (MVP - Minimum Viable Product)\n# - session_validate_id <id> -> 0 if valid, 1 if invalid\n# - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ\n# - session_messages_tmp_path <session_id> -> prints path under RUN_TMPDIR\n# - session_read_window <session_id> <N> <out_file> -> reads last N NDJSON lines, normalizes roles, writes {\"messages\":[...]}\n# - session_append <session_id> <role> <content> <meta_json> -> idempotent append under lock\n# - session_sanitize_cmd <cmd> -> prints sanitized cmd (truncate, remove env-like KEY=VAL, redact tokens)\n# - session_marker_create <message_id> -> create marker file in RUN_TMPDIR to avoid double append in same process\n# ---------------------------------------------------------------------------\n\nsession_validate_id() {\n  local id=\"$1\"\n  if [ -z \"$id\" ]; then return 1; fi\n  if printf '%s' \"$id\" | grep -qE '^[A-Za-z0-9._-]{1,128}$'; then return 0; else return 1; fi\n}\n\nsession_now_ts() {\n  # UTC timestamp, seconds resolution, format YYYY-MM-DDTHH:MM:SSZ\n  date -u +%Y-%m-%dT%H:%M:%SZ\n}\n\nsession_messages_tmp_path() {\n  local sid=\"$1\"\n  ensure_run_tmpdir || return 1\n  printf '%s' \"$RUN_TMPDIR/session-${sid}-messages.json\"\n}\n\nsession_sanitize_cmd() {\n  local cmd=\"$1\"\n  # Remove env-like KEY=VAL, redact tokens/keys, truncate to 256 chars\n  local sanitized\n  sanitized=\"$(printf '%s' \"$cmd\" | sed -E 's/[A-Za-z0-9_]+=([^[:space:]]+)//g' | sed -E 's/(token|key|secret)[^[:space:]]*/[REDACTED]/Ig' )\"\n  printf '%s' \"$(printf '%s' \"$sanitized\" | cut -c1-256)\"\n}\n\n... (functions omitted for brevity in this top-level inventory) ...\n\n# Default parameters for session helpers (configurable via env)\n: \"${LAST_CHECK_LINES:=50}\"\n#--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--\n"
-  }
-]
-[
+  },
   {
     "id": "TLB-001",
     "macro_section": "PROVIDER",
@@ -370,9 +366,7 @@
       "PROVIDER_API_ENV_groq"
     ],
     "raw_snippet": "# Provider-specific API key (can be overridden via PROVIDER_API_ENV_groq)\nGROQ_API_KEY=\"${GROQ_API_KEY:-}\"\nif [ -n \"${PROVIDER_API_ENV_groq:-}\" ]; then\n  if [ -n \"${!PROVIDER_API_ENV_groq:-}\" ]; then\n    GROQ_API_KEY=\"${!PROVIDER_API_ENV_groq}\"\n  fi\nfi"
-  }
-]
-[
+  },
   {
     "id": "TLB-001",
     "macro_section": "CORE_SETUP",
@@ -588,9 +582,7 @@
       "DIAGNOSTICS"
     ],
     "raw_snippet": "# Normalize boolean-like flags\nfor flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do\n  if is_truthy \"${!flag:-0}\"; then printf -v \"$flag\" 1; else printf -v \"$flag\" 0; fi\ndone"
-  }
-]
-[
+  },
   {
     "id": "TLB-001",
     "macro_section": "CORE_PROVIDER",
