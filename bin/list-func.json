@@ -1,8 +1,9 @@
 [
   {
     "name": "Inventario delle Funzioni",
-    "type": "document_header",
+    "signature": "",
     "purpose": "Titolo del documento",
+    "macro_section": "",
     "refs": []
   },
   {
