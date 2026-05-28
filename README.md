@@ -11,7 +11,7 @@
 GroqBash è un singolo script Bash, auto‑contenuto, leggibile e verificabile.  
 Scaricalo, rendilo eseguibile, esporta la tua API key e inizia subito a usarlo.
 
-Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Termux.
+Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Cygwin, Termux, BSD.
 
 ---
 
@@ -25,8 +25,8 @@ Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Termux.
   → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, validazione provider avanzata.
 
 - **Struttura modulare a sezioni**  
-  → PRECORE, PROVIDER, CORE, **Sistema di Stato UI**.
-
+  → PRECORE_BOOT, PRECORE_RUN, PROVIDER, CORE_SETUP, CORE_PROVIDER .
+  
 - **Sistema di Stato UI (ui_state)**  
   → il CORE espone metadati per GUI/strumenti esterni tramite file JSON atomici.
 
@@ -46,7 +46,7 @@ Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Termux.
 
 ## Modello di minaccia (versione breve)
 
-GroqBash è progettato per ambienti single‑user (laptop, Termux, shell personale).
+GroqBash è progettato per ambienti single‑user (PC/laptop, server personali).
 
 - I provider sono codice eseguito nella tua shell: devono risiedere in directory sicure.  
 - Variabili come `GROQBASH_EXTRAS_DIR` e `GROQBASH_TMPDIR` sono considerate configurazione fidata.  
@@ -68,9 +68,6 @@ GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 - gawk
 - curl
 - jq
-
-Questi pacchetti forniscono tutti i comandi necessari:
-`bash mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf`
 
 ---
 
@@ -151,35 +148,94 @@ Provider esterno (se installato):
 
 ---
 
-## Opzioni principali
+## Comandi, flag e opzioni disponibili  
 
-| Opzione | Descrizione |
-|--------|-------------|
-| `-m, --model <name>` | Seleziona il modello |
-| `-f <file>` | Legge il prompt da file |
-| `--system <text>` | Imposta il system prompt |
-| `--ture <value>` / `--temperature <value>` | Temperature |
-| `--max <n>` | Max tokens |
-| `--refresh-models` | Aggiorna la lista modelli |
-| `--list-models` | Mostra i modelli disponibili |
-| `--set-default <model>` | Imposta modello predefinito |
-| `--provider <name>` | Usa provider esterno |
-| `--provider` | Selezione provider interattiva |
-| `--install-extras` | Installa extras |
-| `--json-input <file>` | Input JSON diretto |
-| `--template <name>` | Usa template |
-| `--batch <file>` | Esegue batch di prompt |
-| `--stream` / `--no-stream` | Streaming on/off |
-| `--json` / `--pretty` / `--raw` / `--text` | Formati output |
-| `--save` / `--nosave` | Forza salvataggio o no |
-| `--out <path>` | Percorso output |
-| `--threshold <n>` | Soglia autosave |
-| `--quiet` | Output minimale |
-| `--debug` | Debug esteso |
-| `--diagnostics` | Diagnostica completa |
-| `--show-config` | Mostra configurazione |
-| `--version` | Versione |
-| `-h, --help` | Help |
+### Modelli e provider
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--refresh-models`, `--refresh-model` | no | Aggiorna la lista modelli (richiede API key). |
+| `--list-models` | no | Stampa lista modelli (formato interattivo). |
+| `--list-models-raw` | no | Stampa lista modelli in formato raw (una riga per modello). |
+| `--list-providers` | no | Stampa lista provider. |
+| `--list-providers-raw` | no | Stampa provider in formato raw. |
+| `--set-default <model>` | sì | Imposta modello di default persistente. |
+| `-m <model>`, `--model <model>` | sì | Imposta modello per questa esecuzione. |
+| `--provider <name>` | sì | Imposta provider da CLI. |
+| `--provider` | no | Se senza argomento → apre selezione interattiva. |
+
+
+### Input (file, JSON, template, batch)
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `-f <file>` | sì | Aggiunge file a `FILE_INPUTS`. |
+| `--json-input <json>` | sì | Imposta input JSON. |
+| `--template <name>` | sì | Applica template da `GROQBASH_TEMPLATES_DIR`. |
+| `--batch <file>` | sì | Esegue richieste batch (una riga = un prompt). |
+
+
+### Sessioni
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--session <id>` | sì | Abilita sessione con ID specifico. |
+| `--session-window [n]` | opzionale | Imposta finestra sessione (default 10 se non fornito). |
+
+
+### Parametri modello / generazione
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--system <text>` | sì | Imposta system prompt. |
+| `--ture <n>` | sì | Imposta temperatura (alias interno). |
+| `--temperature <n>` | sì | Alias di `--ture`. |
+| `--max <n>` | sì | Imposta max token. |
+
+
+### Output e salvataggio
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--save` | no | Forza salvataggio output. |
+| `--nosave` | no | Disabilita salvataggio. |
+| `--out <path>` | sì | Percorso file/directory output. |
+| `--threshold <n>` | sì | Soglia dimensione per salvataggio. |
+| `--json` | no | Output JSON. |
+| `--pretty` | no | Output JSON formattato. |
+| `--text` | no | Output testuale. |
+| `--raw` | no | Output grezzo. |
+
+
+### Modalità operative
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--dry-run` | no | Nessuna chiamata API. |
+| `--quiet` | no | Riduce output. |
+| `--stream` | no | Streaming attivo. |
+| `--no-stream` | no | Disattiva streaming. |
+| `--chat` | no | Modalità chat interattiva. |
+| `--bootstrap-only` | no | Esegue solo bootstrap e termina. |
+
+
+### Configurazione e diagnostica
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--show-config` | no | Mostra configurazione completa. |
+| `--diagnostics` | no | Esegue diagnostica completa. |
+| `--version` | no | Stampa versione e termina. |
+| `-h`, `--help` | no | Mostra help da file. |
+
+
+### Installazione extras
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--install-extras` | opzionale | Installa extras; può accettare directory. |
+| `--install-extras=<dir>` | sì | Installa extras da directory specifica. |
+
+
+### Terminazione parsing
+| Flag | Effetto |
+|------|---------|
+| `--` | Termina parsing opzioni. |
+| `-*` | Opzione sconosciuta → errore. |
+| `*` | Argomento posizionale → aggiunto a `ARGS`. |
+
 
 ---
 
@@ -231,7 +287,7 @@ Contiene:
 - `last_history.json` → ultimo salvataggio history  
 - `provider_capabilities.json` → capacità provider attivo  
 
-La GUI legge **solo** questi file per i placeholder CGI (20–23).  
+La GUI (extra opzionale) legge **solo** questi file per i placeholder CGI (20–23).  
 La semantica dei placeholder è definita nella *Fonte di Verità Unificata dei Placeholder (GUI + CGI)*.
 
 ---
@@ -276,30 +332,12 @@ Per avere memoria contestuale **devi sempre** includere `--session <id>`.
 
 ---
 
-## Extras avanzati
-
-Gli extras non modificano il core.
-
-### Sicurezza
-
-- provider aggiuntivi (**vedi: `[Sembra che non fosse sicuro mostrare il risultato. Cambiamo le cose e facciamo un altro tentativo.]`**)
-- strumenti di verifica permessi, symlink, owner  
-- template e documentazione
-
-### Test
-
-- suite JSON/SSE  
-- test provider
-
----
-
 ## Note di sicurezza
 
 - Nessun `eval`.  
 - Nessuna esecuzione dell’output del modello.  
 - Provider = codice: mantieni `extras/providers` sicuro.  
 - Variabili d’ambiente = configurazione fidata.  
-- Parsing JSON/SSE robusto ma non completo.  
 - TOCTOU mitigato.
 
 ---
@@ -316,6 +354,21 @@ Gli extras non modificano il core.
 | `GROQBASHERRNO_PROMPT` | Nessun prompt fornito |
 | `GROQBASHERRNOAPIKEY` | API key mancante |
 | `GROQBASHERRINSTALL` | Errore installer extras |
+
+---
+
+## Variabili principali  
+
+| Variabile | Necessaria | Descrizione |
+|-----------|------------|-------------|
+| `GROQ_API_KEY` | sì per chiamate API | API key provider. |
+| `GROQBASH_CONFIG_DIR` | consigliata | Directory configurazione. |
+| `GROQBASH_MODELS_DIR` | consigliata | Directory modelli. |
+| `GROQBASH_TMPDIR` | sì | Directory temporanea. |
+| `GROQBASH_HISTORY_DIR` | consigliata | Directory sessioni. |
+| `MODEL` | no | Modello attivo. |
+| `PROVIDER` | no | Provider attivo. |
+| `ALLOWED_MODELS` | no | Whitelist modelli. |
 
 ---
 
