@@ -55,7 +55,7 @@ Ogni provider deve implementare **tre funzioni**, con nome basato sul provider:
 
 ---
 
-### ✔️ `buildpayload_<provider>()`
+#### ✔️ `buildpayload_<provider>()`
 
 Responsabilità:
 
@@ -80,7 +80,7 @@ streaming: `choices[].delta.content`
 
 ---
 
-### ✔️ `call_api_<provider>()` (non‑streaming)
+#### ✔️ `call_api_<provider>()` (non‑streaming)
 
 Responsabilità:
 
@@ -99,7 +99,7 @@ choices[].message.content
 
 ---
 
-### ✔️ `call_api_streaming_<provider>()`
+#### ✔️ `call_api_streaming_<provider>()`
 
 Responsabilità:
 
@@ -261,7 +261,7 @@ Each provider must implement **three functions**, with names based on the provid
 
 ---
 
-### ✔️ `buildpayload_<provider>()`
+#### ✔️ `buildpayload_<provider>()`
 
 Responsibilities:
 
@@ -286,7 +286,7 @@ streaming: `choices[].delta.content`
 
 ---
 
-### ✔️ `call_api_<provider>()` (non‑streaming)
+#### ✔️ `call_api_<provider>()` (non‑streaming)
 
 Responsibilities:
 
@@ -305,7 +305,7 @@ choices[].message.content
 
 ---
 
-### ✔️ `call_api_streaming_<provider>()`
+#### ✔️ `call_api_streaming_<provider>()`
 
 Responsibilities:
 
