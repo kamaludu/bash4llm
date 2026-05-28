@@ -1,0 +1,953 @@
+[
+  {
+    "name": "ALLOWED_MODELS",
+    "type": "unknown",
+    "purpose": "Referenced in resolve_model priority list as a possible source for model selection.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3181-Ln-3330 (CORE_SETUP CHUNK 1)",
+      "CORE_PROVIDER CHUNK 1:Ln-4510-Ln-4560"
+    ]
+  },
+  {
+    "name": "B64_DECODE_OPT",
+    "type": "string",
+    "purpose": "Platform-detected base64 decode option exported by base64 detection helper.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-1"
+    ]
+  },
+  {
+    "name": "B64_WRAP_OPT",
+    "type": "string",
+    "purpose": "Platform-detected base64 wrap option exported by base64 detection helper.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 4:Ln-1"
+    ]
+  },
+  {
+    "name": "BATCH_FILE",
+    "type": "file",
+    "purpose": "Input file read line-by-line for batch processing of payloads.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 2:Ln-4680-Ln-4760"
+    ]
+  },
+  {
+    "name": "BUILD_MESSAGES_FILE",
+    "type": "file",
+    "purpose": "File containing built messages (.messages) used to construct payloads.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464",
+      "CORE_PROVIDER CHUNK 1:Ln-4561-Ln-4620"
+    ]
+  },
+  {
+    "name": "CANONICAL_EXTRAS_DIR",
+    "type": "directory",
+    "purpose": "Percorso canonico della directory extras sotto GROQBASH_DIR.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-140"
+    ]
+  },
+  {
+    "name": "CHAT_MODE",
+    "type": "boolean",
+    "purpose": "Flag enabling interactive chat mode that requires a TTY and processes turns.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 2:Ln-4761-Ln-4890",
+      "CORE_PROVIDER CHUNK 1 & 2:Ln-4510-Ln-5031"
+    ]
+  },
+  {
+    "name": "CONVERSATION",
+    "type": "variable",
+    "purpose": "Accumula la cronologia testuale della chat interattiva; viene inizializzata a stringa vuota e aggiornata concatenando i turni utente.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 2:Ln-4761-Ln-4890"
+    ]
+  },
+  {
+    "name": "CONTENT",
+    "type": "string",
+    "purpose": "Primary textual content input used when assembling the request payload.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4561-Ln-4620",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "CURL_BASE_OPTS",
+    "type": "string",
+    "purpose": "Conservative default curl options used for HTTP calls (e.g., --silent --show-error --no-buffer --max-time).",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "DEST_BASE",
+    "type": "variable",
+    "purpose": "Destination base directory for installing 'extras' (canonicalized path derived from GROQBASH_EXTRAS_DIR or provided source).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 4101-4175"
+    ]
+  },
+  {
+    "name": "DEST_PROV",
+    "type": "variable",
+    "purpose": "Destination directory for provider assets when installing 'extras' (uses PROVIDERS_DIR if set, otherwise ${DEST_BASE}/providers or canonical_config_dir/providers).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 4101-4175"
+    ]
+  },
+  {
+    "name": "DEBUG",
+    "type": "integer",
+    "purpose": "Debug level flag; controls diagnostic behavior and preservation of temp artifacts.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160"
+    ]
+  },
+  {
+    "name": "DRY_RUN",
+    "type": "boolean",
+    "purpose": "When truthy, disables network calls and API key checks; used to skip actual HTTP requests.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3351-Ln-3380 (CORE_SETUP CHUNK 1)",
+      "PROVIDER 2465-2687"
+    ]
+  },
+  {
+    "name": "ERRF",
+    "type": "file",
+    "purpose": "Path to the run-specific error/diagnostic file where curl stderr and diagnostics are written.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-340",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "FINAL_MODEL",
+    "type": "string",
+    "purpose": "Resolved final model name determined by resolve_model before final validation.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3181-Ln-3330 (CORE_SETUP CHUNK 1)",
+      "CORE_PROVIDER CHUNK 1:Ln-4510-Ln-4560"
+    ]
+  },
+  {
+    "name": "GROQ_API_KEY",
+    "type": "string",
+    "purpose": "Provider-specific API key for Groq; can be overridden by PROVIDER_API_ENV_groq.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464",
+      "PROVIDER 2465-2687",
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "GROQBASH_API_KEY",
+    "type": "string",
+    "purpose": "Fallback API key used if provider-specific key is not set.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2465-2687",
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "GROQBASH_API_URL",
+    "type": "string",
+    "purpose": "Environment variable considered when resolving provider URL (ENV precedence).",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-220",
+      "CORE_PROVIDER CHUNK 1:Ln-4441-Ln-4475"
+    ]
+  },
+  {
+    "name": "GROQBASH_CONFIG_DIR",
+    "type": "path",
+    "purpose": "Canonical configuration directory path used for ui_state and other config files.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-80"
+    ]
+  },
+  {
+    "name": "GROQBASH_DIR",
+    "type": "path",
+    "purpose": "Repository root or base directory derived from the script location.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-80-Ln-160"
+    ]
+  },
+  {
+    "name": "GROQBASH_DEBUG",
+    "type": "variable",
+    "purpose": "Variabile alternativa per impostare DEBUG se DEBUG non è già definita.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-360"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_API",
+    "type": "integer",
+    "purpose": "Canonical error code for API errors as defined in the canonical error codes.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_BAD_MODEL",
+    "type": "integer",
+    "purpose": "Canonical error code indicating an invalid or unsupported model selection.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_CURL_FAILED",
+    "type": "integer",
+    "purpose": "Canonical error code for curl/network failures.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_INVALID_JSON",
+    "type": "integer",
+    "purpose": "Canonical error code for invalid JSON responses or payloads.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_NO_API_KEY",
+    "type": "integer",
+    "purpose": "Canonical error code used when an API key is missing.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_NO_PROMPT",
+    "type": "integer",
+    "purpose": "Canonical error code used when no prompt/content is provided.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_ERR_TMP",
+    "type": "integer",
+    "purpose": "Canonical error code related to temporary file/directory errors.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_EXTRAS_DIR",
+    "type": "path",
+    "purpose": "Directory path for extras; part of the canonical directory layout variables.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-120"
+    ]
+  },
+  {
+    "name": "GROQBASHERRAPI",
+    "type": "error_code_alias",
+    "purpose": "Alias della costante di errore GROQBASH_ERR_API.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-30"
+    ]
+  },
+  {
+    "name": "GROQBASHERRBAD_MODEL",
+    "type": "error_code_alias",
+    "purpose": "Alias della costante di errore GROQBASH_ERR_BAD_MODEL.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-25"
+    ]
+  },
+  {
+    "name": "GROQBASHERRCURL_FAILED",
+    "type": "error_code_alias",
+    "purpose": "Alias della costante di errore GROQBASH_ERR_CURL_FAILED.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-26"
+    ]
+  },
+  {
+    "name": "GROQBASHERRNOAPIKEY",
+    "type": "error_code_alias",
+    "purpose": "Alias della costante di errore GROQBASH_ERR_NO_API_KEY.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-24"
+    ]
+  },
+  {
+    "name": "GROQBASHERRNO_PROMPT",
+    "type": "error_code_alias",
+    "purpose": "Alias della costante di errore GROQBASH_ERR_NO_PROMPT.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-28"
+    ]
+  },
+  {
+    "name": "GROQBASHERRTMP",
+    "type": "error_code_alias",
+    "purpose": "Alias della costante di errore GROQBASH_ERR_TMP.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-29"
+    ]
+  },
+  {
+    "name": "GROQBASH_HISTORY_DIR",
+    "type": "path",
+    "purpose": "Directory path where history files are stored.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "GROQBASH_HISTORY_KEEP_DAYS",
+    "type": "integer",
+    "purpose": "Parameter controlling history retention by age for rotation.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "GROQBASH_HISTORY_MAX_BYTES",
+    "type": "integer",
+    "purpose": "Parameter controlling maximum total bytes for history before rotation.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "GROQBASH_HISTORY_MAX_FILES",
+    "type": "integer",
+    "purpose": "Parameter controlling maximum number of history files to keep.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "GROQBASH_LOCK_TIMEOUT_HISTORY",
+    "type": "integer",
+    "purpose": "Lock timeout variable used for history lock operations.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_LOCK_TIMEOUT_MODELS",
+    "type": "integer",
+    "purpose": "Lock timeout variable used for models file operations.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_LOCK_TIMEOUT_TMP",
+    "type": "integer",
+    "purpose": "Lock timeout variable used for temporary directory/file operations.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "GROQBASH_LOG",
+    "type": "path",
+    "purpose": "Optional path to append structured logs; default stderr.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-160"
+    ]
+  },
+  {
+    "name": "GROQBASH_MODELS_DIR",
+    "type": "path",
+    "purpose": "Directory path used as base for MODELS_FILE and model caching.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-110"
+    ]
+  },
+  {
+    "name": "GROQBASH_PROVIDER_URL",
+    "type": "string",
+    "purpose": "Resolved provider URL used to build api_url for provider calls.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4441-Ln-4475"
+    ]
+  },
+  {
+    "name": "GROQBASH_ROTATE_HISTORY",
+    "type": "unknown",
+    "purpose": "Flag/parameter that controls whether history rotation is enabled.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1306-Ln1557"
+    ]
+  },
+  {
+    "name": "GROQBASH_TEMPLATES_DIR",
+    "type": "path",
+    "purpose": "Directory path for templates as part of the directory layout variables.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-120"
+    ]
+  },
+  {
+    "name": "GROQBASH_TMP_PAYLOAD",
+    "type": "file",
+    "purpose": "Run-specific staged payload path used when staging base64 payloads.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464",
+      "PROVIDER 2465-2687"
+    ]
+  },
+  {
+    "name": "GROQBASH_TMPDIR",
+    "type": "path",
+    "purpose": "Canonical base temporary directory for run-specific tempdirs; must be inside GROQBASH_DIR.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1558-Ln1749"
+    ]
+  },
+  {
+    "name": "HISTORY_LOCK",
+    "type": "file",
+    "purpose": "Lock file variable used to coordinate history operations.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "JSON_INPUT",
+    "type": "string",
+    "purpose": "JSON input variable used to supply messages or content for payload assembly.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "LEGACY_EXTRAS_DIR",
+    "type": "directory",
+    "purpose": "Percorso legacy della directory extras sotto SCRIPTDIR.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-145"
+    ]
+  },
+  {
+    "name": "LEGACY_REAL",
+    "type": "variable",
+    "purpose": "Canonicalized path of LEGACY_EXTRAS_DIR used to detect and compare a legacy extras directory during install-extras validation.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 4101-4175"
+    ]
+  },
+  {
+    "name": "LIST_MODELS",
+    "type": "variable",
+    "purpose": "Flag di default per la modalità di listaggio dei modelli (inizializzato per evitare errori con set -u).",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "LIST_PROVIDERS",
+    "type": "flag/variable",
+    "purpose": "CLI flag indicating the user requested a list of available providers; used to trigger immediate listing and exit.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 3821-4050",
+      "CORE_SETUP CHUNK 2: lines 4101-4175"
+    ]
+  },
+  {
+    "name": "MAX_MODELS",
+    "type": "integer",
+    "purpose": "Maximum number of models to save when refreshing model lists (default 200).",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-110"
+    ]
+  },
+  {
+    "name": "MAX_RETRIES",
+    "type": "integer",
+    "purpose": "Maximum number of retries used by perform_request_once for API calls.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3661-Ln-3900 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "MAX_TOKENS",
+    "type": "integer",
+    "purpose": "Maximum tokens parameter validated and converted for payload construction.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "message_id",
+    "type": "string",
+    "purpose": "Identifier used by session_append for idempotency markers across processes.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln1750-Ln-2118"
+    ]
+  },
+  {
+    "name": "MESSAGES_JSON",
+    "type": "string",
+    "purpose": "Alternate input containing messages in JSON form used to build the payload.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "MODEL",
+    "type": "string",
+    "purpose": "Active model identifier prior to resolution; used as input to resolve_model.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3181-Ln-3330 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "MODEL_PROVIDER_CFG",
+    "type": "variable",
+    "purpose": "Path to the provider-specific model configuration file (result of canonical_model_file for the active provider) used during model resolution.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 1: lines 3181-3330"
+    ]
+  },
+  {
+    "name": "MODELS_FILE",
+    "type": "file",
+    "purpose": "Path to the file storing the list of available models.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-110"
+    ]
+  },
+  {
+    "name": "MODELS_LOCK",
+    "type": "file",
+    "purpose": "Lock file used to coordinate access to MODELS_FILE.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "OUT_PATH",
+    "type": "variable",
+    "purpose": "Percorso di output predefinito (variabile runtime inizializzata a vuoto per evitare errori).",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "OUTPUT_MODE",
+    "type": "string",
+    "purpose": "Controls output formatting (text|raw|json|pretty).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP Ln-3541-Ln-3660 (CORE_SETUP CHUNK 1)"
+    ]
+  },
+  {
+    "name": "PAYLOAD",
+    "type": "file",
+    "purpose": "Run-specific payload file path created under RUN_TMPDIR for the request.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-340",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "PRINT_MODEL_FILE",
+    "type": "variable",
+    "purpose": "Flag/variabile usata per richiedere la stampa del percorso canonico del file modello; se non vuota il codice stampa canonical_model_file(PRINT_MODEL_FILE) e termina.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4271-Ln-4620"
+    ]
+  },
+  {
+    "name": "PROVIDER",
+    "type": "string",
+    "purpose": "Identifier of the selected provider (default 'groq').",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4176-Ln-4205"
+    ]
+  },
+  {
+    "name": "PROVIDER_API_ENV_groq",
+    "type": "string",
+    "purpose": "Name of the environment variable that may contain the Groq API key.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464",
+      "PROVIDER 2465-2687",
+      "PROVIDER attachment:2688-3109"
+    ]
+  },
+  {
+    "name": "PROVIDER_CLI",
+    "type": "variable",
+    "purpose": "CLI-provided provider override (set via --provider); used as context when resolving active provider and persisted defaults.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 3821-4050",
+      "CORE_SETUP CHUNK 1: lines 3181-3330"
+    ]
+  },
+  {
+    "name": "PROVIDER_DIR",
+    "type": "directory",
+    "purpose": "Directory dei provider caricati, derivata da GROQBASH_EXTRAS_DIR o canonical_config_dir.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-150",
+      "PRECORE_BOOT CHUNK 3:Ln-20"
+    ]
+  },
+  {
+    "name": "PROVIDER_INTERACTIVE",
+    "type": "flag/variable",
+    "purpose": "Flag indicating interactive provider selection was requested (set when --provider is given without an argument).",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 3821-4050"
+    ]
+  },
+  {
+    "name": "PROVIDER_MODULE_PATH",
+    "type": "file",
+    "purpose": "Percorso del modulo provider da caricare: PROVIDERS_DIR/<provider>.sh.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-10"
+    ]
+  },
+  {
+    "name": "PROVIDERS_DIR",
+    "type": "path",
+    "purpose": "Directory containing provider modules; used to build SUPPORTED_PROVIDERS.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4176-Ln-4205"
+    ]
+  },
+  {
+    "name": "PWD",
+    "type": "environment variable (implicit)",
+    "purpose": "Variabile d'ambiente implicita del shell che contiene la working directory corrente; non definita esplicitamente nel codice PRECORE_RUN.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "implicit environment (not defined in PRECORE_RUN code)"
+    ]
+  },
+  {
+    "name": "QUIET",
+    "type": "boolean",
+    "purpose": "Flag to suppress non-essential output.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1 & 2:Ln-4510-Ln-5031"
+    ]
+  },
+  {
+    "name": "RANDOM",
+    "type": "bash built-in",
+    "purpose": "Variabile built-in di bash che fornisce un numero pseudo-random; non definita esplicitamente nel codice PRECORE_RUN ma utilizzata (es. in session_append per generare rand).",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 3:Ln1750-Ln2118 (session_append uses RANDOM)"
+    ]
+  },
+  {
+    "name": "REFRESH_MODELS",
+    "type": "boolean",
+    "purpose": "When set, triggers model refresh flow (requires API key) and exits after refresh.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4500-Ln-4525"
+    ]
+  },
+  {
+    "name": "RESP",
+    "type": "file",
+    "purpose": "Path to the response JSON file where API responses and diagnostics are written.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2465-2687",
+      "CORE_PROVIDER CHUNK 2:Ln-4891-Ln-5031"
+    ]
+  },
+  {
+    "name": "RUN_TMPDIR",
+    "type": "path",
+    "purpose": "Run-specific temporary directory created under GROQBASH_TMPDIR for payload/resp/errf.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 2:Ln-340",
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "SCRIPT_DATE",
+    "type": "metadata",
+    "purpose": "Data di versione dello script.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-10"
+    ]
+  },
+  {
+    "name": "SCRIPT_NAME",
+    "type": "metadata",
+    "purpose": "Nome dello script: groqbash.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-8"
+    ]
+  },
+  {
+    "name": "SCRIPT_VERSION",
+    "type": "metadata",
+    "purpose": "Versione dello script: 2.0.0.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-9"
+    ]
+  },
+  {
+    "name": "SCRIPTDIR",
+    "type": "directory",
+    "purpose": "Directory in cui risiede lo script, risolta tramite resolve_script_dir.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 1:Ln-120"
+    ]
+  },
+  {
+    "name": "SE_AVAILABLE",
+    "type": "boolean",
+    "purpose": "Indicates availability/preference for the optional Session Engine.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_SETUP Ln-4051-Ln-4100 (CORE_SETUP CHUNK 2)",
+      "CORE_PROVIDER CHUNK 2:Ln-4621-Ln-4890"
+    ]
+  },
+  {
+    "name": "SE_ENGINE_PATH",
+    "type": "path",
+    "purpose": "Path/context used by the optional Session Engine.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_SETUP Ln-4051-Ln-4100 (CORE_SETUP CHUNK 2)",
+      "CORE_PROVIDER CHUNK 2:Ln-4621-Ln-4890"
+    ]
+  },
+  {
+    "name": "SESSION_CACHE_DIR",
+    "type": "variable",
+    "purpose": "Directory dove sono memorizzate le cache di sessione; costruita da GROQBASH_CONFIG_DIR o fallback a GROQBASH_DIR/config.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296",
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296 (session_cache section)"
+    ]
+  },
+  {
+    "name": "SESSION_DIR",
+    "type": "directory",
+    "purpose": "Directory delle sessioni: GROQBASH_HISTORY_DIR/sessions.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "SESSION_ID",
+    "type": "variable",
+    "purpose": "Variabile CLI/sessione inizializzata a stringa vuota per evitare errori; usata dalle helper di sessione.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "SESSION_WINDOW",
+    "type": "variable",
+    "purpose": "Parametro di default per la finestra di sessione (numero di messaggi da considerare); inizializzato a vuoto per evitare set -u failures.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "SET_DEFAULT_MODEL",
+    "type": "variable",
+    "purpose": "Flag/variabile per impostare il modello di default; inizializzata a vuoto come default non distruttivo.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "SRC_BASE",
+    "type": "variable",
+    "purpose": "Source base directory for extras installation (either explicit INSTALL_EXTRAS_SRC or default SCRIPTDIR/extras), canonicalized before copying.",
+    "macro_section": "CORE_SETUP",
+    "refs": [
+      "CORE_SETUP CHUNK 2: lines 4101-4175"
+    ]
+  },
+  {
+    "name": "STDIN_CONTENT",
+    "type": "variable",
+    "purpose": "Contiene il contenuto letto da stdin quando JSON_INPUT non è impostato; inizializzata a stringa vuota e popolata con cat - se stdin non è un TTY.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4510-Ln-4560"
+    ]
+  },
+  {
+    "name": "STREAM_MODE",
+    "type": "boolean",
+    "purpose": "Flag normalized into the payload to request streaming responses from the provider.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464",
+      "CORE_PROVIDER CHUNK 1 & 2:Ln-4510-Ln-5031"
+    ]
+  },
+  {
+    "name": "SUPPORTED_PROVIDERS",
+    "type": "unknown",
+    "purpose": "List of supported providers constructed from default 'groq' plus provider modules in PROVIDERS_DIR.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4176-Ln-4205"
+    ]
+  },
+  {
+    "name": "TEMPLATE",
+    "type": "string",
+    "purpose": "Template used by assemble_content when constructing CONTENT; preserves newlines when substituting {{CONTENT}}.",
+    "macro_section": "CORE_PROVIDER",
+    "refs": [
+      "CORE_PROVIDER CHUNK 1:Ln-4561-Ln-4620"
+    ]
+  },
+  {
+    "name": "TEMPERATURE",
+    "type": "number",
+    "purpose": "Runtime default parameter for temperature used when building payloads.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "THRESHOLD",
+    "type": "variable",
+    "purpose": "Soglia numerica di default (usata nel runtime); inizializzata con valore predefinito per comportamento dell'applicazione.",
+    "macro_section": "PRECORE_RUN",
+    "refs": [
+      "PRECORE_RUN CHUNK 4:Ln2119-Ln2296"
+    ]
+  },
+  {
+    "name": "TMP_LOCK",
+    "type": "file",
+    "purpose": "Lock file used for temporary directory/file operations coordination.",
+    "macro_section": "PRECORE_BOOT",
+    "refs": [
+      "PRECORE_BOOT CHUNK 3:Ln-40"
+    ]
+  },
+  {
+    "name": "TURE",
+    "type": "string",
+    "purpose": "Parameter representing temperature as a numeric string; validated and converted for jq.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER 2297-2464"
+    ]
+  },
+  {
+    "name": "VALID_MESSAGES_JSON",
+    "type": "variable (local)",
+    "purpose": "Contiene la rappresentazione JSON (array) dei messaggi validi usata per costruire il payload inviato al provider. Viene popolata in ordine di priorità da JSON_INPUT (.messages o .content/.prompt), MESSAGES_JSON, BUILD_MESSAGES_FILE (.messages), o CONTENT; se nessuna sorgente valida è presente viene impostata sul fallback '[{\"role\":\"user\",\"content\":\"\"}]'.",
+    "macro_section": "PROVIDER",
+    "refs": [
+      "PROVIDER CHUNK 1:lines 2297-2464"
+    ]
+  }
+]
