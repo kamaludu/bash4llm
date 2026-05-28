@@ -18,18 +18,15 @@ GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 - curl
 - jq
 
-Questi pacchetti forniscono tutti i comandi necessari:
-*bash* ` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
-
 ### Compatibilità
 
 GroqBash funziona su:
 
 - GNU/Linux
 - macOS (con pacchetti GNU installabili via Homebrew)
-- BusyBox/Alpine
 - WSL e Cygwin (Windows)
 - Termux (Android)
+- BSD
 
 ---
 
