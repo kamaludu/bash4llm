@@ -145,7 +145,7 @@ Il provider **non deve modificare** queste variabili.
 
 ## 5. Regole di comportamento
 
-Un provider **NON deve**:
+🚫 Un provider **NON deve**:
 
 - cambiare directory (`cd`)  
 - modificare variabili globali del CORE  
@@ -158,7 +158,7 @@ Un provider **NON deve**:
 - bypassare la network policy (e deve fallire se non è autorizzato)
 - costruire URL hardcoded
 
-Un provider **DEVE**:
+⚠️ Un provider **DEVE**:
 
 - restituire JSON o JSON→base64 valido  
 - seguire lo schema OpenAI‑like  
@@ -351,7 +351,7 @@ The provider **must not modify** these variables.
 
 ## 5. Behavior rules
 
-A provider **MUST NOT**:
+🚫 A provider **MUST NOT**:
 
 - change directory (`cd`)  
 - modify CORE global variables  
@@ -364,7 +364,7 @@ A provider **MUST NOT**:
 - bypass the network policy (and must fail if not authorized)
 - build hardcoded URLs
 
-A provider **MUST**:
+⚠️ A provider **MUST**:
 
 - return valid JSON or JSON→base64  
 - follow the OpenAI‑like schema  
