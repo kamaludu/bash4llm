@@ -3,6 +3,7 @@
     "name": "Inventario delle Variabili",
     "type": "document_header",
     "purpose": "Titolo del documento",
+    "macro_section": "",
     "refs": []
   },
   {
