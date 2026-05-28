@@ -1,14 +1,14 @@
 [![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 # INSTALLATION [🇮🇹](INSTALL.md) 🇬🇧
 
-GroqBash is a portable and secure Bash wrapper for the Groq API.  
-It does not require Python or external dependencies beyond POSIX/coreutils commands.
+**GroqBash** is a portable and secure Bash wrapper for the Groq API.  
+It does not require Python nor external dependencies beyond POSIX/coreutils commands.
 
 ---
 
 ## 1. Requirements
 
-GroqBash requires the following packages (or equivalent) to be available in the PATH:
+GroqBash requires the following packages (or equivalents) to be available in PATH:
 
 - ***bash***
 - coreutils
@@ -18,18 +18,15 @@ GroqBash requires the following packages (or equivalent) to be available in the 
 - curl
 - jq
 
-These packages provide all the necessary commands:
-*bash* ` mv cp chmod stat find sort head wc tee date curl jq flock base64 mktemp readlink awk sed grep xargs sync sha256sum stdbuf `
-
 ### Compatibility
 
 GroqBash works on:
 
-- GNU/Linux
-- macOS (with GNU packages - installable via Homebrew)
-- BusyBox/Alpine
-- WSL and Cygwin (Windows)
-- Termux (Android)
+- GNU/Linux  
+- macOS (with GNU packages installable via Homebrew)  
+- WSL and Cygwin (Windows)  
+- Termux (Android)  
+- BSD  
 
 ---
 
@@ -50,14 +47,14 @@ GroqBash uses the variable:
 
 `export GROQ_API_KEY="your_key"`
 
-You can add it to your `.bashrc` or `.zshrc`.
+You can place it in your `.bashrc` or `.zshrc`.
 
 ---
 
 ## 3. Directory structure
 
-On first run, GroqBash automatically creates:
-`
+On first execution, GroqBash automatically creates:
+```
 groqbash.d/
     config/
     models/
@@ -66,8 +63,8 @@ groqbash.d/
     tmp/
     extras/
         providers/
-`
-All directories are created with 700 permissions (best‑effort on non‑POSIX filesystems).
+```
+All directories are created with permissions 700 (best‑effort on non‑POSIX filesystems).
 
 ---
 
@@ -79,7 +76,7 @@ All directories are created with 700 permissions (best‑effort on non‑POSIX f
 
 ### Streaming mode
 
-`./groqbash --stream -- "Generate streaming text."`
+`./groqbash --stream -- "Generate text in streaming."`
 
 ### Input from file
 
@@ -93,7 +90,7 @@ All directories are created with 700 permissions (best‑effort on non‑POSIX f
 
 ## 5. Models
 
-### Update the model list
+### Refresh the model list
 
 `./groqbash --refresh-models`
 
@@ -107,7 +104,7 @@ The list is saved in:
 
 ---
 
-## 6. History and autosave
+## 6. History and automatic saving
 
 GroqBash automatically saves output when:
 
@@ -127,9 +124,9 @@ Rotation is configurable via:
 
 ---
 
-## 7. Installing extras (option `--install-extras`)
+## 7. Installing extras (`--install-extras` option)
 
-GroqBash includes a secure and portable installer to copy additional components (scripts, providers, templates, documentation) into the directory:
+GroqBash includes a secure and portable installer to copy additional components (scripts, providers, templates, documentation) into:
 
 `groqbash.d/extras/`
 
@@ -137,7 +134,7 @@ GroqBash includes a secure and portable installer to copy additional components 
 
 `./groqbash --install-extras`
 
-If you don’t specify components, **all** files in the extras source directory are installed.
+If you do not specify components, **all** files in the extras source directory are installed.
 
 ### 7.2 Install specific components
 
@@ -167,7 +164,7 @@ No files are modified.
   - mktemp  
   - cat (portable)  
   - atomic mv -f  
-- Each operation is protected by a lock (flock) on:
+- Each operation is protected by a lock (flock) on:  
   `groqbash.d/extras/.install.lock`
 
 ### 8.2 Permissions
@@ -191,7 +188,7 @@ No files are modified.
 
 ### 8.5 Lock timeout
 
-The lock timeout is configurable:
+Lock timeout is configurable:
 
 `export GROQBASH_LOCK_TIMEOUT_MODELS=10`
 
@@ -206,8 +203,8 @@ Default: **10 seconds**.
 - TURE / TEMPERATURE — temperature  
 - MAX_TOKENS  
 - OUTPUT_MODE — text, raw, json, pretty  
-- GROQBASH_DEBUG=1 — enable detailed logs  
-- ALLOW_API_CALLS=0 — block real API calls (useful for testing)
+- GROQBASH_DEBUG=1 — enables detailed logs  
+- ALLOW_API_CALLS=0 — blocks real API calls (useful for testing)
 
 ---
 
@@ -239,7 +236,7 @@ To remove GroqBash:
 
 ## 12. Troubleshooting
 
-### No response from the model
+### No response from model
 
 - Check GROQ_API_KEY  
 - Check network connection  
@@ -261,4 +258,6 @@ Increase:
 
 ## 13. License
 
-GroqBash is distributed under the [**GNU GPL v3**](LICENSE)
+GroqBash is distributed under the `[Sembra che non fosse sicuro mostrare il risultato. Cambiamo le cose e facciamo un altro tentativo.]`.
+
+---
