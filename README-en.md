@@ -73,6 +73,35 @@ GroqBash requires the following packages (or equivalents) to be available in PAT
 
 ## Installation
 
+> [!TIP]
+> **⏩ Quick Installation (Fast-Forward)**
+> 
+> Run these commands in your terminal to get **GroqBash** up and running immediately:
+> 
+> ```sh
+> # 1. Clone the repository (shallow clone for maximum speed)
+> git clone --depth 1 --branch main https://github.com/kamaludu/groqbash.git repo-groqbash  
+> 
+> # 2. Create a working directory and extract the executable
+> mkdir -p groqbash
+> cp repo-groqbash/bin/groqbash groqbash/
+> chmod +x groqbash/groqbash
+> 
+> # 3. Enter the directory and refresh the models 
+> cd groqbash 
+> ./groqbash --refresh-models
+> ```
+> 
+> The script will prompt you to enter your API key:
+> `Enter API key for provider groq (env GROQ_API_KEY):`
+> 
+> Enter your API key, then export it to avoid entering it again during your current session:
+> 
+> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
+> 
+> Enjoy GroqBash! ⚡
+
+
 Detailed instructions in: **`[Sembra che non fosse sicuro mostrare il risultato. Cambiamo le cose e facciamo un altro tentativo.]`**
 
 In short:
