@@ -8,8 +8,8 @@ assignees: ''
 ---
 
 **Passi per riprodurre**
-1. Esegui: `./bin/groqbash --version`
-2. Esegui: `./bin/groqbash "..."` (inserire prompt)
+1. Esegui: `./groqbash --version`
+2. Esegui: `./groqbash "..."` (inserire prompt)
 3. Osserva l'errore
 
 **Comportamento atteso**
@@ -20,8 +20,8 @@ Includi output rilevante (usa `--debug` se necessario). Non includere chiavi API
 
 **Ambiente**
 - Sistema operativo: (es. Termux, Ubuntu 22.04, macOS 13)
-- Versione GroqBash: `./bin/groqbash --version`
-- Altri dettagli: `jq` presente? `python3` presente?
+- Versione GroqBash: `./groqbash --version`
+- Altri dettagli: `jq` presente? I requisiti sono rispettati?
 
 **Note aggiuntive**
 Eventuali informazioni utili per la diagnosi.
