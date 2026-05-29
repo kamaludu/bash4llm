@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # =============================================================================
+# GroqBash⁺ — Bash-first wrapper for the Groq API
+# File: gemini.sh
+# Version: 2.0.0
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# =============================================================================
 # Provider: Gemini (extras/providers/gemini.sh)
 # Purpose: GroqBash provider adapter for Gemini-style APIs (compat shim)
 # Notes: Localized fixes applied to enforce GroqBash invariants:
-#   - No writes to /tmp; use RUN_TMPDIR / GROQBASH_TMPDIR only
-#   - Use header-based API key (Authorization: Bearer ...)
-#   - Call ensure_run_tmpdir where appropriate
-#   - Array-safe expansion of CURL_BASE_OPTS
-#   - Provide dbg() no-op fallback
-#   - Restrictive perms on temporary artifacts
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 # When sourced, avoid enabling strict mode globally.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
