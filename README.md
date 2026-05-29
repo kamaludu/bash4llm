@@ -73,6 +73,35 @@ GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 
 ## Installazione
 
+> [!TIP]
+> **⏩ Installazione Rapida (Fast-Forward)**
+> 
+> Eegui questi comandi nel tuo terminale per avviare subito **GroqBash**:
+> 
+> ```sh
+> # 1. Clona il repository (solo l'ultimo commit per massima velocità)
+> git clone --depth 1 --branch main https://github.com/kamaludu/groqbash.git repo-groqbash  
+> 
+> # 2. Crea una cartella di lavoro ed estrai l'eseguibile
+> mkdir -p groqbash
+> cp repo-groqbash/bin/groqbash groqbash/
+> chmod +x groqbash/groqbash
+> 
+> # 3. Entra nella cartella e aggiorna i modelli 
+> cd groqbash 
+> ./groqbash --refresh-models
+> ```
+> 
+> Lo script ti chiederà l'inserimento della chiave API:
+> `Enter API key for provider groq (env GROQ_API_KEY):`
+> 
+> Inserisci la tua API key, poi esportala per non doverla più inserire durante la sessione:
+> 
+> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
+> 
+> Usa Groqbash ⚡
+> 
+
 Istruzioni dettagliate in: **[INSTALL](INSTALL.md)**
 
 In breve:
