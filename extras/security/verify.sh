@@ -6,14 +6,27 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
+# Purpose:
+#   Performs read‑only security checks on groqbash provider modules and the
+#   extras directory. Validates file integrity, absence of symlinks, safe
+#   permissions (no group/other write), ownership, and prints checksums when
+#   available.
 #
-# Verify provider module files and extras directory permissions.
-# Safe, read-only checks only. Exits non-zero on critical errors.
+# Usage:
+#   Export the required environment variables before running:
+#     export GROQBASH_EXTRAS_DIR="/absolute/path/to/groqbash.d/extras"
+#     export GROQBASH_DIR="/absolute/path/to/groqbash"
+#     export GROQBASH_TMPDIR="... (optional)"
+#     export PROVIDERS_DIR="$GROQBASH_EXTRAS_DIR/providers"
+#   Then run:
+#     ./verify.sh
 #
-# Notes:
-# - Set STRICT_VERIFY=1 to treat owner mismatches as fatal errors.
-# - Script is portable: uses stat GNU/BSD fallback and enables nullglob in bash.
-#
+# Behavior:
+#   - Exit 0: all critical checks passed (WARN messages may appear).
+#   - Exit 2: one or more critical checks failed (ERROR).
+#   - Set STRICT_VERIFY=1 to treat owner mismatches as fatal errors.
+# ---------------------------------------------------------------------------
+
 set -euo pipefail
 
 _ok()   { printf 'OK: %s\n' "$*"; }
