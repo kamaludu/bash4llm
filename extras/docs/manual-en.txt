@@ -597,5 +597,5 @@ ADDED: PRECORE_BOOT / PRECORE_RUN (brief recall)
 --- 
 End of the extended manual.
 # =====================================
-# End of manual-it.txt
+# End of manual-en.txt
 # =====================================
