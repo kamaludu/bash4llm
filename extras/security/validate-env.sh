@@ -6,6 +6,43 @@
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/groqbash
 # =============================================================================
+# Purpose:
+#   Verify the minimum environment required to run groqbash safely.
+#   Checks presence of critical commands (bash, curl, jq, gawk, find, stat,
+#   mktemp, flock, etc.), correctness of runtime directories and the tmp
+#   policy (GROQBASH_TMPDIR must be absolute, not world-writable and, when
+#   possible, located inside GROQBASH_DIR). Emits WARN for non-critical
+#   absences and ERROR for conditions that prevent safe execution.
+#
+# Usage:
+#   Export the required environment variables (example):
+#     export GROQBASH_DIR="$PWD"
+#     export GROQBASH_EXTRAS_DIR="$GROQBASH_DIR/groqbash.d/extras"
+#     export GROQBASH_TMPDIR="$GROQBASH_DIR/groqbash.d/tmp"
+#     export PROVIDERS_DIR="$GROQBASH_EXTRAS_DIR/providers"
+#     ./validate-env.sh
+#
+#   Alternative usage (only to test a restricted PATH):
+#     PATH="/usr/bin:/bin" ./validate-env.sh
+#   Note: overwriting PATH can remove binaries installed in non-standard
+#   locations (e.g., Termux). Prefer using export to set variables.
+#
+# Output and exit codes:
+#   - exit 0 : all critical checks passed (WARNs may still be present).
+#   - exit 2 : one or more critical checks failed (ERROR).
+#
+# How to fix common ERRORs:
+#   - Missing tool: install the missing command or restore PATH.
+#   - GROQBASH_TMPDIR not absolute or outside GROQBASH_DIR: set an
+#     absolute path under GROQBASH_DIR with restrictive permissions.
+#   - GROQBASH_EXTRAS_DIR missing: create the directory or set the variable.
+#
+# Security notes:
+#   - The script creates directories with umask 077 when necessary.
+#   - It does not change existing permissions without notice; it flags
+#     world-writable directories as critical conditions.
+# ---------------------------------------------------------------------------
+
 set -euo pipefail
 
 _ok()   { printf 'OK: %s\n' "$*"; }
