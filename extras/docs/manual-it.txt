@@ -1,10 +1,10 @@
 # =====================================
 # GroqBash — Manuale Esteso
-# File: extras/docs/manual-en.txt
+# File: extras/docs/manual-it.txt
 # Versione: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
 # Licenza: GPL-3.0-or-later
-# Source: [https://github.com/kamaludu/groqbash](https://github.com/kamaludu/groqbash)
+# Source: [https://github.com/kamaludu/groqbash]
 # =====================================
 
 Summary
