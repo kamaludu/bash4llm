@@ -8,10 +8,8 @@
 # =============================================================================
 # Purpose: Optional debug and diagnostics helpers for groqbash.
 # Source this file to enable richer diagnostics. The core does not require it.
-#
 # Usage (optional):
 #   . /path/to/groqbash.d/extras/lib/debug.sh
-#
 # This file intentionally avoids side effects on load.
 
 [ -n "${GROQBASH_DEBUG_SH_LOADED:-}" ] && return 0
