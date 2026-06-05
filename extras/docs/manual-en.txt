@@ -4,7 +4,7 @@
 # Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: [https://github.com/kamaludu/groqbash](https://github.com/kamaludu/groqbash)
 # =====================================
 
 Summary
@@ -395,6 +395,14 @@ The script implements a session system based on NDJSON files and a windowing mec
 **Fallback**
 - If `session_read_window` does not produce messages, the CORE attempts to reconstruct the window with `tail` on the NDJSON or, as a last resort, creates a payload with only the current user message.
 
+---  
+ADDED: Session cache (integration)
+- **Location:** inserted after "Sessions (full behavior)".
+- **Purpose:** cache session-derived payloads/responses to avoid recomputation.
+- **API:** `session_cache_key(sid, params)`, `session_cache_get(key)`, `session_cache_set(key, ttl, payload)`, `session_cache_invalidate(key|sid)`.
+- **Format:** cache files stored under `${GROQBASH_CONFIG_DIR%/}/session_cache` with perms 600. File format: **first line = expiry_epoch (integer)**; subsequent lines = payload JSON.
+- **Behavior:** `session_cache_get` removes expired files and returns 0 on hit; `session_cache_set` writes atomically; `session_cache_invalidate` removes entries when session or provider changes. TTL enforced by expiry_epoch.
+
 9. History and rotation
 ----------------------
 **Saving output**
@@ -408,6 +416,15 @@ The script implements a session system based on NDJSON files and a windowing mec
   - Reduction of total space to `GROQBASH_HISTORY_MAX_BYTES`.
   - Reduction of number of files to `GROQBASH_HISTORY_MAX_FILES`.
 - All operations are performed under `HISTORY_LOCK`.
+
+---  
+ADDED: Manifest multimodal (integration)
+- **Location:** inserted after "History and rotation".
+- **Purpose:** manage multimodal manifests and staged parts safely.
+- **Primitives:** `manifest_create(manifest_path)`, `manifest_add_part(manifest, srcfile, metadata)`, `manifest_read(manifest_path)`.
+- **Staging:** parts are staged via `stage_b64(srcfile, dst.b64)`; each part stored as a `.b64` artifact.
+- **manifest.b64:** a base64-encoded representation of the manifest is written alongside the JSON manifest for transport/archival.
+- **Atomicity:** manifest updates occur under a manifest lock using `lock_exec` and `atomic_write`; failures must leave consistent state.
 
 10. Streaming (technical details)
 -------------------------------
@@ -477,6 +494,12 @@ The script implements a session system based on NDJSON files and a windowing mec
   - `HISTORY_LOCK` (e.g., `groqbash.d/history/history.lock`)
   - `TMP_LOCK` (e.g., `groqbash.d/tmp/tmp.lock`)
 - `lock_exec` uses `flock -x -w <timeout>` and fails with code 124 on timeout.
+
+---  
+ADDED: Network policy (enforce_network_policy)
+- **Location:** suggested insertion under "Security and filesystem constraints".
+- **Purpose:** single centralized gate for all network access.
+- **Behavior:** `enforce_network_policy()` returns success only if network calls are allowed. It respects `DRY_RUN` (blocks real network calls), `GROQBASH_SKIP_NETWORK` (explicit block), and `GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET` combined with `QUIET` (block when quiet mode enforces no network). All provider call sites **must** call `enforce_network_policy()` before performing curl; when blocked, providers must produce a RESP diagnostic and return non-zero. This function is the canonical place to implement CI/automation safe-guards.
 
 13. Examples
 ----------
@@ -564,6 +587,12 @@ These ambiguities are reported for clarity and to guide correct usage of the scr
 - External providers are loaded via `source` after syntax and permission checks; the CORE communicates with them exclusively through the minimal interface functions (`buildpayload_<prov>`, `call_api_<prov>`, and optional ones).
 - For non-interactive integrations, ensure the correct API key is exported and set `ALLOW_API_CALLS` if necessary (the code enforces a check if `GROQ_API_KEY` is present but `ALLOW_API_CALLS` is not 1 and `DRY_RUN` is not 1).
 - All runtime state must remain under `GROQBASH_DIR` (default `SCRIPTDIR/groqbash.d`).
+
+---  
+ADDED: PRECORE_BOOT / PRECORE_RUN (brief recall)
+- **Location:** suggested insertion near "Final notes" or as a short cross-reference block.
+- **Purpose:** point integrators to core bootstrap and runtime primitives.
+- **Summary:** PRECORE_BOOT provides `resolve_script_dir`, `canonical_*` helpers, `ensure_config_dir`, `ensure_run_tmpdir` (RUN_TMPDIR under GROQBASH_TMPDIR, cleanup trap), base64 option detection and atomic primitives (`atomic_write`, `b64_atomic_write/read`, `stage_b64`). PRECORE_RUN provides runtime helpers: `rotate_history`, `save_to_history`, session primitives, session cache, manifest helpers, `_tmpf`/`make_tmpdir` (explicitly reject `/tmp`), and `lock_exec`. For implementation details and invariants see `extras/docs/core-notes.sh`.
 
 --- 
 End of the extended manual.
