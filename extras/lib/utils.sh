@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first utilities (extras/lib/utils.sh)
-# Purpose: small, portable helper functions for groqbash extras
-# Location at runtime: groqbash.d/extras/lib/utils.sh
+# GroqBash⁺ — Bash-first wrapper for the Groq API
+# File: extras/lib/utils.sh
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
 # =============================================================================
 # utils.sh — utility functions for groqbash extras
 # Provides small, portable and safe helpers (trim, numbers, join, tmpfile, debug).
