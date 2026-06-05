@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# extras/test/concurrency-test.sh
+# =============================================================================
+# GroqBash⁺ — Bash-first wrapper for the Groq API
+# File: extras/test/concurrency-test.sh
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# =============================================================================
 # Concurrency test for GroqBash
 # Usage: extras/test/concurrency-test.sh [path-to-groqbash] [N_WRITERS] [N_REFRESHERS] [SLEEP_BETWEEN]
-# Default: ./groqbash 10 5 0.05
 set -euo pipefail
 
 show_help() {
