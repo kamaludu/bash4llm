@@ -4,6 +4,7 @@
 # File: extras/lib/utils.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
+# Source: https://github.com/kamaludu/groqbash
 # =============================================================================
 # utils.sh — utility functions for groqbash extras
 # Provides small, portable and safe helpers (trim, numbers, join, tmpfile, debug).
