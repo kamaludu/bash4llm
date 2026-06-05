@@ -10,17 +10,56 @@
 # Verify provider module files and extras directory permissions.
 # Safe, read-only checks only. Exits non-zero on critical errors.
 #
+# Notes:
+# - Set STRICT_VERIFY=1 to treat owner mismatches as fatal errors.
+# - Script is portable: uses stat GNU/BSD fallback and enables nullglob in bash.
+#
 set -euo pipefail
 
-# Helper: print status
-_ok() { printf 'OK: %s\n' "$*"; }
+_ok()   { printf 'OK: %s\n' "$*"; }
 _warn() { printf 'WARN: %s\n' "$*"; }
-_err() { printf 'ERROR: %s\n' "$*"; }
+_err()  { printf 'ERROR: %s\n' "$*"; }
 
-# Determine extras dir variable (support common env name)
+# Accept canonical and legacy env names
 GROQBASH_EXTRAS_DIR="${GROQBASH_EXTRAS_DIR:-${GROQBASHEXTRASDIR:-}}"
+GROQBASH_DIR="${GROQBASH_DIR:-${GROQBASH_HOME:-}}"
+GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-${GROQBASHTMPDIR:-}}"
 
-if [ -z "$GROQBASH_EXTRAS_DIR" ]; then
+# Portable owner getter: returns username or empty string
+_get_owner() {
+  local f="$1"
+  if command -v stat >/dev/null 2>&1; then
+    if stat -c '%U' "$f" >/dev/null 2>&1; then
+      stat -c '%U' "$f" 2>/dev/null || printf ''
+    elif stat -f '%Su' "$f" >/dev/null 2>&1; then
+      stat -f '%Su' "$f" 2>/dev/null || printf ''
+    else
+      printf ''
+    fi
+  else
+    # fallback to ls parsing (less reliable)
+    ls -ld -- "$f" 2>/dev/null | awk '{print $3}' 2>/dev/null || printf ''
+  fi
+}
+
+# Portable permission string getter (ls fallback)
+_get_perms() {
+  local f="$1"
+  ls -ld -- "$f" 2>/dev/null | awk '{print $1}' 2>/dev/null || printf ''
+}
+
+# World-writable check (directory)
+_is_world_writable() {
+  local d="$1" perms others_write
+  [ -d "$d" ] || return 1
+  perms="$(_get_perms "$d")"
+  [ -z "$perms" ] && return 1
+  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
+  [ "$others_write" = "w" ]
+}
+
+# Ensure extras dir provided
+if [ -z "${GROQBASH_EXTRAS_DIR:-}" ]; then
   _err "GROQBASH_EXTRAS_DIR is not set. Export it to point to your groqbash extras directory."
   exit 2
 fi
@@ -34,22 +73,13 @@ case "$GROQBASH_EXTRAS_DIR" in
     ;;
 esac
 
-# Ensure exists or creatable (do not create automatically; just report)
+# Ensure exists (do not create)
 if [ ! -d "$GROQBASH_EXTRAS_DIR" ]; then
   _err "Extras directory does not exist: $GROQBASH_EXTRAS_DIR"
   exit 2
 fi
 
-# Check world-writable for extras dir
-_is_world_writable() {
-  local d="$1" perms others_write
-  [ -d "$d" ] || return 1
-  perms="$(ls -ld "$d" 2>/dev/null | awk '{print $1}' 2>/dev/null || true)"
-  [ -z "$perms" ] && return 1
-  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
-  [ "$others_write" = "w" ]
-}
-
+# Check extras dir perms
 if _is_world_writable "$GROQBASH_EXTRAS_DIR"; then
   _err "Extras directory is world-writable: $GROQBASH_EXTRAS_DIR"
   exit 2
@@ -57,15 +87,16 @@ else
   _ok "Extras directory permissions look sane: $GROQBASH_EXTRAS_DIR"
 fi
 
-# Providers directory
-PROV_DIR="$GROQBASH_EXTRAS_DIR/providers"
+# Providers directory (default under extras)
+PROV_DIR="${PROVIDERS_DIR:-$GROQBASH_EXTRAS_DIR/providers}"
+
 if [ ! -d "$PROV_DIR" ]; then
   _warn "Providers directory not found: $PROV_DIR"
   # Not fatal; no providers installed
   exit 0
 fi
 
-# Current user
+# Current user (username)
 CURRENT_USER="$(id -un 2>/dev/null || printf '')"
 
 # Check for checksum tool
@@ -76,13 +107,37 @@ elif command -v shasum >/dev/null 2>&1; then
   SHA_TOOL="shasum -a 256"
 fi
 
-# Iterate provider files
+# Diagnostic: check atomic/lock primitives
+if command -v flock >/dev/null 2>&1; then
+  _ok "flock available for atomic locks"
+else
+  _warn "flock not found: atomic directory locks may be unavailable"
+fi
+
+# Optional tmp policy check (warn only)
+if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -n "${GROQBASH_DIR:-}" ]; then
+  case "$GROQBASH_TMPDIR" in
+    "$GROQBASH_DIR"/*) _ok "GROQBASH_TMPDIR is inside GROQBASH_DIR";;
+    *)
+      _warn "GROQBASH_TMPDIR is not inside GROQBASH_DIR: $GROQBASH_TMPDIR"
+      ;;
+  esac
+fi
+
+# Enable nullglob in bash to avoid literal glob when no matches
+if [ -n "${BASH_VERSION:-}" ]; then
+  # shellcheck disable=SC2034
+  shopt -s nullglob 2>/dev/null || true
+fi
+
 any_error=0
 printf 'Verifying provider files in: %s\n' "$PROV_DIR"
+
 for f in "$PROV_DIR"/*.sh; do
   [ -e "$f" ] || continue
   printf '\nFile: %s\n' "$f"
-  # Existence & regular file
+
+  # Regular file
   if [ ! -f "$f" ]; then
     _err "Not a regular file: $f"
     any_error=1
@@ -100,22 +155,27 @@ for f in "$PROV_DIR"/*.sh; do
     _ok "Not a symlink"
   fi
 
-  # Owner check
-  file_owner="$(ls -ld "$f" 2>/dev/null | awk '{print $3}' 2>/dev/null || printf '')"
+  # Owner check (portable)
+  file_owner="$(_get_owner "$f")"
   if [ -z "$file_owner" ]; then
     _warn "Unable to determine owner for $f"
   else
-    if [ "$file_owner" != "$CURRENT_USER" ]; then
-      _err "Owner mismatch: $file_owner (expected: $CURRENT_USER) for $f"
-      any_error=1
-      continue
+    if [ -n "$CURRENT_USER" ] && [ "$file_owner" != "$CURRENT_USER" ]; then
+      # By default warn; make fatal only if STRICT_VERIFY=1
+      if [ "${STRICT_VERIFY:-0}" -eq 1 ]; then
+        _err "Owner mismatch: $file_owner (expected: $CURRENT_USER) for $f"
+        any_error=1
+        continue
+      else
+        _warn "Owner differs: $file_owner (current: $CURRENT_USER) for $f"
+      fi
     else
-      _ok "Owned by current user: $CURRENT_USER"
+      _ok "Owned by current user: ${file_owner:-<unknown>}"
     fi
   fi
 
   # Permission checks (group/world write)
-  perms="$(ls -ld "$f" 2>/dev/null | awk '{print $1}' 2>/dev/null || true)"
+  perms="$(_get_perms "$f")"
   group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
   if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
@@ -126,7 +186,7 @@ for f in "$PROV_DIR"/*.sh; do
     _ok "Not group/world writable (perms: $perms)"
   fi
 
-  # Optional checksum
+  # Optional checksum (print only)
   if [ -n "$SHA_TOOL" ]; then
     printf 'Checksum: '
     if [ "$SHA_TOOL" = "sha256sum" ]; then
