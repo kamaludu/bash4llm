@@ -8,12 +8,13 @@
 # =============================================================================
 # utils.sh — utility functions for groqbash extras
 # Provides small, portable and safe helpers (trim, numbers, join, tmpfile, debug).
+# Used by providers and extras to avoid duplicated logic.
 # No global side effects: only function definitions.
 # Load with:  . "$GROQBASH_EXTRAS_DIR/lib/utils.sh"
-# gb_mktempfile and gb_ensure_tmpdir - handle secure temporary files.
-# gb_trim, gb_is_number and gb_join - simplify string parsing and manipulation.
+# ---
+# gb_mktempfile, gb_ensure_tmpdir - handle secure temporary files.
+# gb_trim, gb_is_number, gb_join - simplify string parsing and manipulation.
 # gb_debug - enables diagnostic logging only when DEBUG is set.
-# Used by providers and extras to avoid duplicated logic.
 
 # Load guard (exact, valid POSIX/Bash form)
 if [ -n "${GROQBASHUTILSLOADED:-}" ]; then
