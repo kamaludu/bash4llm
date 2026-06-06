@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Core Notes (final)
+# GroqBash — Core Notes
 # File: extras/docs/core-notes.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
