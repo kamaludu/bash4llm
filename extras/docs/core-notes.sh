@@ -5,13 +5,13 @@
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Source: https://github.com/<your-repo>/groqbash
+# =============================================================================
 # Purpose: Design notes and operational guidance for groqbash core.
 # This file is documentation only. It is safe to source for tests (GROQBASH_SOURCE_ONLY)
 # and must not change runtime behavior when sourced.
-# =============================================================================
 
 : <<'DOC'
-groqbash — Core Notes (definitive)
+groqbash — Core Notes
 =================================
 
 Overview
