@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_NAME="groqbash"
 SCRIPT_VERSION="2.0.0"
-SCRIPT_DATE="2026-05-07"
+SCRIPT_DATE="2026-06-09"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
@@ -419,11 +419,12 @@ is_valid_json_string() {
 # - b64decode: reads base64 stdin, writes decoded bytes
 # These functions replace all direct base64 calls.
 b64encode() {
-  # Use base64 with wrap option if available; ensure single-line output
-  if [ -n "${B64_WRAP_OPT:-}" ]; then
-    base64 ${B64_WRAP_OPT}
+  # Portable base64 encode: do not rely on multi-token options.
+  # Always produce single-line output by stripping newlines.
+  if base64 2>/dev/null | tr -d '\n'; then
+    :
   else
-    base64 | tr -d '\n'
+    return 1
   fi
 }
 
@@ -530,17 +531,15 @@ stage_b64() {
     return 1
   }
 
-  if [ -n "${B64_WRAP_OPT:-}" ]; then
-    base64 ${B64_WRAP_OPT} "$tmp_local" > "$tmp_b64" 2>/dev/null || {
-      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
-      return 1
-    }
+  # Encode to base64 in a portable way, then remove newlines to produce a single-line payload.
+  # This avoids passing multi-token options and prevents word-splitting/globbing issues.
+  if base64 "$tmp_local" 2>/dev/null | tr -d '\n' > "$tmp_b64"; then
+    :
   else
-    base64 "$tmp_local" > "$tmp_b64" 2>/dev/null || {
-      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
-      return 1
-    }
+    rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
+    return 1
   fi
+
   chmod 600 "$tmp_b64" 2>/dev/null || true
 
   # Atomic move into final dst
@@ -595,7 +594,7 @@ lock_exec() {
       "$@"
     )
     rc=$?
-    return $rc
+    return "$rc"
   fi
 
   # flock missing: fail with clear message
@@ -2434,7 +2433,7 @@ buildpayload_groq() {
   staged_b64=""
   if type stage_b64 >/dev/null 2>&1; then
     tmp_b64="${tmp_payload}.b64"
-    if stage_b64 < "$tmp_payload" > "$tmp_b64" 2>/dev/null; then
+    if stage_b64 "$tmp_b64" < "$tmp_payload" 2>/dev/null; then
       staged_b64="$tmp_b64"
       # remove original JSON payload after successful staging
       rm -f "$tmp_payload" 2>/dev/null || true
@@ -3018,7 +3017,7 @@ refresh_models_groq() {
   fi
 
   lockfile="$MODELS_LOCK"
-  lock_exec "$lockfile" 10 -- base64 ${B64_DECODE_OPT} < "${MODELS_FILE}.b64" > "$MODELS_FILE" \
+  lock_exec "$lockfile" 10 -- base64 "${B64_DECODE_OPT}" < "${MODELS_FILE}.b64" > "$MODELS_FILE" \
     || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
@@ -4226,6 +4225,11 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   printf '%s\n' "$target_provider" | atomic_write "$target_provider_file" 10 \
     || { log_error "PROVIDER" "cannot persist provider selection to ${target_provider_file}."; exit "$GROQBASHERRTMP"; }
   chmod 600 "$target_provider_file" 2>/dev/null || true
+  rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+
+  # Re-resolve provider URL now that PROVIDER is finalized
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
 
 fi
 
@@ -4296,8 +4300,11 @@ EOF
     exit "$GROQBASHERRTMP"
   fi
   chmod 600 "$target_provider_file" 2>/dev/null || true
+  rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
 
   PROVIDER="$chosen"
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+
   # Mark that provider was selected interactively in this invocation so we can
   # exit before prompt-processing if no positional args (configuration-only run).
   PROVIDER_INTERACTIVE_SELECTED=1
@@ -4388,6 +4395,9 @@ fi
 
 # Handle explicit --refresh-models only after provider module is loaded and validated
 if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
+  # Ensure provider URL matches current PROVIDER before refreshing models
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+
   if ! ensure_api_key_for_provider "$PROVIDER"; then
     log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
     exit "$GROQBASHERRNOAPIKEY"
@@ -5029,5 +5039,4 @@ fi
 ########################################
 # SECTION: CORE_PROVIDER - END
 ########################################
-
 # End of file
