@@ -117,6 +117,43 @@ data: { "choices":[{"delta":{"content":"..."}}] }
 
 ---
 
+#### ✔️ `refresh_models_<provider>()`**
+Funzione obbligatoria per tutti i provider che dichiarano supporto al refresh.
+
+**Responsabilità:**
+- interrogare l’endpoint dei modelli del provider;  
+- generare il file `MODELS_FILE` con un modello per riga;  
+- scrivere il file `provider-url` tramite scrittura atomica;  
+- impostare `GROQBASH_PROVIDER_URL` coerentemente all’URL scritto;  
+- rispettare `DRY_RUN`;  
+- fallire in modo sicuro se manca la API key;  
+- restituire `0` in caso di successo, diverso da zero in caso di errore.
+
+**Vincoli:**
+- nessun output su stdout;  
+- `$RESP` deve essere scritto anche in caso di errore;  
+- permessi sicuri (umask 077);  
+- nessun uso di `/tmp`, `eval`, `cd`.
+
+---
+
+### **3.1. `supports_refresh_models`**
+Il provider deve dichiarare esplicitamente:
+
+```sh
+supports_refresh_models=1
+```
+
+oppure:
+
+```sh
+supports_refresh_models_<provider>=1
+```
+
+L’assenza di questa variabile indica al CORE che il provider **non** supporta il refresh automatico dei modelli.
+
+---
+
 ## 4. Variabili garantite dal CORE
 
 Il CORE garantisce al provider:
@@ -140,6 +177,17 @@ Il CORE garantisce al provider:
 - API key specifiche del provider (es. `GEMINI_API_KEY`, `HFAPIKEY`, `MISTRAL_API_KEY`)
 
 Il provider **non deve modificare** queste variabili.
+
+---
+
+### **4.1. Precedenza API key**
+Il provider deve determinare la API key seguendo l’ordine:
+
+1. `PROVIDER_API_ENV_<provider>` (se definita)  
+2. `GROQBASH_API_KEY`  
+3. API key specifica del provider (es. `GEMINI_API_KEY`)
+
+Se nessuna API key è disponibile e l’endpoint richiede autenticazione, le funzioni `call_api_*` e `refresh_models_*` devono fallire in modo sicuro, scrivendo `$RESP` e restituendo codice non zero.
 
 ---
 
@@ -170,6 +218,73 @@ Il provider **non deve modificare** queste variabili.
 - gestire payload .b64
 - usare `GROQBASH_PROVIDER_URL` come endpoint base
 
+---
+
+### **5.1. File provider-url**
+Il CORE utilizza un file dedicato per memorizzare l’URL base del provider.
+
+**Requisiti:**
+- percorso determinato da `canonical_provider_url_file` (fornita dal CORE);  
+- il provider non deve ridefinire tale funzione;  
+- il file deve contenere **solo** l’URL base, una singola riga con newline finale;  
+- deve essere scritto tramite scrittura atomica;  
+- deve essere aggiornato da `refresh_models_<provider>()`;  
+- deve essere coerente con `GROQBASH_PROVIDER_URL`.
+
+---
+
+### **5.2. File MODELS_FILE (models.txt)**
+Il provider deve generare un file contenente la lista dei modelli disponibili.
+
+**Requisiti:**
+- un modello per riga;  
+- nessun JSON, nessun commento, nessun metadata;  
+- newline finale obbligatoria;  
+- scrittura atomica;  
+- generato e aggiornato da `refresh_models_<provider>()`;  
+- deve esistere anche in `DRY_RUN`.
+
+**Formato dei modelli**
+Il file `MODELS_FILE` deve contenere:
+
+- un modello per riga;  
+- nessun JSON;  
+- nessun commento;  
+- nessun metadata;  
+- solo testo semplice.
+
+---
+
+### **5.3. canonical_provider_url_file**
+Il provider deve utilizzare il percorso restituito dal CORE tramite:
+
+```sh
+canonical_provider_url_file
+```
+
+Il provider **non deve** ridefinire questa funzione né modificare il percorso risultante.
+
+---
+
+### **5.4. resolve_provider_url**
+Il CORE utilizza `resolve_provider_url` per determinare l’endpoint finale.
+
+Il provider deve:
+- assicurare che `provider-url` sia scritto prima che il CORE lo legga;  
+- non ridefinire né interferire con `resolve_provider_url`;  
+- non hardcodare URL che bypassino questa logica.
+
+---
+
+### **5.5. DRY_RUN**
+Se `DRY_RUN=1`:
+
+- nessuna chiamata di rete deve essere effettuata;  
+- il provider deve comunque generare file validi:  
+  - `RESP` (JSON fittizio valido),  
+  - `MODELS_FILE` (anche vuoto ma valido),  
+  - `provider-url`;  
+- tutte le funzioni devono restituire `0` salvo errori strutturali.
 
 ---
 
