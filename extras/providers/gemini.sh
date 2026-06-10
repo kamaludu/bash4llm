@@ -16,10 +16,6 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
 fi
 
-# Indica al CORE che questo provider supporta il refresh dei modelli
-supports_refresh_models_gemini=1
-
-# Hardcoded canonical endpoints (do not allow external templates to inject broken values)
 API_URL_GEMINI_TEMPLATE='https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent'
 MODELS_ENDPOINT_GEMINI='https://generativelanguage.googleapis.com/v1beta/models'
 
