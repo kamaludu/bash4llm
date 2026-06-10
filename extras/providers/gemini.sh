@@ -80,6 +80,11 @@ _b64_atomic_write() {
   return 0
 }
 
+# Ensure provider-specific MODELS_FILE default (align with other providers)
+if [ -z "${MODELS_FILE:-}" ]; then
+  MODELS_FILE="${GROQBASH_MODELS_DIR:-}/gemini.txt"
+fi
+
 # -------------------------
 # Safe substitute ${MODEL} in template without sed
 # -------------------------
@@ -609,8 +614,14 @@ refresh_models_gemini() {
     *)    api_url="${api_url}?pageSize=${MAX_MODELS:-200}" ;;
   esac
 
+  # Append API key as query parameter for the public models endpoint
+  case "$api_url" in
+    *\?*) api_url="${api_url}&key=${key_trim}" ;;
+    *)    api_url="${api_url}?key=${key_trim}" ;;
+  esac
+
   rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
-  if ! curl "${CURL_BASE_OPTS[@]:-}" -H "Authorization: Bearer ${key_trim}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+  if ! curl "${CURL_BASE_OPTS[@]:-}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
     log_error "MODELREFRESH" "HTTP request to Gemini models endpoint failed."
     log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
