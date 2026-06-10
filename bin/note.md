@@ -1,3 +1,7 @@
+```sh
+git clone --depth 1 --branch release-v1.1.0 https://github.com repo-groqbash
+```
+
 ### GroqBash - punti essenziali:
 
 ---
