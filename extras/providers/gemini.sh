@@ -24,6 +24,14 @@ if ! type dbg >/dev/null 2>&1; then
   dbg() { :; }
 fi
 
+# If the file is being sourced (safe-load by core), set a flag so
+# any optional top-level initialization can be skipped.
+# Do NOT return here because we still need to define functions.
+GEMINI_SOURCED_BY_CORE=0
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  GEMINI_SOURCED_BY_CORE=1
+fi
+
 # -------------------------
 # Helpers (tmpdir, mktemp, safe writes)
 # -------------------------
@@ -58,32 +66,53 @@ _mktemp_in_dir_gemini() {
 }
 
 _write_atomic() {
-  local src="$1" dst="$2"
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$src" | atomic_write "$dst"
-    return $?
+  local src="${1:-}" dst="${2:-}"
+  if [ -z "${src:-}" ] || [ -z "${dst:-}" ]; then
+    return 1
   fi
-  cat "$src" > "$dst"
+  if [ ! -s "$src" ]; then
+    # nothing to write
+    return 1
+  fi
+
+  if type atomic_write >/dev/null 2>&1; then
+    # feed atomic_write from src
+    if ! cat "$src" | atomic_write "$dst"; then
+      return 1
+    fi
+    return 0
+  fi
+
+  # fallback: direct write
+  if ! cat "$src" > "$dst"; then
+    return 1
+  fi
   chmod 600 "$dst" 2>/dev/null || true
   return 0
 }
 
 _b64_atomic_write() {
-  if type b64_atomic_write >/dev/null 2>&1; then
-    b64_atomic_write "$@"
-    return $?
+  local staged="${1:-}" dest="${2:-}"
+  if [ -z "${staged:-}" ] || [ -z "${dest:-}" ]; then
+    return 1
   fi
-  # Fallback: decode to dest (not atomic) but ensure dest is under allowed dirs
-  local staged="$1" dest="$2"
-  base64 ${B64_DECODE_OPT:-} < "$staged" > "$dest"
+  if [ ! -s "$staged" ]; then
+    return 1
+  fi
+
+  if type b64_atomic_write >/dev/null 2>&1; then
+    b64_atomic_write "$@" || return $?
+    return 0
+  fi
+
+  # Fallback: decode to dest (not atomic) but ensure staged exists
+  base64 ${B64_DECODE_OPT:-} < "$staged" > "$dest" || return 1
   chmod 600 "$dest" 2>/dev/null || true
   return 0
 }
 
 # Ensure provider-specific MODELS_FILE default (align with other providers)
-if [ -z "${MODELS_FILE:-}" ]; then
-  MODELS_FILE="${GROQBASH_MODELS_DIR:-}/gemini.txt"
-fi
+MODELS_FILE="${MODELS_FILE:-${GROQBASH_MODELS_DIR:-}/gemini.txt}"
 
 # -------------------------
 # Safe substitute ${MODEL} in template without sed
@@ -271,9 +300,18 @@ call_api_gemini() {
   fi
 
   local workdir tmpout tmpresp errf api_template api_url model_subst key_trim http_code time_total
-  workdir="$(_get_work_tmpdir_gemini)" || return 4
+  workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+  if [ -z "$workdir" ]; then
+    if type ensure_run_tmpdir >/dev/null 2>&1; then
+      ensure_run_tmpdir || return 4
+      workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+    fi
+  fi
+  [ -n "$workdir" ] || return 4
+
   tmpout="$(_mktemp_in_dir_gemini "$workdir")" || return 4
   tmpresp="$(_mktemp_in_dir_gemini "$workdir")" || return 4
+
   errf="$(_mktemp_in_dir_gemini "$workdir")" || errf="${workdir%/}/curl.err"
   chmod 600 "$errf" 2>/dev/null || true
 
@@ -302,10 +340,18 @@ call_api_gemini() {
 
   http_code="$(awk '{print $1}' "$tmpout" 2>/dev/null || true)"
   time_total="$(awk '{print $2}' "$tmpout" 2>/dev/null || true)"
-  if [ -z "$http_code" ]; then
-    http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
-    http_code="$(printf '%s' "$http_code" | awk '{print $1}' 2>/dev/null || true)"
+
+  if [ -z "${http_code:-}" ]; then
+    if [ -s "${tmpout:-}" ]; then
+      # estrai codice http e tempo dal file tmpout in modo sicuro
+      http_code="$(awk '{print $1}' "$tmpout" 2>/dev/null || echo "000")"
+      time_total="$(awk '{print $2}' "$tmpout" 2>/dev/null || echo "0")"
+    else
+      http_code="000"
+      time_total="0"
+    fi
   fi
+
   time_total="${time_total:-0}"
 
   local resp_path="${RESP:-$workdir/resp.json}"
@@ -402,8 +448,17 @@ call_api_streaming_gemini() {
   fi
 
   local workdir RESP_RAW errf api_template api_url model_subst key_trim rc
-  workdir="$(_get_work_tmpdir_gemini)" || return 4
+  workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+  if [ -z "$workdir" ]; then
+    if type ensure_run_tmpdir >/dev/null 2>&1; then
+      ensure_run_tmpdir || return 4
+      workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+    fi
+  fi
+  [ -n "$workdir" ] || return 4
+
   RESP_RAW="$(_mktemp_in_dir_gemini "$workdir")" || RESP_RAW="${workdir%/}/resp.raw"
+
   errf="$(_mktemp_in_dir_gemini "$workdir")" || errf="${workdir%/}/curl.err"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
@@ -550,14 +605,22 @@ refresh_models_gemini() {
     local tmp_pu
     tmp_pu="$(_mktemp_in_dir_gemini "$(dirname "$provider_url_file")" 2>/dev/null || true)" || tmp_pu="${provider_url_file}.tmp"
     printf '%s\n' "${provider_url_value}" > "$tmp_pu" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$tmp_pu" | atomic_write "$provider_url_file"
-    else
-      mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
-      chmod 600 "${provider_url_file}.new" 2>/dev/null || true
-      mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
+
+    if [ -n "${tmp_pu:-}" ] && [ -s "$tmp_pu" ]; then
+      if type atomic_write >/dev/null 2>&1; then
+        if ! cat "$tmp_pu" | atomic_write "$provider_url_file"; then
+          # fallback to safe move/copy if atomic_write fails
+          cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+          mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
+        fi
+      else
+        mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+        chmod 600 "${provider_url_file}.new" 2>/dev/null || true
+        mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
+      fi
+      chmod 600 "$provider_url_file" 2>/dev/null || true
     fi
-    chmod 600 "$provider_url_file" 2>/dev/null || true
+
     GROQBASH_PROVIDER_URL="${provider_url_value}"
     return 0
   fi
@@ -595,8 +658,15 @@ refresh_models_gemini() {
   fi
 
   local workdir tmpd out errf curlout parsed tmpfinal http_code time_total key_trim tmpout lockfile resp_path
-  workdir="$(_get_work_tmpdir_gemini)" || workdir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+  if [ -z "$workdir" ]; then
+    if type ensure_run_tmpdir >/dev/null 2>&1; then
+      ensure_run_tmpdir || return "$GROQBASHERRTMP"
+      workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+    fi
+  fi
   [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+
   tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)" || return "$GROQBASHERRTMP"
 
   out="$tmpd/models.json"
@@ -608,7 +678,7 @@ refresh_models_gemini() {
 
   key_trim="$(printf '%s' "$key" | awk '{$1=$1; print}' 2>/dev/null || printf '%s' "$key")"
 
-  local api_url="${MODELS_ENDPOINT_GEMINI}"
+  local api_url="${MODELS_ENDPOINT_GEMINI:-https://generativelanguage.googleapis.com/v1beta/models}"
   case "$api_url" in
     *\?*) api_url="${api_url}&pageSize=${MAX_MODELS:-200}" ;;
     *)    api_url="${api_url}?pageSize=${MAX_MODELS:-200}" ;;
@@ -632,7 +702,16 @@ refresh_models_gemini() {
     return "$GROQBASHERRAPI"
   fi
 
-  read -r http_code time_total < "$curlout" 2>/dev/null || http_code="$(cat "$curlout" 2>/dev/null || echo "000")"
+  if [ -s "${curlout:-}" ]; then
+    read -r http_code time_total < "$curlout" 2>/dev/null || {
+      http_code="$(awk '{print $1}' "$curlout" 2>/dev/null || echo "000")"
+      time_total="$(awk '{print $2}' "$curlout" 2>/dev/null || echo "0")"
+    }
+  else
+    http_code="000"
+    time_total="0"
+  fi
+
   http_code="${http_code:-000}"
 
   if [ "${http_code:0:1}" != "2" ]; then
@@ -673,7 +752,12 @@ refresh_models_gemini() {
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
   tmpout="$(_mktemp_in_dir_gemini "$(dirname "$outpath")" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
-  cat "$tmpfinal" > "$tmpout"
+  
+  if [ -n "${tmpfinal:-}" ] && [ -s "$tmpfinal" ]; then
+    cat "$tmpfinal" > "$tmpout"
+  else
+    : > "$tmpout"
+  fi
 
   umask 077
   if type b64_atomic_write >/dev/null 2>&1; then
@@ -706,14 +790,22 @@ refresh_models_gemini() {
   local tmp_pu
   tmp_pu="$(_mktemp_in_dir_gemini "$(dirname "$provider_url_file")" 2>/dev/null || true)" || tmp_pu="${provider_url_file}.tmp"
   printf '%s\n' "${provider_url_value}" > "$tmp_pu" 2>/dev/null || true
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$tmp_pu" | atomic_write "$provider_url_file"
-  else
-    mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
-    chmod 600 "${provider_url_file}.new" 2>/dev/null || true
-    mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
+
+  if [ -n "${tmp_pu:-}" ] && [ -s "$tmp_pu" ]; then
+    if type atomic_write >/dev/null 2>&1; then
+      if ! cat "$tmp_pu" | atomic_write "$provider_url_file"; then
+        # fallback to safe move/copy if atomic_write fails
+        cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+        mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
+      fi
+    else
+      mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+      chmod 600 "${provider_url_file}.new" 2>/dev/null || true
+      mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
+    fi
+    chmod 600 "$provider_url_file" 2>/dev/null || true
   fi
-  chmod 600 "$provider_url_file" 2>/dev/null || true
+
   GROQBASH_PROVIDER_URL="${provider_url_value}"
 
   log_info "MODELREFRESH" "Gemini models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
