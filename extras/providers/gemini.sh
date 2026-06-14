@@ -9,6 +9,39 @@
 # Provider: Gemini (extras/providers/gemini.sh)
 # Purpose: GroqBash provider adapter for Gemini-style APIs (compat shim)
 # Notes: Localized fixes applied to enforce GroqBash invariants:
+
+# -----------------------------------------------------------------------------
+# Gemini REST API — Authentication and Endpoints
+# Official Google sources:
+#   - Authentication (API Keys):
+#       https://ai.google.dev/gemini-api/docs/api-key
+#   - Generate Content (REST):
+#       https://ai.google.dev/api/rest/v1beta/models/generateContent
+#   - Models list (REST):
+#       https://ai.google.dev/api/rest/v1beta/models/list
+#
+# Type of key used by this provider:
+#   - AI Studio API key (format "AIza..."), generated in Google AI Studio.
+#   - It is NOT an OAuth2 token and MUST NOT be used as a Bearer token.
+#
+# Authentication supported by Gemini REST endpoints:
+#   - Header:       X-Goog-Api-Key: <API_KEY>
+#   - Query string: ?key=<API_KEY>
+#
+# Authentication NOT supported for API keys:
+#   - Authorization: Bearer <API_KEY>
+#     → official error: ACCESS_TOKEN_TYPE_UNSUPPORTED
+#
+# Official REST endpoints for API key usage:
+#   - Content generation:
+#       POST https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent
+#
+#   - Models list:
+#       GET  https://generativelanguage.googleapis.com/v1beta/models
+#
+# Notes:
+#   - Gemini REST endpoints accept API keys (header or query).
+#   - OAuth2 is required only for different services (e.g., Vertex AI), NOT for Gemini REST.
 # -----------------------------------------------------------------------------
 
 # When sourced, avoid enabling strict mode globally.
@@ -18,7 +51,6 @@ fi
 
 API_URL_GEMINI_TEMPLATE='https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent'
 MODELS_ENDPOINT_GEMINI='https://generativelanguage.googleapis.com/v1beta/models'
-: "${MODELS_ENDPOINT_GEMINI:=https://generativelanguage.googleapis.com/v1beta/models}"
 
 # Provide no-op dbg() if not defined by core
 if ! type dbg >/dev/null 2>&1; then
@@ -78,12 +110,9 @@ _write_atomic() {
 
   if type atomic_write >/dev/null 2>&1; then
     # feed atomic_write from src
-    cat "$src" | atomic_write "$dst"
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
+    if ! cat "$src" | atomic_write "$dst"; then
       return 1
     fi
-    unset _status
     return 0
   fi
 
@@ -192,12 +221,6 @@ buildpayload_gemini() {
     local msgs_tmp
     msgs_tmp="$(_mktemp_in_dir_gemini "$workdir")" || msgs_tmp="${workdir%/}/msgs.$$"
     printf '%s' "${messages_json}" > "$msgs_tmp"
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-
     if jq -n --slurpfile messages "$msgs_tmp" "${jq_extra_args[@]:-}" \
          '$payload = {} |
           ($messages[0] // []) as $msgs |
@@ -218,12 +241,7 @@ buildpayload_gemini() {
 
   if [ -s "$tmpf" ]; then
     if [ "$(tail -c1 "$tmpf" 2>/dev/null || true)" != "" ]; then
-      printf '\n' >> "$tmpf" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        command true >/dev/null
-      fi
-      unset _status
+      printf '\n' >> "$tmpf" 2>/dev/null || true
     fi
   fi
 
@@ -238,30 +256,21 @@ buildpayload_gemini() {
       rm -f "$tmpf" 2>/dev/null || true
       return 0
     else
-      _write_atomic "$tmpf" "${PAYLOAD}"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
-      fi
-      unset _status
+      _write_atomic "$tmpf" "${PAYLOAD}" || cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
       rm -f "$tmpf" 2>/dev/null || true
       return 0
     fi
   fi
 
   umask 077
-  _write_atomic "$tmpf" "${PAYLOAD}"
-  _status=$?
-  if [ "${_status:-0}" -eq 0 ]; then
+  if _write_atomic "$tmpf" "${PAYLOAD}"; then
     rm -f "$tmpf" 2>/dev/null || true
     chmod 600 "${PAYLOAD}" 2>/dev/null || true
-    unset _status
     return 0
   else
     cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
     chmod 600 "${PAYLOAD}" 2>/dev/null || true
     rm -f "$tmpf" 2>/dev/null || true
-    unset _status
     return 0
   fi
 }
@@ -383,11 +392,6 @@ call_api_gemini() {
   if [ -s "$tmpresp" ]; then
     if [ -n "${RESP:-}" ]; then
       _write_atomic "$tmpresp" "${resp_path}"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmpresp" "${resp_path}" 2>/dev/null || true
-      fi
-      unset _status
     else
       cp -f "$tmpresp" "${resp_path}" 2>/dev/null || true
       chmod 600 "${resp_path}" 2>/dev/null || true
@@ -404,22 +408,11 @@ call_api_gemini() {
       tmpconv="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null || true)"
       if [ -z "$tmpconv" ]; then
         tmpconv="${workdir%/}/gemini-conv.$$"
-        printf '' > "$tmpconv" 2>/dev/null
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          command true >/dev/null
-        fi
-        unset _status
+        : > "$tmpconv" 2>/dev/null || true
       fi
       umask 077
       jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
-      _write_atomic "$tmpconv" "${resp_path}"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true
-        chmod 600 "${resp_path}" 2>/dev/null || true
-      fi
-      unset _status
+      _write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
       rm -f "$tmpconv" 2>/dev/null || true
     fi
   fi
@@ -500,12 +493,7 @@ call_api_streaming_gemini() {
   RESP_RAW="$(_mktemp_in_dir_gemini "$workdir")" || RESP_RAW="${workdir%/}/resp.raw"
 
   errf="$(_mktemp_in_dir_gemini "$workdir")" || errf="${workdir%/}/curl.err"
-  printf '' > "$RESP_RAW" 2>/dev/null
-  _status=$?
-  if [ "${_status:-0}" -ne 0 ]; then
-    command true >/dev/null
-  fi
-  unset _status
+  : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
 
   api_template="${API_URL_GEMINI_TEMPLATE:-$API_URL_GEMINI_TEMPLATE}"
@@ -560,12 +548,7 @@ call_api_streaming_gemini() {
       gemini_report_error "$RESP_RAW" "$errf"
       if ! jq -e . "${resp_path}" >/dev/null 2>&1; then
         umask 077
-        _write_atomic "$RESP_RAW" "${resp_path}"
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
-        fi
-        unset _status
+        _write_atomic "$RESP_RAW" "${resp_path}" 2>/dev/null || cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
         chmod 600 "${resp_path}" 2>/dev/null || true
       fi
     else
@@ -582,12 +565,6 @@ call_api_streaming_gemini() {
 
   if [ -n "${resp_path:-}" ]; then
     _write_atomic "$RESP_RAW" "${resp_path}"
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
-      chmod 600 "${resp_path}" 2>/dev/null || true
-    fi
-    unset _status
   fi
 
   if [ -n "${resp_path:-}" ] && [ -s "${resp_path}" ] && jq -e . "${resp_path}" >/dev/null 2>&1; then
@@ -596,22 +573,11 @@ call_api_streaming_gemini() {
       tmpconv="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null || true)"
       if [ -z "$tmpconv" ]; then
         tmpconv="${workdir%/}/gemini-conv.$$"
-        printf '' > "$tmpconv" 2>/dev/null
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          command true >/dev/null
-        fi
-        unset _status
+        : > "$tmpconv" 2>/dev/null || true
       fi
       umask 077
       jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
-      _write_atomic "$tmpconv" "${resp_path}"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true
-        chmod 600 "${resp_path}" 2>/dev/null || true
-      fi
-      unset _status
+      _write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
       rm -f "$tmpconv" 2>/dev/null || true
     fi
   fi
@@ -640,167 +606,50 @@ refresh_models_gemini() {
       return "$GROQBASHERRTMP"
     fi
     umask 077
-    mkdir -p "$(dirname "$outpath")" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-
+    mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
     local tmp_models
     tmp_models="$(_mktemp_in_dir_gemini "$(dirname "$outpath")" 2>/dev/null || true)" || tmp_models="${outpath}.tmp"
-    printf '%s\n' "" > "$tmp_models" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-
+    printf '%s\n' "" > "$tmp_models" 2>/dev/null || true
     if type b64_atomic_write >/dev/null 2>&1; then
-      b64_atomic_write "${outpath}.b64" 10 < "$tmp_models"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
+      if ! b64_atomic_write "${outpath}.b64" 10 < "$tmp_models"; then
         rm -f "$tmp_models" 2>/dev/null || true
         return "$GROQBASHERRTMP"
       fi
-      unset _status
-
       lockfile="${MODELS_LOCK:-${outpath}.lock}"
-      # create temporary helper script to avoid provdump line-wrapping issues
-      tmpdir="$(dirname "$outpath")"
-      tmp_script="$(_mktemp_in_dir_gemini "$tmpdir" 2>/dev/null || printf '%s' "${outpath}.script.$$")"
-      if [ -z "${tmp_script:-}" ]; then
-        rm -f "$tmp_models" 2>/dev/null || true
-        return "$GROQBASHERRTMP"
-      fi
-
-      # Write tmp_script robustly
-      cat > "$tmp_script" <<'EOF'
-#!/bin/sh
-set -e
-base64 ${B64_DECODE_OPT:-} < "$1" > "$2"
-chmod 600 "$2" 2>/dev/null || true
-EOF
-      chmod 700 "$tmp_script" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        command true >/dev/null
-      fi
-      unset _status
-
-      lock_exec "$lockfile" 10 -- "$tmp_script" "${outpath}.b64" "$outpath"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        rm -f "$tmp_models" 2>/dev/null || true
-        rm -f "$tmp_script" 2>/dev/null || true
-        return "$GROQBASHERRTMP"
-      fi
-      unset _status
-
-      rm -f "$tmp_script" 2>/dev/null || true
+      lock_exec "$lockfile" 10 -- sh -c '
+        set -e
+        manifest_b64="$1"
+        dest="$2"
+        base64 ${B64_DECODE_OPT:-} < "$manifest_b64" > "$dest"
+        chmod 600 "$dest" 2>/dev/null || true
+      ' _ "${outpath}.b64" "$outpath" || { rm -f "$tmp_models" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
     else
-      mv "$tmp_models" "${outpath}.new" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmp_models" "${outpath}.new" 2>/dev/null
-        _status2=$?
-        if [ "${_status2:-0}" -ne 0 ]; then
-          command true >/dev/null
-        fi
-        unset _status2
-      fi
-      unset _status
-
-      chmod 600 "${outpath}.new" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        command true >/dev/null
-      fi
-      unset _status
-
-      mv -f "${outpath}.new" "$outpath" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
-      fi
-      unset _status
+      mv "$tmp_models" "${outpath}.new" 2>/dev/null || cp -f "$tmp_models" "${outpath}.new" 2>/dev/null || true
+      chmod 600 "${outpath}.new" 2>/dev/null || true
+      mv -f "${outpath}.new" "$outpath" 2>/dev/null || cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
     fi
-
     chmod 600 "$outpath" 2>/dev/null || true
     rm -f "$tmp_models" 2>/dev/null || true
 
     umask 077
     local provider_url_value
-    # robust extraction: avoid nested expansions on one line
-    provider_url_src="${GROQBASH_PROVIDER_URL:-${MODELS_ENDPOINT_GEMINI:-}}"
-    if [ -n "${provider_url_src:-}" ]; then
-      provider_url_value="$(printf '%s' "$provider_url_src" | awk -F/ '{print $1"//"$3}')"
-    else
-      provider_url_value=""
-    fi
-
-    mkdir -p "$(dirname "$provider_url_file")" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-
+    provider_url_value="$(printf '%s' "${GROQBASH_PROVIDER_URL:-${MODELS_ENDPOINT_GEMINI:-}}" | awk -F/ '{print $1"//"$3}')"
+    mkdir -p "$(dirname "$provider_url_file")" 2>/dev/null || true
     local tmp_pu
-    dir_for_provider_url="$(dirname "$provider_url_file")"
-    tmp_pu="$(_mktemp_in_dir_gemini "$dir_for_provider_url" 2>/dev/null || true)" || tmp_pu="${provider_url_file}.tmp"
-
-    # Write provider_url_value robustly only if non-empty
-    if [ -n "${provider_url_value:-}" ]; then
-      printf '%s\n' "${provider_url_value}" > "$tmp_pu" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        command true >/dev/null
-      fi
-      unset _status
-    fi
+    tmp_pu="$(_mktemp_in_dir_gemini "$(dirname "$provider_url_file")" 2>/dev/null || true)" || tmp_pu="${provider_url_file}.tmp"
+    printf '%s\n' "${provider_url_value}" > "$tmp_pu" 2>/dev/null || true
 
     if [ -n "${tmp_pu:-}" ] && [ -s "$tmp_pu" ]; then
       if type atomic_write >/dev/null 2>&1; then
-        cat "$tmp_pu" | atomic_write "$provider_url_file"
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null
-          _status2=$?
-          if [ "${_status2:-0}" -ne 0 ]; then
-            command true >/dev/null
-          else
-            mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || command true >/dev/null
-          fi
-          unset _status2
+        if ! cat "$tmp_pu" | atomic_write "$provider_url_file"; then
+          # fallback to safe move/copy if atomic_write fails
+          cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+          mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
         fi
-        unset _status
       else
-        mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null
-          _status2=$?
-          if [ "${_status2:-0}" -ne 0 ]; then
-            command true >/dev/null
-          fi
-          unset _status2
-        fi
-        unset _status
-
-        chmod 600 "${provider_url_file}.new" 2>/dev/null
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          command true >/dev/null
-        fi
-        unset _status
-
-        mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null
-        _status=$?
-        if [ "${_status:-0}" -ne 0 ]; then
-          cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
-        fi
-        unset _status
+        mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+        chmod 600 "${provider_url_file}.new" 2>/dev/null || true
+        mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
       fi
       chmod 600 "$provider_url_file" 2>/dev/null || true
     fi
@@ -920,12 +769,7 @@ EOF
     return "$GROQBASHERRAPI"
   fi
 
-  jq -r '.models[]?.name // empty' "$out" | awk 'NF{print}' | sort -u > "$parsed" 2>/dev/null
-  _status=$?
-  if [ "${_status:-0}" -ne 0 ]; then
-    command true >/dev/null
-  fi
-  unset _status
+  jq -r '.models[]?.name // empty' "$out" | awk 'NF{print}' | sort -u > "$parsed" 2>/dev/null || true
 
   if [ ! -s "$parsed" ]; then
     log_error "MODELREFRESH" "parsed models list empty"
@@ -936,187 +780,110 @@ EOF
     return "$GROQBASHERRAPI"
   fi
 
-  awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpfinal" 2>/dev/null || true
+  awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpfinal" || true
 
-  mkdir -p "$(dirname "$outpath")" 2>/dev/null
-  _status=$?
-  if [ "${_status:-0}" -ne 0 ]; then
-    command true >/dev/null
-  fi
-  unset _status
-
+  mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
   tmpout="$(_mktemp_in_dir_gemini "$(dirname "$outpath")" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
-
+  
   if [ -n "${tmpfinal:-}" ] && [ -s "$tmpfinal" ]; then
     cat "$tmpfinal" > "$tmpout"
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
   else
-    printf '' > "$tmpout" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
+    : > "$tmpout"
   fi
 
   umask 077
   if type b64_atomic_write >/dev/null 2>&1; then
-    b64_atomic_write "${outpath}.b64" 10 < "$tmpout"
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
+    if ! b64_atomic_write "${outpath}.b64" 10 < "$tmpout"; then
       log_error "MODELREFRESH" "failed to stage models file"
       rm -f "$tmpout" 2>/dev/null || true
       rm -rf "$tmpd"
       return "$GROQBASHERRTMP"
     fi
-    unset _status
-
     lockfile="${MODELS_LOCK:-${outpath}.lock}"
-    # create temporary helper script to avoid provdump line-wrapping issues
-    tmpdir="$(dirname "$outpath")"
-    tmp_script="$(_mktemp_in_dir_gemini "$tmpdir" 2>/dev/null || printf '%s' "${outpath}.script.$$")"
-    if [ -z "${tmp_script:-}" ]; then
-      log_error "MODELREFRESH" "failed to create temporary script"
-      rm -rf "$tmpd"
-      return "$GROQBASHERRTMP"
-    fi
-
-    # Write tmp_script robustly
-    cat > "$tmp_script" <<'EOF'
-#!/bin/sh
-set -e
-base64 ${B64_DECODE_OPT:-} < "$1" > "$2"
-chmod 600 "$2" 2>/dev/null || true
-EOF
-    chmod 700 "$tmp_script" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-
-    lock_exec "$lockfile" 10 -- "$tmp_script" "${outpath}.b64" "$outpath"
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      log_error "MODELREFRESH" "failed to write models file under lock"
-      rm -rf "$tmpd"
-      rm -f "$tmp_script" 2>/dev/null || true
-      return "$GROQBASHERRTMP"
-    fi
-    unset _status
-
-    rm -f "$tmp_script" 2>/dev/null || true
+    lock_exec "$lockfile" 10 -- sh -c '
+      set -e
+      manifest_b64="$1"
+      dest="$2"
+      base64 ${B64_DECODE_OPT:-} < "$manifest_b64" > "$dest"
+      chmod 600 "$dest" 2>/dev/null || true
+    ' _ "${outpath}.b64" "$outpath" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
   else
-    mv "$tmpout" "${outpath}.new" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      cp -f "$tmpout" "${outpath}.new" 2>/dev/null
-      _status2=$?
-      if [ "${_status2:-0}" -ne 0 ]; then
-        command true >/dev/null
-      fi
-      unset _status2
-    fi
-    unset _status
-
-    chmod 600 "${outpath}.new" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-
-    mv -f "${outpath}.new" "$outpath" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
-    fi
-    unset _status
+    mv "$tmpout" "${outpath}.new" 2>/dev/null || cp -f "$tmpout" "${outpath}.new" 2>/dev/null || true
+    chmod 600 "${outpath}.new" 2>/dev/null || true
+    mv -f "${outpath}.new" "$outpath" 2>/dev/null || cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
   fi
 
   chmod 600 "$outpath" 2>/dev/null || true
 
-  # provider_url handling (non-DRY branch handled above)
   umask 077
-  # robust extraction: avoid nested expansions on one line
-  provider_url_src="${GROQBASH_PROVIDER_URL:-${MODELS_ENDPOINT_GEMINI:-}}"
-  if [ -n "${provider_url_src:-}" ]; then
-    provider_url_value="$(printf '%s' "$provider_url_src" | awk -F/ '{print $1"//"$3}')"
-  else
-    provider_url_value=""
-  fi
-
-  mkdir -p "$(dirname "$provider_url_file")" 2>/dev/null
-  _status=$?
-  if [ "${_status:-0}" -ne 0 ]; then
-    command true >/dev/null
-  fi
-  unset _status
-
-  dir_for_provider_url="$(dirname "$provider_url_file")"
-  tmp_pu="$(_mktemp_in_dir_gemini "$dir_for_provider_url" 2>/dev/null || true)" || tmp_pu="${provider_url_file}.tmp"
-
-  if [ -n "${provider_url_value:-}" ]; then
-    printf '%s\n' "${provider_url_value}" > "$tmp_pu" 2>/dev/null
-    _status=$?
-    if [ "${_status:-0}" -ne 0 ]; then
-      command true >/dev/null
-    fi
-    unset _status
-  fi
+  local provider_url_value
+  provider_url_value="$(printf '%s' "${GROQBASH_PROVIDER_URL:-${MODELS_ENDPOINT_GEMINI:-}}" | awk -F/ '{print $1"//"$3}')"
+  mkdir -p "$(dirname "$provider_url_file")" 2>/dev/null || true
+  local tmp_pu
+  tmp_pu="$(_mktemp_in_dir_gemini "$(dirname "$provider_url_file")" 2>/dev/null || true)" || tmp_pu="${provider_url_file}.tmp"
+  printf '%s\n' "${provider_url_value}" > "$tmp_pu" 2>/dev/null || true
 
   if [ -n "${tmp_pu:-}" ] && [ -s "$tmp_pu" ]; then
     if type atomic_write >/dev/null 2>&1; then
-      cat "$tmp_pu" | atomic_write "$provider_url_file"
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null
-        _status2=$?
-        if [ "${_status2:-0}" -ne 0 ]; then
-          command true >/dev/null
-        else
-          mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || command true >/dev/null
-        fi
-        unset _status2
+      if ! cat "$tmp_pu" | atomic_write "$provider_url_file"; then
+        # fallback to safe move/copy if atomic_write fails
+        cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+        mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
       fi
-      unset _status
     else
-      mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null
-        _status2=$?
-        if [ "${_status2:-0}" -ne 0 ]; then
-          command true >/dev/null
-        fi
-        unset _status2
-      fi
-      unset _status
-
-      chmod 600 "${provider_url_file}.new" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        command true >/dev/null
-      fi
-      unset _status
-
-      mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null
-      _status=$?
-      if [ "${_status:-0}" -ne 0 ]; then
-        cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
-      fi
-      unset _status
+      mv "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || cp -f "$tmp_pu" "${provider_url_file}.new" 2>/dev/null || true
+      chmod 600 "${provider_url_file}.new" 2>/dev/null || true
+      mv -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || cp -f "${provider_url_file}.new" "$provider_url_file" 2>/dev/null || true
     fi
     chmod 600 "$provider_url_file" 2>/dev/null || true
   fi
 
   GROQBASH_PROVIDER_URL="${provider_url_value}"
+
+  log_info "MODELREFRESH" "Gemini models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
+
+  rm -rf "$tmpd"
   return 0
 }
 
-# End of gemini.sh
+# -------------------------
+# validate_model_gemini
+# -------------------------
+validate_model_gemini() {
+  local m="${1:-}"
+  [ -n "$m" ] || return 1
+  if printf '%s' "$m" | awk 'NF{exit 0} {exit 1}'; then
+    return 0
+  fi
+  return 1
+}
+
+# -------------------------
+# auto_select_model_gemini
+# -------------------------
+auto_select_model_gemini() {
+  local file="${MODELS_FILE:-${MODELSFILE:-}}"
+  local cnt=0 model
+  if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
+    while IFS= read -r model || [ -n "$model" ]; do
+      [ -z "$model" ] && continue
+      cnt=$((cnt+1))
+      if type is_supported_model >/dev/null 2>&1; then
+        if is_supported_model "$model"; then
+          printf '%s\n' "$model"
+          return 0
+        fi
+      else
+        printf '%s\n' "$model"
+        return 0
+      fi
+      if [ "$cnt" -ge "${MAX_MODELS:-200}" ]; then
+        break
+      fi
+    done < "$file"
+  fi
+  printf ''
+  return 0
+}
+# End of provider
