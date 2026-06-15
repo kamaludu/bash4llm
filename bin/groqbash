@@ -1117,57 +1117,50 @@ load_provider_module() {
 
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
 
-  # --- SAFE LOAD: isolate provider in subshell, export only functions ---
-  # Provider contract:
-  #   - Nessun side‑effect top‑level deve essere necessario al funzionamento.
-  #   - Nessuno stato globale definito nel provider deve essere richiesto.
-  #   - Tutte le funzioni richieste devono essere pure e autosufficienti.
-  #
-  # Questo blocco:
-  #   1. sourcia il provider in una subshell isolata
-  #   2. verifica che le funzioni richieste esistano
-  #   3. esporta SOLO le definizioni delle funzioni tramite declare -f
-  #   4. importa il dump nel main shell senza eseguire codice top‑level del provider
+  # --- SAFE LOAD: isolate provider in subshell, export only functions defined by provider ---
   if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-    # tmp file sicuro per il dump delle funzioni
     dump_file="$(_mktemp_in_dir "$GROQBASH_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
     [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return 1; }
 
-    # Subshell isolata
+    # Subshell: capture functions added by sourcing the provider
     (
       set -e
 
-      # Sourcing isolato
+      # capture function list before
+      declare -F | awk '{print $3}' | sort > "$dump_file.before.$$" 2>/dev/null || true
+
+      # source provider inside subshell (isolated)
       . "$PROVIDER_MODULE_PATH"
 
-      # Funzioni richieste
+      # capture function list after
+      declare -F | awk '{print $3}' | sort > "$dump_file.after.$$" 2>/dev/null || true
+
+      # compute functions added by provider (lines in after but not in before)
+      comm -13 "$dump_file.before.$$" "$dump_file.after.$$" > "$dump_file.funcs.$$" 2>/dev/null || true
+
+      # ensure required functions exist; if missing, fail early
       req1="buildpayload_${provider}"
       req2="call_api_${provider}"
-
-      # Funzioni opzionali
-      opt1="call_api_streaming_${provider}"
-      opt2="refresh_models_${provider}"
-      opt3="validate_model_${provider}"
-      opt4="auto_select_model_${provider}"
-
-      # Controllo funzioni richieste
       for f in "$req1" "$req2"; do
-        if ! type "$f" >/dev/null 2>&1; then
-          printf 'ERROR: provider %s missing required function: %s\n' "$provider" "$f" >&2
-          exit 99
+        if ! grep -xq "$f" "$dump_file.funcs.$$" 2>/dev/null; then
+          if ! type "$f" >/dev/null 2>&1; then
+            printf 'ERROR: provider %s missing required function: %s\n' "$provider" "$f" >&2
+            exit 99
+          fi
         fi
       done
 
-      # Dump funzioni richieste
-      declare -f "$req1" >> "$dump_file"
-      declare -f "$req2" >> "$dump_file"
-
-      # Dump funzioni opzionali se presenti
-      for f in "$opt1" "$opt2" "$opt3" "$opt4"; do
-        if type "$f" >/dev/null 2>&1; then
-          declare -f "$f" >> "$dump_file"
+      # Write definitions of the functions added by the provider into the dump file
+      : > "$dump_file"
+      while IFS= read -r fn; do
+        [ -z "$fn" ] && continue
+        if type "$fn" >/dev/null 2>&1; then
+          declare -f "$fn" >> "$dump_file"
         fi
-      done
+      done < "$dump_file.funcs.$$"
+
+      # cleanup temp lists inside subshell
+      rm -f "$dump_file.before.$$" "$dump_file.after.$$" "$dump_file.funcs.$$" 2>/dev/null || true
     )
     rc=$?
 
@@ -1177,12 +1170,27 @@ load_provider_module() {
       return 1
     fi
 
-    # Import sicuro nel main shell
+    # --- Minimal and safe nounset handling around sourcing the dump ---
+    # Detect if nounset (set -u) is active; if so, disable it temporarily.
+    local _nounset_was_on=0
+    if (set -o | awk '/^nounset/ {print $2}' 2>/dev/null | grep -q on); then
+      _nounset_was_on=1
+      set +u
+    fi
+
+    # Import the dumped functions into main shell (dump contains all functions provider defined)
     . "$dump_file"
+
+    # Restore nounset if it was on
+    if [ "$_nounset_was_on" -eq 1 ]; then
+      set -u
+    fi
+    unset _nounset_was_on
+
     PROVIDER_MODULE_LOADED=1
     rm -f "$dump_file" 2>/dev/null || true
 
-    # Verifica firma post-load
+    # Verify signature unchanged
     aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
     [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return 1; }
 
