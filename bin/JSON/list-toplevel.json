@@ -1,862 +1,183 @@
-[
-  {
-    "id": "Inventario Top Level",
-    "macro_section": "",
-    "line_range": {
-      "start": null,
-      "end": null
-    },
-    "kind": "document_header",
-    "summary": "Titolo del documento",
-    "called_functions": [],
-    "touched_variables": [],
-    "raw_snippet": ""
+{
+  "metadata": {
+    "software": "GroqBash",
+    "version": "2.0.0",
+    "date": "2026-06-09"
   },
-  {
-    "id": "TLB-001",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 1,
-      "end": 24
+  "code_blocks": [
+    {
+      "name": "PRECORE_BOOT_SETUP_SHELL",
+      "category": "PRECORE_BOOT",
+      "phase": "Inizializzazione primaria assoluta dello script.",
+      "action": "Imposta i parametri operativi restrittivi della shell Bash (set -euo pipefail) per forzare l'arresto immediato dello script in caso di comandi falliti, tentativi di accesso a variabili non dichiarate o errori di esecuzione all'interno di pipeline."
     },
-    "kind": "init",
-    "summary": "Shebang, strict shell options and script identity metadata; canonical error code constants and aliasing.",
-    "called_functions": [],
-    "touched_variables": [
-      "SCRIPT_NAME",
-      "SCRIPT_VERSION",
-      "SCRIPT_DATE",
-      "GROQBASH_ERR_NO_API_KEY",
-      "GROQBASH_ERR_BAD_MODEL",
-      "GROQBASH_ERR_CURL_FAILED",
-      "GROQBASH_ERR_INVALID_JSON",
-      "GROQBASH_ERR_NO_PROMPT",
-      "GROQBASH_ERR_TMP",
-      "GROQBASH_ERR_API",
-      "GROQBASHERRNOAPIKEY",
-      "GROQBASHERRBAD_MODEL",
-      "GROQBASHERRCURL_FAILED",
-      "GROQBASHERRINVALID_JSON",
-      "GROQBASHERRNO_PROMPT",
-      "GROQBASHERRTMP",
-      "GROQBASHERRAPI"
-    ],
-    "raw_snippet": "#!/usr/bin/env bash\n# =============================================================================\n# GroqBash⁺ — Bash-first wrapper for the Groq API\n# File: groqbash\n# Version: 2.0.0\n# Copyright (C) 2026 Cristian Evangelisti\n# License: GPL-3.0-or-later\n# =============================================================================\n# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq\n\n########################################\n# SECTION: PRECORE_BOOT - BEGIN\n########################################\n#--1<---[ SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--\nset -euo pipefail\n\nSCRIPT_NAME=\"groqbash\"\nSCRIPT_VERSION=\"2.0.0\"\nSCRIPT_DATE=\"2026-05-07\"\n\n# ---------------------------------------------------------------------------\n# Canonical error codes\n# ---------------------------------------------------------------------------\nGROQBASH_ERR_NO_API_KEY=10\nGROQBASH_ERR_BAD_MODEL=11\nGROQBASH_ERR_CURL_FAILED=12\nGROQBASH_ERR_INVALID_JSON=13\nGROQBASH_ERR_NO_PROMPT=14\nGROQBASH_ERR_TMP=15\nGROQBASH_ERR_API=16\n\nGROQBASHERRNOAPIKEY=$GROQBASH_ERR_NO_API_KEY\nGROQBASHERRBAD_MODEL=$GROQBASH_ERR_BAD_MODEL\nGROQBASHERRCURL_FAILED=$GROQBASH_ERR_CURL_FAILED\nGROQBASHERRINVALID_JSON=$GROQBASH_ERR_INVALID_JSON\nGROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT\nGROQBASHERRTMP=$GROQBASH_ERR_TMP\nGROQBASHERRAPI=$GROQBASH_ERR_API"
-  },
-  {
-    "id": "TLB-002",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 25,
-      "end": 56
+    {
+      "name": "PRECORE_BOOT_SOURCE_ONLY_CHECK",
+      "category": "PRECORE_BOOT",
+      "phase": "Avvio preliminare dell'ambiente.",
+      "action": "Controlla se la variabile globale $GROQBASH_SOURCE_ONLY è impostata su 1. In tal caso, interrompe immediatamente l'elaborazione del codice principale (uscendo con stato 0), consentendo esclusivamente l'importazione passiva e provvisoria di variabili e funzioni del software all'interno di un'altra sessione di shell o di uno script esterno."
     },
-    "kind": "env_check",
-    "summary": "Dev/test guard to allow sourcing the script without running main flow; returns early when GROQBASH_SOURCE_ONLY is set.",
-    "called_functions": [],
-    "touched_variables": [
-      "GROQBASH_SOURCE_ONLY"
-    ],
-    "raw_snippet": "#--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--\n# ---------------------------------------------------------------------------\n# Dev/Test guard for sourcing only\n# ---------------------------------------------------------------------------\n# When set to 1, importing the script (GROQBASH_SOURCE_ONLY=1 . ./groqbash)\n# will load function definitions without executing the main runtime flow.\nif [ \"${GROQBASH_SOURCE_ONLY:-0}\" -eq 1 ]; then\n  # If sourced from a shell, return to the caller; if executed directly,\n  # exit with success to avoid running the main program.\n  return 0 2>/dev/null || exit 0\nfi"
-  },
-  {
-    "id": "TLB-003",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 57,
-      "end": 96
+    {
+      "name": "PRECORE_BOOT_VERIFY_CMDS",
+      "category": "PRECORE_BOOT",
+      "phase": "Validazione dei requisiti software di sistema.",
+      "action": "Esegue una scansione di sistema per accertarsi che tutte le utilità essenziali richieste siano installate nel percorso di sistema (bash, jq, curl, mktemp, stat, flock, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf). Se una o più utilità risultano assenti, emette un messaggio di errore fatale su stderr ed esce con stato 1."
     },
-    "kind": "env_check",
-    "summary": "Verify presence of mandatory external commands; abort with error if any required command is missing.",
-    "called_functions": [
-      "command -v",
-      "printf",
-      "exit"
-    ],
-    "touched_variables": [],
-    "raw_snippet": "# ---------------------------------------------------------------------------\n# Verify mandatory commands (no fallback)\n# ---------------------------------------------------------------------------\nfor cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do\n  if ! command -v \"$cmd\" >/dev/null 2>&1; then\n    printf 'groqbash: ERROR: required command not found: %s\\n' \"$cmd\" >&2\n    exit 1\n  fi\ndone"
-  },
-  {
-    "id": "TLB-004",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 97,
-      "end": 176
+    {
+      "name": "PRECORE_BOOT_DIR_RESOLUTION",
+      "category": "PRECORE_BOOT",
+      "phase": "Determinazione della directory di runtime.",
+      "action": "Risolve il percorso radice dell'installazione del software ($GROQBASH_DIR). Adotta in ordine di priorità la cartella definita in $GROQBASH_DIR, in alternativa compila il percorso tramite $GROQBASH_ROOT (derivandone la directory groqbash.d), o calcola la directory predefinita puntando a $SCRIPTDIR/groqbash.d."
     },
-    "kind": "other",
-    "summary": "Resolve script directory and set GROQBASH_DIR defaulting logic; determine extras and providers directories and export them.",
-    "called_functions": [
-      "resolve_script_dir",
-      "canonical_config_dir"
-    ],
-    "touched_variables": [
-      "SCRIPTDIR",
-      "GROQBASH_DIR",
-      "CANONICAL_EXTRAS_DIR",
-      "LEGACY_EXTRAS_DIR",
-      "GROQBASH_EXTRAS_DIR",
-      "PROVIDERS_DIR"
-    ],
-    "raw_snippet": "#--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--\nSCRIPTDIR=\"$(resolve_script_dir)\"\n# Allow external override of repository root via GROQBASH_ROOT.\n# Priority: explicit GROQBASH_DIR env > GROQBASH_ROOT env > SCRIPTDIR-derived default.\nif [ -n \"${GROQBASH_DIR:-}\" ]; then\n  : # keep explicit GROQBASH_DIR from environment\nelif [ -n \"${GROQBASH_ROOT:-}\" ]; then\n  GROQBASH_DIR=\"${GROQBASH_ROOT%/}/groqbash.d\"\nelse\n  GROQBASH_DIR=\"$SCRIPTDIR/groqbash.d\"\nfi\n\n# Canonical runtime destination for extras (always under groqbash.d)\nCANONICAL_EXTRAS_DIR=\"${GROQBASH_DIR%/}/extras\"\nLEGACY_EXTRAS_DIR=\"${SCRIPTDIR%/}/extras\"\n\n# Export canonical extras and providers dirs\nGROQBASH_EXTRAS_DIR=\"${CANONICAL_EXTRAS_DIR}\"\n# Providers shipped as extras live under GROQBASH_EXTRAS_DIR by default;\n# fall back to a providers dir under canonical config dir only if extras not set.\nPROVIDERS_DIR=\"${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}\"\n# Ensure a canonical fallback exists if extras not configured\n: \"${PROVIDERS_DIR:=$(canonical_config_dir)/providers}\"\nexport GROQBASH_EXTRAS_DIR PROVIDERS_DIR"
-  },
-  {
-    "id": "TLB-005",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 177,
-      "end": 260
+    {
+      "name": "PRECORE_BOOT_FALLBACK_PROVIDERS",
+      "category": "PRECORE_BOOT",
+      "phase": "Configurazione delle estensioni di fallback.",
+      "action": "Imposta ed esporta globalmente il percorso della directory dei provider esterni ($PROVIDERS_DIR), facendolo coincidere con la sottocartella /providers all'interno della directory delle estensioni utente qualora non sia già definita in ambiente. Esporta $GROQBASH_EXTRAS_DIR e $PROVIDERS_DIR."
     },
-    "kind": "dir_setup",
-    "summary": "Define standard directories (config, models, templates, history, tmp) and model file defaults; enforce invariants for GROQBASH_DIR and GROQBASH_TMPDIR.",
-    "called_functions": [
-      "canonical_config_dir"
-    ],
-    "touched_variables": [
-      "GROQBASH_CONFIG_DIR",
-      "GROQBASH_MODELS_DIR",
-      "GROQBASH_TEMPLATES_DIR",
-      "GROQBASH_HISTORY_DIR",
-      "GROQBASH_TMPDIR",
-      "GROQBASH_EXTRAS_DIR",
-      "MODELS_FILE",
-      "MAX_MODELS"
-    ],
-    "raw_snippet": "# Standard directories (derived from GROQBASH_DIR, overridable via env)\nGROQBASH_CONFIG_DIR=\"${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}\"\nGROQBASH_MODELS_DIR=\"${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}\"\nGROQBASH_TEMPLATES_DIR=\"${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}\"\nGROQBASH_HISTORY_DIR=\"${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}\"\nGROQBASH_TMPDIR=\"${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}\"\nMODELS_FILE=\"${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}\"\nMAX_MODELS=\"${MAX_MODELS:-200}\"\n\n# Validate GROQBASH_DIR / GROQBASH_TMPDIR invariants\nif [ -z \"${GROQBASH_DIR:-}\" ]; then\n  log_error \"TMP\" \"GROQBASH_DIR is empty; cannot derive GROQBASH_TMPDIR\"\n  exit \"${GROQBASHERRTMP:-1}\"\nfi\n\n# Forbid using /tmp or subpaths of /tmp as GROQBASH_TMPDIR\ncase \"${GROQBASH_TMPDIR:-}\" in\n  /tmp|/tmp/*)\n    log_error \"TMP\" \"GROQBASH_TMPDIR must not be /tmp or under /tmp: ${GROQBASH_TMPDIR}\"\n    exit \"${GROQBASHERRTMP:-1}\"\n    ;;\nesac\n\n# Enforce GROQBASH_TMPDIR inside GROQBASH_DIR perimeter\ncase \"${GROQBASH_TMPDIR:-}\" in\n  \"${GROQBASH_DIR}\"|\"${GROQBASH_DIR}\"/*)\n    : # ok\n    ;;\n  *)\n    log_error \"TMP\" \"GROQBASH_TMPDIR must be inside GROQBASH_DIR: ${GROQBASH_TMPDIR} (root: ${GROQBASH_DIR})\"\n    exit \"${GROQBASHERRTMP:-1}\"\n    ;;\nesac\n\n# Defensive normalization: ensure GROQBASH_CONFIG_DIR is non-empty and normalized\nGROQBASH_CONFIG_DIR=\"${GROQBASH_CONFIG_DIR%/}\"\nif [ -z \"$GROQBASH_CONFIG_DIR\" ]; then\n  GROQBASH_CONFIG_DIR=\"${GROQBASH_DIR%/}/config\"\nfi"
-  },
-  {
-    "id": "TLB-006",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 261,
-      "end": 340
+    {
+      "name": "PRECORE_BOOT_DIR_INVARIANTS",
+      "category": "PRECORE_BOOT",
+      "phase": "Controlli di sicurezza e integrità strutturale del file-system.",
+      "action": "Esegue controlli di sicurezza rigorosi: impedisce l'avvio se $GROQBASH_DIR risulta vuota, convalida che $GROQBASH_TMPDIR non coincida direttamente con la directory di sistema /tmp o risieda sotto /tmp (per mitigare minacce di dirottamento di collegamenti simbolici o attacchi concorrenti in ambienti multi-utente) e forza il posizionamento della cartella temporanea all'interno del percorso radice $GROQBASH_DIR. Inizializza o convalida la directory canonica di configurazione $GROQBASH_CONFIG_DIR."
     },
-    "kind": "other",
-    "summary": "Ensure configuration directory exists and is writable by creating it and performing a quick writability check via a temp file.",
-    "called_functions": [
-      "ensure_config_dir",
-      "log_error",
-      "chmod",
-      "rm"
-    ],
-    "touched_variables": [],
-    "raw_snippet": "# Helper: ensure config dir exists and is usable before any writes\nensure_config_dir() {\n  # Normalize\n  GROQBASH_CONFIG_DIR=\"${GROQBASH_CONFIG_DIR%/}\"\n  if [ -z \"$GROQBASH_CONFIG_DIR\" ]; then\n    GROQBASH_CONFIG_DIR=\"${GROQBASH_DIR%/}/config\"\n  fi\n\n  # Try to create directory (idempotent)\n  if ! mkdir -p \"${GROQBASH_CONFIG_DIR}\" 2>/dev/null; then\n    log_error \"CONFIG\" \"cannot create config dir: ${GROQBASH_CONFIG_DIR}\"\n    return 1\n  fi\n\n  # Enforce strict perms\n  chmod 700 \"${GROQBASH_CONFIG_DIR}\" 2>/dev/null || true\n\n  # Quick writability check: try to create a temp file inside\n  if ! : > \"${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check\" 2>/dev/null; then\n    log_error \"CONFIG\" \"config dir not writable: ${GROQBASH_CONFIG_DIR}\"\n    return 1\n  else\n    rm -f \"${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check\" 2>/dev/null || true\n  fi\n\n  return 0\n}\n\n# Ensure config dir exists now (fail early if not)\nensure_config_dir || { log_error \"CONFIG\" \"config dir unavailable; aborting.\"; exit \"$GROQBASHERRTMP\"; }"
-  },
-  {
-    "id": "TLB-007",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 341,
-      "end": 460
+    {
+      "name": "PRECORE_BOOT_ENSURE_CONFIG_DIR",
+      "category": "PRECORE_BOOT",
+      "phase": "Verifica e allocazione cartelle di persistenza.",
+      "action": "Invoca la funzione ensure_config_dir. Se fallisce, emette log di errore ed interrompe l'esecuzione con codice GROQBASHERRTMP."
     },
-    "kind": "other",
-    "summary": "Write provider-url helper definition (function) and resolve_provider_url function defined later; then fail-fast if canonical_config_dir is empty.",
-    "called_functions": [
-      "canonical_provider_url_file",
-      "resolve_provider_url"
-    ],
-    "touched_variables": [
-      "PROVIDER_FILE"
-    ],
-    "raw_snippet": "# Write provider-url file (single-line, non-secret). Best-effort; do not write API keys.\n# Usage: write_provider_url_if_missing <provider> <url>\nwrite_provider_url_if_missing() {\n  local prov=\"$1\" url=\"$2\" file dir tmp\n  [ -z \"$prov\" ] && return 1\n  [ -z \"$url\" ] && return 1\n  file=\"$(canonical_provider_url_file)\"\n  dir=\"$(dirname \"$file\")\"\n  mkdir -p \"$dir\" 2>/dev/null || return 1\n  # If file already exists and non-empty, do nothing\n  if [ -f \"$file\" ] && [ -s \"$file\" ]; then\n    return 0\n  fi\n  # Write atomically into RUN_TMPDIR if available, else directly (best-effort)\n  if [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\n    tmp=\"$(mktemp \"${RUN_TMPDIR%/}/provider-url.XXXX\" 2>/dev/null || true)\"\n  else\n    tmp=\"$(mktemp 2>/dev/null || true)\"\n  fi\n  if [ -n \"$tmp\" ]; then\n    printf '%s\\n' \"$url\" > \"$tmp\"\n    mv -f \"$tmp\" \"$file\" 2>/dev/null || cp -f \"$tmp\" \"$file\" 2>/dev/null || { rm -f \"$tmp\" 2>/dev/null || true; return 1; }\n    chmod 600 \"$file\" 2>/dev/null || true\n    return 0\n  else\n    # fallback: write directly\n    printf '%s\\n' \"$url\" > \"$file\" 2>/dev/null || return 1\n    chmod 600 \"$file\" 2>/dev/null || true\n    return 0\n  fi\n}\n\n# Resolve provider URL with priority: ENV (GROQBASH_API_URL / GROQBASH_PROVIDER_URL) > provider-url file > embedded default (groq)\n# Usage: resolve_provider_url <provider>\nresolve_provider_url() {\n  local prov=\"${1:-$PROVIDER}\" prov_file prov_val\n  # 1) ENV\n  if [ -n \"${GROQBASH_API_URL:-}\" ]; then\n    GROQBASH_PROVIDER_URL=\"${GROQBASH_API_URL}\"\n    export GROQBASH_PROVIDER_URL\n    return 0\n  fi\n  if [ -n \"${GROQBASH_PROVIDER_URL:-}\" ]; then\n    return 0\n  fi\n  # 2) provider-url file\n  prov_file=\"$(canonical_provider_url_file)\"\n  if [ -f \"$prov_file\" ] && [ -s \"$prov_file\" ]; then\n    prov_val=\"$(sed -n '1p' \"$prov_file\" 2>/dev/null | awk '{$1=$1;print}')\"\n    if [ -n \"$prov_val\" ]; then\n      GROQBASH_PROVIDER_URL=\"$prov_val\"\n      export GROQBASH_PROVIDER_URL\n      return 0\n    fi\n  fi\n  # 3) embedded default for groq only (minimal)\n  if [ \"${prov:-}\" = \"groq\" ]; then\n    GROQBASH_PROVIDER_URL=\"https://api.groq.com/openai/v1/chat/completions\"\n    export GROQBASH_PROVIDER_URL\n    return 0\n  fi\n  return 1\n}\n\n# Fail-fast if canonical_config_dir is empty for any reason\nif [ -z \"$(canonical_config_dir)\" ]; then\n  printf 'groqbash: ERROR: CONFIG: canonical config dir is empty; aborting.\\n' >&2\n  exit 1\nfi\n\n# Canonical PROVIDER_FILE path built only from GROQBASH_CONFIG_DIR\nPROVIDER_FILE=\"$(canonical_provider_file)\""
-  },
-  {
-    "id": "TLB-008",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 461,
-      "end": 620
+    {
+      "name": "PRECORE_BOOT_FAILFAST_CONFIG_DIR",
+      "category": "PRECORE_BOOT",
+      "phase": "Controllo di sicurezza post-configurazione.",
+      "action": "Impedisce l'avvio se il percorso canonico della directory di configurazione è vuoto, prevenendo esecuzioni instabili o letture errate. Esce con stato 1."
     },
-    "kind": "cli_parse",
-    "summary": "Early CLI helpers: handle immediate print flags (--print-config-dir, --print-provider-file, --print-model-file) and exit early when matched.",
-    "called_functions": [
-      "canonical_config_dir",
-      "canonical_provider_file",
-      "canonical_model_file",
-      "printf",
-      "exit"
-    ],
-    "touched_variables": [
-      "i",
-      "arg",
-      "prov",
-      "next_index"
-    ],
-    "raw_snippet": "#--6<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--\n# Internal CLI helpers: print canonical config paths (safe, single-file)\n# These flags are handled early and exit immediately after printing.\n# Supported forms:\n#   ./groqbash --print-config-dir\n#   ./groqbash --print-provider-file\n#   ./groqbash --print-model-file <provider>\n#   ./groqbash --print-model-file=<provider>\n# ---------------------------------------------------------------------------\nif [ \"$#\" -gt 0 ]; then\n  # Iterate through args to support flags anywhere on the command line\n  i=1\n  while [ \"$i\" -le \"$#\" ]; do\n    arg=\"${!i}\"\n    case \"$arg\" in\n      --print-config-dir)\n        printf '%s\\n' \"$(canonical_config_dir)\"\n        exit 0\n        ;;\n      --print-provider-file)\n        printf '%s\\n' \"$(canonical_provider_file)\"\n        exit 0\n        ;;\n      --print-model-file)\n        next_index=$((i+1))\n        if [ \"$next_index\" -le \"$#\" ]; then\n          prov=\"${!next_index}\"\n          printf '%s\\n' \"$(canonical_model_file \"$prov\")\"\n          exit 0\n        else\n          printf 'groqbash: ERROR: usage: --print-model-file <provider>\\n' >&2\n          exit 2\n        fi\n        ;;        \n      --print-model-file=*)\n        prov=\"${arg#--print-model-file=}\"\n        printf '%s\\n' \"$(canonical_model_file \"$prov\")\"\n        exit 0\n        ;;\n      # allow short-circuit if user passed combined flags like --help etc.\n      --help|-h)\n        # fall through to normal help handling later\n        break\n        ;;\n      *)\n        # not one of our print flags; continue scanning\n        ;;\n    esac\n    i=$((i+1))\n  done\nfi"
-  },
-  {
-    "id": "TLB-009",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 621,
-      "end": 740
+    {
+      "name": "PRECORE_BOOT_NORMALIZE_DEBUG",
+      "category": "PRECORE_BOOT",
+      "phase": "Allineamento della verbosità.",
+      "action": "Normalizza le configurazioni di debug ereditando eventuali valori da $GROQBASH_DEBUG se $DEBUG non è definita, e forzando il valore di default a 0 in caso di assenza totale."
     },
-    "kind": "dir_setup",
-    "summary": "Create essential directories (history sessions, tmp) with strict permissions and ensure session directory exists.",
-    "called_functions": [
-      "mkdir",
-      "chmod"
-    ],
-    "touched_variables": [
-      "SESSION_DIR",
-      "GROQBASH_HISTORY_DIR",
-      "GROQBASH_TMPDIR"
-    ],
-    "raw_snippet": "# Ensure essential directories exist with strict perms\nmkdir -p \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\nmkdir -p \"$GROQBASH_TMPDIR\" 2>/dev/null || true\nchmod 700 \"$GROQBASH_HISTORY_DIR\" \"$GROQBASH_TMPDIR\" 2>/dev/null || true\n# Ensure session dir exists and has strict perms\nSESSION_DIR=\"${GROQBASH_HISTORY_DIR%/}/sessions\"\nmkdir -p \"$SESSION_DIR\" 2>/dev/null || true\nchmod 700 \"$SESSION_DIR\" 2>/dev/null || true"
-  },
-  {
-    "id": "TLB-010",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 741,
-      "end": 820
+    {
+      "name": "PRECORE_BOOT_EARLY_PRINT_CONFIG",
+      "category": "PRECORE_BOOT",
+      "phase": "Intercettazione opzioni diagnostiche a riga di comando.",
+      "action": "Ispeziona in modo preventivo tutti gli argomenti CLI passati allo script. Se rileva flag specifici di ispezione del percorso (--print-config-dir, --print-provider-file, --print-model-file <provider>, --print-model-file=<provider>), stampa immediatamente il percorso corrispondente su stdout ed esce direttamente con stato 0 (o 2 in caso di uso errato dei parametri) prima di inizializzare l'intero runtime. Se incontra --help o -h, interrompe questo ciclo di scansione anticipato."
     },
-    "kind": "dir_setup",
-    "summary": "Set umask and create canonical directories (config, models, templates, history, tmp, extras, providers) with strict permissions.",
-    "called_functions": [
-      "umask",
-      "mkdir",
-      "chmod",
-      "canonical_config_dir"
-    ],
-    "touched_variables": [
-      "GROQBASH_CONFIG_DIR",
-      "GROQBASH_MODELS_DIR",
-      "GROQBASH_TEMPLATES_DIR",
-      "GROQBASH_HISTORY_DIR",
-      "GROQBASH_TMPDIR",
-      "GROQBASH_EXTRAS_DIR"
-    ],
-    "raw_snippet": "umask 077\nmkdir -p \"$(canonical_config_dir)\" \"$GROQBASH_MODELS_DIR\" \"$GROQBASH_TEMPLATES_DIR\" \"$GROQBASH_HISTORY_DIR\" \"$GROQBASH_TMPDIR\" \"$GROQBASH_EXTRAS_DIR\" \"$(canonical_config_dir)/providers\" 2>/dev/null || true\n\n# Ensure directories are not symlinks and have strict perms\nfor d in \"$GROQBASH_DIR\" \"$(canonical_config_dir)\" \"$GROQBASH_MODELS_DIR\" \"$GROQBASH_TEMPLATES_DIR\" \"$GROQBASH_HISTORY_DIR\" \"$GROQBASH_TMPDIR\" \"$GROQBASH_EXTRAS_DIR\" \"$(canonical_config_dir)/providers\"; do\n  if [ -L \"$d\" ]; then\n    printf 'groqbash: ERROR: directory is a symlink: %s\\n' \"$d\" >&2\n    exit \"$GROQBASHERRTMP\"\n  fi\n  mkdir -p \"$d\" 2>/dev/null || { printf 'groqbash: ERROR: cannot create directory: %s\\n' \"$d\" >&2; exit \"$GROQBASHERRTMP\"; }\n  chmod 700 \"$d\" 2>/dev/null || true\ndone"
-  },
-  {
-    "id": "TLB-011",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 821,
-      "end": 920
+    {
+      "name": "PRECORE_BOOT_MKDIR_PERMS",
+      "category": "PRECORE_BOOT",
+      "phase": "Creazione e blindatura delle cartelle utente.",
+      "action": "Crea sistematicamente l'intera gerarchia di directory operative necessarie allo script (sessions, config, models, templates, history, tmp, extras, providers). Esegue verifiche di sicurezza rigorose bloccando l'esecuzione se una delle directory operative risulta essere un collegamento simbolico (symlink attack mitigation), forza i permessi di accesso di tutte le cartelle a 700 (solo utente proprietario autorizzato) e imposta la maschera di creazione dei file (umask 077) per blindare tutti i file temporanei o persistenti generati in seguito."
     },
-    "kind": "other",
-    "summary": "Define central lock names and lock timeouts used by other modules.",
-    "called_functions": [],
-    "touched_variables": [
-      "MODELS_LOCK",
-      "HISTORY_LOCK",
-      "TMP_LOCK",
-      "GROQBASH_LOCK_TIMEOUT_TMP",
-      "GROQBASH_LOCK_TIMEOUT_MODELS",
-      "GROQBASH_LOCK_TIMEOUT_HISTORY"
-    ],
-    "raw_snippet": "# ---------------------------------------------------------------------------\n# Centralized lock names (co-located with resources)\n# ---------------------------------------------------------------------------\nMODELS_LOCK=\"${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}\"\nHISTORY_LOCK=\"${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}\"\nTMP_LOCK=\"${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}\"\n\n# Lock timeouts (configurable via env)\nGROQBASH_LOCK_TIMEOUT_TMP=\"${GROQBASH_LOCK_TIMEOUT_TMP:-10}\"\nGROQBASH_LOCK_TIMEOUT_MODELS=\"${GROQBASH_LOCK_TIMEOUT_MODELS:-10}\"\nGROQBASH_LOCK_TIMEOUT_HISTORY=\"${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}\""
-  },
-  {
-    "id": "TLB-012",
-    "macro_section": "PRECORE_BOOT",
-    "line_range": {
-      "start": 921,
-      "end": 940
+    {
+      "name": "PRECORE_BOOT_DETECT_B64_OPTS",
+      "category": "PRECORE_BOOT",
+      "phase": "Configurazione runtime delle dipendenze di codifica.",
+      "action": "Invoca la funzione _detect_base64_opts per configurare le opzioni corrette di Base64 in base all'architettura di sistema ospite."
     },
-    "kind": "other",
-    "summary": "Detect platform-specific base64 options and export B64_WRAP_OPT and B64_DECODE_OPT by invoking detection helper at top level.",
-    "called_functions": [
-      "_detect_base64_opts"
-    ],
-    "touched_variables": [
-      "B64_WRAP_OPT",
-      "B64_DECODE_OPT"
-    ],
-    "raw_snippet": "# ---------------------------------------------------------------------------\n# Detect portable base64 encode/decode commands (avoid parsing --help)\n# Sets B64_ENCODE_CMD and B64_DECODE_CMD arrays used by wrappers\n# ---------------------------------------------------------------------------\n_detect_base64_opts()\n{\n  ...\n}\n_detect_base64_opts"
-  },
-  {
-    "id": "TLB-001",
-    "macro_section": "PRECORE_RUN",
-    "line_range": {
-      "start": 1306,
-      "end": 1313
+    {
+      "name": "block_mkdir_session_cache",
+      "category": "PRECORE_RUN",
+      "phase": "Avvio del sistema di cache di GroqBash.",
+      "action": "Alloca e configura sul file-system la cartella dedicata a ospitare la cache temporanea delle sessioni ($SESSION_CACHE_DIR), blindandone i permessi d'accesso a 700."
     },
-    "kind": "init",
-    "summary": "Impostazioni di default per la rotazione della history: flag abilitazione, limiti numero file, limiti byte e giorni di conservazione.",
-    "called_functions": [],
-    "touched_variables": [
-      "GROQBASH_ROTATE_HISTORY",
-      "GROQBASH_HISTORY_MAX_FILES",
-      "GROQBASH_HISTORY_MAX_BYTES",
-      "GROQBASH_HISTORY_KEEP_DAYS"
-    ],
-    "raw_snippet": "GROQBASH_ROTATE_HISTORY=\"${GROQBASH_ROTATE_HISTORY:-0}\"\nGROQBASH_HISTORY_MAX_FILES=\"${GROQBASH_HISTORY_MAX_FILES:-100}\"\nGROQBASH_HISTORY_MAX_BYTES=\"${GROQBASH_HISTORY_MAX_BYTES:-104857600}\" # 100MB\nGROQBASH_HISTORY_KEEP_DAYS=\"${GROQBASH_HISTORY_KEEP_DAYS:-90}\"\n"
-  },
-  {
-    "id": "TLB-002",
-    "macro_section": "PRECORE_RUN",
-    "line_range": {
-      "start": 2119,
-      "end": 2126
+    {
+      "name": "block_ensure_config_dir",
+      "category": "PRECORE_RUN",
+      "phase": "Validazione dell'ambiente transazionale di runtime.",
+      "action": "Garantisce l'esistenza e l'accessibilità della directory di configurazione, richiamando ensure_config_dir o creando la cartella qualora non si operi in esecuzione esclusiva."
     },
-    "kind": "dir_setup",
-    "summary": "Definizione della directory di cache delle sessioni e creazione iniziale con permessi restrittivi.",
-    "called_functions": [
-      "mkdir",
-      "chmod"
-    ],
-    "touched_variables": [
-      "SESSION_CACHE_DIR"
-    ],
-    "raw_snippet": "SESSION_CACHE_DIR=\"${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}/session_cache\"\nmkdir -p \"$SESSION_CACHE_DIR\" 2>/dev/null || true\nchmod 700 \"$SESSION_CACHE_DIR\" 2>/dev/null || true\n"
-  },
-  {
-    "id": "TLB-003",
-    "macro_section": "PRECORE_RUN",
-    "line_range": {
-      "start": 2119,
-      "end": 2296
+    {
+      "name": "block_ensure_run_tmpdir",
+      "category": "PRECORE_RUN",
+      "phase": "Inizializzazione dell'ambiente provvisorio di istanza.",
+      "action": "Se non si è in modalità \"solo caricamento sorgenti\" ($GROQBASH_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di fallimento nella creazione dei percorsi temporanei, emette un log di errore fatale ed interrompe l'esecuzione con codice GROQBASHERRTMP."
     },
-    "kind": "env_check",
-    "summary": "Inizializzazione di numerose variabili runtime con valori non distruttivi, verifica/creazione della config dir e creazione anticipata del RUN_TMPDIR; definisce opzioni base per curl e normalizza alcune variabili boolean.",
-    "called_functions": [
-      "ensure_config_dir",
-      "mkdir",
-      "ensure_run_tmpdir",
-      "_normalize_bool_env",
-      "is_truthy"
-    ],
-    "touched_variables": [
-      "CONTENT",
-      "JSON_INPUT",
-      "SESSION_ID",
-      "SESSION_WINDOW",
-      "TEMPLATE",
-      "BATCH_FILE",
-      "CHAT_MODE",
-      "SET_DEFAULT_MODEL",
-      "REFRESH_MODELS",
-      "LIST_MODELS",
-      "FORCE_SAVE_MODE",
-      "OUT_PATH",
-      "SYSTEM_PROMPT",
-      "TURE",
-      "TEMPERATURE",
-      "MAX_TOKENS",
-      "MODEL",
-      "AUTO_POLICY",
-      "DEBUG",
-      "QUIET",
-      "DRY_RUN",
-      "STREAM_MODE",
-      "OUTPUT_MODE",
-      "THRESHOLD",
-      "MAX_RETRIES",
-      "SUPPORTED_PROVIDERS",
-      "PROVIDER",
-      "CURL_BASE_OPTS"
-    ],
-    "raw_snippet": "CONTENT=\"${CONTENT:-}\"\nJSON_INPUT=\"${JSON_INPUT:-}\"\n# Session CLI flags defaults (initialized to avoid set -u failures)\nSESSION_ID=\"${SESSION_ID:-}\"\nSESSION_WINDOW=\"${SESSION_WINDOW:-}\"\n# Runtime flags and other non-runtime defaults\nTEMPLATE=\"${TEMPLATE:-}\"\nBATCH_FILE=\"${BATCH_FILE:-}\"\nCHAT_MODE=\"${CHAT_MODE:-0}\"\nSET_DEFAULT_MODEL=\"${SET_DEFAULT_MODEL:-}\"\nREFRESH_MODELS=\"${REFRESH_MODELS:-0}\"\nLIST_MODELS=\"${LIST_MODELS:-0}\"\nFORCE_SAVE_MODE=\"${FORCE_SAVE_MODE:-0}\"\nOUT_PATH=\"${OUT_PATH:-}\"\nSYSTEM_PROMPT=\"${SYSTEM_PROMPT:-}\"\nTURE=\"${TURE:-${TEMPERATURE:-1.0}}\"\nTEMPERATURE=\"${TEMPERATURE:-${TURE:-1.0}}\"\nTURE=\"${TURE:-$TEMPERATURE}\"\nMAX_TOKENS=\"${MAX_TOKENS:-4096}\"\nMODEL=\"${MODEL:-}\"\nAUTO_POLICY=\"${AUTO_POLICY:-preferred}\"\nDEBUG=\"${DEBUG:-0}\"\nQUIET=\"${QUIET:-0}\"\nDRY_RUN=\"${DRY_RUN:-0}\"\nSTREAM_MODE=\"${STREAM_MODE:-0}\"\nOUTPUT_MODE=\"${OUTPUT_MODE:-text}\"\nTHRESHOLD=\"${THRESHOLD:-1000}\"\nMAX_RETRIES=\"${MAX_RETRIES:-3}\"\nSUPPORTED_PROVIDERS=\"${SUPPORTED_PROVIDERS:-groq gemini huggingface}\"\nPROVIDER=\"${PROVIDER:-groq}\"\n# Ensure config dir exists and is usable before reading persisted provider\n# (this uses the ensure_config_dir helper if present; otherwise create dir defensively)\nif type ensure_config_dir >/dev/null 2>&1; then\n  ensure_config_dir >/dev/null 2>&1 || true\nelse\n  mkdir -p \"${GROQBASH_CONFIG_DIR%/}\" 2>/dev/null || true\nfi\n\n# NOTE: Do NOT reassign RUN_TMPDIR, RESP, PAYLOAD, ERRF to empty values anywhere\n# after this point; those are runtime-managed and must be created by ensure_run_tmpdir\n# in the main process.\nCURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )\n\n# Ensure runtime tmpdir early so RESP/RUN_TMPDIR are available for later code\nif [ \"${GROQBASH_SOURCE_ONLY:-0}\" -eq 0 ]; then\n  if ! ensure_run_tmpdir >/dev/null 2>&1; then\n    log_error \"TMP\" \"cannot create or access RUN_TMPDIR ($GROQBASH_TMPDIR). Aborting.\"\n    exit \"$GROQBASHERRTMP\"\n  fi\nfi\n\n# ---------------------------------------------------------------------------\n# Helpers: normalization\n# ---------------------------------------------------------------------------\n_normalize_bool_env() {\n  local var val\n  for var in ALLOW_API_CALLS DRY_RUN DEBUG; do\n    val=\"${!var:-}\"\n    if [ -n \"$val\" ]; then\n      if is_truthy \"$val\"; then\n        export \"$var\"=1\n      else\n        export \"$var\"=0\n      fi\n    fi\n  done\n}\n_normalize_bool_env\n"
-  },
-  {
-    "id": "TLB-004",
-    "macro_section": "PRECORE_RUN",
-    "line_range": {
-      "start": 1750,
-      "end": 2118
+    {
+      "name": "block_normalize_bool_env_call",
+      "category": "PRECORE_RUN",
+      "phase": "Normalizzazione delle configurazioni d'ambiente.",
+      "action": "Esegue _normalize_bool_env per uniformare i flag booleani prima di processare la logica dello script."
     },
-    "kind": "other",
-    "summary": "Session MVP helpers are defined as functions; alla fine è presente un default per LAST_CHECK_LINES (assegnazione top-level).",
-    "called_functions": [],
-    "touched_variables": [
-      "LAST_CHECK_LINES"
-    ],
-    "raw_snippet": "#--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--\n# Session helpers (MVP - Minimum Viable Product)\n# - session_validate_id <id> -> 0 if valid, 1 if invalid\n# - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ\n# - session_messages_tmp_path <session_id> -> prints path under RUN_TMPDIR\n# - session_read_window <session_id> <N> <out_file> -> reads last N NDJSON lines, normalizes roles, writes {\"messages\":[...]}\n# - session_append <session_id> <role> <content> <meta_json> -> idempotent append under lock\n# - session_sanitize_cmd <cmd> -> prints sanitized cmd (truncate, remove env-like KEY=VAL, redact tokens)\n# - session_marker_create <message_id> -> create marker file in RUN_TMPDIR to avoid double append in same process\n# ---------------------------------------------------------------------------\n\nsession_validate_id() {\n  local id=\"$1\"\n  if [ -z \"$id\" ]; then return 1; fi\n  if printf '%s' \"$id\" | grep -qE '^[A-Za-z0-9._-]{1,128}$'; then return 0; else return 1; fi\n}\n\nsession_now_ts() {\n  # UTC timestamp, seconds resolution, format YYYY-MM-DDTHH:MM:SSZ\n  date -u +%Y-%m-%dT%H:%M:%SZ\n}\n\nsession_messages_tmp_path() {\n  local sid=\"$1\"\n  ensure_run_tmpdir || return 1\n  printf '%s' \"$RUN_TMPDIR/session-${sid}-messages.json\"\n}\n\nsession_sanitize_cmd() {\n  local cmd=\"$1\"\n  # Remove env-like KEY=VAL, redact tokens/keys, truncate to 256 chars\n  local sanitized\n  sanitized=\"$(printf '%s' \"$cmd\" | sed -E 's/[A-Za-z0-9_]+=([^[:space:]]+)//g' | sed -E 's/(token|key|secret)[^[:space:]]*/[REDACTED]/Ig' )\"\n  printf '%s' \"$(printf '%s' \"$sanitized\" | cut -c1-256)\"\n}\n\n... (functions omitted for brevity in this top-level inventory) ...\n\n# Default parameters for session helpers (configurable via env)\n: \"${LAST_CHECK_LINES:=50}\"\n#--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--\n"
-  },
-  {
-    "id": "TLB-001",
-    "macro_section": "PROVIDER",
-    "line_range": {
-      "start": 2297,
-      "end": 2310
+    {
+      "name": "block_last_check_lines_default",
+      "category": "PRECORE_RUN",
+      "phase": "Impostazione delle variabili di controllo.",
+      "action": "Definisce il valore di default a 50 per la variabile $LAST_CHECK_LINES (utilizzata per scansioni e verifiche storiche) qualora questa non sia pre-configurata in ambiente dall'utente."
     },
-    "kind": "env_check",
-    "summary": "Inizializza la variabile della chiave API del provider Groq e, se configurato, la sovrascrive leggendo il nome della variabile d'ambiente indicata da PROVIDER_API_ENV_groq. Esegue un controllo condizionale per usare il valore puntato dall'indirizzo indiretto della variabile d'ambiente.",
-    "called_functions": [],
-    "touched_variables": [
-      "GROQ_API_KEY",
-      "PROVIDER_API_ENV_groq"
-    ],
-    "raw_snippet": "# Provider-specific API key (can be overridden via PROVIDER_API_ENV_groq)\nGROQ_API_KEY=\"${GROQ_API_KEY:-}\"\nif [ -n \"${PROVIDER_API_ENV_groq:-}\" ]; then\n  if [ -n \"${!PROVIDER_API_ENV_groq:-}\" ]; then\n    GROQ_API_KEY=\"${!PROVIDER_API_ENV_groq}\"\n  fi\nfi"
-  },
-  {
-    "id": "TLB-001",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 3821,
-      "end": 4050
+    {
+      "name": "GROQ_API_KEY_override",
+      "category": "PROVIDER",
+      "phase": "Avvio ed autenticazione delle richieste del provider.",
+      "action": "Verifica se è impostata una variabile d'ambiente personalizzata deputata a contenere la chiave API di Groq (PROVIDER_API_ENV_groq). Se presente e valorizzata, estrae e sovrascrive il valore all'interno della variabile globale $GROQ_API_KEY per allineare l'autenticazione delle richieste."
     },
-    "kind": "cli_parse",
-    "summary": "Top-level CLI variable initializations followed by the main CLI parsing while-loop that consumes argv and sets flags/variables.",
-    "called_functions": [
-      "log_error",
-      "help_file (cat)",
-      "atomic_write",
-      "log_warn",
-      "log_info"
-    ],
-    "touched_variables": [
-      "JSON_INPUT",
-      "TEMPLATE",
-      "BATCH_FILE",
-      "CHAT_MODE",
-      "SET_DEFAULT_MODEL",
-      "LIST_MODELS",
-      "LIST_PROVIDERS",
-      "FORCE_SAVE_MODE",
-      "OUT_PATH",
-      "DRY_RUN",
-      "STREAM_MODE",
-      "QUIET",
-      "INSTALL_EXTRAS",
-      "DEBUG",
-      "PROVIDER_CLI",
-      "PROVIDER_INTERACTIVE",
-      "SHOW_CONFIG",
-      "DIAGNOSTICS",
-      "FILE_INPUTS",
-      "ARGS",
-      "OUTPUT_MODE",
-      "MODEL_CLI_SET",
-      "INSTALL_EXTRAS_SRC",
-      "BOOTSTRAP_ONLY",
-      "SESSION_ID",
-      "SESSION_WINDOW",
-      "SYSTEM_PROMPT",
-      "TURE",
-      "MAX_TOKENS"
-    ],
-    "raw_snippet": "JSON_INPUT=\"${JSON_INPUT:-}\" TEMPLATE=\"${TEMPLATE:-}\" BATCH_FILE=\"${BATCH_FILE:-}\" CHAT_MODE=\"${CHAT_MODE:-0}\" SET_DEFAULT_MODEL=\"${SET_DEFAULT_MODEL:-}\"\nLIST_MODELS=\"${LIST_MODELS:-0}\" LIST_PROVIDERS=\"${LIST_PROVIDERS:-0}\" FORCE_SAVE_MODE=\"${FORCE_SAVE_MODE:-}\" OUT_PATH=\"${OUT_PATH:-}\"\nDRY_RUN=\"${DRY_RUN:-0}\" STREAM_MODE=\"${STREAM_MODE:-0}\" QUIET=\"${QUIET:-0}\" INSTALL_EXTRAS=\"${INSTALL_EXTRAS:-0}\" DEBUG=\"${DEBUG:-0}\"\nPROVIDER_CLI=\"${PROVIDER_CLI:-}\" PROVIDER_INTERACTIVE=\"${PROVIDER_INTERACTIVE:-0}\"\nSHOW_CONFIG=\"${SHOW_CONFIG:-0}\" DIAGNOSTICS=\"${DIAGNOSTICS:-0}\"\nFILE_INPUTS=() ARGS=() OUTPUT_MODE=\"${OUTPUT_MODE:-text}\"\nMODEL_CLI_SET=\"${MODEL_CLI_SET:-0}\"\nINSTALL_EXTRAS_SRC=\"\"\nBOOTSTRAP_ONLY=\"${BOOTSTRAP_ONLY:-0}\"\n\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;\n    --list-models) LIST_MODELS=1; shift ;;\n    --list-providers) LIST_PROVIDERS=1; shift ;;\n    --list-providers-raw) LIST_PROVIDERS_RAW=1; shift ;;\n    --list-models-raw) LIST_MODELS_RAW=1; shift ;;\n    --set-default) SET_DEFAULT_MODEL=\"${2:-}\"; shift 2 ;;\n    -m|--model) MODEL=\"${2:-}\"; MODEL_CLI_SET=1; shift 2 ;;\n    -f) FILE_INPUTS+=(\"${2:-}\"); shift 2 ;;\n    --json-input) JSON_INPUT=\"${2:-}\"; shift 2 ;;\n    --template) TEMPLATE=\"${2:-}\"; shift 2 ;;\n    --batch) BATCH_FILE=\"${2:-}\"; shift 2 ;;\n    --session)\n      # opt-in session id\n      SESSION_ID=\"${2:-}\"\n      if [ -n \"$SESSION_ID\" ] && [ \"${SESSION_ID:0:1}\" != \"-\" ]; then\n        shift 2\n      else\n        log_error \"ARGS\" \"--session requires an argument\"\n        exit \"$GROQBASHERRTMP\"\n      fi\n      ;;\n    --session-window)\n      SESSION_WINDOW=\"${2:-}\"\n      if [ -n \"$SESSION_WINDOW\" ] && [ \"${SESSION_WINDOW:0:1}\" != \"-\" ]; then\n        shift 2\n      else\n        # allow --session-window without value -> default 10\n        SESSION_WINDOW=\"10\"\n        shift\n      fi\n      ;;\n    --system) SYSTEM_PROMPT=\"${2:-}\"; shift 2 ;;\n    --ture) TURE=\"${2:-}\"; shift 2 ;;\n    --temperature) TURE=\"${2:-}\"; shift 2 ;;\n    --max) MAX_TOKENS=\"${2:-}\"; shift 2 ;;\n    --debug) DEBUG=1; shift ;;\n    --save) FORCE_SAVE_MODE=\"save\"; shift ;;\n    --nosave) FORCE_SAVE_MODE=\"nosave\"; shift ;;\n    --out) OUT_PATH=\"${2:-}\"; shift 2 ;;\n    --threshold) THRESHOLD=\"${2:-}\"; shift 2 ;;\n    --dry-run) DRY_RUN=1; shift ;;\n    --quiet) QUIET=1; shift ;;\n    --stream) STREAM_MODE=1; shift ;;\n    --no-stream) STREAM_MODE=0; shift ;;\n    --json) OUTPUT_MODE=\"json\"; shift ;;\n    --pretty) OUTPUT_MODE=\"pretty\"; shift ;;\n    --text) OUTPUT_MODE=\"text\"; shift ;;\n    --raw) OUTPUT_MODE=\"raw\"; shift ;;\n    --chat) CHAT_MODE=1; shift ;;\n    --show-config) SHOW_CONFIG=1; shift ;;\n    --diagnostics) DIAGNOSTICS=1; shift ;;\n    --provider)\n      if [ \"${2:-}\" ] && [ \"${2:0:1}\" != \"-\" ]; then PROVIDER_CLI=\"${2:-}\"; shift 2; else PROVIDER_INTERACTIVE=1; shift; fi\n      ;;\n    --install-extras)\n      INSTALL_EXTRAS=1\n      # optional explicit source: accept either \"--install-extras <dir>\" or \"--install-extras=<dir>\"\n      if [ $# -gt 1 ] && [ \"${2:0:1}\" != \"-\" ]; then\n        INSTALL_EXTRAS_SRC=\"${2:-}\"\n        shift\n      fi\n      shift\n      ;;\n    --install-extras=*)\n      INSTALL_EXTRAS=1\n      INSTALL_EXTRAS_SRC=\"${1#--install-extras=}\"\n      shift\n      ;;\n    --version) printf '%s %s (%s)\\n' \"$SCRIPT_NAME\" \"$SCRIPT_VERSION\" \"$SCRIPT_DATE\"; exit 0 ;;\n    -h|--help)\n      help_file=\"$GROQBASH_EXTRAS_DIR/docs/help.txt\"\n      if [ -f \"$help_file\" ]; then cat \"$help_file\"; else printf 'Help file not found: %s\\n' \"$help_file\" >&2; fi\n      exit 0 ;;\n    --bootstrap-only)\n      BOOTSTRAP_ONLY=1\n      shift\n      ;;\n    --) shift; break ;;\n    -*) printf 'Unknown option: %s\\n' \"$1\" >&2; exit \"$GROQBASHERRTMP\" ;;\n    *) ARGS+=(\"$1\"); shift ;;\n  esac\ndone"
-  },
-  {
-    "id": "TLB-002",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 4051,
-      "end": 4100
+    {
+      "name": "parse_cli_arguments",
+      "category": "CORE_SETUP",
+      "phase": "Parsing iniziale dei parametri a riga di comando.",
+      "action": "Analizza in modo iterativo tutti gli argomenti passati da CLI. Registra e configura le opzioni booleane e i parametri complessi (file di input -f, JSON d'ingresso, file batch, sessioni, scadenze, modelli, formati di layout, log di tracciamento e parametri dei provider). Raggruppa i parametri posizionali o i prompt liberi all'interno dell'array $ARGS. Gestisce la terminazione immediata dello script in caso di parametri di aiuto (-h/--help) o visualizzazione versione (--version)."
     },
-    "kind": "provider_load",
-    "summary": "Session Engine loader: top-level logic that conditionally sources an optional session engine module and sets SE_AVAILABLE with validation of required functions.",
-    "called_functions": [
-      "bash -n",
-      "session_engine_enabled",
-      "log_warn",
-      "log_info"
-    ],
-    "touched_variables": [
-      "SE_ENGINE_PATH",
-      "SE_AVAILABLE"
-    ],
-    "raw_snippet": "SE_ENGINE_PATH=\"${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh\"\nSE_AVAILABLE=0\nif [ -f \"$SE_ENGINE_PATH\" ] && [ \"${GROQBASH_SESSION_ENGINE:-on}\" != \"off\" ]; then\n  # Source safely (no subshell) so functions become visible in current shell\n  # If sourcing fails (syntax error), abort loading and keep SE_AVAILABLE=0\n  if bash -n \"$SE_ENGINE_PATH\" 2>/dev/null; then\n    . \"$SE_ENGINE_PATH\"\n    # Validate minimal interface\n    if type session_engine_build_window >/dev/null 2>&1 && type session_engine_append >/dev/null 2>&1 && type session_engine_enabled >/dev/null 2>&1; then\n      if session_engine_enabled 2>/dev/null; then\n        SE_AVAILABLE=1\n        if [ \"${DEBUG:-0}\" -eq 1 ]; then\n          log_info \"SESSION\" \"Session Engine loaded and available\"\n        fi\n      else\n        SE_AVAILABLE=0\n        if [ \"${DEBUG:-0}\" -eq 1 ]; then\n          log_info \"SESSION\" \"Session Engine loaded but disabled by module\"\n        fi\n      fi\n    else\n      SE_AVAILABLE=0\n      log_warn \"SESSION\" \"Session Engine module missing required functions; falling back to legacy\"\n    fi\n  else\n    SE_AVAILABLE=0\n    log_warn \"SESSION\" \"Session Engine module has syntax errors; falling back to legacy\"\n  fi\nelse\n  # No engine file present or explicitly disabled\n  SE_AVAILABLE=0\n  if [ -n \"${SESSION_ID:-}\" ]; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      log_info \"SESSION\" \"Session Engine not available; using legacy session helpers\"\n    fi\n  fi\nfi\n\n# Usage note: callers should attempt session_engine_* only when SE_AVAILABLE=1,\n# and otherwise call legacy session_read_window/session_append as fallback."
-  },
-  {
-    "id": "TLB-003",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 4101,
-      "end": 4120
+    {
+      "name": "source_session_engine",
+      "category": "CORE_SETUP",
+      "phase": "Integrazione ed attivazione dei moduli estesi.",
+      "action": "Rileva e tenta di importare lo script del Session Engine esterno (session-engine.sh). Esegue un dry-run di analisi sintattica (bash -n) e verifica la presenza in memoria delle funzioni chiave di interfaccia. Se i controlli hanno successo e l'engine non è disabilitato da configurazione utente, attiva le flag $SE_AVAILABLE=1 (abilitando la gestione estesa della cronologia della chat), altrimenti imposta il fallback automatico sui metodi storici legacy integrati."
     },
-    "kind": "env_check",
-    "summary": "Guard preventing accidental real API calls: enforces ALLOW_API_CALLS when GROQ_API_KEY is set unless DRY_RUN is enabled.",
-    "called_functions": [
-      "is_truthy",
-      "log_error",
-      "exit"
-    ],
-    "touched_variables": [
-      "ALLOW_API_CALLS",
-      "GROQ_API_KEY",
-      "DRY_RUN"
-    ],
-    "raw_snippet": ": \"${ALLOW_API_CALLS:=1}\"\nif [ -n \"${GROQ_API_KEY:-}\" ] && ! is_truthy \"${ALLOW_API_CALLS:-0}\" && ! is_truthy \"${DRY_RUN:-0}\"; then\n  log_error \"APIKEY\" \"GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1.\"\n  exit \"$GROQBASHERRTMP\"\nfi"
-  },
-  {
-    "id": "TLB-004",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 4121,
-      "end": 4175
+    {
+      "name": "verify_api_calls_and_rebuild_providers",
+      "category": "CORE_SETUP",
+      "phase": "Convalida delle chiamate esterne e mappatura dei plug-in.",
+      "action": "Blocca l'esecuzione dello script se è configurata la chiave API ma le chiamate esterne sono inibite senza essere in modalità di simulazione dry-run. Esegue una scansione dei file all'interno della directory dei provider (providers/*.sh) per raccogliere dinamicamente tutti i moduli dei provider installati e comporre la stringa globale aggiornata $SUPPORTED_PROVIDERS."
     },
-    "kind": "other",
-    "summary": "Rebuild supported providers array from embedded 'groq' plus any provider modules found under extras/providers; handle LIST_PROVIDERS_RAW and LIST_MODELS_RAW non-interactive outputs.",
-    "called_functions": [
-      "basename",
-      "printf",
-      "awk",
-      "exit"
-    ],
-    "touched_variables": [
-      "_supported_providers_arr",
-      "extras_prov_dir",
-      "SUPPORTED_PROVIDERS",
-      "LIST_PROVIDERS_RAW",
-      "LIST_MODELS_RAW",
-      "PROVIDER_CLI"
-    ],
-    "raw_snippet": "_supported_providers_arr=()\n_supported_providers_arr+=(\"groq\")\n# Resolve extras providers dir: prefer explicit PROVIDERS_DIR, then extras dir, then canonical config providers\nextras_prov_dir=\"${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}\"\nif [ -z \"${extras_prov_dir:-}\" ]; then\n  extras_prov_dir=\"$(canonical_config_dir)/providers\"\nfi\nif [ -d \"$extras_prov_dir\" ]; then\n  for pf in \"$extras_prov_dir\"/*.sh; do\n    [ -e \"$pf\" ] || continue\n    base=\"$(basename \"$pf\" .sh)\"\n    # skip duplicate embedded name\n    [ \"$base\" = \"groq\" ] && continue\n    _supported_providers_arr+=(\"$base\")\n  done\nfi\nSUPPORTED_PROVIDERS=\"$(printf '%s ' \"${_supported_providers_arr[@]}\" | sed 's/ $//')\"\n\n# Non-interactive machine-readable provider listing\nif [ \"${LIST_PROVIDERS_RAW:-0}\" -eq 1 ]; then\n  # If no providers found or providers dir missing -> exit 1\n  if [ \"${#_supported_providers_arr[@]}\" -eq 0 ]; then\n    exit 1\n  fi\n  # Print one provider name per line, no decoration, no sourcing\n  for p in \"${_supported_providers_arr[@]}\"; do\n    printf '%s\\n' \"$p\"\n  done\n  exit 0\nfi\n\n# Non-interactive machine-readable models listing (one normalized model name per line)\nif [ \"${LIST_MODELS_RAW:-0}\" -eq 1 ]; then\n  # If CLI provided a provider override, honor it as context but do NOT source provider modules\n  if [ -n \"${PROVIDER_CLI:-}\" ]; then\n    PROVIDER=\"${PROVIDER_CLI}\"\n  fi\n\n  # MODELS_FILE is the canonical source of truth\n  if [ -f \"${MODELS_FILE:-}\" ] && [ -s \"${MODELS_FILE:-}\" ]; then\n    # Normalize entries: strip leading \"models/\" and common provider prefixes, trim whitespace\n    # Keep only non-empty lines; print one model per line, no annotations\n    awk '{\n      g=$0\n      sub(/^models\\//,\"\",g)\n      sub(/^groq[:\\/ -]*/,\"\",g)\n      sub(/^[[:space:]]+/,\"\",g)\n      sub(/[[:space:]]+$/,\"\",g)\n      if (g != \"\") print g\n    }' \"$MODELS_FILE\"\n    exit 0\n  else\n    # File missing or empty\n    exit 2\n  fi\nfi"
-  },
-  {
-    "id": "TLB-005",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 4176,
-      "end": 4330
+    {
+      "name": "raw_listings",
+      "category": "CORE_SETUP",
+      "phase": "Elaborazione delle interrogazioni rapide.",
+      "action": "Intercetta le richieste di visualizzazione cruda dei provider (--list-providers-raw) o dei modelli locali (--list-models-raw), le stampa riga per riga su stdout ed esce immediatamente con stato 0 (o codici di errore in caso di elenchi vuoti o assenti) senza procedere oltre con l'esecuzione dello script."
     },
-    "kind": "other",
-    "summary": "Immediate actions handling: LIST_PROVIDERS, LIST_MODELS, SET_DEFAULT_MODEL, STREAM_MODE compatibility check and early exits; these are top-level conditional action blocks executed after CLI parsing.",
-    "called_functions": [
-      "list_models_cli",
-      "printf",
-      "sed",
-      "atomic_write",
-      "canonical_config_dir",
-      "canonical_provider_file",
-      "log_error"
-    ],
-    "touched_variables": [
-      "LIST_PROVIDERS",
-      "LIST_MODELS",
-      "SET_DEFAULT_MODEL",
-      "target_provider",
-      "target_model_file",
-      "DEST_BASE",
-      "DEST_PROV"
-    ],
-    "raw_snippet": "if [ \"$LIST_PROVIDERS\" -eq 1 ]; then\n  printf 'Available providers:\\n' >&2\n  printf '  - groq (embedded)\\n' >&2\n  extras_prov_dir=\"$PROVIDERS_DIR\"\n  if [ -d \"$extras_prov_dir\" ]; then\n    for f in \"$extras_prov_dir\"/*.sh; do\n      [ -e \"$f\" ] || continue\n      base=\"$(basename \"$f\" .sh)\"\n      [ \"$base\" = \"groq\" ] && continue\n      printf '  - %s\\n' \"$base\" >&2\n    done\n  fi\n  exit 0\nfi\n\nif [ \"$LIST_MODELS\" -eq 1 ]; then\n  if list_models_cli; then exit 0; else exit \"$GROQBASHERRTMP\"; fi\nfi\n\nif [ -n \"$SET_DEFAULT_MODEL\" ]; then\n  # Ensure canonical config dir exists and is safe\n  if ! mkdir -p \"$(canonical_config_dir)\" 2>/dev/null; then\n    log_error \"SEC\" \"cannot create config dir: $(canonical_config_dir)\"; exit \"$GROQBASHERRTMP\"\n  fi\n  if [ -L \"$(canonical_config_dir)\" ]; then log_error \"SEC\" \"config dir is a symlink.\"; exit \"$GROQBASHERRTMP\"; fi\n\n  # Determine the active provider robustly:\n  if [ -n \"${PROVIDER_CLI:-}\" ]; then\n    target_provider=\"${PROVIDER_CLI}\"\n  elif [ -f \"$(canonical_provider_file)\" ] && [ -s \"$(canonical_provider_file)\" ]; then\n    target_provider=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n    target_provider=\"$(printf '%s' \"$target_provider\" | awk '{$1=$1;print}')\"\n    [ -z \"$target_provider\" ] && target_provider=\"${PROVIDER:-groq}\"\n  else\n    target_provider=\"${PROVIDER:-groq}\"\n  fi\n\n  # Persist default model for the explicit/active provider under canonical config dir\n  target_model_file=\"$(canonical_model_file \"${target_provider}\")\"\n  printf '%s\\n' \"$SET_DEFAULT_MODEL\" | atomic_write \"$target_model_file\" 10 \\\n    || { log_error \"SEC\" \"cannot write default model for provider ${target_provider} to ${target_model_file}.\"; exit \"$GROQBASHERRTMP\"; }\n  chmod 600 \"$target_model_file\" 2>/dev/null || true\n\n  printf 'groqbash: INFO: Default model for provider %s set to: %s\\n' \"$target_provider\" \"$SET_DEFAULT_MODEL\" >&2\n  exit 0\nfi\n\nif [ \"$STREAM_MODE\" -eq 1 ] && { [ \"$OUTPUT_MODE\" = \"json\" ] || [ \"$OUTPUT_MODE\" = \"pretty\" ]; }; then\n  log_error \"ARGS\" \"--stream incompatible with --json/--pretty.\"\n  exit \"$GROQBASHERRTMP\"\nfi"
-  },
-  {
-    "id": "TLB-006",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 4331,
-      "end": 4800
+    {
+      "name": "immediate_actions",
+      "category": "CORE_SETUP",
+      "phase": "Esecuzione comandi immediati ed installazione estensioni.",
+      "action": "Elabora ed esegue le azioni che non richiedono l'avvio delle chiamate API dei modelli, terminando lo script con stato 0: --list-providers (visualizza l'elenco dei provider installati); --list-models (visualizza i modelli supportati); --set-default (imposta in modo persistente il modello predefinito per il provider attivo scrivendolo nel file dedicato); --install-extras (installa le estensioni sul sistema verificando i percorsi e mitigando minacce di sicurezza tramite conformità dell'owner e dell'integrità dei file, copiandoli nelle cartelle operative e validandoli prima del termine). Blocca inoltre l'avvio se la modalità streaming è accoppiata con output strutturato JSON."
     },
-    "kind": "other",
-    "summary": "Install-extras flow: large top-level block that validates source/destination, prevents nested copies, collects files, validates ownership and types, copies files atomically, reports installed components and performs syntax checks; executed when --install-extras was requested.",
-    "called_functions": [
-      "cd",
-      "pwd",
-      "atomic_write",
-      "find",
-      "_get_owner",
-      "mkdir",
-      "chmod",
-      "cp",
-      "printf",
-      "bash -n"
-    ],
-    "touched_variables": [
-      "INSTALL_EXTRAS",
-      "INSTALL_EXTRAS_SRC",
-      "SRC_BASE",
-      "DEST_BASE",
-      "DEST_PROV",
-      "LEGACY_EXTRAS_DIR",
-      "LEGACY_REAL",
-      "files_to_copy",
-      "installed_providers",
-      "installed_libs",
-      "installed_docs",
-      "installed_security",
-      "installed_tests",
-      "current_user",
-      "src_owner",
-      "src",
-      "rel",
-      "dest",
-      "destdir"
-    ],
-    "raw_snippet": "if [ \"${INSTALL_EXTRAS:-0}\" -eq 1 ]; then\n  # Determine chosen source: explicit override wins, otherwise default to SCRIPTDIR/extras\n  if [ -n \"${INSTALL_EXTRAS_SRC:-}\" ]; then\n    SRC_BASE=\"${INSTALL_EXTRAS_SRC%/}\"\n  else\n    SRC_BASE=\"${SCRIPTDIR%/}/extras\"\n  fi\n\n  # Canonicalize chosen source and destination (use cd && pwd for portability)\n  if [ -d \"${SRC_BASE}\" ]; then\n    SRC_BASE=\"$(cd \"${SRC_BASE}\" >/dev/null 2>&1 && pwd || printf '%s' \"${SRC_BASE}\")\"\n  else\n    SRC_BASE=\"${SRC_BASE%/}\"\n  fi\n  DEST_BASE=\"$(cd \"${GROQBASH_EXTRAS_DIR%/}\" >/dev/null 2>&1 && pwd || printf '%s' \"${GROQBASH_EXTRAS_DIR%/}\")\"\n  # Destination for provider assets: prefer explicit PROVIDERS_DIR, otherwise use DEST_BASE/providers.\n  DEST_PROV=\"${PROVIDERS_DIR:-${DEST_BASE:-$(canonical_config_dir)}/providers}\"\n\n  # Legacy detection: only fatal if a legacy dir exists and is neither the canonical destination\n  # nor the chosen source. Do not treat SCRIPTDIR/extras as fatal when it is the chosen source.\n  if [ -d \"${LEGACY_EXTRAS_DIR}\" ]; then\n    LEGACY_REAL=\"$(cd \"${LEGACY_EXTRAS_DIR}\" >/dev/null 2>&1 && pwd || printf '%s' \"${LEGACY_EXTRAS_DIR}\")\"\n    if [ \"${LEGACY_REAL}\" != \"${DEST_BASE}\" ] && [ \"${LEGACY_REAL}\" != \"${SRC_BASE}\" ]; then\n      printf 'groqbash: ERROR: legacy extras directory found at %s\\n' \"${LEGACY_REAL}\" >&2\n      printf 'groqbash: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\\n' \"${DEST_BASE}\" >&2\n      exit \"$GROQBASHERRTMP\"\n    fi\n  fi\n\n  # Validate source existence and type\n  if [ ! -d \"${SRC_BASE}\" ]; then\n    log_error \"EXTRAS\" \"missing extras source directory: ${SRC_BASE}\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n  if [ -L \"${SRC_BASE}\" ]; then\n    log_error \"EXTRAS\" \"extras source is a symlink: ${SRC_BASE}\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n\n  # Prevent copying when source equals destination or source is inside destination (avoid nested copies)\n  if [ \"${SRC_BASE}\" = \"${DEST_BASE}\" ]; then\n    log_error \"EXTRAS\" \"extras source and destination are identical (${SRC_BASE}); nothing to do.\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n  case \"${SRC_BASE}/\" in\n    \"${DEST_BASE}/\"*) log_error \"EXTRAS\" \"extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy.\"; exit \"$GROQBASHERRTMP\" ;;\n  esac\n\n  # Prepare destination directories with strict perms\n  mkdir -p \"${DEST_BASE}\" \"${DEST_PROV}\" 2>/dev/null || { log_error \"EXTRAS\" \"cannot create extras dest: ${DEST_BASE}\"; exit \"$GROQBASHERRTMP\"; }\n  chmod 700 \"${DEST_BASE}\" 2>/dev/null || true\n\n  # Gather regular files from source\n  files_to_copy=()\n  while IFS= read -r -d '' f; do files_to_copy+=(\"$f\"); done < <(find \"${SRC_BASE}\" -type f -print0 2>/dev/null || true)\n\n  if [ \"${#files_to_copy[@]}\" -eq 0 ]; then\n    printf 'No extras files found under %s; nothing to install.\\n' \"${SRC_BASE}\" >&2\n    exit 0\n  fi\n\n  # Validate ownership and file types before any writes\n  current_user=\"$(id -un 2>/dev/null || printf '')\"\n  for src in \"${files_to_copy[@]}\"; do\n    [ -f \"$src\" ] || { log_error \"EXTRAS\" \"extras entry not a regular file: $src\"; exit \"$GROQBASHERRTMP\"; }\n    [ -L \"$src\" ] && { log_error \"EXTRAS\" \"extras file is symlink: $src\"; exit \"$GROQBASHERRTMP\"; }\n    src_owner=\"$(_get_owner \"$src\")\"\n    [ -n \"$src_owner\" ] && [ \"$src_owner\" != \"$current_user\" ] && { log_error \"EXTRAS\" \"wrong owner: $src\"; exit \"$GROQBASHERRTMP\"; }\n  done\n\n  # Copy files atomically preserving relative layout under DEST_BASE\n  installed_providers=()\n  installed_libs=()\n  installed_docs=()\n  installed_security=()\n  installed_tests=()\n\n  for src in \"${files_to_copy[@]}\"; do\n    rel=\"${src#${SRC_BASE}/}\"\n    dest=\"${DEST_BASE}/${rel}\"\n    destdir=\"$(dirname \"$dest\")\"\n    mkdir -p \"$destdir\" 2>/dev/null || { log_error \"EXTRAS\" \"cannot create dest dir: $destdir\"; exit \"$GROQBASHERRTMP\"; }\n\n    if type atomic_write >/dev/null 2>&1; then\n      cat \"$src\" | atomic_write \"$dest\" 10 || { log_error \"EXTRAS\" \"Error copying $src\"; exit \"$GROQBASHERRTMP\"; }\n    else\n      cp -f \"$src\" \"$dest\" 2>/dev/null || { log_error \"EXTRAS\" \"Error copying $src\"; exit \"$GROQBASHERRTMP\"; }\n      chmod 600 \"$dest\" 2>/dev/null || true\n    fi\n\n    chmod 600 \"$dest\" 2>/dev/null || true\n\n    case \"$rel\" in\n      providers/*.sh) installed_providers+=(\"$(basename \"$rel\" .sh)\") ;;\n      lib/*) installed_libs+=(\"$(basename \"$rel\")\") ;;\n      docs/*) installed_docs+=(\"$(basename \"$rel\")\") ;;\n      security/*) installed_security+=(\"$(basename \"$rel\")\") ;;\n      test/*) installed_tests+=(\"$(basename \"$rel\")\") ;;\n    esac\n  done\n\n  printf 'groqbash: INFO: Extras installed under %s\\n' \"${DEST_BASE}\" >&2\n\n  if [ \"${#installed_providers[@]}\" -gt 0 ]; then\n    printf 'Installed providers: %s\\n' \"$(printf '%s ' \"${installed_providers[@]}\")\" >&2\n  fi\n  if [ \"${#installed_libs[@]}\" -gt 0 ]; then\n    printf 'Installed libs: %s\\n' \"$(printf '%s ' \"${installed_libs[@]}\")\" >&2\n  fi\n  if [ \"${#installed_docs[@]}\" -gt 0 ]; then\n    printf 'Installed docs: %s\\n' \"$(printf '%s ' \"${installed_docs[@]}\")\" >&2\n  fi\n  if [ \"${#installed_security[@]}\" -gt 0 ]; then\n    printf 'Installed security scripts: %s\\n' \"$(printf '%s ' \"${installed_security[@]}\")\" >&2\n  fi\n  if [ \"${#installed_tests[@]}\" -gt 0 ]; then\n    printf 'Installed test scripts: %s\\n' \"$(printf '%s ' \"${installed_tests[@]}\")\" >&2\n  fi\n\n  # Syntax check for installed providers\n  for p in \"${installed_providers[@]}\"; do\n    PROVIDER_MODULE_PATH=\"${DEST_PROV}/${p}.sh\"\n    if ! bash -n \"$PROVIDER_MODULE_PATH\" 2>/dev/null; then\n      printf 'groqbash: WARN: provider %s has syntax errors; check %s\\n' \"$p\" \"$PROVIDER_MODULE_PATH\" >&2\n    fi\n  done\n\n  exit 0\nfi"
-  },
-  {
-    "id": "TLB-007",
-    "macro_section": "CORE_SETUP",
-    "line_range": {
-      "start": 4801,
-      "end": 4850
+    {
+      "name": "normalize_boolean_flags",
+      "category": "CORE_SETUP",
+      "phase": "Normalizzazione e allineamento logico dei flag booleani.",
+      "action": "Scorre una lista predefinita di variabili di controllo booleane dello script, converte i loro valori in stati numerici puri 0 o 1 tramite is_truthy, uniformandone l'elaborazione interna."
     },
-    "kind": "other",
-    "summary": "Normalize boolean-like flags: top-level loop that converts various flag variables to canonical 0/1 using is_truthy helper.",
-    "called_functions": [
-      "is_truthy",
-      "printf"
-    ],
-    "touched_variables": [
-      "DRY_RUN",
-      "STREAM_MODE",
-      "INSTALL_EXTRAS",
-      "PROVIDER_INTERACTIVE",
-      "LIST_MODELS",
-      "LIST_PROVIDERS",
-      "CHAT_MODE",
-      "QUIET",
-      "SHOW_CONFIG",
-      "DIAGNOSTICS"
-    ],
-    "raw_snippet": "# Normalize boolean-like flags\nfor flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do\n  if is_truthy \"${!flag:-0}\"; then printf -v \"$flag\" 1; else printf -v \"$flag\" 0; fi\ndone"
-  },
-  {
-    "id": "TLB-001",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4176,
-      "end": 4205
+    {
+      "name": "CORE_PROVIDER_PRO_LOAD_INITIALIZATION",
+      "category": "CORE_PROVIDER",
+      "phase": "Selezione e caricamento del modulo provider attivo.",
+      "action": "Scansiona la directory dei provider esterni per mappare i moduli installati. Determina il provider attivo leggendolo dai parametri CLI o dal file di configurazione del provider $PROVIDER_FILE (adottando \"groq\" in caso di assenza). Se configurato un nuovo provider da CLI, convalida la compatibilità, la salva nel file $PROVIDER_FILE con permessi 600, cancella il vecchio file dei modelli e il vecchio URL per forzare il nuovo allineamento delle API. In caso di selezione interattiva, visualizza il menu numerato dei provider installati, acquisisce la scelta dall'utente tramite stdin, la memorizza e ne configura l'URL predefinito nel file canonico. Infine, invoca load_provider_module ed esegue la risoluzione dell'URL API."
     },
-    "kind": "init",
-    "summary": "Scopre i provider disponibili popolando _supported_providers_arr e costruisce SUPPORTED_PROVIDERS.",
-    "called_functions": [
-      "basename"
-    ],
-    "touched_variables": [
-      "_supported_providers_arr",
-      "extras_prov_dir",
-      "pf",
-      "base",
-      "SUPPORTED_PROVIDERS"
-    ],
-    "raw_snippet": "_supported_providers_arr=()\n_supported_providers_arr+=(\"groq\")\nextras_prov_dir=\"$PROVIDERS_DIR\"\nif [ -d \"$extras_prov_dir\" ]; then\n  for pf in \"$extras_prov_dir\"/*.sh; do\n    [ -e \"$pf\" ] || continue\n    base=\"$(basename \"$pf\" .sh)\"\n    [ \"$base\" = \"groq\" ] && continue\n    _supported_providers_arr+=(\"$base\")\n  done\nfi\nSUPPORTED_PROVIDERS=\"$(printf '%s ' \"${_supported_providers_arr[@]}\" | sed 's/ $//')\""
-  },
-  {
-    "id": "TLB-002",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4206,
-      "end": 4275
+    {
+      "name": "CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH",
+      "category": "CORE_PROVIDER",
+      "phase": "Validazione del modulo provider ed allineamento modelli.",
+      "action": "Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida della conformità della sua interfaccia via validate_provider_interface; in caso di errori strutturali termina con codice GROQBASHERRAPI. Se è stato richiesto esplicitamente il refresh dei modelli, richiede la chiave API ed avvia l'allineamento dei modelli locali tramite refresh_models_dispatch, terminando con stato 0. In subordine, se il file dei modelli locali $MODELS_FILE è assente o vuoto, tenta di eseguire un allineamento automatico dei modelli in background senza bloccare lo script."
     },
-    "kind": "cli_parse",
-    "summary": "Rispetta la selezione provider persistita a meno che non sia sovrascritta via CLI; gestisce selezione PROVIDER_CLI e persistenza atomica della scelta.",
-    "called_functions": [
-      "canonical_provider_file",
-      "sed",
-      "awk",
-      "ensure_config_dir",
-      "rm",
-      "atomic_write",
-      "chmod",
-      "log_error",
-      "exit"
-    ],
-    "touched_variables": [
-      "prov",
-      "PROVIDER",
-      "PROVIDER_CLI",
-      "prev_provider",
-      "target_provider",
-      "target_provider_file",
-      "MODELS_FILE"
-    ],
-    "raw_snippet": "if [ -f \"$(canonical_provider_file)\" ] && [ -z \"${PROVIDER_CLI:-}\" ] && [ \"${PROVIDER_INTERACTIVE:-0}\" -eq 0 ]; then\n  prov=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n  prov=\"$(printf '%s' \"$prov\" | awk '{$1=$1;print}')\"\n  [ -n \"$prov\" ] && PROVIDER=\"$prov\"\nfi\n\n# CLI provider selection handling\nif [ -n \"${PROVIDER_CLI:-}\" ] && [ \"$PROVIDER_CLI\" != \"list\" ]; then\n  case \" $SUPPORTED_PROVIDERS \" in\n    *\" $PROVIDER_CLI \"*) \n      prev_provider=\"$PROVIDER\"\n      PROVIDER=\"$PROVIDER_CLI\"\n      ;;\n    *) log_error \"PROVIDER\" \"unknown provider: $PROVIDER_CLI\"; exit \"$GROQBASHERRTMP\" ;;\n  esac\n\n  # Ensure config dir is available and writable\n  if ! ensure_config_dir; then\n    log_error \"PROVIDER\" \"cannot persist provider selection: config dir unavailable.\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n\n  if [ -n \"${prev_provider:-}\" ] && [ \"$prev_provider\" != \"$PROVIDER\" ]; then\n    if [ -n \"${MODELS_FILE:-}\" ] && [ -f \"$MODELS_FILE\" ]; then\n      rm -f \"$MODELS_FILE\" 2>/dev/null || true\n    fi\n  fi\n\n  # Persist the explicit CLI-chosen provider (use PROVIDER_CLI to avoid race with other logic)\n  target_provider=\"${PROVIDER_CLI}\"\n  target_provider_file=\"$(canonical_provider_file)\"\n  printf '%s\\n' \"$target_provider\" | atomic_write \"$target_provider_file\" 10 \\\n    || { log_error \"PROVIDER\" \"cannot persist provider selection to ${target_provider_file}.\"; exit \"$GROQBASHERRTMP\"; }\n  chmod 600 \"$target_provider_file\" 2>/dev/null || true\n\nfi"
-  },
-  {
-    "id": "TLB-003",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4276,
-      "end": 4440
+    {
+      "name": "CORE_PROVIDER_SHOW",
+      "category": "CORE_PROVIDER",
+      "phase": "Esecuzione delle risposte diagnostiche immediate.",
+      "action": "Gestisce e soddisfa le richieste diagnostiche e di ispezione dei percorsi dello script, terminando l'esecuzione con stato 0 dopo la visualizzazione dei dati: stampa della directory di configurazione, del file canonico del provider o del file del modello canonico. Gestisce inoltre SHOW_CONFIG (mostrando un riepilogo tabulare dettagliato dei parametri di installazione e runtime) e DIAGNOSTICS (avviando un'analisi di integrità completa del sistema controllando l'accessibilità fisica delle cartelle operative, la mappatura in memoria delle funzioni obbligatorie del provider, la validità del modello attivo e la corretta chiave API)."
     },
-    "kind": "provider_load",
-    "summary": "Gestisce la selezione interattiva del provider, persiste la scelta, carica il modulo provider e gestisce il caso di esecuzione solo di configurazione.",
-    "called_functions": [
-      "canonical_provider_file",
-      "sed",
-      "awk",
-      "printf",
-      "read",
-      "trim",
-      "ensure_config_dir",
-      "atomic_write",
-      "chmod",
-      "load_provider_module",
-      "log_error",
-      "exit"
-    ],
-    "touched_variables": [
-      "_prov_arr",
-      "current_default",
-      "pf",
-      "i",
-      "p",
-      "sel",
-      "chosen",
-      "prev_provider",
-      "target_provider_file",
-      "PROVIDER_INTERACTIVE_SELECTED",
-      "PROVIDER"
-    ],
-    "raw_snippet": "if [ \"$PROVIDER_INTERACTIVE\" -eq 1 ] || [ \"${PROVIDER_CLI:-}\" = \"list\" ]; then\n  IFS=' ' read -r -a _prov_arr <<EOF\n$SUPPORTED_PROVIDERS\nEOF\n\n  current_default=\"$PROVIDER\"\n  if [ -f \"$(canonical_provider_file)\" ]; then\n    pf=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n    pf=\"$(printf '%s' \"$pf\" | awk '{$1=$1;print}')\"\n    [ -n \"$pf\" ] && current_default=\"$pf\"\n  fi\n\n  printf 'Select provider:\\n' >&2\n  i=1\n  for p in \"${_prov_arr[@]}\"; do\n    if [ \"$p\" = \"$current_default\" ]; then\n      printf '%d) %s (default)\\n' \"$i\" \"$p\" >&2\n    else\n      printf '%d) %s\\n' \"$i\" \"$p\" >&2\n    fi\n    i=$((i+1))\n  done\n\n  printf '> ' >&2\n  if ! IFS= read -r sel; then\n    printf 'No selection made.\\n' >&2\n    exit \"$GROQBASHERRTMP\"\n  fi\n  sel=\"$(trim \"$sel\")\"\n\n  # If empty input, use current_default\n  if [ -z \"$sel\" ]; then\n    chosen=\"$current_default\"\n  else\n    # If numeric selection, map to array index\n    if printf '%s\\n' \"$sel\" | grep -qE '^[0-9]+$'; then\n      idx=\"$sel\"\n      chosen=\"${_prov_arr[$((idx-1))]}\"\n    else\n      # treat input as provider name (case-sensitive match)\n      chosen=\"\"\n      for p in \"${_prov_arr[@]}\"; do\n        if [ \"$p\" = \"$sel\" ]; then\n          chosen=\"$p\"\n          break\n        fi\n      done\n    fi\n  fi\n\n  [ -n \"$chosen\" ] || { log_error \"PROVIDER\" \"Selection out of range or unknown provider.\"; exit \"$GROQBASHERRTMP\"; }\n\n  prev_provider=\"$PROVIDER\"\n\n  # Ensure config dir available\n  if ! ensure_config_dir; then\n    log_error \"PROVIDER\" \"cannot persist provider selection: config dir unavailable.\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n\n  target_provider_file=\"$(canonical_provider_file)\"\n  if ! printf '%s\\n' \"$chosen\" | atomic_write \"$target_provider_file\" 10; then\n    log_error \"PROVIDER\" \"cannot persist provider selection to $target_provider_file.\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n  chmod 600 \"$target_provider_file\" 2>/dev/null || true\n\n  PROVIDER=\"$chosen\"\n  # Mark that provider was selected interactively in this invocation so we can\n  # exit before prompt-processing if no positional args (configuration-only run).\n  PROVIDER_INTERACTIVE_SELECTED=1\n\n  if ! load_provider_module \"$PROVIDER\"; then\n    log_error \"PROVIDER\" \"failed to load provider module: $PROVIDER\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n\n  if [ -n \"${prev_provider:-}\" ] && [ \"$prev_provider\" != \"$PROVIDER\" ]; then\n    if [ -n \"${MODELS_FILE:-}\" ] && [ -f \"$MODELS_FILE\" ]; then\n      rm -f \"$MODELS_FILE\" 2>/dev/null || true\n    fi\n  fi\n\n  # If this invocation was only to change provider (no positional args), exit now.\n  if [ -n \"${PROVIDER_INTERACTIVE_SELECTED:-}\" ] && [ \"$#\" -eq 0 ]; then\n    printf 'groqbash: INFO: Provider set to: %s\\n' \"${PROVIDER:-}\" >&2\n    exit 0\n  fi\nfi"
-  },
-  {
-    "id": "TLB-004",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4441,
-      "end": 4498
+    {
+      "name": "CORE_PROVIDER_MAIN_RESOLVE",
+      "category": "CORE_PROVIDER",
+      "phase": "Risoluzione del modello e cattura standard input.",
+      "action": "Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY), esce immediatamente con stato 0. Altrimenti, carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via resolve_model ed esegue su di esso le convalide sintattiche e di interfaccia del provider (uscendo con codice GROQBASH_ERR_BAD_MODEL se falliscono). Infine, cattura e memorizza l'eventuale flusso di testo in arrivo dallo standard input (cat -) all'interno di $STDIN_CONTENT."
     },
-    "kind": "provider_load",
-    "summary": "Crea provider-url file con default per 'groq' se mancante; carica il modulo provider finale e risolve l'URL del provider; definisce validate_provider_interface e verifica l'interfaccia del modulo.",
-    "called_functions": [
-      "canonical_provider_url_file",
-      "write_provider_url_if_missing",
-      "load_provider_module",
-      "resolve_provider_url",
-      "printf",
-      "type",
-      "log_error",
-      "exit"
-    ],
-    "touched_variables": [
-      "prov_file",
-      "embedded_url",
-      "PROVIDER_MODULE_LOADED",
-      "GROQBASH_PROVIDER_URL"
-    ],
-    "raw_snippet": "# --- Minimal: create provider-url file with embedded default on first provider selection ---\n# Only create provider-url if missing and provider is groq (best-effort, non-secret).\nif [ \"${PROVIDER:-}\" = \"groq\" ]; then\n  prov_file=\"$(canonical_provider_url_file)\"\n  if [ ! -f \"$prov_file\" ] || [ ! -s \"$prov_file\" ]; then\n    # Use embedded default endpoint for groq\n    embedded_url=\"https://api.groq.com/openai/v1/chat/completions\"\n    write_provider_url_if_missing \"groq\" \"$embedded_url\" >/dev/null 2>&1 || true\n    # do not fail if write fails; it's best-effort\n  fi\nfi\n\n# ---------------------------------------------------------------------------\n# Load provider module for the chosen provider (ensure CLI/persisted cases are handled)\n# ---------------------------------------------------------------------------\n# Call load_provider_module once for the final PROVIDER value. The function is\n# guarded against double-loading (LOADED_PROVIDER_NAME), so this is safe even\n# if the interactive branch already loaded the module.\nif ! load_provider_module \"$PROVIDER\"; then\n  log_error \"PROVIDER\" \"failed to load provider module: $PROVIDER\"\n  exit \"$GROQBASHERRTMP\"\nfi\n\n# --- Minimal: resolve provider URL now (ENV > provider-url file > embedded default) ---\nresolve_provider_url \"$PROVIDER\" || true\n[ \"${DEBUG:-0}\" -eq 1 ] && printf 'DEBUG: provider=%s provider_url=%s\\n' \"$PROVIDER\" \"${GROQBASH_PROVIDER_URL:-<unset>}\" >&2\n\n# ---------------------------------------------------------------------------\n# Validate provider module and interface (must run after provider module load)\n# ---------------------------------------------------------------------------\n# Validate provider interface\nvalidate_provider_interface() {\n  local p=\"$1\"\n  local missing=0\n  local required=( \"buildpayload_${p}\" \"call_api_${p}\" )\n  local optional=( \"call_api_streaming_${p}\" \"refresh_models_${p}\" \"validate_model_${p}\" \"auto_select_model_${p}\" )\n  local f\n\n  for f in \"${required[@]}\"; do\n    if ! type \"$f\" >/dev/null 2>&1; then\n      log_error \"PROVIDER\" \"Provider '$p' module does not define required function $f().\"\n      missing=1\n    fi\n  done\n\n  for f in \"${optional[@]}\"; do\n    if ! type \"$f\" >/dev/null 2>&1; then\n      if [ \"${DEBUG:-0}\" -eq 1 ]; then\n        log_info \"PROVIDER\" \"Provider '$p' missing optional function $f()\"\n      fi\n    fi\n  done\n\n  return $missing\n}"
-  },
-  {
-    "id": "TLB-005",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4499,
-      "end": 4560
-    },
-    "kind": "env_check",
-    "summary": "Verifica che il modulo provider sia caricato e valido; gestisce REFRESH_MODELS e refresh dei modelli se MODELS_FILE mancante.",
-    "called_functions": [
-      "validate_provider_interface",
-      "log_error",
-      "exit",
-      "ensure_api_key_for_provider",
-      "refresh_models_dispatch"
-    ],
-    "touched_variables": [
-      "PROVIDER_MODULE_LOADED",
-      "REFRESH_MODELS",
-      "MODELS_FILE"
-    ],
-    "raw_snippet": "# Ensure provider module loaded and interface valid\nif [ \"${PROVIDER_MODULE_LOADED:-0}\" -eq 1 ]; then\n  if ! validate_provider_interface \"$PROVIDER\"; then\n    exit \"$GROQBASHERRAPI\"\n  fi\nelse\n  log_error \"PROVIDER\" \"no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin.\"\n  exit \"$GROQBASHERRAPI\"\nfi\n\n# Handle explicit --refresh-models only after provider module is loaded and validated\nif [ \"${REFRESH_MODELS:-0}\" -eq 1 ]; then\n  if ! ensure_api_key_for_provider \"$PROVIDER\"; then\n    log_error \"APIKEY\" \"API key required to refresh models for provider $PROVIDER.\"\n    exit \"$GROQBASHERRNOAPIKEY\"\n  fi\n  refresh_models_dispatch \"$MODELS_FILE\" || exit \"$GROQBASHERRAPI\"\n  exit 0\nfi\n\n# After provider module is loaded and validated, refresh models if local whitelist is missing\n# This ensures refresh_models_dispatch invokes the provider-specific refresh implementation.\nif [ ! -s \"${MODELS_FILE:-}\" ]; then\n  if ! ensure_api_key_for_provider \"$PROVIDER\"; then\n    log_error \"APIKEY\" \"API key required to refresh models for provider $PROVIDER.\"\n    # do not exit hard here; allow operation without refreshed models where possible\n  else\n    refresh_models_dispatch \"$MODELS_FILE\" || true\n  fi\nfi"
-  },
-  {
-    "id": "TLB-006",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4561,
-      "end": 4620
-    },
-    "kind": "other",
-    "summary": "Definisce opzioni di stampa/config diagnostica e la funzione assemble_content che costruisce CONTENT da JSON_INPUT, file, template, stdin o ARGS preservando newline nelle sostituzioni.",
-    "called_functions": [
-      "canonical_config_dir",
-      "canonical_provider_file",
-      "canonical_model_file",
-      "printf",
-      "sed",
-      "ensure_run_tmpdir",
-      "collect_input_from_files",
-      "expand_args_to_content",
-      "cat",
-      "_mktemp_in_dir",
-      "awk",
-      "mv",
-      "rm"
-    ],
-    "touched_variables": [
-      "PRINT_CONFIG_DIR",
-      "PRINT_PROVIDER_FILE",
-      "PRINT_MODEL_FILE",
-      "SHOW_CONFIG",
-      "ALLOWED_MODELS",
-      "MODEL_PROVIDER_CFG",
-      "MODEL",
-      "CONTENT",
-      "JSON_INPUT",
-      "FILE_INPUTS",
-      "TEMPLATE",
-      "STDIN_CONTENT",
-      "tmp_tmpl",
-      "tmp_final",
-      "file_content",
-      "tmpl",
-      "RUN_TMPDIR"
-    ],
-    "raw_snippet": "#--2<---[ SECTION: CORE_PROVIDER_SHOW ]--->2--\n# Show config / diagnostics\nif [ \"${PRINT_CONFIG_DIR:-0}\" -eq 1 ]; then\n  printf '%s\\n' \"$(canonical_config_dir)\"\n  exit 0\nfi\n\nif [ \"${PRINT_PROVIDER_FILE:-0}\" -eq 1 ]; then\n  printf '%s\\n' \"$(canonical_provider_file)\"\n  exit 0\nfi\n\nif [ -n \"${PRINT_MODEL_FILE:-0}\" ]; then\n  # PRINT_MODEL_FILE expected to contain provider name\n  printf '%s\\n' \"$(canonical_model_file \"${PRINT_MODEL_FILE}\")\"\n  exit 0\nfi\n\n# Show full configuration (existing behavior), but use canonical helpers for model file lookup\nif [ \"${SHOW_CONFIG:-0}\" -eq 1 ]; then\n  : \"${ALLOWED_MODELS:=}\"\n  printf 'GroqBash configuration:\\n'\n  printf '  Version: %s (%s)\\n' \"$SCRIPT_VERSION\" \"$SCRIPT_DATE\"\n  printf '  Provider: %s\\n' \"$PROVIDER\"\n  printf '  Model (active): %s\\n' \"$MODEL\"\n  printf '  Model set via CLI: %s\\n' \"${MODEL_CLI_SET:-0}\"\n\n  # Determine model default file using persisted provider file if present\n  if [ -f \"$(canonical_provider_file)\" ] && [ -s \"$(canonical_provider_file)\" ]; then\n    cfg_prov=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n    cfg_prov=\"$(printf '%s' \"$cfg_prov\" | awk '{$1=$1;print}')\"\n    model_provider=\"${cfg_prov:-${PROVIDER:-groq}}\"\n  else\n    model_provider=\"${PROVIDER:-groq}\"\n  fi\n\n  MODEL_PROVIDER_CFG=\"$(canonical_model_file \"${model_provider}\")\"\n  if [ -s \"$MODEL_PROVIDER_CFG\" ]; then\n    printf '  Model (default): %s\\n' \"$(sed -n '1p' \"$MODEL_PROVIDER_CFG\")\"\n  else\n    printf '  Model (default): <none>\\n'\n  fi\n\n  printf '  Config dir: %s\\n' \"$(canonical_config_dir)\"\n  printf '  Models dir: %s\\n' \"$GROQBASH_MODELS_DIR\"\n  printf '  Tmp dir: %s\\n' \"$GROQBASH_TMPDIR\"\n  printf '  History dir: %s\\n' \"$GROQBASH_HISTORY_DIR\"\n  printf '  Quiet: %s\\n' \"$QUIET\"\n  printf '  Debug: %s\\n' \"$DEBUG\"\n  printf '  Dry-run: %s\\n' \"$DRY_RUN\"\n  printf '  Whitelist models: %s\\n' \"$(printf '%s\\n' \"$ALLOWED_MODELS\" | wc -l)\"\n  exit 0\nfi\n\nif [ \"${DIAGNOSTICS:-0}\" -eq 1 ]; then\n  : \"${ALLOWED_MODELS:=}\"\n  printf 'GroqBash diagnostics:\\n'\n\n  printf '\\n[Directories]\\n'\n  for d in \"$GROQBASH_CONFIG_DIR\" \"$GROQBASH_MODELS_DIR\" \"$GROQBASH_TMPDIR\" \"$GROQBASH_EXTRAS_DIR\" \"$GROQBASH_HISTORY_DIR\"; do\n    if [ -d \"$d\" ]; then\n      printf '  OK: %s\\n' \"$d\"\n    else\n      printf '  ERROR: missing directory %s\\n' \"$d\"\n    fi\n  done\n\n  printf '\\n[Provider]\\n'\n  printf '  Active provider: %s\\n' \"$PROVIDER\"\n  if type \"buildpayload_${PROVIDER}\" >/dev/null 2>&1; then\n    printf '  Provider functions: OK\\n'\n  else\n    printf '  ERROR: provider functions missing\\n'\n  fi\n\n  printf '\\n[Model]\\n'\n  printf '  Active model: %s\\n' \"$MODEL\"\n  if printf '%s\\n' \"$ALLOWED_MODELS\" | grep -x -F -q \"$MODEL\"; then\n    printf '  Model in whitelist: OK\\n'\n  else\n    printf '  WARNING: model not in whitelist\\n'\n  fi\n\n  printf '\\n[API Key]\\n'\n  prov_upper=\"$(printf '%s' \"$PROVIDER\" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')\"\n  check_var=\"${prov_upper}_API_KEY\"\n  custom_env_var_var=\"PROVIDER_API_ENV_${PROVIDER}\"\n  custom_env_var=\"${!custom_env_var_var:-}\"\n  if [ -n \"$custom_env_var\" ]; then check_var=\"$custom_env_var\"; fi\n\n  if [ -n \"${!check_var:-}\" ]; then\n    printf '  API key: present (env %s)\\n' \"$check_var\"\n  else\n    printf '  WARNING: API key missing (expected env %s)\\n' \"$check_var\"\n  fi\n\n  printf '\\n[Tmpdir]\\n'\n  if [ -d \"$GROQBASH_TMPDIR\" ]; then\n    printf '  Tmpdir exists: OK\\n'\n  else\n    printf '  ERROR: tmpdir missing\\n'\n  fi\n\n  printf '\\nDiagnostics complete.\\n'\n  exit 0\nfi\n#--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--"
-  },
-  {
-    "id": "TLB-007",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4621,
-      "end": 4890
-    },
-    "kind": "model_resolve",
-    "summary": "Flusso principale: bootstrap opzionale, caricamento config locali, creazione RUN_TMPDIR, risoluzione e validazione del modello finale, lettura STDIN e definizione di assemble_content (continuazione).",
-    "called_functions": [
-      "load_local_config",
-      "load_whitelist",
-      "ensure_run_tmpdir",
-      "resolve_model",
-      "validate_model_core",
-      "validate_model_dispatch",
-      "cat"
-    ],
-    "touched_variables": [
-      "BOOTSTRAP_ONLY",
-      "FINAL_MODEL",
-      "MODEL",
-      "STDIN_CONTENT",
-      "CONTENT",
-      "FILE_INPUTS",
-      "ARGS",
-      "JSON_INPUT"
-    ],
-    "raw_snippet": "#--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--\n# Main flow: assemble content, select model, and execute request(s)\n\n# If requested, perform only structural bootstrap (PRECORE_BOOT + PRECORE_RUN + provider defs)\n# and exit before any runtime side-effect (config load, model resolution, API, sessions, history).\nif [ \"${BOOTSTRAP_ONLY:-0}\" -eq 1 ]; then\n  exit 0\nfi\n\nload_local_config\nload_whitelist\n\n# Ensure run tmpdir is available before proceeding with model selection and payload assembly\nif ! ensure_run_tmpdir; then\n  log_error \"TMP\" \"cannot create or access RUN_TMPDIR ($GROQBASH_TMPDIR). Aborting.\"\n  exit \"$GROQBASHERRTMP\"\nfi\n\n# Determine final model using centralized resolver\nif ! resolve_model; then\n  log_error \"MODEL\" \"no model could be selected.\"\n  exit \"$GROQBASHERRBAD_MODEL\"\nfi\n\n# FINAL_MODEL set by resolve_model()\n# Validate core and provider-specific constraints\nif ! validate_model_core \"$FINAL_MODEL\"; then\n  log_error \"MODEL\" \"model failed core validation: $FINAL_MODEL\"\n  exit \"$GROQBASHERRBAD_MODEL\"\nfi\n\nif ! validate_model_dispatch \"$FINAL_MODEL\"; then\n  log_error \"MODEL\" \"invalid model for provider $PROVIDER: $FINAL_MODEL\"\n  exit \"$GROQBASHERRBAD_MODEL\"\nfi\n\nMODEL=\"$FINAL_MODEL\"\n\n# Read stdin only when JSON_INPUT is not explicitly requested.\nSTDIN_CONTENT=\"\"\nif [ -z \"${JSON_INPUT:-}\" ] && [ ! -t 0 ]; then\n  STDIN_CONTENT=\"$(cat - 2>/dev/null || true)\"\nfi\n\nassemble_content() {\n  CONTENT=\"${CONTENT:-}\"\n  local tmpl tmp_tmpl tmp_final extra file_content\n\n  if [ -n \"$JSON_INPUT\" ]; then CONTENT=\"\"; return 0; fi\n\n  if [ \"${#FILE_INPUTS[@]}\" -gt 0 ]; then\n    CONTENT=\"$(collect_input_from_files \"${FILE_INPUTS[@]}\")\"\n    if [ \"${#ARGS[@]}\" -gt 0 ]; then\n      extra=\"$(expand_args_to_content)\"\n      [ -n \"$extra\" ] && CONTENT=\"${CONTENT}\"$'\\n\\n'\"$extra\"\n    fi\n    return 0\n  fi\n\n  if [ -n \"$TEMPLATE\" ]; then\n    if [ \"${#FILE_INPUTS[@]}\" -gt 0 ]; then\n      CONTENT=\"$(collect_input_from_files \"${FILE_INPUTS[@]}\")\"\n    elif [ -n \"$STDIN_CONTENT\" ]; then\n      CONTENT=\"$STDIN_CONTENT\"\n    else\n      if [ \"${#ARGS[@]}\" -gt 0 ]; then CONTENT=\"$(expand_args_to_content)\"; else CONTENT=\"\"; fi\n    fi\n\n    tmpl=\"$(cat \"$GROQBASH_TEMPLATES_DIR/$TEMPLATE\" 2>/dev/null || true)\"\n    ensure_run_tmpdir\n    tmp_tmpl=\"$(_mktemp_in_dir \"$RUN_TMPDIR\" 2>/dev/null || true)\"\n\n    if [ -n \"$tmp_tmpl\" ]; then\n      # Preserve original newlines while replacing the placeholder\n      printf '%s' \"$tmpl\" | awk -v repl=\"$CONTENT\" '{ gsub(/\\{\\{CONTENT\\}\\}/, repl); print }' > \"$tmp_tmpl\"\n      tmp_final=\"${tmp_tmpl}.final\"\n      mv \"$tmp_tmpl\" \"$tmp_final\" 2>/dev/null || true\n      file_content=\"$(cat \"$tmp_final\" 2>/dev/null || printf '%s' \"$tmpl\")\"\n      CONTENT=\"$file_content\"\n      rm -f \"$tmp_final\" 2>/dev/null || true\n    else\n      # Fallback: perform replacement while preserving newlines\n      CONTENT=\"$(printf '%s' \"$tmpl\" | awk -v repl=\"$CONTENT\" '{ gsub(/\\{\\{CONTENT\\}\\}/, repl); print }')\"\n    fi\n    return 0\n  fi\n\n  if [ -n \"$STDIN_CONTENT\" ]; then\n    CONTENT=\"$STDIN_CONTENT\"\n    if [ \"${#ARGS[@]}\" -gt 0 ]; then\n      extra=\"$(expand_args_to_content)\"\n      [ -n \"$extra\" ] && CONTENT=\"${CONTENT}\"$'\\n\\n'\"$extra\"\n    fi\n    return 0\n  fi\n\n  if [ \"${#ARGS[@]}\" -gt 0 ]; then CONTENT=\"$(expand_args_to_content)\"; else CONTENT=\"\"; fi\n  return 0\n}\n\nassemble_content"
-  },
-  {
-    "id": "TLB-008",
-    "macro_section": "CORE_PROVIDER",
-    "line_range": {
-      "start": 4891,
-      "end": 5031
-    },
-    "kind": "request_dispatch",
-    "summary": "Gestisce i controlli finali sull'input, batch processing, modalità chat interattiva, streaming e percorso non-streaming per l'esecuzione delle richieste e l'append alle sessioni.",
-    "called_functions": [
-      "session_validate_id",
-      "mkdir",
-      "chmod",
-      "session_engine_build_window",
-      "session_read_window",
-      "jq",
-      "build_payload_from_vars",
-      "ensure_api_key_for_provider",
-      "call_api_streaming",
-      "perform_request_once",
-      "session_append",
-      "session_engine_append",
-      "extract_text_from_resp",
-      "session_sanitize_cmd",
-      "printf",
-      "log_error",
-      "log_warn",
-      "exit"
-    ],
-    "touched_variables": [
-      "CONTENT",
-      "JSON_INPUT",
-      "ARGS",
-      "BATCH_FILE",
-      "SESSION_ID",
-      "SESSION_WINDOW",
-      "BUILD_MESSAGES_FILE",
-      "STREAM_MODE",
-      "DRY_RUN",
-      "RESP",
-      "assistant_text",
-      "CONVERSATION",
-      "QUIET",
-      "OUTPUT_MODE",
-      "MODEL"
-    ],
-    "raw_snippet": "# If provider was selected interactively in this invocation and there are no\n# positional args / no content, treat this run as configuration-only and exit.\nif [ -n \"${PROVIDER_INTERACTIVE_SELECTED:-}\" ] && [ \"$#\" -eq 0 ] && [ -z \"${CONTENT:-}\" ]; then\n  printf 'groqbash: INFO: Provider set to: %s\\n' \"${PROVIDER:-}\" >&2\n  exit 0\nfi\n\n# Defensive check: ensure we actually have something to send as prompt/content.\n# CONTENT may be set by assemble_content (from ARGS, files, stdin, template, JSON).\nif [ -n \"${JSON_INPUT:-}\" ]; then\n  : # JSON input present, proceed\nelif [ -n \"${CONTENT:-}\" ]; then\n  : # content assembled, proceed\nelif [ \"$#\" -gt 0 ]; then\n  # Positional args still present (fallback): join them into CONTENT\n  CONTENT=\"$(printf '%s ' \"$@\")\"\n  CONTENT=\"${CONTENT%\" \"}\" # trim trailing space\nelse\n  # No prompt/content available: emit clear error and exit with input error code.\n  log_error \"INPUT\" \"no prompt provided.\"\n  exit \"$GROQBASHERRNO_PROMPT\"\nfi\n\nif [ -z \"$CONTENT\" ] && [ -z \"$JSON_INPUT\" ] && [ \"$CHAT_MODE\" -eq 0 ] && [ -z \"$BATCH_FILE\" ]; then\n  log_error \"INPUT\" \"no prompt provided.\"\n  exit \"$GROQBASHERRNO_PROMPT\"\nfi\n\nis_number \"$TURE\" || { log_error \"ARGS\" \"--ture must be numeric\"; exit \"$GROQBASHERRTMP\"; }\nis_number \"$MAX_TOKENS\" || { log_error \"ARGS\" \"--max must be numeric\"; exit \"$GROQBASHERRTMP\"; }\n\n# Final guard: if ALLOWED_MODELS is present, compare normalized model names\nif [ -n \"$ALLOWED_MODELS\" ] && [ -n \"$MODEL\" ]; then\n  norm_model=\"$(printf '%s' \"$MODEL\" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')\"\n  if ! printf '%s\\n' \"$ALLOWED_MODELS\" | grep -x -F -q \"$norm_model\"; then\n    log_error \"MODEL\" \"model '$MODEL' not supported or deprecated.\"\n    printf '%s\\n' \"$ALLOWED_MODELS\" >&2\n    exit \"$GROQBASHERRBAD_MODEL\"\n  fi\nfi\n\nensure_run_tmpdir\n\n# Batch processing\nif [ -n \"$BATCH_FILE\" ]; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    case \"$line\" in ''|\\#*) continue ;; esac\n    CONTENT=\"$line\"\n\n    # If sessioning is requested, validate and prepare messages file for buildpayload\n    if [ -n \"${SESSION_ID:-}\" ]; then\n      if ! session_validate_id \"$SESSION_ID\"; then\n        log_error \"SESSION\" \"invalid session id: $SESSION_ID\"\n        exit \"$GROQBASHERRTMP\"\n      fi\n      # Ensure sessions dir exists with strict perms\n      mkdir -p \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n      chmod 700 \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n\n      # Enforce recommended window limit and warn if exceeded\n      if [ -n \"${SESSION_WINDOW:-}\" ]; then\n        if ! printf '%s' \"$SESSION_WINDOW\" | grep -qE '^[0-9]+$'; then\n          SESSION_WINDOW=10\n        fi\n      else\n        SESSION_WINDOW=10\n      fi\n      if [ \"$SESSION_WINDOW\" -gt 20 ]; then\n        log_warn \"SESSION\" \"session-window > 20 requested ($SESSION_WINDOW); recommended <= 20\"\n      fi\n\n      # Prepare messages JSON file under RUN_TMPDIR and populate it (atomic)\n      ensure_run_tmpdir || { log_error \"SESSION\" \"cannot create run tmpdir\"; exit \"$GROQBASHERRTMP\"; }\n      BUILD_MESSAGES_FILE=\"${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json\"\n      export BUILD_MESSAGES_FILE\n\n      # Try Session Engine first (Option A semantics: engine will honor --session-window override)\n      if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n        if ! session_engine_build_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"${GROQBASH_SESSION_TARGET_BYTES:-}\" \"$BUILD_MESSAGES_FILE\" 2>/dev/null; then\n          # Engine failed: fallback to legacy session_read_window\n          log_warn \"SESSION\" \"session_engine_build_window failed; falling back to legacy session_read_window\"\n          session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" 2>/dev/null || log_warn \"SESSION\" \"legacy session_read_window also failed\"\n        fi\n      else\n        # Engine not available: use legacy behavior\n        session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" 2>/dev/null || log_warn \"SESSION\" \"legacy session_read_window failed\"\n      fi\n\n      # If BUILD_MESSAGES_FILE is still missing or invalid, ensure at least current user message is present\n      if [ ! -f \"${BUILD_MESSAGES_FILE:-}\" ] || [ \"$(jq -r '.messages | length' \"$BUILD_MESSAGES_FILE\" 2>/dev/null || echo 0)\" -eq 0 ]; then\n        jq -n --arg role \"user\" --arg content \"${CONTENT:-}\" '{messages:[{role:$role,content:$content}] }' > \"${BUILD_MESSAGES_FILE}\"\n      fi\n\n      # Final fallback: ensure at least the current user message is present so API never receives messages:[]\n      if [ ! -f \"${BUILD_MESSAGES_FILE:-}\" ] || [ \"$(jq -r '.messages | length' \"$BUILD_MESSAGES_FILE\" 2>/dev/null || echo 0)\" -eq 0 ]; then\n        jq -n --arg role \"user\" --arg content \"${CONTENT:-}\" '{messages:[{role:$role,content:$content}] }' > \"${BUILD_MESSAGES_FILE}\"\n      fi\n    fi\n\n    # Now build payload (provider will honor BUILD_MESSAGES_FILE if present)\n    build_payload_from_vars\n\n    if ! ensure_api_key_for_provider \"$PROVIDER\"; then\n      log_error \"APIKEY\" \"missing API key; aborting batch item.\"\n      continue\n    fi\n\n    if [ \"$STREAM_MODE\" -eq 1 ]; then\n      call_api_streaming || log_error \"CALL\" \"Error during streaming call.\"\n    else\n      perform_request_once || true\n    fi\n\n    printf '\\n----\\n'\n  done < \"$BATCH_FILE\"\n  exit 0\nfi\n\n# Interactive chat mode\nif [ \"$CHAT_MODE\" -eq 1 ]; then\n  if [ ! -t 0 ]; then log_error \"CHAT\" \"interactive chat requires a TTY.\"; exit \"$GROQBASHERRTMP\"; fi\n  [ -t 1 ] && [ \"$QUIET\" -ne 1 ] && printf 'Entering interactive chat. Press Ctrl+D to exit.\\n' >&2\n  CONVERSATION=\"\"\n  while true; do\n    if is_tty_out && [ \"$QUIET\" -ne 1 ] && { [ \"$OUTPUT_MODE\" = \"text\" ] || [ \"$OUTPUT_MODE\" = \"raw\" ]; }; then printf '\\nYou: ' >&2; fi\n    if ! IFS= read -r userline; then printf '\\n' >&2; break; fi\n    [ -z \"$userline\" ] && continue\n    [ -z \"$CONVERSATION\" ] && CONVERSATION=\"$userline\" || CONVERSATION=\"${CONVERSATION}\"$'\\n\\n'\"User: ${userline}\"\n    CONTENT=\"$userline\"\n\n    # Pre-JSON session hook: prepare BUILD_MESSAGES_FILE if sessioning requested\n    if [ -n \"${SESSION_ID:-}\" ]; then\n      if ! session_validate_id \"$SESSION_ID\"; then\n        log_error \"SESSION\" \"invalid session id: $SESSION_ID\"\n        exit \"$GROQBASHERRTMP\"\n      fi\n      mkdir -p \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n      chmod 700 \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n\n      if [ -n \"${SESSION_WINDOW:-}\" ]; then\n        if ! printf '%s' \"$SESSION_WINDOW\" | grep -qE '^[0-9]+$'; then\n          SESSION_WINDOW=10\n        fi\n      else\n        SESSION_WINDOW=10\n      fi\n      if [ \"$SESSION_WINDOW\" -gt 20 ]; then\n        log_warn \"SESSION\" \"session-window > 20 requested ($SESSION_WINDOW); recommended <= 20\"\n      fi\n\n      ensure_run_tmpdir || { log_error \"SESSION\" \"cannot create run tmpdir\"; exit \"$GROQBASHERRTMP\"; }\n      BUILD_MESSAGES_FILE=\"$RUN_TMPDIR/session-${SESSION_ID}-messages.json\"\n\n      # Try Session Engine first; fallback to legacy on any failure\n      if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n        if ! session_engine_build_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"${GROQBASH_SESSION_TARGET_BYTES:-}\" \"$BUILD_MESSAGES_FILE\" 2>/dev/null; then\n          log_warn \"SESSION\" \"session_engine_build_window failed; falling back to legacy session_read_window\"\n          session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" || log_warn \"SESSION\" \"legacy session_read_window failed\"\n        fi\n      else\n        session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" || log_warn \"SESSION\" \"legacy session_read_window failed\"\n      fi\n\n      export BUILD_MESSAGES_FILE\n    fi\n\n    build_payload_from_vars\n    if ! ensure_api_key_for_provider \"$PROVIDER\"; then log_error \"APIKEY\" \"missing API key; aborting chat turn.\"; continue; fi\n    if [ \"$STREAM_MODE\" -eq 1 ]; then call_api_streaming || log_error \"CALL\" \"Streaming call failed.\"\n    else perform_request_once || log_error \"CALL\" \"Call failed.\"; fi\n  done\n  exit 0\nfi\n\n# Single request (streaming or non-streaming)\nif [ \"$STREAM_MODE\" -eq 1 ]; then\n\n  # Pre-JSON session hook: prepare BUILD_MESSAGES_FILE if sessioning requested\n  if [ -n \"${SESSION_ID:-}\" ]; then\n    if ! session_validate_id \"$SESSION_ID\"; then\n      log_error \"SESSION\" \"invalid session id: $SESSION_ID\"\n      exit \"$GROQBASHERRTMP\"\n    fi\n    mkdir -p \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n    chmod 700 \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n\n    if [ -n \"${SESSION_WINDOW:-}\" ]; then\n      if ! printf '%s' \"$SESSION_WINDOW\" | grep -qE '^[0-9]+$'; then\n        SESSION_WINDOW=10\n      fi\n    else\n      SESSION_WINDOW=10\n    fi\n    if [ \"$SESSION_WINDOW\" -gt 20 ]; then\n      log_warn \"SESSION\" \"session-window > 20 requested ($SESSION_WINDOW); recommended <= 20\"\n    fi\n\n    ensure_run_tmpdir || { log_error \"SESSION\" \"cannot create run tmpdir\"; exit \"$GROQBASHERRTMP\"; }\n    BUILD_MESSAGES_FILE=\"$RUN_TMPDIR/session-${SESSION_ID}-messages.json\"\n\n    # Try Session Engine first; fallback to legacy on any failure\n    if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n      if ! session_engine_build_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"${GROQBASH_SESSION_TARGET_BYTES:-}\" \"$BUILD_MESSAGES_FILE\" 2>/dev/null; then\n        log_warn \"SESSION\" \"session_engine_build_window failed; falling back to legacy session_read_window\"\n        session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" || { log_warn \"SESSION\" \"failed to read session window for $SESSION_ID\"; rm -f \"$BUILD_MESSAGES_FILE\" 2>/dev/null || true; }\n      fi\n    else\n      session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" || { log_warn \"SESSION\" \"failed to read session window for $SESSION_ID\"; rm -f \"$BUILD_MESSAGES_FILE\" 2>/dev/null || true; }\n    fi\n\n    export BUILD_MESSAGES_FILE\n  fi\n\n  build_payload_from_vars\n\n  # Skip API key prompt in dry-run mode\n  if [ \"${DRY_RUN:-0}\" -eq 1 ]; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      log_info \"DRY\" \"dry-run: skipping API key check for provider $PROVIDER\"\n    fi\n  else\n    if ! ensure_api_key_for_provider \"$PROVIDER\"; then\n      log_error \"APIKEY\" \"missing API key; aborting.\"\n      exit \"$GROQBASHERRTMP\"\n    fi\n  fi\n\n  if call_api_streaming; then\n     if [ \"${DEBUG:-0}\" -eq 1 ]; then\n       log_info \"STREAM\" \"Streaming completed; captured response in $RESP\"\n     fi\n\n     # If sessioning requested, append both user and assistant\n     if [ -n \"${SESSION_ID:-}\" ]; then\n      # 1) Append user message (preserve existing semantics) only if non-empty\n      if [ -n \"${CONTENT:-}\" ]; then\n        meta_source=\"cli\"\n        meta_cmd=\"$(session_sanitize_cmd \"$0 ${ARGS[*]:-}\")\"\n        meta_json=\"$(jq -c -n --arg source \"$meta_source\" --arg cmd \"$meta_cmd\" --arg id \"\" '{source:$source, cmd:$cmd, id:$id}')\"\n\n        if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n          if ! session_engine_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\"; then\n            log_warn \"SESSION\" \"session_engine_append (user) failed; falling back to legacy session_append\"\n            session_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append message to session $SESSION_ID (streaming)\"\n          fi\n        else\n          session_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append message to session $SESSION_ID (streaming)\"\n        fi\n      fi\n\n      # 2) Append assistant response reconstructed from RESP (if present)\n      # Only append assistant when not in DRY_RUN and when RESP contains data\n      if [ \"${DRY_RUN:-0}\" -ne 1 ] && [ -s \"${RESP:-}\" ]; then\n        # extract_text_from_resp uses the same extraction logic used by finalize_and_output\n        assistant_text=\"$(extract_text_from_resp || true)\"\n        # Normalize whitespace-only responses away\n        assistant_text=\"$(printf '%s' \"$assistant_text\" | sed -e 's/\\r$//' -e '/^[[:space:]]*$/d' || true)\"\n        if [ -n \"${assistant_text:-}\" ]; then\n          meta_source=\"provider\"\n          meta_json=\"$(jq -c -n --arg source \"$meta_source\" --arg model \"$MODEL\" --arg id \"\" '{source:$source, model:$model, id:$id}')\"\n\n          if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n            if ! session_engine_append \"$SESSION_ID\" \"assistant\" \"$assistant_text\" \"$meta_json\"; then\n              log_warn \"SESSION\" \"session_engine_append (assistant) failed; falling back to legacy session_append\"\n              session_append \"$SESSION_ID\" \"assistant\" \"$assistant_text\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append assistant response to session $SESSION_ID (streaming)\"\n            fi\n          else\n            session_append \"$SESSION_ID\" \"assistant\" \"$assistant_text\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append assistant response to session $SESSION_ID (streaming)\"\n          fi\n        fi\n      fi\n    fi\n\n    printf '\\n'\n    exit 0\n  else\n    log_error \"STREAM\" \"streaming request failed.\"\n    exit \"$GROQBASHERRCURL_FAILED\"\n  fi\n\nelse\n  # Non-streaming single request path\n\n  if is_tty_out && [ \"$QUIET\" -ne 1 ] && { [ \"$OUTPUT_MODE\" = \"text\" ] || [ \"$OUTPUT_MODE\" = \"raw\" ]; }; then\n    printf '%b\\n' \"\\033[1;36mYou:\\033[0m\" >&2\n    if [ \"${#ARGS[@]}\" -gt 0 ]; then\n      anyfile=0\n      for a in \"${ARGS[@]}\"; do [ -r \"$a\" ] && [ -f \"$a\" ] && { anyfile=1; break; }; done\n      [ \"$anyfile\" -eq 1 ] && printf '%s\\n' \"(using file contents)\" >&2 || printf '%s\\n' \"$CONTENT\" >&2\n    else\n      printf '%s\\n' \"$CONTENT\" >&2\n    fi\n    printf '%b\\n' \"\\033[1;32mProvider ($PROVIDER, model: $MODEL):\\033[0m\" >&2\n  fi\n\n  # Pre-JSON session hook: prepare BUILD_MESSAGES_FILE if sessioning requested\n  if [ -n \"${SESSION_ID:-}\" ]; then\n    if ! session_validate_id \"$SESSION_ID\"; then\n      log_error \"SESSION\" \"invalid session id: $SESSION_ID\"\n      exit \"$GROQBASHERRTMP\"\n    fi\n    mkdir -p \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n    chmod 700 \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\n\n    if [ -n \"${SESSION_WINDOW:-}\" ]; then\n      if ! printf '%s' \"$SESSION_WINDOW\" | grep -qE '^[0-9]+$'; then\n        SESSION_WINDOW=10\n      fi\n    else\n      SESSION_WINDOW=10\n    fi\n    if [ \"$SESSION_WINDOW\" -gt 20 ]; then\n      log_warn \"SESSION\" \"session-window > 20 requested ($SESSION_WINDOW); recommended <= 20\"\n    fi\n\n    ensure_run_tmpdir || { log_error \"SESSION\" \"cannot create run tmpdir\"; exit \"$GROQBASHERRTMP\"; }\n    BUILD_MESSAGES_FILE=\"$RUN_TMPDIR/session-${SESSION_ID}-messages.json\"\n\n    # Try Session Engine first; fallback to legacy on any failure\n    if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n      if ! session_engine_build_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"${GROQBASH_SESSION_TARGET_BYTES:-}\" \"$BUILD_MESSAGES_FILE\" 2>/dev/null; then\n        log_warn \"SESSION\" \"session_engine_build_window failed; falling back to legacy session_read_window\"\n        session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" || { log_warn \"SESSION\" \"failed to read session window for $SESSION_ID\"; rm -f \"$BUILD_MESSAGES_FILE\" 2>/dev/null || true; }\n      fi\n    else\n      session_read_window \"$SESSION_ID\" \"$SESSION_WINDOW\" \"$BUILD_MESSAGES_FILE\" || { log_warn \"SESSION\" \"failed to read session window for $SESSION_ID\"; rm -f \"$BUILD_MESSAGES_FILE\" 2>/dev/null || true; }\n    fi\n\n    export BUILD_MESSAGES_FILE\n  fi\n\n  build_payload_from_vars\n\n  # Skip API key prompt in dry-run mode\n  if [ \"${DRY_RUN:-0}\" -eq 1 ]; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      log_info \"DRY\" \"dry-run: skipping API key check for provider $PROVIDER\"\n    fi\n  else\n    if ! ensure_api_key_for_provider \"$PROVIDER\"; then\n      log_error \"APIKEY\" \"missing API key; aborting.\"\n      exit \"$GROQBASHERRTMP\"\n    fi\n  fi\n\n  # Perform request (with retries). After final attempt, append to session if requested.\n  if perform_request_once; then\n    # On success, append to session if SESSION_ID present (MVP)\n    if [ -n \"${SESSION_ID:-}\" ]; then\n      # 1) Append the user message (existing behavior) only if non-empty\n      if [ -n \"${CONTENT:-}\" ]; then\n        meta_source=\"cli\"\n        meta_cmd=\"$(session_sanitize_cmd \"$0 ${ARGS[*]:-}\")\"\n        meta_json=\"$(jq -c -n --arg source \"$meta_source\" --arg cmd \"$meta_cmd\" --arg id \"\" '{source:$source, cmd:$cmd, id:$id}')\"\n\n        if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n          if ! session_engine_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\"; then\n            log_warn \"SESSION\" \"session_engine_append (user) failed; falling back to legacy session_append\"\n            session_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append message to session $SESSION_ID\"\n          fi\n        else\n          session_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append message to session $SESSION_ID\"\n        fi\n      fi\n\n      # 2) Append the assistant response (new)\n      # Only append assistant when not in DRY_RUN and when RESP contains data\n      if [ \"${DRY_RUN:-0}\" -ne 1 ] && [ -s \"${RESP:-}\" ]; then\n        assistant_text=\"$(extract_text_from_resp || true)\"\n        assistant_text=\"$(printf '%s' \"$assistant_text\" | sed -e 's/\\r$//' -e '/^[[:space:]]*$/d' || true)\"\n        if [ -n \"${assistant_text:-}\" ]; then\n          meta_source=\"provider\"\n          meta_json=\"$(jq -c -n --arg source \"$meta_source\" --arg model \"$MODEL\" --arg id \"\" '{source:$source, model:$model, id:$id}')\"\n\n          if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n            if ! session_engine_append \"$SESSION_ID\" \"assistant\" \"$assistant_text\" \"$meta_json\"; then\n              log_warn \"SESSION\" \"session_engine_append (assistant) failed; falling back to legacy session_append\"\n              session_append \"$SESSION_ID\" \"assistant\" \"$assistant_text\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append assistant response to session $SESSION_ID\"\n            fi\n          else\n            session_append \"$SESSION_ID\" \"assistant\" \"$assistant_text\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append assistant response to session $SESSION_ID\"\n          fi\n        fi\n      fi\n    fi\n    exit 0\n  else\n    # On failure, still attempt append (record of attempted message) but do not block\n    if [ -n \"${SESSION_ID:-}\" ]; then\n      if [ -n \"${CONTENT:-}\" ]; then\n        meta_source=\"cli\"\n        meta_cmd=\"$(session_sanitize_cmd \"$0 ${ARGS[*]:-}\")\"\n        meta_json=\"$(jq -c -n --arg source \"$meta_source\" --arg cmd \"$meta_cmd\" --arg id \"\" '{source:$source, cmd:$cmd, id:$id}')\"\n\n        if [ \"${SE_AVAILABLE:-0}\" -eq 1 ]; then\n          if ! session_engine_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\"; then\n            log_warn \"SESSION\" \"session_engine_append (user) failed after failed request; falling back to legacy session_append\"\n            session_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append message to session $SESSION_ID after failed request\"\n          fi\n        else\n          session_append \"$SESSION_ID\" \"user\" \"$CONTENT\" \"$meta_json\" || log_warn \"SESSION\" \"failed to append message to session $SESSION_ID after failed request\"\n        fi\n      fi\n    fi\n    exit \"$GROQBASHERRAPI\"\n  fi\nfi\n#--3<---[ /SECTION: CORE_PROVIDER_MAIN ]--->3--\n########################################\n# SECTION: CORE_PROVIDER - END\n########################################"
-  }
-]
+    {
+      "name": "CORE_PROVIDER_MAIN_EXECUTION",
+      "category": "CORE_PROVIDER",
+      "phase": "Esecuzione principale del prompt (Core Execution loop).",
+      "action": "Invoca assemble_content per generare il prompt definitivo. Gestisce i tre flussi di esecuzione principali: 1) Elaborazione BATCH, leggendo il file batch riga per riga, definendo le finestre di sessione storiche via Session Engine o modulo legacy, compilando il payload e interrogando le API; 2) Chat Interattiva, connettendo un terminale reale (TTY) ed eseguendo un ciclo continuo di lettura e invio di token in streaming o sincrono fino al segnale di fine trasmissione (Ctrl+D); 3) Esecuzione Standard di Singolo Prompt, gestendo le sessioni di storico, compilando il JSON di payload ed eseguendo la chiamata in streaming (call_api_streaming) o sincrona standard (perform_request_once) con relativo accodamento transazionale dei messaggi sul file NDJSON storico della sessione."
+    }
+  ]
+}
