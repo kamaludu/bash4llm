@@ -1,0 +1,237 @@
+{
+  "metadata": {
+    "script_name": "groqbash",
+    "total_parts": 5
+  },
+  "macro_sections": [
+    {
+      "section_name": "CORE_SETUP",
+      "variables": [
+        {
+          "var": "JSON_INPUT",
+          "init": "\"${JSON_INPUT:-}\""
+        },
+        {
+          "var": "TEMPLATE",
+          "init": "\"${TEMPLATE:-}\""
+        },
+        {
+          "var": "BATCH_FILE",
+          "init": "\"${BATCH_FILE:-}\""
+        },
+        {
+          "var": "CHAT_MODE",
+          "init": "\"${CHAT_MODE:-0}\""
+        },
+        {
+          "var": "SET_DEFAULT_MODEL",
+          "init": "\"${SET_DEFAULT_MODEL:-}\""
+        },
+        {
+          "var": "LIST_MODELS",
+          "init": "\"${LIST_MODELS:-0}\""
+        },
+        {
+          "var": "LIST_PROVIDERS",
+          "init": "\"${LIST_PROVIDERS:-0}\""
+        },
+        {
+          "var": "FORCE_SAVE_MODE",
+          "init": "\"${FORCE_SAVE_MODE:-}\""
+        },
+        {
+          "var": "OUT_PATH",
+          "init": "\"${OUT_PATH:-}\""
+        },
+        {
+          "var": "DRY_RUN",
+          "init": "\"${DRY_RUN:-0}\""
+        },
+        {
+          "var": "STREAM_MODE",
+          "init": "\"${STREAM_MODE:-0}\""
+        },
+        {
+          "var": "QUIET",
+          "init": "\"${QUIET:-0}\""
+        },
+        {
+          "var": "INSTALL_EXTRAS",
+          "init": "\"${INSTALL_EXTRAS:-0}\""
+        },
+        {
+          "var": "DEBUG",
+          "init": "\"${DEBUG:-0}\""
+        },
+        {
+          "var": "PROVIDER_CLI",
+          "init": "\"${PROVIDER_CLI:-}\""
+        },
+        {
+          "var": "PROVIDER_INTERACTIVE",
+          "init": "\"${PROVIDER_INTERACTIVE:-0}\""
+        },
+        {
+          "var": "SHOW_CONFIG",
+          "init": "\"${SHOW_CONFIG:-0}\""
+        },
+        {
+          "var": "DIAGNOSTICS",
+          "init": "\"${DIAGNOSTICS:-0}\""
+        },
+        {
+          "var": "FILE_INPUTS",
+          "init": "()"
+        },
+        {
+          "var": "ARGS",
+          "init": "()"
+        },
+        {
+          "var": "OUTPUT_MODE",
+          "init": "\"${OUTPUT_MODE:-text}\""
+        },
+        {
+          "var": "MODEL_CLI_SET",
+          "init": "\"${MODEL_CLI_SET:-0}\""
+        },
+        {
+          "var": "INSTALL_EXTRAS_SRC",
+          "init": "\"\""
+        },
+        {
+          "var": "BOOTSTRAP_ONLY",
+          "init": "\"${BOOTSTRAP_ONLY:-0}\""
+        },
+        {
+          "var": "SE_ENGINE_PATH",
+          "init": "\"${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh\""
+        },
+        {
+          "var": "SE_AVAILABLE",
+          "init": "0"
+        },
+        {
+          "var": "_supported_providers_arr",
+          "init": "()"
+        }
+      ],
+      "functions": [
+        {
+          "fn": "call_provider",
+          "body": "call_provider() {\n  local fn=\"$1\" shift_args=(\"${@:2}\")\n  if type \"$fn\" >/dev/null 2>&1; then\n    \"$fn\" \"${shift_args[@]}\"\n    return $?\n  fi\n  return 127\n}"
+        },
+        {
+          "fn": "refresh_models_dispatch",
+          "body": "refresh_models_dispatch() {\n  local destfile=\"${1:-${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}}\"\n  local fn=\"refresh_models_${PROVIDER}\"\n  local rc=0\n  if ! type \"$fn\" >/dev/null 2>&1; then\n    log_error \"MODELREFRESH\" \"Provider '$PROVIDER' does not implement $fn().\"\n    return 127\n  fi\n  if \"$fn\" \"$destfile\" 2>/dev/null; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      log_info \"MODELREFRESH\" \"Models refreshed for provider $PROVIDER -> $destfile\"\n    fi\n    return 0\n  fi\n  rc=$?\n  if \"$fn\" 2>/dev/null; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      log_info \"MODELREFRESH\" \"Models refreshed for provider $PROVIDER (no explicit dest)\"\n    fi\n    return 0\n  fi\n  rc=$?\n  log_error \"MODELREFRESH\" \"refresh_models for provider $PROVIDER failed (rc $rc).\"\n  return \"$rc\"\n}"
+        },
+        {
+          "fn": "validate_model_dispatch",
+          "body": "validate_model_dispatch() {\n  local model=\"$1\"\n  local fn=\"validate_model_${PROVIDER}\"\n  if type \"$fn\" >/dev/null 2>&1; then\n    \"$fn\" \"$model\"\n    return $?\n  fi\n  if [ -z \"${VALIDATE_MODEL_DISPATCH_WARNED:-}\" ]; then\n    log_warn \"MODEL\" \"provider '${PROVIDER}' does not implement ${fn}; falling back to permissive validation.\"\n    VALIDATE_MODEL_DISPATCH_WARNED=1\n  fi\n  return 0\n}"
+        },
+        {
+          "fn": "resolve_model",
+          "body": "resolve_model() {\n  ALLOWED_MODELS=\"${ALLOWED_MODELS:-}\"\n  if [ -n \"${MODEL:-}\" ] && [ \"${MODEL_CLI_SET:-0}\" -ne 1 ]; then\n    model_cfg=\"$(canonical_model_file \"${PROVIDER:-groq}\")\"\n    if [ ! -s \"$model_cfg\" ]; then\n      log_warn \"MODEL\" \"MODEL is set in environment but not passed with -m/--set-default; use -m for per-run override or --set-default to persist.\"\n    fi\n  fi\n  FINAL_MODEL=\"\"\n  if [ \"${MODEL_CLI_SET:-0}\" -eq 1 ] && [ -n \"${MODEL:-}\" ]; then\n    FINAL_MODEL=\"$MODEL\"\n    return 0\n  fi\n  if [ -n \"${PROVIDER_CLI:-}\" ]; then\n    active_provider=\"${PROVIDER_CLI}\"\n  elif [ -f \"$(canonical_provider_file)\" ] && [ -s \"$(canonical_provider_file)\" ]; then\n    active_provider=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n    active_provider=\"$(printf '%s' \"$active_provider\" | awk '{$1=$1;print}')\"\n    [ -z \"$active_provider\" ] && active_provider=\"${PROVIDER:-groq}\"\n  else\n    active_provider=\"${PROVIDER:-groq}\"\n  fi\n  if [ -n \"${PROVIDER_CLI:-}\" ]; then\n    active_provider=\"${PROVIDER_CLI}\"\n  elif [ -f \"$(canonical_provider_file)\" ] && [ -s \"$(canonical_provider_file)\" ]; then\n    active_provider=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n    active_provider=\"$(printf '%s' \"$active_provider\" | awk '{$1=$1;print}')\"\n    [ -z \"$active_provider\" ] && active_provider=\"${PROVIDER:-groq}\"\n  else\n    active_provider=\"${PROVIDER:-groq}\"\n  fi\n  MODEL_PROVIDER_CFG=\"$(canonical_model_file \"${active_provider}\")\"\n  if [ -z \"$(canonical_config_dir)\" ] || [ \"$(canonical_config_dir)\" = \"/\" ]; then\n    log_error \"SEC\" \"refusing to read provider-specific model file: invalid canonical config dir: $(canonical_config_dir)\"\n  else\n    if [ -s \"$MODEL_PROVIDER_CFG\" ]; then\n      candidate=\"$(sed -n '1p' \"$MODEL_PROVIDER_CFG\" 2>/dev/null || true)\"\n      candidate=\"$(printf '%s' \"$candidate\" | awk '{$1=$1;print}')\"\n      norm=\"$(printf '%s' \"$candidate\" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')\"\n      if [ -n \"$norm\" ] && is_supported_model \"$norm\"; then\n        if validate_model_core \"$norm\" >/dev/null 2>&1 && validate_model_dispatch \"$norm\" >/dev/null 2>&1; then\n          FINAL_MODEL=\"$norm\"\n          return 0\n        fi\n      fi\n    fi\n  fi\n  candidate=\"$(auto_select_model_dispatch 2>/dev/null || true)\"\n  if [ -n \"$candidate\" ]; then\n    norm=\"$(printf '%s' \"$candidate\" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')\"\n    if is_supported_model \"$norm\"; then\n      if validate_model_core \"$norm\" >/dev/null 2>&1 && validate_model_dispatch \"$norm\" >/dev/null 2>&1; then\n        FINAL_MODEL=\"$norm\"\n        return 0\n      fi\n    fi\n  fi\n  if [ -f \"${MODELS_FILE:-}\" ] && [ -s \"${MODELS_FILE:-}\" ]; then\n    cnt=0\n    while IFS= read -r m || [ -n \"$m\" ]; do\n      [ -z \"$m\" ] && continue\n      cnt=$((cnt+1))\n      norm=\"$(printf '%s' \"$m\" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')\"\n      if is_supported_model \"$norm\"; then\n        if validate_model_core \"$norm\" >/dev/null 2>&1 && validate_model_dispatch \"$norm\" >/dev/null 2>&1; then\n          FINAL_MODEL=\"$norm\"\n          return 0\n        fi\n      fi\n      [ \"$cnt\" -ge \"$MAX_MODELS\" ] && break\n    done < \"$MODELS_FILE\"\n  fi\n  if [ -f \"${GROQBASH_CONFIG_DIR%/}/config\" ]; then\n    cfg_model=\"$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,\"\"); print; exit}' \"${GROQBASH_CONFIG_DIR%/}/config\" 2>/dev/null || true)\"\n    cfg_model=\"$(printf '%s' \"$cfg_model\" | awk '{$1=$1;print}')\"\n    norm=\"$(printf '%s' \"$cfg_model\" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')\"\n    if [ -n \"$norm\" ] && is_supported_model \"$norm\"; then\n      if validate_model_core \"$norm\" >/dev/null 2>&1 && validate_model_dispatch \"$norm\" >/dev/null 2>&1; then\n        FINAL_MODEL=\"$norm\"\n        return 0\n      fi\n    fi\n  fi\n  if [ -n \"${ALLOWED_MODELS:-}\" ]; then\n    cnt=0\n    while IFS= read -r m || [ -n \"$m\" ]; do\n      [ -z \"$m\" ] && continue\n      cnt=$((cnt+1))\n      norm=\"$(printf '%s' \"$m\" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')\"\n      if is_supported_model \"$norm\"; then\n        if validate_model_core \"$norm\" >/dev/null 2>&1 && validate_model_dispatch \"$norm\" >/dev/null 2>&1; then\n          FINAL_MODEL=\"$norm\"\n          return 0\n        fi\n      fi\n      [ \"$cnt\" -ge \"$MAX_MODELS\" ] && break\n    done <<EOF\n$(printf '%s\\n' \"$ALLOWED_MODELS\")\nEOF\n  fi\n  FINAL_MODEL=\"\"\n  return 1\n}"
+        },
+        {
+          "fn": "build_payload_from_vars",
+          "body": "build_payload_from_vars() {\n  ensure_run_tmpdir\n  local fn=\"buildpayload_${PROVIDER}\"\n  if call_provider \"$fn\"; then\n    return 0\n  else\n    rc=$?\n    if [ \"$rc\" -eq 127 ]; then\n      log_error \"PROVIDER\" \"Provider '$PROVIDER' does not provide $fn().\"\n      exit \"$GROQBASHERRAPI\"\n    else\n      return \"$rc\"\n    fi\n  fi\n}"
+        },
+        {
+          "fn": "call_api_once",
+          "body": "call_api_once() {\n  if [ \"${DRY_RUN:-0}\" -eq 1 ]; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      show_payload_head \"$PAYLOAD\" 200 || true\n      log_info \"DRYRUN\" \"DRY-RUN: skipping provider HTTP call\"\n    fi\n    return 0\n  fi\n  local fn=\"call_api_${PROVIDER}\"\n  if call_provider \"$fn\"; then\n    return 0\n  else\n    rc=$?\n    if [ \"$rc\" -eq 127 ]; then\n      log_error \"PROVIDER\" \"Provider '$PROVIDER' does not provide $fn().\"\n      exit \"$GROQBASHERRAPI\"\n    else\n      return \"$rc\"\n    fi\n  fi\n}"
+        },
+        {
+          "fn": "call_api_streaming",
+          "body": "call_api_streaming() {\n  if [ \"${DRY_RUN:-0}\" -eq 1 ]; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      show_payload_head \"$PAYLOAD\" 200 || true\n      log_info \"DRYRUN\" \"DRY-RUN: skipping provider streaming HTTP call\"\n    fi\n    return 0\n  fi\n  local fn=\"call_api_streaming_${PROVIDER}\"\n  if call_provider \"$fn\"; then\n    return 0\n  else\n    rc=$?\n    if [ \"$rc\" -eq 127 ]; then\n      log_error \"PROVIDER\" \"Provider '$PROVIDER' does not provide $fn().\"\n      exit \"$GROQBASHERRAPI\"\n    else\n      return \"$rc\"\n    fi\n  fi\n}"
+        },
+        {
+          "fn": "extract_api_error",
+          "body": "extract_api_error() {\n  [ ! -s \"${RESP:-}\" ] && return 0\n  if jq -e . \"$RESP\" >/dev/null 2>&1; then\n    jq -r '([.error?.message//empty]+[.choices[]?|(.message?.content//.delta?.content//empty)])|map(select(length>0))|.[0]//empty' \"$RESP\" 2>/dev/null | head -n1 || true\n  else\n    awk 'NF{print; exit}' \"$RESP\" 2>/dev/null || true\n  fi\n}"
+        },
+        {
+          "fn": "detect_empty_edge_case",
+          "body": "detect_empty_edge_case() {\n  local resp=\"${RESP:-}\"\n  GROQBASH_EDGE_EMPTY=0\n  GROQBASH_EDGE_REQ_ID=\"\"\n  GROQBASH_EDGE_FINISH_REASON=\"\"\n  GROQBASH_EDGE_COMPLETION_TOKENS=0\n  local tmp_copy\n  tmp_copy=\"$(_tmpf file \"${RUN_TMPDIR:-$GROQBASH_TMPDIR}\" resp_copy 2>/dev/null)\" || return 1\n  cp -f \"$resp\" \"$tmp_copy\" 2>/dev/null || return 1\n  resp=\"$tmp_copy\"\n  if [ -z \"${resp:-}\" ] || [ ! -s \"$resp\" ]; then\n    GROQBASH_EDGE_EMPTY=1\n    return 0\n  fi\n  if ! is_valid_json_file \"$resp\"; then\n    GROQBASH_EDGE_EMPTY=1\n    return 0\n  fi\n  if jq -e 'has(\"diagnostic\") and .diagnostic==true' \"$resp\" >/dev/null 2>&1; then\n    GROQBASH_EDGE_EMPTY=1\n    return 0\n  fi\n  local content finish_reason completion_tokens req_id\n  content=\"$(jq -r '.choices[0]?.message?.content // .choices[0]?.delta?.content // \"\"' \"$resp\" 2>/dev/null || echo \"\")\"\n  finish_reason=\"$(jq -r '.choices[0]?.finish_reason // \"\"' \"$resp\" 2>/dev/null || echo \"\")\"\n  completion_tokens=\"$(jq -r '.usage?.completion_tokens // 0' \"$resp\" 2>/dev/null || echo 0)\"\n  req_id=\"$(jq -r '.x_groq?.id // .id // empty' \"$resp\" 2>/dev/null || echo \"\")\"\n  GROQBASH_EDGE_REQ_ID=\"${req_id:-}\"\n  GROQBASH_EDGE_FINISH_REASON=\"${finish_reason:-}\"\n  GROQBASH_EDGE_COMPLETION_TOKENS=\"${completion_tokens:-0}\"\n  if [ -z \"$content\" ] && [ \"$finish_reason\" = \"stop\" ] && [ \"${completion_tokens:-0}\" -le 1 ]; then\n    GROQBASH_EDGE_EMPTY=1\n  else\n    GROQBASH_EDGE_EMPTY=0\n  fi\n  return 0\n}"
+        },
+        {
+          "fn": "finalize_and_output",
+          "body": "finalize_and_output() {\n  local mode=\"$1\" text=\"$2\"\n  local resp_file tmp_copy\n  resp_file=\"${RESP:-}\"\n  if [ -n \"$resp_file\" ]; then\n    tmp_copy=\"$(_tmpf file \"${RUN_TMPDIR:-$GROQBASH_TMPDIR}\" resp_copy 2>/dev/null)\" || return \"$GROQBASHERRTMP\"\n    cp -f \"$resp_file\" \"$tmp_copy\" 2>/dev/null || return \"$GROQBASHERRTMP\"\n    resp_file=\"$tmp_copy\"\n  fi\n  if { [ \"$mode\" = \"json\" ] || [ \"$mode\" = \"pretty\" ]; } && [ ! -s \"$resp_file\" ]; then\n    log_error \"RESP\" \"response file missing or empty: ${RESP:-<unset>}\"\n    return \"$GROQBASHERRTMP\"\n  fi\n  case \"$mode\" in\n    json) cat \"$resp_file\" ;;\n    pretty) if jq -e . \"$resp_file\" >/dev/null 2>&1; then jq . \"$resp_file\"; else cat \"$resp_file\"; fi ;;\n    raw) printf '%s' \"$text\" ;;\n    text) printf '%s\\n' \"$text\" ;;\n    *) printf '%s\\n' \"$text\" ;;\n  esac\n  if [ \"$mode\" = \"text\" ] || [ \"$mode\" = \"raw\" ]; then\n    [ \"${FORCE_SAVE_MODE:-}\" = \"nosave\" ] && return 0\n    local len do_save=0 dest_dir dest_path\n    len=\"$(printf '%s' \"$text\" | wc -c | tr -d ' ')\"\n    if [ \"${FORCE_SAVE_MODE:-}\" = \"save\" ]; then\n      do_save=1\n    else\n      if [ \"$len\" -gt \"$THRESHOLD\" ]; then\n        do_save=1\n      fi\n    fi\n    if [ \"$do_save\" -eq 1 ]; then\n      if [ -n \"$OUT_PATH\" ]; then\n        if [ -d \"$OUT_PATH\" ]; then\n          dest_dir=\"$OUT_PATH\"\n          dest_path=\"$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt\"\n        else\n          dest_path=\"$OUT_PATH\"\n          dest_dir=\"$(dirname \"$dest_path\")\"\n        fi\n      else\n        dest_dir=\"$GROQBASH_HISTORY_DIR\"\n        dest_path=\"$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt\"\n      fi\n      mkdir -p \"$dest_dir\" 2>/dev/null || true\n      if [ -z \"${RUN_TMPDIR:-}\" ] || [ ! -d \"$RUN_TMPDIR\" ]; then\n        log_error \"TMPFAIL\" \"RUN_TMPDIR not available for saving output.\"\n        return \"$GROQBASHERRTMP\"\n      fi\n      save_to_history \"$text\" || log_warn \"HISTORY\" \"Failed to save output to history.\"\n    fi\n  fi\n}"
+        },
+        {
+          "fn": "perform_request_once",
+          "body": "perform_request_once() {\n  local attempt=1 rc\n  while [ \"$attempt\" -le \"$MAX_RETRIES\" ]; do\n    if call_api_once; then\n      if [ \"${DRY_RUN:-0}\" -eq 1 ]; then\n        if [ \"${DEBUG:-0}\" -eq 1 ]; then\n          log_info \"DRYRUN\" \"DRY-RUN: request simulated successfully. Payload: $PAYLOAD\"\n        fi\n        return 0\n      fi\n      GROQBASH_EDGE_EMPTY=0\n      GROQBASH_EDGE_REQ_ID=\"\"\n      GROQBASH_EDGE_FINISH_REASON=\"\"\n      GROQBASH_EDGE_COMPLETION_TOKENS=0\n      local text api_err\n      text=\"$(extract_text_from_resp || true)\"\n      detect_empty_edge_case || true\n      ui_last=\"${GROQBASH_CONFIG_DIR%/}/ui_state/last_api.json\"\n      if [ ! -f \"$ui_last\" ] || [ \"$ui_last\" -ot \"${RESP:-/dev/null}\" ]; then\n        finish_reason=\"$(jq -r '.choices[0]?.finish_reason // empty' \"$RESP\" 2>/dev/null || echo \"\")\"\n        req_id=\"$(jq -r '.x_groq?.id // .id // empty' \"$RESP\" 2>/dev/null || echo \"\")\"\n        edgecase=0\n        if [ \"${GROQBASH_EDGE_EMPTY:-0}\" -eq 1 ]; then edgecase=1; fi\n        now_ts=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\n        http_code_fallback=0\n        if [ -s \"$RESP\" ]; then http_code_fallback=200; fi\n        api_json=\"$(jq -c -n --argjson http \"$http_code_fallback\" --arg fr \"${finish_reason:-}\" --argjson edge \"$edgecase\" --arg id \"${req_id:-}\" --arg ts \"$now_ts\" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')\"\n        ui_state_write \"last_api.json\" \"$api_json\" || { if [ \"${DEBUG:-0}\" -eq 1 ]; then log_warn \"UI_STATE\" \"failed to write fallback last_api.json\"; fi; }\n      fi\n      if [ -z \"$text\" ] && [ \"$OUTPUT_MODE\" != \"json\" ] && [ \"$OUTPUT_MODE\" != \"pretty\" ]; then\n        api_err=\"$(extract_api_error || true)\"\n        if [ -n \"$api_err\" ]; then\n          log_error \"API\" \"API error: $api_err\"\n          return \"$GROQBASHERRAPI\"\n        else\n          if [ \"${GROQBASH_EDGE_EMPTY:-0}\" -eq 1 ]; then\n            printf '%s\\n' \"API edge case detected: empty completion\" \"  req_id: ${GROQBASH_EDGE_REQ_ID:-<none>}\" \"  finish_reason: ${GROQBASH_EDGE_FINISH_REASON:-<none>}\" \"  completion_tokens: ${GROQBASH_EDGE_COMPLETION_TOKENS:-0}\" >&2\n            log_error \"API\" \"empty completion returned by provider (see previous diagnostic lines).\"\n            return \"$GROQBASHERRAPI\"\n          fi\n          log_error \"API\" \"no textual content extracted from response.\"\n          if [ \"${DEBUG:-0}\" -eq 1 ]; then\n            head -n 50 \"${RESP:-/dev/null}\" >&2 || true\n          fi\n          return \"$GROQBASHERRAPI\"\n        fi\n      fi\n      if [ \"$OUTPUT_MODE\" = \"text\" ] || [ \"$OUTPUT_MODE\" = \"raw\" ]; then\n        printf '\\n'\n      fi\n      finalize_and_output \"$OUTPUT_MODE\" \"$text\"\n      return 0\n    else\n      rc=$?\n      if [ \"$rc\" -eq \"$GROQBASHERRCURL_FAILED\" ]; then\n        printf 'groqbash: WARN: Network error (curl). Retrying...\\n' >&2\n      elif [ \"$rc\" -eq \"$GROQBASHERRAPI\" ]; then\n        printf 'groqbash: ERROR: HTTP/API error. Not retrying.\\n' >&2\n        if [ \"${DEBUG:-0}\" -eq 1 ]; then\n          head -n 50 \"${RESP:-/dev/null}\" >&2 || true\n        fi\n        return \"$GROQBASHERRAPI\"\n      else\n        printf 'groqbash: WARN: Unknown error (code %s). Retrying...\\n' \"$rc\" >&2\n      fi\n    fi\n    attempt=$((attempt + 1)); sleep $((attempt * 1))\n  done\n  log_error \"REQUEST\" \"request failed after $MAX_RETRIES attempts.\"\n  return \"$GROQBASHERRAPI\"\n}"
+        },
+        {
+          "fn": "collect_input_from_files",
+          "body": "collect_input_from_files() {\n  local out=\"\" first=1 f\n  for f in \"$@\"; do\n    if file_readable \"$f\"; then\n      [ \"$first\" -eq 0 ] && out=\"${out}\"$'\\n\\n'\"--- FILE: ${f} ---\"$'\\n\\n'\n      out=\"${out}$(cat \"$f\")\"; first=0\n    else log_error \"FILE\" \"file not readable: $f\"; exit \"$GROQBASHERRTMP\"; fi\n  done\n  printf '%s' \"$out\"\n}"
+        },
+        {
+          "fn": "expand_args_to_content",
+          "body": "expand_args_to_content() {\n  local out=\"\" first=1 a\n  for a in \"${ARGS[@]}\"; do\n    if file_readable \"$a\"; then\n      [ \"$first\" -eq 0 ] && out=\"${out}\"$'\\n\\n'\"--- FILE: ${a} ---\"$'\\n\\n'\n      out=\"${out}$(cat \"$a\")\"; first=0\n    else\n      [ \"$first\" -eq 0 ] && out=\"${out}\"$'\\n\\n'\n      out=\"${out}${a}\"; first=0\n    fi\n  done\n  printf '%s' \"$out\"\n}"
+        },
+        {
+          "fn": "file_readable",
+          "body": "file_readable() { [ -r \"$1\" ] && [ -f \"$1\" ]; }"
+        },
+        {
+          "fn": "trim",
+          "body": "trim() { printf '%s' \"$1\" | awk '{$1=$1; print}'; }"
+        },
+        {
+          "fn": "is_number",
+          "body": "is_number() { printf '%s\\n' \"$1\" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }"
+        },
+        {
+          "fn": "is_supported_model",
+          "body": "is_supported_model() {\n  local m=\"${1:-}\" l\n  [ -n \"$m\" ] || return 1\n  l=\"$(printf '%s' \"$m\" | tr '[:upper:]' '[:lower:]')\"\n  case \"$l\" in\n    *image*|*imagen*|*img*|*vision*|*vqa*|*vit*|*clip*|*render*|*generate-image*|*generate_image* ) return 1 ;;\n    *audio*|*speech*|*tts*|*wav2vec*|*whisper*|*native-audio* ) return 1 ;;\n    *embed*|*embedding*|*vector* ) return 1 ;;\n    *multimodal*|*vision_audio*|*vision-audio* ) return 1 ;;\n    *) return 0 ;;\n  esac\n}"
+        },
+        {
+          "fn": "list_models_cli",
+          "body": "list_models_cli() {\n  if [ ! -s \"${MODELS_FILE:-}\" ]; then\n    printf 'No models available locally. Consider --refresh-models.\\n' >&2\n    return 1\n  fi\n  local count=0 model norm\n  while IFS= read -r model || [ -n \"$model\" ]; do\n    [ -z \"$model\" ] && continue\n    count=$((count+1))\n    norm=\"$(printf '%s' \"$model\" | sed -e 's/^models\\///' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')\"\n    if is_supported_model \"$norm\"; then\n      printf '%s\\n' \"$norm\"\n    else\n      printf '%s\\t[NOT SUPPORTED: Requires non-text input]\\n' \"$norm\"\n    fi\n    if [ \"$count\" -ge \"$MAX_MODELS\" ]; then break; fi\n  done < \"$MODELS_FILE\"\n  return 0\n}"
+        },
+        {
+          "fn": "validate_model_core",
+          "body": "validate_model_core() {\n  local model=\"$1\" norm_model file_match\n  [ -n \"$model\" ] || { printf 'groqbash: ERROR: validate_model_core: model required\\n' >&2; return 1; }\n  norm_model=\"$(printf '%s' \"$model\" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')\"\n  norm_model=\"$(printf '%s' \"$norm_model\" | sed -e 's#^groq[:/ -]*##')\"\n  if [ -f \"${MODELS_FILE:-}\" ] && [ -s \"${MODELS_FILE:-}\" ]; then\n    if grep -x -F -q \"$model\" \"$MODELS_FILE\" 2>/dev/null; then\n      file_match=1\n    else\n      if awk '{g=$0; sub(/^models\\//,\"\",g); sub(/^groq[:\\/ -]*/,\"\",g); print g}' \"$MODELS_FILE\" | grep -x -F -q \"$norm_model\" 2>/dev/null; then\n        file_match=1\n      else\n        file_match=0\n      fi\n    fi\n    if [ \"$file_match\" -ne 1 ]; then\n      printf 'groqbash: ERROR: The model \"%s\" is not present in %s\\n' \"$model\" \"$MODELS_FILE\" >&2\n      return 1\n    fi\n  fi\n  if ! is_supported_model \"$norm_model\"; then\n    printf 'groqbash: ERROR: The \"%s\" model is not supported by GroqBash (requires non-text input).\\n' \"$model\" >&2\n    return 1\n  fi\n  return 0\n}"
+        },
+        {
+          "fn": "load_local_config",
+          "body": "load_local_config() {\n  local cfg=\"${GROQBASH_CONFIG_DIR%/}/config\" key val\n  [ -f \"$cfg\" ] || return 0\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    case \"$line\" in ''|\\#*) continue ;; esac\n    key=\"${line%%=*}\"\n    val=\"${line#*=}\"\n    case \"$key\" in\n      MODEL) [ -n \"$val\" ] && MODEL=\"$val\" ;;\n      TEMPERATURE|TURE) [ -n \"$val\" ] && TURE=\"$val\" ;;\n      MAX_TOKENS) [ -n \"$val\" ] && MAX_TOKENS=\"$val\" ;;\n      FORMAT) [ -n \"$val\" ] && OUTPUT_MODE=\"$val\" ;;\n      THRESHOLD) [ -n \"$val\" ] && THRESHOLD=\"$val\" ;;\n    esac\n  done < \"$cfg\"\n}"
+        },
+        {
+          "fn": "load_whitelist",
+          "body": "load_whitelist() {\n  ALLOWED_MODELS=\"\"\n  if [ -f \"$MODELS_FILE\" ] && [ -s \"$MODELS_FILE\" ]; then\n    ALLOWED_MODELS=\"$(awk '{ gsub(/^models\\//,\"\"); sub(/^[[:space:]]+/,\"\"); sub(/[[:space:]]+$/,\"\"); if (NF) print }' \"$MODELS_FILE\" 2>/dev/null || true)\"\n  fi\n}"
+        },
+        {
+          "fn": "is_tty_out",
+          "body": "is_tty_out() {\n  [ -t 1 ]\n}"
+        }
+      ],
+      "blocks": [
+        {
+          "blk": "parse_cli_arguments",
+          "body": "while [ $# -gt 0 ]; do\n  case \"$1\" in\n    --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;\n    --list-models) LIST_MODELS=1; shift ;;\n    --list-providers) LIST_PROVIDERS=1; shift ;;\n    --list-providers-raw) LIST_PROVIDERS_RAW=1; shift ;;\n    --list-models-raw) LIST_MODELS_RAW=1; shift ;;\n    --set-default) SET_DEFAULT_MODEL=\"${2:-}\"; shift 2 ;;\n    -m|--model) MODEL=\"${2:-}\"; MODEL_CLI_SET=1; shift 2 ;;\n    -f) FILE_INPUTS+=(\"${2:-}\"); shift 2 ;;\n    --json-input) JSON_INPUT=\"${2:-}\"; shift 2 ;;\n    --template) TEMPLATE=\"${2:-}\"; shift 2 ;;\n    --batch) BATCH_FILE=\"${2:-}\"; shift 2 ;;\n    --session)\n      SESSION_ID=\"${2:-}\"\n      if [ -n \"$SESSION_ID\" ] && [ \"${SESSION_ID:0:1}\" != \"-\" ]; then\n        shift 2\n      else\n        log_error \"ARGS\" \"--session requires an argument\"\n        exit \"$GROQBASHERRTMP\"\n      fi\n      ;;\n    --session-window)\n      SESSION_WINDOW=\"${2:-}\"\n      if [ -n \"$SESSION_WINDOW\" ] && [ \"${SESSION_WINDOW:0:1}\" != \"-\" ]; then\n        shift 2\n      else\n        SESSION_WINDOW=\"10\"\n        shift\n      fi\n      ;;\n    --system) SYSTEM_PROMPT=\"${2:-}\"; shift 2 ;;\n    --ture) TURE=\"${2:-}\"; shift 2 ;;\n    --temperature) TURE=\"${2:-}\"; shift 2 ;;\n    --max) MAX_TOKENS=\"${2:-}\"; shift 2 ;;\n    --debug) DEBUG=1; shift ;;\n    --save) FORCE_SAVE_MODE=\"save\"; shift ;;\n    --nosave) FORCE_SAVE_MODE=\"nosave\"; shift ;;\n    --out) OUT_PATH=\"${2:-}\"; shift 2 ;;\n    --threshold) THRESHOLD=\"${2:-}\"; shift 2 ;;\n    --dry-run) DRY_RUN=1; shift ;;\n    --quiet) QUIET=1; shift ;;\n    --stream) STREAM_MODE=1; shift ;;\n    --no-stream) STREAM_MODE=0; shift ;;\n    --json) OUTPUT_MODE=\"json\"; shift ;;\n    --pretty) OUTPUT_MODE=\"pretty\"; shift ;;\n    --text) OUTPUT_MODE=\"text\"; shift ;;\n    --raw) OUTPUT_MODE=\"raw\"; shift ;;\n    --chat) CHAT_MODE=1; shift ;;\n    --show-config) SHOW_CONFIG=1; shift ;;\n    --diagnostics) DIAGNOSTICS=1; shift ;;\n    --provider)\n      if [ \"${2:-}\" ] && [ \"${2:0:1}\" != \"-\" ]; then PROVIDER_CLI=\"${2:-}\"; shift 2; else PROVIDER_INTERACTIVE=1; shift; fi\n      ;;\n    --install-extras)\n      INSTALL_EXTRAS=1\n      if [ $# -gt 1 ] && [ \"${2:0:1}\" != \"-\" ]; then\n        INSTALL_EXTRAS_SRC=\"${2:-}\"\n        shift\n      fi\n      shift\n      ;;\n    --install-extras=*)\n      INSTALL_EXTRAS=1\n      INSTALL_EXTRAS_SRC=\"${1#--install-extras=}\"\n      shift\n      ;;\n    --version) printf '%s %s (%s)\\n' \"$SCRIPT_NAME\" \"$SCRIPT_VERSION\" \"$SCRIPT_DATE\"; exit 0 ;;\n    -h|--help)\n      help_file=\"$GROQBASH_EXTRAS_DIR/docs/help.txt\"\n      if [ -f \"$help_file\" ]; then cat \"$help_file\"; else printf 'Help file not found: %s\\n' \"$help_file\" >&2; fi\n      exit 0 ;;\n    --bootstrap-only)\n      BOOTSTRAP_ONLY=1\n      shift\n      ;;\n    --)\n      shift; break ;;\n    -*)\n      printf 'Unknown option: %s\\n' \"$1\" >&2; exit \"$GROQBASHERRTMP\" ;;\n    *)\n      ARGS+=(\"$1\"); shift ;;\n  esac\ndone"
+        },
+        {
+          "blk": "source_session_engine",
+          "body": "if [ -f \"$SE_ENGINE_PATH\" ] && [ \"${GROQBASH_SESSION_ENGINE:-on}\" != \"off\" ]; then\n  if bash -n \"$SE_ENGINE_PATH\" 2>/dev/null; then\n    . \"$SE_ENGINE_PATH\"\n    if type session_engine_build_window >/dev/null 2>&1 && type session_engine_append >/dev/null 2>&1 && type session_engine_enabled >/dev/null 2>&1; then\n      if session_engine_enabled 2>/dev/null; then\n        SE_AVAILABLE=1\n        if [ \"${DEBUG:-0}\" -eq 1 ]; then\n          log_info \"SESSION\" \"Session Engine loaded and available\"\n        fi\n      else\n        SE_AVAILABLE=0\n        if [ \"${DEBUG:-0}\" -eq 1 ]; then\n          log_info \"SESSION\" \"Session Engine loaded but disabled by module\"\n        fi\n      fi\n    else\n      SE_AVAILABLE=0\n      log_warn \"SESSION\" \"Session Engine module missing required functions; falling back to legacy\"\n    fi\n  else\n    SE_AVAILABLE=0\n    log_warn \"SESSION\" \"Session Engine module has syntax errors; falling back to legacy\"\n  fi\nelse\n  SE_AVAILABLE=0\n  if [ -n \"${SESSION_ID:-}\" ]; then\n    if [ \"${DEBUG:-0}\" -eq 1 ]; then\n      log_info \"SESSION\" \"Session Engine not available; using legacy session helpers\"\n    fi\n  fi\nfi"
+        },
+        {
+          "blk": "verify_api_calls_and_rebuild_providers",
+          "body": ": \"${ALLOW_API_CALLS:=1}\"\nif [ -n \"${GROQ_API_KEY:-}\" ] && ! is_truthy \"${ALLOW_API_CALLS:-0}\" && ! is_truthy \"${DRY_RUN:-0}\"; then\n  log_error \"APIKEY\" \"GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1.\"\n  exit \"$GROQBASHERRTMP\"\nfi\n_supported_providers_arr+=(\"groq\")\nextras_prov_dir=\"${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}\"\nif [ -z \"${extras_prov_dir:-}\" ]; then\n  extras_prov_dir=\"$(canonical_config_dir)/providers\"\nfi\nif [ -d \"$extras_prov_dir\" ]; then\n  for pf in \"$extras_prov_dir\"/*.sh; do\n    [ -e \"$pf\" ] || continue\n    base=\"$(basename \"$pf\" .sh)\"\n    [ \"$base\" = \"groq\" ] && continue\n    _supported_providers_arr+=(\"$base\")\n  done\nfi\nSUPPORTED_PROVIDERS=\"$(printf '%s ' \"${_supported_providers_arr[@]}\" | sed 's/ $//')\""
+        },
+        {
+          "blk": "raw_listings",
+          "body": "if [ \"${LIST_PROVIDERS_RAW:-0}\" -eq 1 ]; then\n  if [ \"${#_supported_providers_arr[@]}\" -eq 0 ]; then\n    exit 1\n  fi\n  for p in \"${_supported_providers_arr[@]}\"; do\n    printf '%s\\n' \"$p\"\n  done\n  exit 0\nfi\nif [ \"${LIST_MODELS_RAW:-0}\" -eq 1 ]; then\n  if [ -n \"${PROVIDER_CLI:-}\" ]; then\n    PROVIDER=\"${PROVIDER_CLI}\"\n  fi\n  if [ -f \"${MODELS_FILE:-}\" ] && [ -s \"${MODELS_FILE:-}\" ]; then\n    awk '{g=$0;sub(/^models\\//,\"\");sub(/^groq[:\\/ -]*/,\"\");sub(/^[[:space:]]+/,\"\");sub(/[[:space:]]+$/,\"\");if (g != \"\") print g}' \"$MODELS_FILE\"\n    exit 0\n  else\n    exit 2\n  fi\nfi"
+        },
+        {
+          "blk": "immediate_actions",
+          "body": "if [ \"$LIST_PROVIDERS\" -eq 1 ]; then\n  printf 'Available providers:\\n' >&2\n  printf '  - groq (embedded)\\n' >&2\n  extras_prov_dir=\"$PROVIDERS_DIR\"\n  if [ -d \"$extras_prov_dir\" ]; then\n    for f in \"$extras_prov_dir\"/*.sh; do\n      [ -e \"$f\" ] || continue\n      base=\"$(basename \"$f\" .sh)\"\n      [ \"$base\" = \"groq\" ] && continue\n      printf '  - %s\\n' \"$base\" >&2\n    done\n  fi\n  exit 0\nfi\nif [ \"$LIST_MODELS\" -eq 1 ]; then\n  if list_models_cli; then exit 0; else exit \"$GROQBASHERRTMP\"; fi\nfi\nif [ -n \"$SET_DEFAULT_MODEL\" ]; then\n  if ! mkdir -p \"$(canonical_config_dir)\" 2>/dev/null; then\n    log_error \"SEC\" \"cannot create config dir: $(canonical_config_dir)\"; exit \"$GROQBASHERRTMP\"\n  fi\n  if [ -L \"$(canonical_config_dir)\" ]; then log_error \"SEC\" \"config dir is a symlink.\"; exit \"$GROQBASHERRTMP\"; fi\n  if [ -n \"${PROVIDER_CLI:-}\" ]; then\n    target_provider=\"${PROVIDER_CLI}\"\n  elif [ -f \"$(canonical_provider_file)\" ] && [ -s \"$(canonical_provider_file)\" ]; then\n    target_provider=\"$(sed -n '1p' \"$(canonical_provider_file)\" 2>/dev/null || true)\"\n    target_provider=\"$(printf '%s' \"$target_provider\" | awk '{$1=$1;print}')\"\n    [ -z \"$target_provider\" ] && target_provider=\"${PROVIDER:-groq}\"\n  else\n    target_provider=\"${PROVIDER:-groq}\"\n  fi\n  target_model_file=\"$(canonical_model_file \"${target_provider}\")\"\n  printf '%s\\n' \"$SET_DEFAULT_MODEL\" | atomic_write \"$target_model_file\" 10 \\\n    || { log_error \"SEC\" \"cannot write default model for provider ${target_provider} to ${target_model_file}.\"; exit \"$GROQBASHERRTMP\"; }\n  chmod 600 \"$target_model_file\" 2>/dev/null || true\n  printf 'groqbash: INFO: Default model for provider %s set to: %s\\n' \"$target_provider\" \"$SET_DEFAULT_MODEL\" >&2\n  exit 0\nfi\nif [ \"$STREAM_MODE\" -eq 1 ] && { [ \"$OUTPUT_MODE\" = \"json\" ] || [ \"$OUTPUT_MODE\" = \"pretty\" ]; }; then\n  log_error \"ARGS\" \"--stream incompatible with --json/--pretty.\"\n  exit \"$GROQBASHERRTMP\"\nfi\nif [ \"${INSTALL_EXTRAS:-0}\" -eq 1 ]; then\n  if [ -n \"${INSTALL_EXTRAS_SRC:-}\" ]; then\n    SRC_BASE=\"${INSTALL_EXTRAS_SRC%/}\"\n  else\n    SRC_BASE=\"${SCRIPTDIR%/}/extras\"\n  fi\n  if [ -d \"${SRC_BASE}\" ]; then\n    SRC_BASE=\"$(cd \"${SRC_BASE}\" >/dev/null 2>&1 && pwd || printf '%s' \"${SRC_BASE}\")\"\n  else\n    SRC_BASE=\"${SRC_BASE%/}\"\n  fi\n  DEST_BASE=\"$(cd \"${GROQBASH_EXTRAS_DIR%/}\" >/dev/null 2>&1 && pwd || printf '%s' \"${GROQBASH_EXTRAS_DIR%/}\")\"\n  DEST_PROV=\"${PROVIDERS_DIR:-${DEST_BASE:-$(canonical_config_dir)}/providers}\"\n  if [ -d \"${LEGACY_EXTRAS_DIR}\" ]; then\n    LEGACY_REAL=\"$(cd \"${LEGACY_EXTRAS_DIR}\" >/dev/null 2>&1 && pwd || printf '%s' \"${LEGACY_EXTRAS_DIR}\")\"\n    if [ \"${LEGACY_REAL}\" != \"${DEST_BASE}\" ] && [ \"${LEGACY_REAL}\" != \"${SRC_BASE}\" ]; then\n      printf 'groqbash: ERROR: legacy extras directory found at %s\\n' \"${LEGACY_REAL}\" >&2\n      printf 'groqbash: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\\n' \"${DEST_BASE}\" >&2\n      exit \"$GROQBASHERRTMP\"\n    fi\n  fi\n  if [ ! -d \"${SRC_BASE}\" ]; then\n    log_error \"EXTRAS\" \"missing extras source directory: ${SRC_BASE}\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n  if [ -L \"${SRC_BASE}\" ]; then\n    log_error \"EXTRAS\" \"extras source is a symlink: ${SRC_BASE}\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n  if [ \"${SRC_BASE}\" = \"${DEST_BASE}\" ]; then\n    log_error \"EXTRAS\" \"extras source and destination are identical (${SRC_BASE}); nothing to do.\"\n    exit \"$GROQBASHERRTMP\"\n  fi\n  case \"${SRC_BASE}/\" in\n    \"${DEST_BASE}/\"*) log_error \"EXTRAS\" \"extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy.\"; exit \"$GROQBASHERRTMP\" ;;\n  esac\n  mkdir -p \"${DEST_BASE}\" \"${DEST_PROV}\" 2>/dev/null || { log_error \"EXTRAS\" \"cannot create extras dest: ${DEST_BASE}\"; exit \"$GROQBASHERRTMP\"; }\n  chmod 700 \"${DEST_BASE}\" 2>/dev/null || true\n  files_to_copy=()\n  while IFS= read -r -d '' f; do files_to_copy+=(\"$f\"); done < <(find \"${SRC_BASE}\" -type f -print0 2>/dev/null || true)\n  if [ \"${#files_to_copy[@]}\" -eq 0 ]; then\n    printf 'No extras files found under %s; nothing to install.\\n' \"${SRC_BASE}\" >&2\n    exit 0\n  fi\n  current_user=\"$(id -un 2>/dev/null || printf '')\"\n  for src in \"${files_to_copy[@]}\"; do\n    [ -f \"$src\" ] || { log_error \"EXTRAS\" \"extras entry not a regular file: $src\"; exit \"$GROQBASHERRTMP\"; }\n    [ -L \"$src\" ] && { log_error \"EXTRAS\" \"extras file is symlink: $src\"; exit \"$GROQBASHERRTMP\"; }\n    src_owner=\"$(_get_owner \"$src\")\"\n    [ -n \"$src_owner\" ] && [ \"$src_owner\" != \"$current_user\" ] && { log_error \"EXTRAS\" \"wrong owner: $src\"; exit \"$GROQBASHERRTMP\"; }\n  done\n  installed_providers=()\n  installed_libs=()\n  installed_docs=()\n  installed_security=()\n  installed_tests=()\n  for src in \"${files_to_copy[@]}\"; do\n    rel=\"${src#${SRC_BASE}/}\"\n    dest=\"${DEST_BASE}/${rel}\"\n    destdir=\"$(dirname \"$dest\")\"\n    mkdir -p \"$destdir\" 2>/dev/null || { log_error \"EXTRAS\" \"cannot create dest dir: $destdir\"; exit \"$GROQBASHERRTMP\"; }\n    if type atomic_write >/dev/null 2>&1; then\n      cat \"$src\" | atomic_write \"$dest\" 10 || { log_error \"EXTRAS\" \"Error copying $src\"; exit \"$GROQBASHERRTMP\"; }\n    else\n      cp -f \"$src\" \"$dest\" 2>/dev/null || { log_error \"EXTRAS\" \"Error copying $src\"; exit \"$GROQBASHERRTMP\"; }\n      chmod 600 \"$dest\" 2>/dev/null || true\n    fi\n    chmod 600 \"$dest\" 2>/dev/null || true\n    case \"$rel\" in\n      providers/*.sh) installed_providers+=(\"$(basename \"$rel\" .sh)\") ;;\n      lib/*) installed_libs+=(\"$(basename \"$rel\")\") ;;\n      docs/*) installed_docs+=(\"$(basename \"$rel\")\") ;;\n      security/*) installed_security+=(\"$(basename \"$rel\")\") ;;\n      test/*) installed_tests+=(\"$(basename \"$rel\")\") ;;\n    esac\n  done\n  printf 'groqbash: INFO: Extras installed under %s\\n' \"${DEST_BASE}\" >&2\n  if [ \"${#installed_providers[@]}\" -gt 0 ]; then\n    printf 'Installed providers: %s\\n' \"$(printf '%s ' \"${installed_providers[@]}\")\" >&2\n  fi\n  if [ \"${#installed_libs[@]}\" -gt 0 ]; then\n    printf 'Installed libs: %s\\n' \"$(printf '%s ' \"${installed_libs[@]}\")\" >&2\n  fi\n  if [ \"${#installed_docs[@]}\" -gt 0 ]; then\n    printf 'Installed docs: %s\\n' \"$(printf '%s ' \"${installed_docs[@]}\")\" >&2\n  fi\n  if [ \"${#installed_security[@]}\" -gt 0 ]; then\n    printf 'Installed security scripts: %s\\n' \"$(printf '%s ' \"${installed_security[@]}\")\" >&2\n  fi\n  if [ \"${#installed_tests[@]}\" -gt 0 ]; then\n    printf 'Installed test scripts: %s\\n' \"$(printf '%s ' \"${installed_tests[@]}\")\" >&2\n  fi\n  for p in \"${installed_providers[@]}\"; do\n    PROVIDER_MODULE_PATH=\"${DEST_PROV}/${p}.sh\"\n    if ! bash -n \"$PROVIDER_MODULE_PATH\" 2>/dev/null; then\n      printf 'groqbash: WARN: provider %s has syntax errors; check %s\\n' \"$p\" \"$PROVIDER_MODULE_PATH\" >&2\n    fi\n  done\n  exit 0\nfi"
+        },
+        {
+          "blk": "normalize_boolean_flags",
+          "body": "for flag in DRY_RUN STREAM_MODE INSTALL_EXTRAS PROVIDER_INTERACTIVE LIST_MODELS LIST_PROVIDERS CHAT_MODE QUIET SHOW_CONFIG DIAGNOSTICS; do\n  if is_truthy \"${!flag:-0}\"; then printf -v \"$flag\" 1; else printf -v \"$flag\" 0; fi\ndone"
+        }
+      ]
+    }
+  ]
+}
