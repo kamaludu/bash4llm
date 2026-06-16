@@ -1,601 +1,644 @@
-# =====================================
-# GroqBash — Manuale Esteso
-# File: extras/docs/manual-it.txt
-# Versione: 2.0.0
-# Copyright (C) 2026 Cristian Evangelisti
-# Licenza: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
-# =====================================
-
-Sommario 
---------
-1. Titolo, versione, licenza
-2. Requisiti
-3. Uso rapido (USAGE)
-4. Opzioni CLI (complete, raggruppate)
-5. Modalità operative
-6. Azioni immediate
-7. Variabili d'ambiente (usate nello script)
-8. Sessioni (comportamento completo)
-9. Cronologia e rotazione
-10. Streaming (dettagli tecnici)
-11. Retry e gestione dei casi limite API
-12. Vincoli di sicurezza e filesystem
-13. Esempi
-14. Codici di uscita
-15. Risoluzione problemi
-16. Ambiguità trovate nel codice
-17. Note finali per auditor/integratori
-
-1. Titolo, versione, licenza
-----------------------------
-GroqBash — Wrapper Bash-first per l'API Groq
-File: extras/docs/help.txt
-Versione: 2.0.0 (coerente con lo script fornito)
-Licenza: GPL-3.0-or-later
-
-2. Requisiti
-------------
-**Comandi obbligatori in PATH (nessun fallback):**
-- bash
-- jq
-- curl
-- mktemp
-- stat
-- flock
-- base64
-- find
-- awk
-- sed
-- grep
-- xargs
-- tr
-- sort
-- head
-- wc
-- tee
-- date
-- mv
-- chmod
-- cp
-- rm
-- printf
-
-**Piattaforme supportate (come implementato nello script):**
-- GNU/Linux
-- macOS (strumenti GNU via Homebrew accettabili)
-- BusyBox/Alpine (solo POSIX)
-- WSL, Cygwin (Windows)
-- Termux (Android)
-
-3. Uso rapido (USAGE)
----------------------
-Esempi di invocazione supportati dallo script:
-- groqbash "prompt text"
-- bash groqbash "prompt text"
-- echo "prompt" | groqbash
-- groqbash -f input.txt
-- groqbash --batch batchfile.txt
-
-4. Opzioni CLI (complete, raggruppate)
---------------------------------------
-Questa sezione elenca **tutte** le opzioni e i flag riconosciuti dal parser dello script. Le descrizioni si basano strettamente sul comportamento implementato nello script.
-
-Nota: l'ordine e la forma sono esattamente quelli gestiti dal parser.
-
- Sezione: Input e prompt
-- -f <file>  
-  Aggiunge un file come input. Può essere ripetuto per più file. I file vengono letti e concatenati con separatori quando appropriato.
-
-- --json-input <file>  
-  Usa un payload JSON grezzo da un file. Se il valore è -, lo script legge JSON da stdin e lo usa come JSON_INPUT. Quando fornito, CONTENT è ignorato e viene usato il payload JSON direttamente.
-
-- --template <name>  
-  Usa un template presente in groqbash.d/templates. Il template deve contenere il placeholder {{CONTENT}} che verrà sostituito con il contenuto assemblato.
-
-- --batch <file>  
-  Modalità batch: processa ogni riga non vuota del file come prompt separato.
-
-- ARGS posizionali (array ARGS)  
-  Argomenti posizionali raccolti come elementi del prompt o espansi in CONTENT.
-
- Sezione: Parametri modello e generazione
-- -m, --model <name>  
-  Seleziona il modello (ha la precedenza più alta).
-
-- --system <text>  
-  Imposta il system prompt (campo specifico del provider).
-
-- --ture <n>  
-  Alias per la temperatura (nota: lo script usa internamente la variabile TURE). Deve essere numerico.
-
-- --temperature <n>  
-  Alias per la temperatura; mappa alla stessa variabile interna (TURE/TEMPERATURE). Deve essere numerico.
-
-- --max <n>  
-  Imposta il numero massimo di token (MAX_TOKENS). Deve essere numerico.
-
- Sezione: Sessioni e conversazioni
-- --session <session_id>  
-  Abilita le sessioni con l'ID fornito. Lo script valida l'ID con session_validate_id (alfanumerico, punti, underscore, trattini, lunghezza massima). Quando attiva, lo script prepara BUILD_MESSAGES_FILE e usa session_read_window / session_append per leggere e scrivere la cronologia della sessione.
-
-- --session-window [<N>]  
-  Specifica la finestra (numero di messaggi) da leggere per la sessione. Se fornito senza argomento, il parser imposta SESSION_WINDOW a 10. Se fornito con un valore, usa il valore numerico. Lo script raccomanda valori <= 20 e emette un avviso se > 20.
-
- Sezione: Output e formattazione
-- --json  
-  Output JSON grezzo (stampa il file RESP così com'è).
-
-- --pretty  
-  Pretty-print del JSON (se RESP è JSON).
-
-- --text  
-  Output testuale (predefinito).
-
-- --raw  
-  Testo grezzo senza newline aggiuntivo.
-
-- --out <path>  
-  Salva l'output in un file o directory. Se OUT_PATH è una directory, lo script crea un file con timestamp all'interno.
-
-- --threshold <bytes>  
-  Soglia in byte per il salvataggio automatico nella cronologia (THRESHOLD). Default 1000.
-
-- --save  
-  Forza il salvataggio dell'output testuale nella cronologia (FORCE_SAVE_MODE="save").
-
-- --nosave  
-  Disabilita il salvataggio dell'output (FORCE_SAVE_MODE="nosave").
-
- Sezione: Streaming e modalità di chiamata
-- --stream  
-  Abilita lo streaming SSE. Richiede che il provider implementi call_api_streaming_<prov>(). Incompatibile con --json e --pretty (lo script verifica e rifiuta la combinazione).
-
-- --no-stream  
-  Disabilita esplicitamente lo streaming.
-
- Sezione: Modalità interattive e provider
-- --provider <name>  
-  Se fornito con un argomento (non vuoto e non iniziando con -), imposta PROVIDER_CLI e persiste la scelta in groqbash.d/config/provider. Se l'argomento è la stringa letterale list, il codice entra nel flusso di selezione interattiva (vedi comportamento del parser).
-
-- --provider (senza argomento)  
-  Entra nella modalità di selezione provider interattiva (richiede TTY). Imposta PROVIDER_INTERACTIVE.
-
-- --install-extras [<src>]  
-  Installa extras dalla sorgente specificata (opzionale) nella directory runtime GROQBASH_EXTRAS_DIR. Supporta anche la forma --install-extras=<src>. Valida la sorgente, le proprietà e copia i file in modo atomico.
-
- Sezione: Azioni di gestione modelli e liste
-- --refresh-models  
-  Avvia l'aggiornamento dei modelli del provider (invoca refresh_models_<prov>() dopo che il provider è caricato e la chiave API è assicurata).
-
-- --refresh-model  
-  Alias accettato dallo script per --refresh-models.
-
-- --list-models  
-  Stampa la whitelist locale dei modelli in forma leggibile.
-
-- --list-models-raw  
-  Stampa la lista dei modelli in forma macchina (un modello normalizzato per riga).
-
-- --list-providers  
-  Stampa i provider disponibili (embedded + installati) in forma leggibile.
-
-- --list-providers-raw  
-  Stampa i provider disponibili in forma macchina (un provider per riga).
-
-- --set-default <model>  
-  Persiste il modello di default per il provider attivo in groqbash.d/config/model.<provider>.
-
- Sezione: Debug, logging e comportamento
-- --dry-run  
-  Stampa l'anteprima del payload e salta la chiamata HTTP (DRY_RUN). Mostra l'head del payload.
-
-- --quiet  
-  Minimizza i messaggi runtime.
-
-- --debug  
-  Abilita logging verboso e preserva RUN_TMPDIR (non lo pulisce alla fine).
-
-- --show-config  
-  Stampa la configurazione attiva (provider, modello, percorsi, flag) ed esce.
-
-- --diagnostics  
-  Esegue controlli diagnostici (permessi, provider, modello) ed esce.
-
-- --version  
-  Stampa nome script, versione e data ed esce.
-
-- -h, --help  
-  Mostra questa guida ed esce.
-
- Sezione: Fine opzioni
-- --  
-  Marcatore fine opzioni: tutto ciò che segue è trattato come argomenti posizionali (ARGS).
-
-5. Modalità operative
----------------------
-Questa sezione descrive le modalità operative implementate nello script e il comportamento associato.
-
- Modalità: Richiesta singola (default)
-- Flusso: assemblare il contenuto (ARGS, FILE_INPUTS, STDIN, TEMPLATE, JSON_INPUT), selezionare il modello, costruire il payload tramite il provider, invocare l'API (streaming o non-streaming), estrarre la risposta, finalizzare l'output, salvare condizionalmente nella cronologia, opzionalmente appendere alla sessione.
-- Uso tipico: groqbash "prompt".
-
- Modalità: Streaming (--stream)
-- Requisito: il provider deve implementare call_api_streaming_<prov>().
-- Comportamento: lo streaming è eseguito via curl HTTP/1.1; lo stream grezzo è salvato in RUN_TMPDIR/resp.raw. Lo script estrae le righe che iniziano con data: e filtra i JSON validi, ricostruisce resp.chunks.json e resp.text.txt, e scrive RESP in modo atomico.
-- Incompatibilità: --stream non può essere usato con --json o --pretty.
-
- Modalità: Batch (--batch <file>)
-- Per ogni riga non vuota nel file:
-  - Imposta CONTENT sulla riga.
-  - Se --session è attivo, prepara BUILD_MESSAGES_FILE per la sessione.
-  - Costruisce il payload e invoca il provider.
-  - Stampa il separatore ---- tra gli elementi.
-- Non interrompe l'intero batch su un singolo errore (il codice continua con errori loggati).
-
- Modalità: Chat interattiva (--chat)
-- Richiede TTY.
-- Loop interattivo: legge le righe dell'utente, costruisce CONTENT, prepara BUILD_MESSAGES_FILE se --session è attivo, invoca il provider (streaming o non-streaming), stampa la risposta.
-- Lo stato della conversazione è mantenuto in memoria per la sessione corrente; session_append può essere usato per persistere.
-
- Modalità: Selezione provider interattiva (--provider senza argomento)
-- Richiede TTY.
-- Mostra una lista dei provider disponibili (embedded + installati), permette la selezione numerica, persiste la scelta in groqbash.d/config/provider.
-
-6. Azioni immediate (immediate actions)
----------------------------------------
-Le seguenti opzioni eseguono un'azione e terminano il processo (non continuano con il flusso principale):
-
-- --list-providers
-- --list-models
-- --list-providers-raw
-- --list-models-raw
-- --set-default <model>
-- --install-extras [<src>] (esegue la copia ed esce)
-- --refresh-models / --refresh-model
-- --show-config
-- --diagnostics
-- --version
-- -h, --help
-
-7. Variabili d'ambiente (solo quelle effettivamente usate)
--------------------------------------------------------
-Elenco esaustivo delle variabili d'ambiente lette o usate dallo script (possono essere impostate dall'utente per influenzare il comportamento). Le descrizioni si basano strettamente sull'uso nel codice.
-
-- GROQ_API_KEY  
-  Chiave API canonica per il provider groq. Se non impostata, ensure_api_key_for_provider può richiedere interattivamente la chiave.
-
-- PROVIDER_API_ENV_<prov>  
-  Se impostata, il valore è il nome di una variabile d'ambiente che contiene la chiave API per il provider <prov>.
-
-- GROQBASH_DIR / GROQBASH_ROOT  
-  Directory radice runtime. Se non impostata, GROQBASH_DIR è derivata da SCRIPTDIR/groqbash.d.
-
-- GROQBASH_CONFIG_DIR  
-  Directory di configurazione (default: $GROQBASH_DIR/config).
-
-- GROQBASH_MODELS_DIR  
-  Directory dei modelli (default: $GROQBASH_DIR/models).
-
-- GROQBASH_TEMPLATES_DIR  
-  Directory dei template (default: $GROQBASH_DIR/templates).
-
-- GROQBASH_HISTORY_DIR  
-  Directory della cronologia (default: $GROQBASH_DIR/history).
-
-- GROQBASH_TMPDIR  
-  Directory tmp base (default: $GROQBASH_DIR/tmp).
-
-- GROQBASH_EXTRAS_DIR  
-  Directory runtime per gli extras (default: $GROQBASH_DIR/extras).
-
-- PROVIDERS_DIR  
-  Directory runtime per i moduli provider (default: $GROQBASH_EXTRAS_DIR/providers).
-
-- MODELS_FILE  
-  Percorso del file dei modelli (default: $GROQBASH_MODELS_DIR/models.txt).
-
-- MAX_MODELS  
-  Numero massimo di modelli da considerare (default definito nello script).
-
-- MODELS_LOCK, HISTORY_LOCK, TMP_LOCK  
-  Percorsi per i file di lock (possono essere sovrascritti via env).
-
-- GROQBASH_LOCK_TIMEOUT_TMP, GROQBASH_LOCK_TIMEOUT_MODELS, GROQBASH_LOCK_TIMEOUT_HISTORY  
-  Timeout dei lock (secondi).
-
-- GROQBASH_DEBUG  
-  Se impostato a 1 abilita il debug logging.
-
-- GROQBASH_LOG  
-  Percorso opzionale per appendere log strutturati.
-
-- GROQBASH_ROTATE_HISTORY  
-  Se 1 abilita rotate_history.
-
-- GROQBASH_HISTORY_MAX_FILES, GROQBASH_HISTORY_MAX_BYTES, GROQBASH_HISTORY_KEEP_DAYS  
-  Parametri per rotate_history.
-
-- LAST_CHECK_LINES  
-  Default per session_read_window (50 se non impostato).
-
-- RUN_TMPDIR, PAYLOAD, RESP, ERRF  
-  Variabili runtime per tmp, payload, response e file di errore; possono essere sovrascritte.
-
-- JSON_INPUT  
-  Se impostato indica un file o - per leggere JSON da stdin.
-
-- SESSION_ID, SESSION_WINDOW  
-  Variabili per il sessioning.
-
-- TEMPLATE, BATCH_FILE, CHAT_MODE, SET_DEFAULT_MODEL, REFRESH_MODELS, LIST_MODELS, FORCE_SAVE_MODE, OUT_PATH, SYSTEM_PROMPT  
-  Variabili di configurazione/flag che possono essere impostate via env o CLI.
-
-- TURE, TEMPERATURE  
-  Variabili per la temperatura (il codice usa TURE come nome interno).
-
-- MAX_TOKENS  
-  Numero massimo di token.
-
-- MODEL  
-  Nome del modello attivo.
-
-- AUTO_POLICY  
-  Politica di auto-selezione (valore predefinito nel codice).
-
-- DEBUG, QUIET, DRY_RUN, STREAM_MODE, OUTPUT_MODE, THRESHOLD, MAX_RETRIES  
-  Flag e parametri operativi.
-
-- SUPPORTED_PROVIDERS, PROVIDER, PROVIDER_CLI, PROVIDER_INTERACTIVE, INSTALL_EXTRAS, ALLOWED_MODELS  
-  Variabili relative a provider ed extras.
-
-- CURL_BASE_OPTS  
-  Array di opzioni base per curl (definite nello script).
-
-- ALLOW_API_CALLS  
-  Default 1; se GROQ_API_KEY è impostata ma ALLOW_API_CALLS != 1 e DRY_RUN != 1, lo script fallisce.
-
-- PROVIDER_FILE, PROVIDER_MODULE_PATH, PROVIDER_DIR, PROVIDER_MODULE_LOADED  
-  Percorsi e variabili di stato per i moduli provider.
-
-- PROVIDER_API_ENV_groq  
-  Variabile specifica provider per groq (se presente).
-
-- SCRIPTDIR, LEGACY_EXTRAS_DIR  
-  Variabili derivate dallo script.
-
-- GROQBASH_SOURCE_ONLY  
-  **Guard per sourcing/testing**: se impostato a 1 prima di sorgere lo script, lo script carica solo le definizioni di funzione e non esegue il runtime principale. Questo è pensato per testing e sviluppo.
-
-8. Sessioni (comportamento completo)
-------------------------------------
-Lo script implementa un sistema di sessioni basato su file NDJSON e un meccanismo di windowing.
-
-**Validazione ID sessione**
-- session_validate_id verifica che l'ID non sia vuoto e corrisponda al pattern [A-Za-z0-9._-]{1,128}.
-
-**Lettura della finestra di messaggi**
-- session_read_window <session_id> <N> <out_file>:
-  - Legge il NDJSON di sessione (groqbash.d/history/sessions/<session_id>.ndjson) e produce un file JSON con {"messages":[...]} contenente gli ultimi N elementi.
-  - Usa un lock sul file di sessione per evitare letture parziali durante append concorrenti.
-  - Normalizza i ruoli (user, assistant, system) e costruisce messaggi compatibili con il provider.
-  - Se il file non esiste o è illeggibile, può produrre un file vuoto o fallire silenziosamente (il CORE ha fallback).
-
-**Append idempotente**
-- session_append <session_id> <role> <content> <meta_json>:
-  - Crea un record NDJSON compatto con timestamp, role, content e meta.
-  - Usa marker basati su message_id per idempotenza cross-processo; se message_id è presente e il marker esiste, l'append viene saltato.
-  - Acquisisce un lock esclusivo sul file di sessione per append atomico.
-  - Salva il file con permessi restrittivi (600).
-  - Evita di appendere messaggi utente vuoti.
-
-**BUILD_MESSAGES_FILE**
-- Quando --session è attivo, il CORE prepara BUILD_MESSAGES_FILE in RUN_TMPDIR ed lo esporta per il provider; il provider può usare questo file per costruire il payload.
-
-**Fallback**
-- Se session_read_window non produce messaggi, il CORE tenta di ricostruire la finestra con tail sul NDJSON o, come ultima risorsa, crea un payload contenente solo il messaggio utente corrente.
-
----  
-ADDED: Session cache (integrazione)
-- **Posizione:** inserito dopo "Sessions (full behavior)".
-- **Scopo:** cache di payload/risposte derivate dalla sessione per evitare ricalcoli.
-- **API:** session_cache_key(sid, params), session_cache_get(key), session_cache_set(key, ttl, payload), session_cache_invalidate(key|sid).
-- **Formato:** file di cache memorizzati sotto ${GROQBASH_CONFIG_DIR%/}/session_cache con permessi 600. Formato file: **prima riga = expiry_epoch (intero)**; righe successive = payload JSON.
-- **Comportamento:** session_cache_get rimuove i file scaduti e ritorna 0 su hit; session_cache_set scrive in modo atomico; session_cache_invalidate rimuove le voci quando sessione o provider cambiano. TTL applicato tramite expiry_epoch.
-
-9. Cronologia e rotazione
-----------------------
-**Salvataggio output**
-- save_to_history salva output testuali in groqbash.d/history con nomi come YYYYMMDD-HHMMSS-groq-output-$$.txt.
-- Usa scritture atomiche e lock per garantire consistenza.
-- Rispetta FORCE_SAVE_MODE (save/nosave) e THRESHOLD per decidere il salvataggio automatico.
-
-**Rotate history**
-- rotate_history (abilitato con GROQBASH_ROTATE_HISTORY=1) applica:
-  - Rimozione dei file più vecchi di GROQBASH_HISTORY_KEEP_DAYS.
-  - Riduzione dello spazio totale a GROQBASH_HISTORY_MAX_BYTES.
-  - Riduzione del numero di file a GROQBASH_HISTORY_MAX_FILES.
-- Tutte le operazioni sono eseguite sotto HISTORY_LOCK.
-
----  
-ADDED: Manifest multimodale (integrazione)
-- **Posizione:** inserito dopo "History and rotation".
-- **Scopo:** gestire manifest multimodali e parti staged in modo sicuro.
-- **Primitive:** manifest_create(manifest_path), manifest_add_part(manifest, srcfile, metadata), manifest_read(manifest_path).
-- **Staging:** le parti sono staged tramite stage_b64(srcfile, dst.b64); ogni parte è memorizzata come artefatto .b64.
-- **manifest.b64:** una rappresentazione base64 del manifest è scritta accanto al manifest JSON per trasporto/archiviazione.
-- **Atomicità:** gli aggiornamenti del manifest avvengono sotto un lock del manifest usando lock_exec e atomic_write; i fallimenti devono lasciare lo stato consistente.
-
-10. Streaming (dettagli tecnici)
--------------------------------
-**Requisiti**
-- Il provider deve implementare call_api_streaming_<prov>().
-
-**Comportamento**
-- Lo streaming è eseguito con curl --http1.1 (lo script usa l'opzione --http1.1).
-- Lo stream grezzo è salvato in RUN_TMPDIR/resp.raw.
-- Lo script estrae le righe che iniziano con data: e rimuove il prefisso.
-- Filtra solo le righe che sono JSON validi; salva le righe JSON valide in resp.valid.jsons.
-- Costruisce resp.chunks.json come array di chunk JSON e resp.text.txt come concatenazione dei frammenti di testo estratti.
-- Scrive RESP in modo atomico usando resp.chunks.json se sono presenti chunk validi; altrimenti, se RESP_RAW è JSON valido, lo copia in RESP.
-- Durante lo streaming, i frammenti di testo estratti sono emessi su stdout man mano che arrivano.
-
-**File temporanei**
-- resp.raw, resp.lines, resp.valid.jsons, resp.chunks.json, resp.text.txt sono creati in RUN_TMPDIR e rimossi quando appropriato (a meno che la modalità debug non li preservi).
-
-11. Retry e gestione dei casi limite API
-----------------------------------
-**Retry**
-- perform_request_once implementa un loop di retry fino a MAX_RETRIES (default 3).
-- Dopo ogni fallimento, il codice valuta il tipo di errore:
-  - Se errore di rete (GROQBASHERRCURL_FAILED), ritenta con backoff incrementale.
-  - Se errore API (GROQBASHERRAPI), non ritenta e fallisce immediatamente.
-
-**Estrazione risposta**
-- extract_text_from_resp tenta di estrarre testo da RESP usando:
-  - .choices[] | .message?.content // .delta?.content e unisce con newline.
-  - Fallback: se RESP non è JSON, fa cat del file.
-
-**Caso limite: "empty completion"**
-- detect_empty_edge_case analizza RESP per rilevare il pattern di completamento vuoto:
-  - Controlla choices[0].message.content o choices[0].delta.content (vuoto),
-  - choices[0].finish_reason == "stop",
-  - usage.completion_tokens == 1 (o equivalente).
-- Se rilevato, imposta variabili diagnostiche globali:
-  - GROQBASH_EDGE_EMPTY=1
-  - GROQBASH_EDGE_REQ_ID (se presente in RESP come .x_groq?.id o .id)
-  - GROQBASH_EDGE_FINISH_REASON
-  - GROQBASH_EDGE_COMPLETION_TOKENS
-- Il CORE emette **un unico log strutturato** con questi dettagli dentro perform_request_once e poi fallisce con il codice di uscita API appropriato.
-
-12. Vincoli di sicurezza e filesystem
-----------------------------------
-**Principi generali**
-- Tutto lo stato runtime è sotto GROQBASH_DIR (default: SCRIPTDIR/groqbash.d).
-- Nessun uso del /tmp di sistema: tutti i tmp sono sotto GROQBASH_TMPDIR e RUN_TMPDIR.
-- Umask e permessi restrittivi: directory 700, file 600 dove applicabile.
-- Nessun eval e nessuna esecuzione di contenuto generato dal modello.
-- Tutte le scritture critiche (models, manifest, history) sono atomiche e protette da lock (flock).
-
-**Moduli provider**
-- Non devono essere symlink.
-- Devono passare bash -n prima di essere sourcati.
-- Proprietà e permessi controllati: non world-writable; preferibilmente di proprietà dell'utente corrente.
-- Il CORE verifica la presenza delle funzioni richieste e rifiuta provider incompleti.
-
-**Extras repository vs runtime**
-- ./extras/ nella root del repo è solo sorgente per --install-extras.
-- A runtime, i percorsi attendibili per extras/providers sono GROQBASH_EXTRAS_DIR e PROVIDERS_DIR sotto GROQBASH_DIR.
-- Lo script previene installazioni che creerebbero copie annidate o userebbero symlink come sorgente.
-
-**Locking**
-- I lock sono collocati vicino alle risorse:
-  - MODELS_LOCK (es. groqbash.d/models/models.lock)
-  - HISTORY_LOCK (es. groqbash.d/history/history.lock)
-  - TMP_LOCK (es. groqbash.d/tmp/tmp.lock)
-- lock_exec usa flock -x -w <timeout> e fallisce con codice 124 su timeout.
-
----  
-ADDED: Network policy (enforce_network_policy)
-- **Posizione:** suggerita inserzione sotto "Security and filesystem constraints".
-- **Scopo:** gate centralizzato unico per tutto l'accesso di rete.
-- **Comportamento:** enforce_network_policy() ritorna successo solo se le chiamate di rete sono permesse. Rispetta DRY_RUN (blocca le chiamate di rete reali), GROQBASH_SKIP_NETWORK (blocco esplicito) e GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET combinato con QUIET (blocca quando la modalità quiet impone nessuna rete). Tutti i punti di chiamata provider **devono** chiamare enforce_network_policy() prima di eseguire curl; quando bloccato, i provider devono produrre un RESP diagnostico e ritornare non-zero. Questa funzione è il luogo canonico per implementare salvaguardie per CI/automation.
-
-13. Esempi
-----------
-Esempi di invocazione (forme esatte riconosciute dal parser):
-
-- Prompt singolo (output testuale):
-  - groqbash "Write a short summary of the following text"
-
-- Da file:
-  - groqbash -f prompt.txt
-
-- Pipe:
-  - echo "Summarize this" | groqbash --model my-text-model
-
-- Streaming (il provider deve supportare streaming):
-  - groqbash --stream -m my-model "Generate code"
-
-- Dry-run (mostra il payload e non chiama l'API):
-  - groqbash --dry-run "Show me the payload"
-
-- Installa extras da sorgente:
-  - groqbash --install-extras /path/to/repo/extras
-  - oppure: groqbash --install-extras=/path/to/repo/extras
-
-- Refresh modelli:
-  - groqbash --refresh-models
-
-- Provider interattivo:
-  - groqbash --provider (richiede TTY)
-
-- Provider via argomento:
-  - groqbash --provider groq
-
-- Provider "list" (trattato come richiesta di selezione interattiva):
-  - groqbash --provider list
-
-- Esempio sessione:
-  - groqbash --session mysession --session-window 20 "Continue conversation"
-
-14. Codici di uscita
---------------------
-Codici di uscita canonici usati dallo script (numeri fissi):
-
-- 10 — GROQBASH_ERR_NO_API_KEY — Mancanza chiave API per il provider (non-interattivo).
-- 11 — GROQBASH_ERR_BAD_MODEL — Nessun modello valido selezionato / modello non valido.
-- 12 — GROQBASH_ERR_CURL_FAILED — Errore di rete / curl.
-- 13 — GROQBASH_ERR_INVALID_JSON — JSON non valido o errore di parsing.
-- 14 — GROQBASH_ERR_NO_PROMPT — Nessun prompt fornito.
-- 15 — GROQBASH_ERR_TMP — Errore tmpdir / file temporaneo.
-- 16 — GROQBASH_ERR_API — Errore HTTP/API dal provider.
-
-15. Risoluzione problemi
--------------------
-- **Lo script esce immediatamente**: verificare che tutti i comandi obbligatori siano in PATH (vedi Requisiti).
-- **Provider non trovato**: installare lo script provider in groqbash.d/extras/providers/<prov>.sh o usare --install-extras.
-- **Chiamate API falliscono in CI**: assicurarsi che la chiave API sia esportata (GROQ_API_KEY o la variabile specificata da PROVIDER_API_ENV_<prov>).
-- **Cronologia non salvata**: controllare GROQBASH_ROTATE_HISTORY, THRESHOLD e i permessi su groqbash.d/history.
-- **Problemi modulo provider**: verificare che il file non sia symlink, passi bash -n e non sia world-writable.
-- **Timeout di lock**: se si ricevono errori di timeout lock, aumentare GROQBASH_LOCK_TIMEOUT_* o investigare processi concorrenti che tengono i lock.
-
-16. Ambiguità trovate nel codice
----------------------------------
-Lo script è la fonte di verità; tuttavia il parser e alcune scelte di naming introducono ambiguità che sono documentate in modo neutrale qui:
-
-1. **Opzione --ture vs --temperature**  
-   - Lo script accetta entrambe le forme. Internamente usa la variabile TURE come nome primario e poi la sincronizza con TEMPERATURE. Questa doppia denominazione esiste nel codice; entrambe le opzioni sono supportate e mappano allo stesso valore.
-
-2. **--json-input con valore -**  
-   - Il codice supporta --json-input - come segnale per leggere JSON da stdin. Questo comportamento è implementato ma richiede attenzione: quando JSON_INPUT è -, lo script cattura stdin in un file temporaneo e lo usa come sorgente JSON.
-
-3. **--session-window senza argomento**  
-   - Il parser permette --session-window senza valore e in quel caso imposta SESSION_WINDOW="10". Questo comportamento è esplicito nel parser e può essere fonte di confusione se l'utente si aspetta che l'opzione richieda sempre un argomento.
-
-4. **--provider list vs --provider senza argomento**  
-   - Se l'utente invoca --provider list (la parola list come argomento), il codice tratta la stringa list come richiesta di selezione interattiva. Inoltre, --provider senza argomento attiva la selezione interattiva. Entrambe le forme portano allo stesso flusso interattivo, ma la presenza della parola list come argomento è un caso speciale gestito dal parser.
-
-5. **Forma --install-extras con e senza argomento**  
-   - Lo script supporta --install-extras <src>, --install-extras=<src> e anche --install-extras senza argomento (in questo caso usa SCRIPTDIR/extras come sorgente). Il comportamento è implementato ma la presenza di più forme dovrebbe essere considerata quando si automatizza l'uso.
-
-Queste ambiguità sono riportate per chiarezza e per guidare l'uso corretto dello script; non sono errori di codice ma scelte di parsing di cui l'utente dovrebbe essere consapevole.
-
-17. Note finali per auditor/integratori
----------------------------------------
-- Lo script è progettato per essere auditabile: tutte le operazioni sensibili (I/O, lock, scritture) sono centralizzate in primitive atomiche e funzioni di utilità.
-- I provider esterni sono caricati via source dopo controlli di sintassi e permessi; il CORE comunica con essi esclusivamente tramite le funzioni di interfaccia minime (buildpayload_<prov>, call_api_<prov>, e opzionali).
-- Per integrazioni non-interattive, assicurarsi che la chiave API corretta sia esportata e impostare ALLOW_API_CALLS se necessario (il codice applica un controllo se GROQ_API_KEY è presente ma ALLOW_API_CALLS non è 1 e DRY_RUN non è 1).
-- Tutto lo stato runtime deve rimanere sotto GROQBASH_DIR (default SCRIPTDIR/groqbash.d).
-
----  
-ADDED: PRECORE_BOOT / PRECORE_RUN (richiamo breve)
-- **Posizione:** suggerita inserzione vicino a "Final notes" o come breve blocco di cross-reference.
-- **Scopo:** indirizzare gli integratori alle primitive di bootstrap e runtime del core.
-- **Sintesi:** PRECORE_BOOT fornisce resolve_script_dir, helper canonical_*, ensure_config_dir, ensure_run_tmpdir (RUN_TMPDIR sotto GROQBASH_TMPDIR, trap di cleanup), rilevamento opzioni base64 e primitive atomiche (atomic_write, b64_atomic_write/read, stage_b64). PRECORE_RUN fornisce helper runtime: rotate_history, save_to_history, primitive di sessione, session cache, helper manifest, _tmpf/make_tmpdir (rifiuto esplicito di /tmp) e lock_exec. Per dettagli di implementazione e invarianti vedere extras/docs/core-notes.sh.
-
---- 
-Fine del manuale esteso.
-# =====================================
-# Fine manual-it.txt
-# =====================================
+================================================================================
+GROQBASH(1)                      GroqBash Manual .it                 GROQBASH(1)
+================================================================================
+
+NOME
+    groqbash - Wrapper Bash-first resiliente e sicuro per l'interrogazione di 
+    provider LLM esterni (v2.0.0)
+
+SINTASSI
+    groqbash [OPZIONI] [PROMPT]
+    groqbash -f FILE [OPZIONI]
+    echo "prompt" | groqbash [OPZIONI]
+    groqbash --batch FILE_BATCH [OPZIONI]
+
+DESCRIZIONE
+    groqbash è un'utilità di riga di comando nativa in ambiente shell progettata 
+    per l'integrazione, l'automazione e l'orchestrazione flessibile delle 
+    interazioni con modelli linguistici di grandi dimensioni (LLM) forniti da 
+    servizi esterni quali Groq, Gemini e HuggingFace.
+
+    Il runtime opera sotto vincoli di esecuzione restrittivi (set -euo pipefail) 
+    per garantire l'interruzione immediata delle pipeline in presenza di comandi 
+    non validi o variabili non inizializzate. L'architettura è interamente 
+    progettata per isolare le operazioni di sistema dall'esecuzione remota, 
+    vietando qualsiasi interpretazione dinamica o esecuzione locale di codice 
+    generato (zero eval policy) ed escludendo l'uso di directory condivise di 
+    sistema come /tmp per mitigare minacce basate su collegamenti simbolici 
+    (symlink attack mitigation).
+
+OPZIONI
+    Le opzioni dello script sono raggruppate per categoria d'uso. I parametri 
+    possono essere passati in ordine arbitrario, ad eccezione del marcatore di 
+    fine opzioni.
+
+  Sezione 1: Gestione dell'Input e del Prompt
+    -f FILE
+        Aggiunge il file specificato come sorgente di contesto per l'elaborazione.
+        Può essere specificato più volte per concatenare in ordine sequenziale 
+        più file di input. I singoli file vengono separati da demarcatori 
+        visivi strutturati per consentire al modello di distinguere nettamente 
+        le sorgenti.
+
+    --json-input FILE
+        Invia un payload strutturato in formato JSON, utile per definire 
+        direttamente un elenco di messaggi personalizzati con ruoli specifici. 
+        Se impostato sul valore '-', lo script devia la lettura dallo standard 
+        input (stdin). L'utilizzo di questa opzione esclude e azzera la 
+        risoluzione della variabile di prompt generica.
+
+    --template NOME
+        Indica il template testuale da applicare al prompt dell'utente, da 
+        prelevare dalla directory dei modelli di template utente. Il file del 
+        template deve contenere il marcatore segnaposto "{{CONTENT}}" che viene 
+        rimpiazzato a runtime con il testo assemblato dell'input dell'utente.
+
+    --batch FILE
+        Attiva la modalità di elaborazione in serie. Lo script analizza il file 
+        indicato ed esegue una chiamata API distinta per ciascuna riga del file, 
+        escludendo le righe vuote e i commenti (righe che iniziano con il 
+        carattere cancelletto). Un errore in un singolo prompt non arresta la 
+        sequenza complessiva del batch.
+
+    PROMPT (Argomenti Posizionali)
+        Tutti gli argomenti posizionali non intercettati da flag specifici sono 
+        trattati come frammenti testuali. Se un argomento corrisponde a un 
+        percorso di file regolare e leggibile sul disco, lo script lo espande 
+        leggendone e incorporandone il contenuto; in caso contrario, lo 
+        interpreta come testo letterale da accodare al prompt principale.
+
+  Sezione 2: Parametri del Modello e Generazione
+    -m, --model MODELLO
+        Specifica il nome del modello LLM da utilizzare per l'interrogazione. 
+        Questa impostazione ha la precedenza assoluta rispetto ai modelli di 
+        default salvati localmente.
+
+    --system TESTO
+        Definisce o sovrascrive il prompt di sistema (System Prompt), deputato a 
+        istruire o condizionare il comportamento, il tono e il contesto 
+        operativo del modello linguistico.
+
+    --ture VALORE, --temperature VALORE
+        Imposta la temperatura di campionamento decimale (compresa solitamente 
+        tra 0.0 e 2.0). Entrambi i flag si collegano e sincronizzano in modo 
+        bidirezionale alla variabile interna "TURE" e alla corrispondente 
+        "TEMPERATURE", uniformandone la risoluzione interna prima dell'invio.
+
+    --max NUMERO
+        Imposta il limite massimo di token generabili nella risposta dal modello 
+        LLM (variabile MAX_TOKENS).
+
+  Sezione 3: Gestione delle Sessioni e Conversazioni
+    --session ID_SESSIONE
+        Abilita la persistenza del contesto di chat multi-turno associando lo 
+        storico a un identificativo alfanumerico univoco. L'ID viene validato 
+        formalmente per escludere iniezioni di percorso (directory traversal) o 
+        caratteri non ammessi. L'ID deve corrispondere alla regex 
+        ^[A-Za-z0-9._-]{1,128}$.
+
+    --session-window [FINESTRA]
+        Specifica il numero massimo di messaggi storici precedenti da recuperare 
+        dal file cronologico della sessione per comporre la finestra di 
+        contesto. Se il flag viene specificato senza argomenti, il valore di 
+        default viene impostato a 10. Per ottimizzare le prestazioni e non 
+        saturare il contesto del modello, si raccomandano valori inferiori o 
+        uguali a 20; impostando valori superiori a 20, il runtime emette un 
+        avviso diagnostico di avvertimento.
+
+  Sezione 4: Output e Formattazione
+    --json
+        Disabilita l'estrazione testuale e visualizza a schermo il payload JSON 
+        di risposta grezzo del provider così come ricevuto dalle API esterne.
+
+    --pretty
+        Esegue la formattazione avanzata strutturata (pretty-print) del JSON di 
+        risposta prima di visualizzarlo sullo standard output.
+
+    --text
+        Seleziona la modalità di visualizzazione standard testuale (default). Lo 
+        script estrae esclusivamente il corpo del messaggio testuale prodotto 
+        dal modello, rimuovendo le strutture di contorno JSON.
+
+    --raw
+        Restituisce il solo testo della risposta escludendo qualsiasi carattere 
+        di a capo (newline) finale aggiuntivo.
+
+    --out PERCORSO
+        Salva la risposta finale nel percorso indicato. Se il percorso punta a 
+        una directory esistente, lo script genera all'interno di essa un file 
+        univoco nominato con un timestamp cronologico; se punta a un file, lo 
+        sovrascrive in modo transazionale e sicuro.
+
+    --threshold NUMERO
+        Imposta la soglia limite, espressa in caratteri testuali (default 1000 
+        caratteri), al di sopra della quale la risposta prodotta dal modello LLM 
+        viene salvata automaticamente e permanentemente nella directory dello 
+        storico delle interazioni.
+
+    --save
+        Forza il salvataggio incondizionato del risultato testuale nella 
+        directory della cronologia storica, ignorando la verifica del limite di 
+        soglia (FORCE_SAVE_MODE="save").
+
+    --nosave
+        Disabilita in modo assoluto l'archiviazione automatica del risultato 
+        nello storico delle interazioni (FORCE_SAVE_MODE="nosave").
+
+  Sezione 5: Flussi di Connessione e Rete
+    --stream
+        Abilita la ricezione dei token di risposta in tempo reale (streaming dei 
+        dati). Richiede che il provider attivo supporti l'interfaccia di 
+        connessione SSE (Server-Sent Events). Questa opzione è mutuamente 
+        esclusiva e incompatibile con i formati strutturati --json e --pretty; 
+        se utilizzate congiuntamente, lo script blocca l'esecuzione.
+
+    --no-stream
+        Inibisce e disattiva in modo esplicito la modalità di streaming dei 
+        token, ripristinando la ricezione sincrona e bloccante dell'intera 
+        risposta.
+
+    --dry-run
+        Simula la transazione senza effettuare reali connessioni di rete. Lo 
+        script compila la struttura del payload JSON finale di richiesta, ne 
+        visualizza le prime righe (head) sullo standard error a fini 
+        diagnostici e termina l'esecuzione con stato di successo.
+
+  Sezione 6: Selezione dei Moduli e Installazione
+    --provider [NOME]
+        Se specificato con un nome (escluding stringhe che iniziano con un 
+        trattino), seleziona ed imposta il provider attivo, salvando in modo 
+        persistente la preferenza nel file di configurazione dell'utente. Se 
+        il valore passato è la stringa letterale "list", o se il flag viene 
+        specificato senza alcun argomento in un terminale interattivo (TTY), 
+        lo script apre un menu di selezione interattivo che elenca tutti i 
+        provider installati e permette all'utente di selezionare il default.
+
+    --install-extras [SORGENTE]
+        Installa ed estende il runtime copiando i moduli e le risorse della 
+        directory delle estensioni (es. providers, script di sessione, test, 
+        documentazione) all'interno della cartella operativa persistente delle 
+        estensioni utente. Se non specificato, lo script tenta di localizzare 
+        le sorgenti sotto la cartella di origine "extras" relativa alla 
+        posizione dello script. Il modulo esegue rigorose verifiche di 
+        sicurezza per prevenire la copia di collegamenti simbolici o 
+        l'installazione in percorsi annidati non autorizzati.
+
+  Sezione 7: Gestione Modelli e Configurazione Rapida
+    --refresh-models, --refresh-model
+        Forza il collegamento immediato con le API del provider attivo per 
+        sincronizzare l'elenco locale dei modelli disponibili, salvandolo in 
+        modo atomico e sicuro sotto lock esclusivo nel file dei modelli.
+
+    --list-models
+        Mostra a schermo l'elenco formattato e leggibile dei modelli di testo 
+        correntemente disponibili e pronti per l'uso nel sistema locale.
+
+    --list-models-raw
+        Restituisce la lista pura dei modelli locali in formato macchina (un 
+        identificatore normalizzato per riga) per scopi di automazione.
+
+    --list-providers
+        Mostra l'elenco dei moduli provider (sia integrati sia estesi tramite 
+        plugin) installati nel sistema.
+
+    --list-providers-raw
+        Restituisce la lista dei provider installati in formato macchina, senza 
+        formattazioni o intestazioni testuali.
+
+    --set-default MODELLO
+        Imposta ed archivia in modo permanente il modello indicato come scelta 
+        predefinita per il provider correntemente attivo nel sistema.
+
+  Sezione 8: Diagnostica e Manutenzione
+    --quiet
+        Silenziatore di runtime. Inibisce tutte le stampe informative, i 
+        messaggi di tracciamento e gli avvisi non critici sullo standard error, 
+        limitando l'output ai soli risultati formali dell'interrogazione o a 
+        errori bloccanti di esecuzione.
+
+    --debug
+        Attiva la modalità di diagnostica avanzata per gli sviluppatori. Scrive 
+        i messaggi di log dettagliati sullo standard error e, se configurata, 
+        nella destinazione log. Inoltre, inibisce la rimozione automatica 
+        delle risorse allocate nella directory temporanea di istanza al termine 
+        dell'esecuzione dello script.
+
+    --show-config
+        Genera una vista tabulare strutturata dei parametri di runtime correnti 
+        (versioni software, date di rilascio, provider selezionato, modello 
+        attivo, percorsi assoluti di tutte le directory operative del file 
+        system, stato dei flag di debug e dimensioni dei file di sincronizzazione).
+
+    --diagnostics
+        Avvia un ciclo completo di autoverifica e ispezione dei requisiti di 
+        sicurezza. Verifica l'esistenza fisica delle cartelle utente, la 
+        risoluzione dei permessi di scrittura, la validità sintattica dei 
+        moduli provider importati e la presenza della chiave API corretta per 
+        il provider attivo.
+
+    --version
+        Stampa il nome identificativo dello script, la versione software 
+        corrente, la data di rilascio e termina l'esecuzione.
+
+    -h, --help
+        Visualizza la guida sintetica d'uso dell'interfaccia e termina.
+
+    --
+        Marcatore di fine opzioni. Qualsiasi argomento posizionato dopo questo 
+        delimitatore viene integralmente interpretato come stringa testuale del 
+        prompt di input, escludendo l'elaborazione di flag successivi.
+
+VARIABILI D'AMBIENTE
+    Il comportamento del runtime di groqbash è governato e può essere 
+    condizionato dalle seguenti variabili d'ambiente.
+
+  Sezione 1: Credenziali di Autenticazione API
+    GROQ_API_KEY
+        Chiave API predefinita per l'autenticazione delle chiamate di rete 
+        verso il provider integrato Groq.
+
+    PROVIDER_API_ENV_[PROVIDER]
+        Mappatura indiretta per provider esterni. Consente di definire il nome 
+        di una variabile d'ambiente alternativa deputata a contenere la chiave 
+        API per un determinato provider personalizzato (es. impostando 
+        PROVIDER_API_ENV_gemini="CUSTOM_KEY", lo script cercherà la chiave API 
+        all'interno della variabile CUSTOM_KEY).
+
+  Sezione 2: Percorsi e Struttura del File System
+    GROQBASH_DIR
+        Directory radice persistente per le risorse e i dati di groqbash. Se 
+        omessa, viene risolta dinamicamente puntando alla directory 
+        "groqbash.d" posizionata sotto la cartella d'origine dello script.
+
+    GROQBASH_ROOT
+        Percorso alternativo utilizzato per derivare la directory radice qualora 
+        GROQBASH_DIR non sia esplicitamente dichiarata in ambiente.
+
+    GROQBASH_CONFIG_DIR
+        Directory destinata ad archiviare le impostazioni persistenti dell'utente 
+        (default: $GROQBASH_DIR/config).
+
+    GROQBASH_MODELS_DIR
+        Directory contenente la lista dei modelli configurati e scaricati 
+        (default: $GROQBASH_DIR/models).
+
+    GROQBASH_TEMPLATES_DIR
+        Directory contenente i file dei modelli di template utente 
+        (default: $GROQBASH_DIR/templates).
+
+    GROQBASH_HISTORY_DIR
+        Directory destinata ad accumulare lo storico delle risposte e i log di 
+        interazione (default: $GROQBASH_DIR/history).
+
+    GROQBASH_TMPDIR
+        Directory radice protetta per l'allocazione dei dati temporanei dello 
+        script (default: $GROQBASH_DIR/tmp).
+
+    GROQBASH_EXTRAS_DIR
+        Directory attiva per l'accesso e l'importazione delle estensioni utente 
+        (default: $GROQBASH_DIR/extras).
+
+    PROVIDERS_DIR
+        Directory contenente i moduli dei provider esterni installati nel 
+        sistema (default: $GROQBASH_EXTRAS_DIR/providers).
+
+    SESSION_CACHE_DIR
+        Directory destinata ad ospitare la cache temporanea cruda dei messaggi 
+        e contesti di sessione (posizionata in $GROQBASH_CONFIG_DIR/session_cache).
+
+  Sezione 3: Configurazione Risorse e Sincronizzazione
+    MODELS_FILE
+        Percorso assoluto o relativo del file locale in cui memorizzare 
+        l'elenco dei modelli recuperati dalle API (default: 
+        $GROQBASH_MODELS_DIR/models.txt).
+
+    MAX_MODELS
+        Limite numerico di modelli gestibili localmente nel file dei modelli. Se 
+        il provider restituisce un numero maggiore di modelli, l'eccedenza 
+        viene troncata per evitare saturazioni di memoria (default: 200).
+
+    PROVIDER_FILE
+        Percorso del file che persiste il nome dell'ultimo provider attivo 
+        impostato dall'utente (collocato sotto la directory di configurazione).
+
+    MODELS_LOCK
+        File di sincronizzazione (lock) esclusivo per regolare l'accesso e l'aggiornamento 
+        del file locale dei modelli (default: $GROQBASH_MODELS_DIR/models.lock).
+
+    HISTORY_LOCK
+        File di lock esclusivo per prevenire corruzioni fisiche dovute ad accessi 
+        paralleli o concorrenti alla directory storica e alle sessioni (default: 
+        $GROQBASH_HISTORY_DIR/history.lock).
+
+    TMP_LOCK
+        File di lock esclusivo associato alla directory temporanea per regolare 
+        la creazione di sottocartelle di istanza (default: 
+        $GROQBASH_TMPDIR/tmp.lock).
+
+    GROQBASH_LOCK_TIMEOUT_TMP
+        Timeout massimo di attesa espresso in secondi per acquisire il lock sui 
+        file temporanei (default: 10 secondi).
+
+    GROQBASH_LOCK_TIMEOUT_MODELS
+        Timeout massimo espresso in secondi per acquisire il lock sul file dei 
+        modelli (default: 10 secondi).
+
+    GROQBASH_LOCK_TIMEOUT_HISTORY
+        Timeout massimo espresso in secondi per acquisire il lock di accesso allo 
+        storico e sessioni (default: 10 secondi).
+
+  Sezione 4: Manutenzione dello Storico (Rotazione)
+    GROQBASH_ROTATE_HISTORY
+        Flag booleano (1 o 0) per abilitare la purga e la manutenzione periodica 
+        automatica dei log dello storico al termine delle interrogazioni (default: 0).
+
+    GROQBASH_HISTORY_MAX_FILES
+        Soglia numerica massima di file memorizzabili nella directory dello 
+        storico delle risposte (default: 100). Superata la soglia, i file più 
+        vecchi vengono rimossi.
+
+    GROQBASH_HISTORY_MAX_BYTES
+        Soglia limite cumulativa espressa in byte dello spazio occupato in totale 
+        dai file dello storico (default: 104857600 byte, equivalente a 100MB).
+
+    GROQBASH_HISTORY_KEEP_DAYS
+        Limite di conservazione temporale espresso in giorni per i file di log 
+        e storici (default: 90 giorni). I file più vecchi del limite vengono eliminati.
+
+  Sezione 5: Parametri e Controllo Esecuzione Runtime
+    ALLOW_API_CALLS
+        Flag di abilitazione delle transazioni esterne. Se impostato a un valore 
+        diverso da 1 (es. 0), e se lo script non opera in modalità di simulazione 
+        dry-run, la presenza di una chiave API valida genera un errore fatale, 
+        bloccando la trasmissione di rete a scopo precauzionale.
+
+    GROQBASH_SKIP_NETWORK
+        Inibisce ed esclude qualsiasi chiamata di rete. Se impostato a 1, forza 
+        la chiamata API a produrre una risposta diagnostica fittizia simulando il 
+        dry-run.
+
+    GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET
+        Se impostato a 1, combinato con l'abilitazione della modalità quiet 
+        (QUIET=1), impone il blocco immediato di tutte le connessioni esterne 
+        a scopo di automazione sicura in assenza di TTY.
+
+    MAX_STAGE_BYTES
+        Soglia di sicurezza dimensionale espressa in byte applicata al 
+        trasferimento e staging delle risorse esterne codificate in Base64 (default: 
+        10485760 byte, equivalente a 10MB). File di dimensioni superiori 
+        vengono bloccati prima della codifica per evitare saturazione delle risorse.
+
+    LAST_CHECK_LINES
+        Numero di righe standard da scansionare a ritroso nel file storico di 
+        sessione NDJSON durante l'estrazione dei record (default: 50 righe).
+
+    DEBUG
+        Variabile di allineamento diagnostico. Se valorizzata a 1, attiva le 
+        funzionalità di debug interno (eredita le configurazioni da GROQBASH_DEBUG).
+
+    GROQBASH_LOG
+        Percorso opzionale di un file all'interno del quale appendere in modo 
+        strutturato e cronologico i log operativi unificati dello script con 
+        timestamp UTC.
+
+    GROQBASH_SOURCE_ONLY
+        Variabile di esclusione del nucleo operativo (guard di sviluppo). Se 
+        impostata a 1 prima di importare lo script, interrompe l'esecuzione 
+        principale subito dopo il bootstrap. Consente di caricare e testare 
+        isolatamente le sole variabili d'ambiente, definizioni e funzioni di 
+        groqbash all'interno di una shell attiva o di test unitari esterni.
+
+CODICI DI USCITA
+    Il runtime adotta un insieme di codici di errore numerici fissi per isolare 
+    le cause di fallimento a livello di processo:
+
+    10 (GROQBASH_ERR_NO_API_KEY)
+        La chiave API richiesta dal provider attivo è assente nell'ambiente e 
+        lo script è in esecuzione in una sessione non interattiva (assenza di 
+        TTY), impedendo l'inserimento manuale.
+
+    11 (GROQBASH_ERR_BAD_MODEL)
+        Il modello selezionato non è valido, non è supportato dal provider 
+        attivo o è stato escluso a causa dei filtri di convalida del nucleo 
+        (modelli multimodali non-testuali).
+
+    12 (GROQBASH_ERR_CURL_FAILED)
+        La chiamata di rete effettuata tramite l'utilità curl è fallita a causa 
+        di problemi di connessione, DNS, instabilità del server o scadenza del 
+        tempo massimo di attesa (timeout).
+
+    13 (GROQBASH_ERR_INVALID_JSON)
+        Il file JSON di configurazione, il file dei modelli o il payload di 
+        risposta restituito dalle API del provider è corrotto o privo di una 
+        struttura sintattica valida.
+
+    14 (GROQBASH_ERR_NO_PROMPT)
+        Nessun prompt testuale o file JSON è stato fornito in ingresso per 
+        l'elaborazione (fatta eccezione per la modalità chat interattiva o 
+        l'esecuzione in serie batch).
+
+    15 (GROQBASH_ERR_TMP)
+        Impossibile allocare o configurare la directory temporanea di istanza 
+        o anomalie irreversibili nell'acquisizione dei file di lock esclusivi.
+
+    16 (GROQBASH_ERR_API)
+        Il server API del provider ha rifiutato la richiesta o ha restituito un 
+        codice di stato HTTP non valido (es. errore 400, 401, 429, 500), oppure 
+        si è verificato un caso di generazione vuota anomala (empty completion).
+
+MODALITÀ OPERATIVE
+    groqbash implementa cinque modalità operative principali, selezionabili via 
+    flag CLI o determinate automaticamente dallo stato dei flussi di input.
+
+  1. Richiesta Singola (Default)
+    Il runtime acquisisce e assembla il prompt seguendo la catena di priorità 
+    esclusive definita in "Dettagli di Implementazione". Risolve il modello e 
+    il provider attivi, valida la chiave API ed esegue una singola chiamata 
+    sincrona o in streaming. Al termine, estrae la risposta testuale, la 
+    visualizza a schermo in base al formato di output richiesto, la salva 
+    nello storico se supera il limite di caratteri definito e la registra nel 
+    file di sessione (se attiva).
+
+  2. Streaming dei Token (--stream)
+    Se abilitato, la connessione HTTP viene stabilita disabilitando qualsiasi 
+    buffering di rete. Il runtime analizza riga per riga il flusso dati in 
+    tempo reale conforme allo standard Server-Sent Events (SSE). Estrae i 
+    frammenti di testo (delta.content) validandone la sintassi JSON e li 
+    invia istantaneamente a schermo (stdout). In parallelo, accumula l'intero 
+    flusso crudo in un file temporaneo per ricostruire transazionalmente la 
+    risposta complessiva e salvare il pacchetto JSON di riepilogo nel file di 
+    risposta ufficiale al termine della connessione.
+
+  3. Elaborazione in Serie (--batch)
+    Scansiona sequenzialmente le righe di un file di prompt. Per ciascun prompt 
+    esegue l'intera pipeline di risoluzione del modello, compilazione del 
+    payload, inoltro della richiesta, estrazione della risposta e salvataggio 
+    nello storico. Ciascuna esecuzione è isolata: un eventuale fallimento di 
+    una chiamata API o di rete non interrompe l'elaborazione dei prompt successivi.
+
+  4. Chat Interattiva (--chat)
+    Disponibile esclusivamente in presenza di un terminale interattivo (TTY). 
+    Apre un ciclo continuo di lettura da console: acquisisce il prompt dell'utente, 
+    compila il payload integrando la cronologia della sessione, esegue 
+    l'interrogazione (in streaming o sincrona) e visualizza la risposta dell'assistente. 
+    L'interfaccia si aggiorna in tempo reale fino alla cattura del segnale di 
+    fine trasmissione.
+
+  5. Selezione del Provider Interattiva
+    Se invocata, la console elenca i provider supportati ed attende l'inserimento 
+    da parte dell'utente. Una volta convalidata la scelta, memorizza l'opzione 
+    nel file persistente del provider, rimuove i file temporanei locali 
+    associati ai modelli del provider precedente per forzare una nuova 
+    sincronizzazione al primo avvio utile, e termina l'esecuzione.
+
+DETTAGLI DI IMPLEMENTAZIONE INTERNA
+    Questa sezione descrive i meccanismi, gli algoritmi e le logiche che 
+    governano il nucleo funzionale di groqbash.
+
+  1. Algoritmo di Assemblaggio del Prompt (Priority Chain)
+    La determinazione del prompt definitivo ($CONTENT) da trasmettere al 
+    provider avviene scansionando in modo sequenziale ed esclusivo le 
+    seguenti condizioni (la prima condizione soddisfatta interrompe le altre):
+      I.   Se è configurato un JSON strutturato ($JSON_INPUT), la variabile 
+           $CONTENT viene interamente svuotata in quanto il file JSON contiene 
+           autonomamente l'array dei messaggi.
+      II.  Se sono presenti file via flag "-f" ($FILE_INPUTS), il runtime 
+           ne acquisisce e concatena i contenuti strutturandoli con demarcatori 
+           visivi di intestazione e chiusura per ciascun file. Eventuali 
+           argomenti posizionali in coda vengono accodati come frammenti di testo.
+      III. Se è configurato un template ($TEMPLATE), il file corrispondente 
+           viene estratto e il segnaposto "{{CONTENT}}" rimpiazzato con il 
+           prompt dell'utente (proveniente da stdin o posizionali).
+      IV.  Se viene rilevato del testo proveniente da standard input ($STDIN_CONTENT), 
+           questo viene adottato come prompt principale, accodando in coda eventuali 
+           argomenti posizionali passati da CLI.
+      V.   Se vi sono solo argomenti posizionali in $ARGS, questi vengono unificati 
+           ed espansi per generare la stringa di prompt finale.
+
+  2. Gestione delle Sessioni ed Integrazione con il Session Engine
+    La gestione delle sessioni multi-turno per la persistenza del contesto opera 
+    su due livelli logici:
+      - Architettura Estesa (Session Engine): All'avvio, il runtime ricerca la 
+        presenza dello script di estensione "session-engine.sh" nella directory 
+        delle estensioni. Se rilevato e ritenuto conforme (superamento dell'analisi 
+        sintattica), la variabile $SE_AVAILABLE viene impostata a 1. Il runtime 
+        delega interamente la costruzione della finestra di contesto e la 
+        scrittura dei messaggi alle routine avanzate dello script esterno 
+        (session_engine_build_window e session_engine_append).
+      - Fallback Integrato (Legacy): Se il Session Engine non è disponibile, lo 
+        script ricade sulle funzioni native basate su file NDJSON piatti. La 
+        funzione session_read_window estrae a ritroso le ultime righe per 
+        comporre un array JSON coerente, mentre la funzione session_append registra 
+        i messaggi in append nel file cronologico blindandone i permessi a 600. 
+        Un meccanismo di marcatura basato su hash SHA-256 previene inserimenti 
+        duplicati in caso di concorrenza.
+
+  3. Sincronizzazione dei Modelli e Core Whitelisting
+    La convalida dei modelli è controllata centralmente dalla funzione 
+    validate_model_core. Essa normalizza il nome del modello, ne verifica la 
+    presenza nel file locale dei modelli registrati del provider ed esegue un 
+    filtro di compatibilità sintattica (is_supported_model). I modelli che 
+    richiedono formati non testuali (come input di immagini per visione artificiale, 
+    audio per trascrizione, o modelli di pura generazione di vettori di embedding) 
+    vengono bloccati preventivamente per impedire trasmissioni destinate a 
+    fallire a causa dell'incompatibilità dei payload testuali di groqbash.
+
+  4. Cache di Sessione (Session Cache)
+    Per evitare ridondanti chiamate di rete o calcoli concorrenti sul file system, 
+    groqbash implementa un meccanismo di cache locale per le risposte delle 
+    sessioni. Le risposte vengono archiviate nella directory dedicata con permessi 600. 
+    La prima riga del file di cache memorizza il timestamp Unix assoluto di scadenza 
+    (TTL, impostabile in secondi, default 300). Ad ogni interrogazione, la funzione 
+    session_cache_get verifica la validità temporale del record confrontandolo 
+    con l'ora di sistema; in caso di scadenza, il file viene rimosso dal disco.
+
+  5. Manifest Multimodale e Staging Base64
+    Per l'inoltro strutturato di allegati o parti di contesto complesse, il 
+    runtime mette a disposizione le primitive di gestione dei manifest:
+      - manifest_create inizializza un nuovo file di manifesto JSON e genera 
+        una controparte codificata Base64 (.b64) per la trasmissione veloce.
+      - manifest_add_part acquisisce una risorsa, invoca stage_b64 per codificare 
+        il payload in Base64 in un file di staging isolato con permessi 600 (dopo 
+        aver convalidato che la dimensione del file non superi la soglia di 
+        sicurezza $MAX_STAGE_BYTES di 10MB), ed aggiorna transazionalmente 
+        il manifesto JSON tramite manipolazioni atomiche sotto lock.
+
+  6. Sincronizzazione Concorrente e File Locking (flock)
+    La consistenza fisica delle risorse condivise sul disco (file dei modelli, 
+    file di log della cronologia e directory temporanea) è protetta da un 
+    meccanismo di lock esclusivo regolato tramite l'utilità flock. La funzione 
+    lock_exec gestisce la mutua esclusione: tenta di acquisire il descrittore 
+    di blocco esclusivo sul file di lock associato alla risorsa entro un limite 
+    temporale rigido (timeout, default 10 secondi); se l'acquisizione non si 
+    conclude entro la scadenza del timeout, il processo interrompe l'operazione 
+    fallendo in modo controllato con codice di stato 124.
+
+  7. Gate di Controllo Rete e Network Policy
+    Tutto l'accesso di rete per l'invio delle richieste e l'allineamento dei 
+    modelli è centralizzato e protetto dalla funzione enforce_network_policy. 
+    Questa funzione agisce da barriera di sicurezza autorizzativa e nega l'accesso 
+    alla rete (ritornando stato di blocco) se:
+      - È attivo il simulatore dry-run ($DRY_RUN = 1).
+      - È impostata la variabile di esclusione rete ($GROQBASH_SKIP_NETWORK = 1).
+      - È attiva la modalità silenziosa combinata con la restrizione di rete 
+        ($QUIET = 1 e $GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET = 1).
+    Qualsiasi punto di chiamata API all'interno dei moduli provider deve interrogare 
+    enforce_network_policy prima di invocare curl; se l'accesso è bloccato, il 
+    provider è obbligato ad astenersi dal generare traffico di rete, producendo 
+    invece un file di risposta diagnostica locale e ritornando un codice non-zero.
+
+  8. Rilevamento Architetturale della Codifica Base64
+    All'avvio, durante la fase di PRECORE_BOOT, la funzione _detect_base64_opts 
+    esegue una sonda diagnostica per rilevare le opzioni e i flag ottimali 
+    dell'eseguibile base64 presente nel sistema ospite. Questa analisi rileva 
+    le differenze sintattiche tra le distribuzioni GNU/Linux (che adottano -w0 
+    per l'inibizione dell'a capo ed il flag -d per la decodifica) e i sistemi 
+    BSD/macOS (che non supportano l'opzione di a capo automatico e richiedono il 
+    flag maiuscolo -D per decodificare), memorizzando i parametri nelle 
+    variabili globali per garantire la massima portabilità.
+
+ALIAS WRAPPER DI COMPATIBILITÀ (LEGACY)
+    Per garantire l'integrazione con script storici o flussi di terze parti 
+    sviluppati per le versioni precedenti di groqbash, il runtime espone e 
+    mantiene attivi i seguenti wrapper legacy di interfaccia diretti:
+
+    buildpayloadgroq
+        Alias diretto di buildpayload_groq. Compila il payload JSON di Groq.
+
+    call_api_streaming_groq_legacy
+        Alias diretto di call_api_streaming_groq. Avvia lo streaming dei token.
+
+    refreshmodelsgroq
+        Alias diretto di refresh_models_groq. Esegue il refresh dei modelli.
+
+    validatemodelgroq
+        Alias diretto di validate_model_groq. Esegue la convalida dei modelli.
+
+    autoselectmodelgroq
+        Alias diretto di auto_select_model_groq. Esegue l'auto-selezione.
+
+RISOLUZIONE DEI PROBLEMI E DIAGNOSTICA
+    Questa sezione descrive i comportamenti anomali noti e le procedure per 
+    risolverli.
+
+  Caso Limite: Risposte Vuote Anomale (Empty Completion)
+    Può accadere che le API esterne del provider remoto restituiscano un codice 
+    di stato HTTP di successo (200 OK) ma interrompano la generazione senza 
+    produrre alcun testo utilizzabile, inviando un motivo di arresto (finish_reason) 
+    pari a "stop" o un numero di token generati prossimo a zero.
+    groqbash rileva automaticamente questa anomalia tramite la funzione 
+    detect_empty_edge_case, la quale ispeziona la risposta strutturata ed estrae:
+      - L'identificativo univoco della richiesta (Request ID) se presente.
+      - Il motivo formale dell'arresto della generazione (Finish Reason).
+      - Il conteggio esatto dei token restituiti (Completion Tokens).
+    In caso di riscontro positivo, lo script scrive un unico record log strutturato 
+    sullo standard error o nel file di log per facilitare l'ispezione dello 
+    sviluppatore e termina l'esecuzione con l'errore di chiamata API (codice 16).
+
+  Mancata Connessione o Timeout dei Lock
+    Se lo script restituisce il codice di errore 15 (GROQBASH_ERR_TMP) accompagnato 
+    da messaggi di timeout, verificare che non vi siano altre istanze di groqbash 
+    in esecuzione in background che bloccano le risorse del file system. In caso di 
+    necessità, è possibile estendere i tempi massimi di attesa impostando in ambiente 
+    le variabili GROQBASH_LOCK_TIMEOUT_TMP, GROQBASH_LOCK_TIMEOUT_MODELS o 
+    GROQBASH_LOCK_TIMEOUT_HISTORY su valori numerici superiori (es. 30 secondi).
