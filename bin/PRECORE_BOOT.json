@@ -1,0 +1,377 @@
+{
+  "metadata": {
+    "script_name": "groqbash",
+    "total_parts": 1
+  },
+  "macro_sections": [
+    {
+      "section_name": "PRECORE_BOOT",
+      "variables": [
+        {
+          "var": "SCRIPT_NAME",
+          "init": "\"groqbash\""
+        },
+        {
+          "var": "SCRIPT_VERSION",
+          "init": "\"2.0.0\""
+        },
+        {
+          "var": "SCRIPT_DATE",
+          "init": "\"2026-06-09\""
+        },
+        {
+          "var": "GROQBASH_ERR_NO_API_KEY",
+          "init": "10"
+        },
+        {
+          "var": "GROQBASH_ERR_BAD_MODEL",
+          "init": "11"
+        },
+        {
+          "var": "GROQBASH_ERR_CURL_FAILED",
+          "init": "12"
+        },
+        {
+          "var": "GROQBASH_ERR_INVALID_JSON",
+          "init": "13"
+        },
+        {
+          "var": "GROQBASH_ERR_NO_PROMPT",
+          "init": "14"
+        },
+        {
+          "var": "GROQBASH_ERR_TMP",
+          "init": "15"
+        },
+        {
+          "var": "GROQBASH_ERR_API",
+          "init": "16"
+        },
+        {
+          "var": "GROQBASHERRNOAPIKEY",
+          "init": "$GROQBASH_ERR_NO_API_KEY"
+        },
+        {
+          "var": "GROQBASHERRBAD_MODEL",
+          "init": "$GROQBASH_ERR_BAD_MODEL"
+        },
+        {
+          "var": "GROQBASHERRCURL_FAILED",
+          "init": "$GROQBASH_ERR_CURL_FAILED"
+        },
+        {
+          "var": "GROQBASHERRINVALID_JSON",
+          "init": "$GROQBASH_ERR_INVALID_JSON"
+        },
+        {
+          "var": "GROQBASHERRNO_PROMPT",
+          "init": "$GROQBASH_ERR_NO_PROMPT"
+        },
+        {
+          "var": "GROQBASHERRTMP",
+          "init": "$GROQBASH_ERR_TMP"
+        },
+        {
+          "var": "GROQBASHERRAPI",
+          "init": "$GROQBASH_ERR_API"
+        },
+        {
+          "var": "DEBUG",
+          "init": "\"${DEBUG:-0}\""
+        },
+        {
+          "var": "GROQBASH_LOG",
+          "init": "\"${GROQBASH_LOG:-}\""
+        },
+        {
+          "var": "SCRIPTDIR",
+          "init": "\"$(resolve_script_dir)\""
+        },
+        {
+          "var": "CANONICAL_EXTRAS_DIR",
+          "init": "\"${GROQBASH_DIR%/}/extras\""
+        },
+        {
+          "var": "LEGACY_EXTRAS_DIR",
+          "init": "\"${SCRIPTDIR%/}/extras\""
+        },
+        {
+          "var": "GROQBASH_EXTRAS_DIR",
+          "init": "\"${CANONICAL_EXTRAS_DIR}\""
+        },
+        {
+          "var": "PROVIDERS_DIR",
+          "init": "\"${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}\""
+        },
+        {
+          "var": "GROQBASH_CONFIG_DIR",
+          "init": "\"${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}\""
+        },
+        {
+          "var": "GROQBASH_MODELS_DIR",
+          "init": "\"${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}\""
+        },
+        {
+          "var": "GROQBASH_TEMPLATES_DIR",
+          "init": "\"${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}\""
+        },
+        {
+          "var": "GROQBASH_HISTORY_DIR",
+          "init": "\"${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}\""
+        },
+        {
+          "var": "GROQBASH_TMPDIR",
+          "init": "\"${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}\""
+        },
+        {
+          "var": "MODELS_FILE",
+          "init": "\"${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}\""
+        },
+        {
+          "var": "MAX_MODELS",
+          "init": "\"${MAX_MODELS:-200}\""
+        },
+        {
+          "var": "PROVIDER_FILE",
+          "init": "\"$(canonical_provider_file)\""
+        },
+        {
+          "var": "SESSION_DIR",
+          "init": "\"${GROQBASH_HISTORY_DIR%/}/sessions\""
+        },
+        {
+          "var": "MODELS_LOCK",
+          "init": "\"${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}\""
+        },
+        {
+          "var": "HISTORY_LOCK",
+          "init": "\"${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}\""
+        },
+        {
+          "var": "TMP_LOCK",
+          "init": "\"${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}\""
+        },
+        {
+          "var": "GROQBASH_LOCK_TIMEOUT_TMP",
+          "init": "\"${GROQBASH_LOCK_TIMEOUT_TMP:-10}\""
+        },
+        {
+          "var": "GROQBASH_LOCK_TIMEOUT_MODELS",
+          "init": "\"${GROQBASH_LOCK_TIMEOUT_MODELS:-10}\""
+        },
+        {
+          "var": "GROQBASH_LOCK_TIMEOUT_HISTORY",
+          "init": "\"${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}\""
+        }
+      ],
+      "functions": [
+        {
+          "fn": "resolve_script_dir",
+          "body": "local src=\"$0\" rl dir\nif command -v readlink >/dev/null 2>&1 && [ -L \"$src\" ]; then\nrl=\"$(readlink \"$src\" 2>/dev/null || true)\"\n[ -n \"$rl\" ] && case \"$rl\" in /*) src=\"$rl\" ;; *) src=\"$(dirname \"$src\")/$rl\" ;; esac\nfi\ndir=\"$(cd \"$(dirname \"$src\")\" >/dev/null 2>&1 && pwd || printf '%s' \"$(dirname \"$src\")\")\"\nprintf '%s' \"$dir\""
+        },
+        {
+          "fn": "canonical_config_dir",
+          "body": "printf '%s' \"${GROQBASH_CONFIG_DIR%/}\""
+        },
+        {
+          "fn": "canonical_provider_file",
+          "body": "printf '%s\\n' \"$(canonical_config_dir)/provider\""
+        },
+        {
+          "fn": "canonical_model_file",
+          "body": "local prov=\"${1:-}\"\nprintf '%s\\n' \"$(canonical_config_dir)/model.${prov}\""
+        },
+        {
+          "fn": "canonical_provider_url_file",
+          "body": "if type canonical_config_dir >/dev/null 2>&1; then\ncfgdir=\"$(canonical_config_dir)\"\nelse\ncfgdir=\"${GROQBASH_CONFIG_DIR:-${GROQBASH_DIR%/}/config}\"\nfi\nprintf '%s' \"${cfgdir%/}/provider-url\""
+        },
+        {
+          "fn": "ensure_api_key_for_provider",
+          "body": "local prov=\"$1\"\nlocal envvar current_key input_key custom_var custom_env\n[ -n \"$prov\" ] || return 1\nenvvar=\"$(provider_api_env_var_name \"$prov\")\"\ncustom_var=\"PROVIDER_API_ENV_${prov}\"\ncustom_env=\"${!custom_var:-}\"\nif [ -n \"$custom_env\" ]; then\nenvvar=\"$custom_env\"\nfi\ncurrent_key=\"${!envvar:-}\"\nif [ -n \"$current_key\" ]; then\nif [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\nexport GROQ_API_KEY=\"$current_key\"\nfi\nreturn 0\nfi\nif [ ! -t 0 ]; then\nprintf 'groqbash: ERROR: missing API key for provider %s (env %s) in non-interactive mode\\n' \"$prov\" \"$envvar\" >&2\nreturn \"$GROQBASHERRNOAPIKEY\"\nfi\nprintf 'Enter API key for provider %s (env %s): ' \"$prov\" \"$envvar\" >&2\nif ! IFS= read -r input_key; then\nprintf '\\ngroqbash: ERROR: no input received. Aborting.\\n' >&2\nreturn \"$GROQBASHERRNOAPIKEY\"\nfi\ninput_key=\"$(printf '%s' \"$input_key\" | tr -d '\\r\\n')\"\ninput_key=\"$(printf '%s' \"$input_key\" | sed -E 's/^[[:space:]]*export[[:space:]]+//I')\"\nif printf '%s' \"$input_key\" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*='; then\ninput_key=\"$(printf '%s' \"$input_key\" | sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[\\\"\\x27]?([^\\\"\\x27]*).*$/\\1/')\"\nfi\nif [ -z \"$input_key\" ]; then\nprintf 'groqbash: ERROR: API key required. Aborting.\\n' >&2\nreturn \"$GROQBASHERRNOAPIKEY\"\nfi\nexport \"$envvar\"=\"$input_key\"\nif [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\nexport GROQ_API_KEY=\"$input_key\"\nfi\nprintf '\\n--------------------------------------\\n' >&2\nprintf '\\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\\n' >&2\nprintf '\\n export %s=\"%s\"\\n' \"$envvar\" \"$input_key\" >&2\nprintf '\\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\\n' >&2\nprintf '\\n--------------------------------------\\n' >&2\nreturn 0"
+        },
+        {
+          "fn": "enforce_network_policy",
+          "body": "if is_truthy \"${DRY_RUN:-0}\" || is_truthy \"${GROQBASH_SKIP_NETWORK:-0}\"; then\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"NETWORK\" \"Network calls disabled by DRY_RUN or GROQBASH_SKIP_NETWORK; skipping HTTP.\"\nfi\nreturn 1\nfi\nif is_truthy \"${GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET:-0}\" && is_truthy \"${QUIET:-0}\"; then\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"NETWORK\" \"Network calls disabled due to QUIET policy.\"\nfi\nreturn 1\nfi\nreturn 0"
+        },
+        {
+          "fn": "log_prefix",
+          "body": "printf 'groqbash: %s: ' \"$SCRIPT_NAME\""
+        },
+        {
+          "fn": "log_info",
+          "body": "local code=\"${1:-INFO}\" msg=\"${2:-}\"\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nprintf '%sINFO: %s: %s\\n' \"$(log_prefix)\" \"$code\" \"$msg\" >&2\nfi\nif [ -n \"$GROQBASH_LOG\" ]; then printf '%s INFO %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$GROQBASH_LOG\" 2>/dev/null || true; fi"
+        },
+        {
+          "fn": "log_warn",
+          "body": "local code=\"${1:-WARN}\" msg=\"${2:-}\"\nprintf '%sWARN: %s: %s\\n' \"$(log_prefix)\" \"$code\" \"$msg\" >&2\nif [ -n \"$GROQBASH_LOG\" ]; then printf '%s WARN %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$GROQBASH_LOG\" 2>/dev/null || true; fi"
+        },
+        {
+          "fn": "log_error",
+          "body": "local code=\"${1:-ERROR}\" msg=\"${2:-}\"\nprintf '%sERROR: %s: %s\\n' \"$(log_prefix)\" \"$code\" \"$msg\" >&2\nif [ -n \"$GROQBASH_LOG\" ]; then printf '%s ERROR %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$GROQBASH_LOG\" 2>/dev/null || true; fi"
+        },
+        {
+          "fn": "dbg",
+          "body": "if [ \"${DEBUG:-0}\" -ne 0 ]; then\nprintf '%s\\n' \"$*\" >&2\nfi"
+        },
+        {
+          "fn": "ensure_config_dir",
+          "body": "GROQBASH_CONFIG_DIR=\"${GROQBASH_CONFIG_DIR%/}\"\nif [ -z \"$GROQBASH_CONFIG_DIR\" ]; then\nGROQBASH_CONFIG_DIR=\"${GROQBASH_DIR%/}/config\"\nfi\nif ! mkdir -p \"${GROQBASH_CONFIG_DIR}\" 2>/dev/null; then\nlog_error \"CONFIG\" \"cannot create config dir: ${GROQBASH_CONFIG_DIR}\"\nreturn 1\nfi\nchmod 700 \"${GROQBASH_CONFIG_DIR}\" 2>/dev/null || true\nif ! : > \"${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check\" 2>/dev/null; then\nlog_error \"CONFIG\" \"config dir not writable: ${GROQBASH_CONFIG_DIR}\"\nreturn 1\nelse\nrm -f \"${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check\" 2>/dev/null || true\nfi\nreturn 0"
+        },
+        {
+          "fn": "write_provider_url_if_missing",
+          "body": "local prov=\"$1\" url=\"$2\" file dir tmp\n[ -z \"$prov\" ] && return 1\n[ -z \"$url\" ] && return 1\nfile=\"$(canonical_provider_url_file)\"\ndir=\"$(dirname \"$file\")\"\nmkdir -p \"$dir\" 2>/dev/null || return 1\nif [ -f \"$file\" ] && [ -s \"$file\" ]; then\nreturn 0\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\ntmp=\"$(mktemp \"${RUN_TMPDIR%/}/provider-url.XXXX\" 2>/dev/null || true)\"\nelse\ntmp=\"$(mktemp 2>/dev/null || true)\"\nfi\nif [ -n \"$tmp\" ]; then\nprintf '%s\\n' \"$url\" > \"$tmp\"\nmv -f \"$tmp\" \"$file\" 2>/dev/null || cp -f \"$tmp\" \"$file\" 2>/dev/null || { rm -f \"$tmp\" 2>/dev/null || true; return 1; }\nchmod 600 \"$file\" 2>/dev/null || true\nreturn 0\nelse\nprintf '%s\\n' \"$url\" > \"$file\" 2>/dev/null || return 1\nchmod 600 \"$file\" 2>/dev/null || true\nreturn 0\nfi"
+        },
+        {
+          "fn": "resolve_provider_url",
+          "body": "local prov=\"${1:-$PROVIDER}\" prov_file prov_val\nif [ -n \"${GROQBASH_API_URL:-}\" ]; then\nGROQBASH_PROVIDER_URL=\"${GROQBASH_API_URL}\"\nexport GROQBASH_PROVIDER_URL\nreturn 0\nfi\nif [ -n \"${GROQBASH_PROVIDER_URL:-}\" ]; then\nreturn 0\nfi\nprov_file=\"$(canonical_provider_url_file)\"\nif [ -f \"$prov_file\" ] && [ -s \"$prov_file\" ]; then\nprov_val=\"$(sed -n '1p' \"$prov_file\" 2>/dev/null | awk '{$1=$1;print}')\"\nif [ -n \"$prov_val\" ]; then\nGROQBASH_PROVIDER_URL=\"$prov_val\"\nexport GROQBASH_PROVIDER_URL\nreturn 0\nfi\nfi\nif [ \"${prov:-}\" = \"groq\" ]; then\nGROQBASH_PROVIDER_URL=\"https://api.groq.com/openai/v1/chat/completions\"\nexport GROQBASH_PROVIDER_URL\nreturn 0\nfi\nreturn 1"
+        },
+        {
+          "fn": "provider_api_env_var_name",
+          "body": "local prov=\"$1\"\nlocal prov_upper\nprov_upper=\"$(printf '%s' \"$prov\" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')\"\nprintf '%s' \"${prov_upper}_API_KEY\""
+        },
+        {
+          "fn": "is_valid_json_string",
+          "body": "local s=\"$1\"\n[ -n \"${s:-}\" ] || return 1\nprintf '%s' \"$s\" | jq -e . >/dev/null 2>&1"
+        },
+        {
+          "fn": "b64encode",
+          "body": "if base64 2>/dev/null | tr -d '\\n'; then\n:\nelse\nreturn 1\nfi"
+        },
+        {
+          "fn": "b64decode",
+          "body": "if [ -n \"${B64_DECODE_OPT:-}\" ]; then\nbase64 ${B64_DECODE_OPT}\nelse\nbase64 -d\nfi"
+        },
+        {
+          "fn": "is_truthy",
+          "body": "case \"${1:-}\" in\n1|true|TRUE|True|yes|YES|Yes) return 0 ;;\n*) return 1 ;;\nesac"
+        },
+        {
+          "fn": "file_size",
+          "body": "local f=\"$1\"\nif [ -z \"$f\" ] || [ ! -f \"$f\" ]; then\nprintf '0'\nreturn 0\nfi\ncase \"$(uname 2>/dev/null || echo Linux)\" in\nDarwin) stat -f %z \"$f\" 2>/dev/null || printf '0' ;;\n*) stat -c %s \"$f\" 2>/dev/null || printf '0' ;;\nesac"
+        },
+        {
+          "fn": "is_valid_json_file",
+          "body": "local f=\"$1\"\n[ -f \"$f\" ] || return 1\n[ -s \"$f\" ] || return 1\njq -e . \"$f\" >/dev/null 2>&1"
+        },
+        {
+          "fn": "stage_b64",
+          "body": "local src dst max_bytes tmp_local tmp_b64 workdir size tmp_local_is_temp=0 lockfile\nif [ \"$#\" -eq 2 ]; then\nsrc=\"$1\"; dst=\"$2\"\nelif [ \"$#\" -eq 1 ]; then\ndst=\"$1\"; src=\"\"\nelse\nlog_error \"STAGE\" \"stage_b64 usage: stage_b64 [src] dst\"\nreturn 1\nfi\nmax_bytes=\"${MAX_STAGE_BYTES:-10485760}\"\n[ -n \"$dst\" ] || return 1\nworkdir=\"$(dirname \"$dst\")\"\nmkdir -p \"$workdir\" 2>/dev/null || {\nlog_error \"STAGE\" \"cannot create workdir $workdir\"\nreturn 1\n}\nif [ -n \"$src\" ]; then\nif [ ! -f \"$src\" ] || [ ! -s \"$src\" ]; then\nlog_error \"STAGE\" \"stage_b64: source payload missing or empty: $src\"\nreturn 1\nfi\ntmp_local=\"$src\"\nelse\ntmp_local=\"$(_tmpf file \"${RUN_TMPDIR:-$GROQBASH_TMPDIR}\" payload.tmp 2>/dev/null)\" || {\nlog_error \"STAGE\" \"failed to allocate tmp_local\"\nreturn 1\n}\nif ! cat - > \"$tmp_local\" 2>/dev/null; then\nrm -f -- \"$tmp_local\" 2>/dev/null || true\nlog_error \"STAGE\" \"failed to write staging payload from stdin\"\nreturn 1\nfi\ntmp_local_is_temp=1\nfi\nsize=\"$(file_size \"$tmp_local\" 2>/dev/null || echo 0)\"\nif [ \"$size\" -gt \"$max_bytes\" ]; then\nlog_error \"STAGE\" \"staged payload exceeds max allowed size ($size > $max_bytes)\"\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nreturn 1\nfi\ntmp_b64=\"$(_tmpf file \"$GROQBASH_TMPDIR\" .groq-b64 2>/dev/null)\" || {\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nlog_error \"STAGE\" \"failed to allocate tmp_b64\"\nreturn 1\n}\nif base64 \"$tmp_local\" 2>/dev/null | tr -d '\\n' > \"$tmp_b64\"; then\n:\nelse\nrm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\nreturn 1\nfi\nchmod 600 \"$tmp_b64\" 2>/dev/null || true\nlockfile=\"${workdir%/}/.groqbash.lock\"\nif type lock_exec >/dev/null 2>&1; then\nlock_exec \"$lockfile\" 10 -- mv -f -- \"$tmp_b64\" \"$dst\" || {\nrm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\nreturn 1\n}\nelse\nmv -f \"$tmp_b64\" \"$dst\" 2>/dev/null || {\nrm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\nreturn 1\n}\nfi\nchmod 600 \"$dst\" 2>/dev/null || true\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"STAGE\" \"staged base64 payload: $dst (size $(wc -c < \"$dst\" 2>/dev/null)B)\"\nfi\nreturn 0"
+        },
+        {
+          "fn": "lock_exec",
+          "body": "local lockfile=\"$1\"\nlocal timeout=\"${2:-10}\"\nshift 2\nif [ \"$1\" != \"--\" ]; then\nlog_error \"USAGE\" \"lock_exec <lockfile> <timeout> -- <cmd> [args...]\"\nreturn 2\nfi\nshift\nmkdir -p \"$(dirname \"$lockfile\")\" 2>/dev/null || { log_error \"LOCKFAIL\" \"cannot create lockfile dir: $(dirname \"$lockfile\")\"; return 2; }\nif command -v flock >/dev/null 2>&1; then\n(\nexec 9>\"$lockfile\"\nif ! flock -x -w \"$timeout\" 9; then\nprintf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\\n' \"$(log_prefix)\" \"$lockfile\" \"$timeout\" >&2\nexit 124\nfi\nset -e\n\"$@\"\n)\nrc=$?\nreturn \"$rc\"\nfi\nlog_error \"LOCK\" \"flock not available; cannot acquire lock on $lockfile. Install util-linux/coreutils or run on supported platform.\"\nreturn 2"
+        },
+        {
+          "fn": "_mktemp_in_dir",
+          "body": "local base=\"${1:-}\" prefix=\"${2:-groq}\" tmp\nif [ -z \"$base\" ]; then\nlog_error \"TMP\" \"_mktemp_in_dir: base dir required\"\nreturn \"$GROQBASHERRTMP\"\nfi\ntmp=\"$(_tmpf file \"$base\" \"$prefix\" 2>/dev/null)\"\nif [ -z \"$tmp\" ]; then\nlog_error \"TMP\" \"_mktemp_in_dir: failed to create temp in $base\"\nreturn \"$GROQBASHERRTMP\"\nfi\nprintf '%s' \"$tmp\"\nreturn 0"
+        },
+        {
+          "fn": "show_payload_head",
+          "body": "local path=\"${1:-$PAYLOAD}\" lines=\"${2:-200}\"\nif [ -z \"${path:-}\" ]; then\nprintf 'groqbash: ERROR: payload file missing: %s\\n' \"<unset>\" >&2\nexit \"$GROQBASHERRTMP\"\nfi\nif [ ! -e \"$path\" ]; then\nprintf 'groqbash: ERROR: payload file missing: %s\\n' \"$path\" >&2\nexit \"$GROQBASHERRTMP\"\nfi\nif [ ! -s \"$path\" ]; then\nprintf 'groqbash: INFO: payload exists but is empty: %s\\n' \"$path\" >&2\nreturn 0\nfi\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nprintf 'groqbash: INFO: payload path: %s\\n' \"$path\" >&2\nprintf 'groqbash: INFO: payload (head %d lines):\\n' \"$lines\" >&2\nif printf '%s' \"$path\" | grep -qE '\\.b64$'; then\nb64decode < \"$path\" 2>/dev/null | head -n \"$lines\" >&2 || true\nelse\nhead -n \"$lines\" \"$path\" 2>/dev/null >&2 || true\nfi\nfi\nreturn 0"
+        },
+        {
+          "fn": "atomic_write",
+          "body": "local dest=\"$1\"\nlocal timeout=\"${2:-10}\"\n[ -n \"$dest\" ] || return \"$GROQBASHERRTMP\"\nlocal destdir tmp lockfile rc\ndestdir=\"$(dirname -- \"$dest\")\"\nmkdir -p \"$destdir\" 2>/dev/null || { log_error \"ATOMICFAIL\" \"cannot create dir $destdir\"; return \"$GROQBASHERRTMP\"; }\nlockfile=\"${destdir}/.groqbash.lock\"\ntmp=\"$(mktemp \"$destdir/.groq-atomic.XXXXXX\" 2>/dev/null || true)\"\n[ -n \"$tmp\" ] || tmp=\"$destdir/.groq-atomic.$$.$RANDOM\"\nif ! cat - > \"$tmp\"; then\nrm -f -- \"$tmp\" 2>/dev/null || true\nlog_error \"ATOMICFAIL\" \"writing to temp failed\"\nreturn \"$GROQBASHERRTMP\"\nfi\nchmod 600 \"$tmp\" 2>/dev/null || true\nif type lock_exec >/dev/null 2>&1; then\nlock_exec \"$lockfile\" \"$timeout\" -- mv -f -- \"$tmp\" \"$dest\" || { rc=$?; rm -f -- \"$tmp\" 2>/dev/null || true; return \"$rc\"; }\nchmod 600 \"$dest\" 2>/dev/null || true\nelse\nif mv -f -- \"$tmp\" \"$dest\" 2>/dev/null; then\nchmod 600 \"$dest\" 2>/dev/null || true\nelse\nrc=$?\nrm -f -- \"$tmp\" 2>/dev/null || true\nlog_error \"ATOMICFAIL\" \"mv failed with rc $rc\"\nreturn \"$rc\"\nfi\nfi\nreturn 0"
+        },
+        {
+          "fn": "extract_text_from_resp",
+          "body": "local resp_file=\"${RESP:-}\"\nif [ -z \"${resp_file:-}\" ]; then\nlog_error \"EXTRACT\" \"RESP path not set\"\nreturn 1\nfi\nlocal tmp_copy\ntmp_copy=\"$(_tmpf file \"${RUN_TMPDIR:-$GROQBASH_TMPDIR}\" resp_copy 2>/dev/null)\" || return 1\ncp -f \"$resp_file\" \"$tmp_copy\" 2>/dev/null || return 1\nresp_file=\"$tmp_copy\"\nif ! is_valid_json_file \"$resp_file\"; then\nlog_warn \"EXTRACT\" \"RESP missing or not valid JSON: $resp_file\"\nif [ -f \"$resp_file\" ]; then\ncat \"$resp_file\" 2>/dev/null || true\nreturn 0\nfi\nreturn 1\nfi\nif jq -e 'has(\"diagnostic\") and .diagnostic==true' \"$resp_file\" >/dev/null 2>&1; then\nlog_warn \"EXTRACT\" \"RESP is diagnostic JSON; skipping text extraction\"\nreturn 2\nfi\nif jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.message?.content // .delta?.content // \"\") ] | map(select(.!=\"\")) | length > 0 )' \"$resp_file\" >/dev/null 2>&1; then\njq -r '[.choices[]? | (.message?.content // .delta?.content // \"\")] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nif jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.text? // \"\") ] | map(select(.!=\"\")) | length > 0 )' \"$resp_file\" >/dev/null 2>&1; then\njq -r '[.choices[]?.text? // empty] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nif jq -e '(.output_text? // empty) != \"\" or (.data and (.data|length>0) and ( [ .data[]? | (.text? // \"\") ] | map(select(.!=\"\")) | length > 0 ))' \"$resp_file\" >/dev/null 2>&1; then\nif [ \"$(jq -r '.output_text // empty' \"$resp_file\" 2>/dev/null)\" != \"\" ]; then\njq -r '.output_text' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nelse\njq -r '[.data[]?.text? // empty] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nfi\nif jq -e 'paths(scalars) as $p | getpath($p) | type==\"string\"' \"$resp_file\" >/dev/null 2>&1; then\njq -r '[.. | scalars | select(type==\"string\")] | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nlog_warn \"EXTRACT\" \"No textual content found in RESP\"\nreturn 1"
+        },
+        {
+          "fn": "ensure_run_tmpdir",
+          "body": "local print_only=0 subshell=0 tmpdir\nif [ \"${1:-}\" = \"--print\" ]; then print_only=1; fi\nif [ -n \"${BASHPID:-}\" ] && [ \"${BASHPID:-}\" != \"$$\" ]; then\nsubshell=1\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\ncase \"$RUN_TMPDIR\" in\n\"$GROQBASH_TMPDIR\"/*|\"$GROQBASH_TMPDIR\")\nchmod 700 \"$RUN_TMPDIR\" 2>/dev/null || true\n: \"${PAYLOAD:=$RUN_TMPDIR/payload}\"\n: \"${RESP:=$RUN_TMPDIR/resp.json}\"\n: \"${ERRF:=$RUN_TMPDIR/err.log}\"\nif [ \"$print_only\" -eq 0 ] && [ \"$subshell\" -eq 0 ]; then\n: > \"$RESP\" 2>/dev/null || true\nchmod 600 \"$RESP\" 2>/dev/null || true\n: > \"$ERRF\" 2>/dev/null || true\nchmod 600 \"$ERRF\" 2>/dev/null || true\nexport RUN_TMPDIR PAYLOAD RESP ERRF\nfi\n[ \"$print_only\" -eq 1 ] && printf '%s' \"$RUN_TMPDIR\"\nreturn 0\n;;\n*)\nlog_warn \"TMP\" \"existing RUN_TMPDIR outside GROQBASH_TMPDIR; discarding: $RUN_TMPDIR\"\nRUN_TMPDIR=\"\"\n;;\nesac\nfi\nif [ -z \"${GROQBASH_TMPDIR:-}\" ]; then\nlog_error \"TMP\" \"GROQBASH_TMPDIR not set\"\nreturn \"$GROQBASHERRTMP\"\nfi\nmkdir -p \"$GROQBASH_TMPDIR\" 2>/dev/null || {\nlog_error \"TMP\" \"cannot create base tmpdir $GROQBASH_TMPDIR\"\nreturn \"$GROQBASHERRTMP\"\n}\nchmod 700 \"$GROQBASH_TMPDIR\" 2>/dev/null || true\nif [ -L \"$GROQBASH_TMPDIR\" ]; then\nlog_error \"TMP\" \"GROQBASH_TMPDIR is a symlink: $GROQBASH_TMPDIR\"\nreturn \"$GROQBASHERRTMP\"\nfi\ntmpdir=\"$(_tmpf dir \"$GROQBASH_TMPDIR\" run 2>/dev/null)\" || {\nlog_error \"TMP\" \"ensure_run_tmpdir: _tmpf failed to create run tmpdir\"\nreturn \"$GROQBASHERRTMP\"\n}\nRUN_TMPDIR=\"$tmpdir\"\n: \"${PAYLOAD:=$RUN_TMPDIR/payload}\"\n: \"${RESP:=$RUN_TMPDIR/resp.json}\"\n: \"${ERRF:=$RUN_TMPDIR/err.log}\"\nif [ \"$print_only\" -eq 0 ] && [ \"$subshell\" -eq 0 ]; then\n: > \"$RESP\" 2>/dev/null || true\nchmod 600 \"$RESP\" 2>/dev/null || true\n: > \"$ERRF\" 2>/dev/null || true\nchmod 600 \"$ERRF\" 2>/dev/null || true\nfi\ncleanup_run_tmp_on_exit() {\nrc_in=$?\nif [ \"${DEBUG_PRESERVE:-0}\" -eq 1 ]; then\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR\"\nreturn \"$rc_in\"\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ]; then\ncase \"$RUN_TMPDIR\" in\n\"$GROQBASH_TMPDIR\"/*|\"$GROQBASH_TMPDIR\")\nrm -rf -- \"$RUN_TMPDIR\" 2>/dev/null || true\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"Cleaned RUN_TMPDIR: $RUN_TMPDIR\"\n;;\n*)\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR\"\n;;\nesac\nfi\nreturn \"$rc_in\"\n}\nif [ \"$subshell\" -eq 0 ] && [ \"$print_only\" -eq 0 ]; then\ntrap cleanup_run_tmp_on_exit EXIT INT TERM\nfi\nif [ \"$print_only\" -eq 0 ]; then\nexport RUN_TMPDIR PAYLOAD RESP ERRF\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"Created RUN_TMPDIR: $RUN_TMPDIR\"\nelse\nprintf '%s' \"$RUN_TMPDIR\"\nfi\nreturn 0"
+        },
+        {
+          "fn": "cleanup_tmp",
+          "body": "if [ -n \"${RUN_TMPDIR:-}\" ]; then\ncase \"$RUN_TMPDIR\" in\n\"$GROQBASH_TMPDIR\"/*|\"$GROQBASH_TMPDIR\")\nrm -rf -- \"$RUN_TMPDIR\" 2>/dev/null || true\n;;\n*)\n;;\nesac\nfi"
+        },
+        {
+          "fn": "b64_atomic_write",
+          "body": "local dest=\"$1\"\nlocal timeout=\"${2:-10}\"\nshift 2 || true\n[ -n \"$dest\" ] || {\nlog_error \"B64FAIL\" \"b64_atomic_write: dest required\"\nreturn \"$GROQBASHERRTMP\"\n}\nlocal destdir tmp lockfile\ndestdir=\"$(dirname -- \"$dest\")\"\nmkdir -p \"$destdir\" 2>/dev/null || {\nlog_error \"B64FAIL\" \"cannot create dir $destdir\"\nreturn \"$GROQBASHERRTMP\"\n}\nlockfile=\"${destdir%/}/.groqbash.lock\"\ntmp=\"$(_tmpf file \"$GROQBASH_TMPDIR\" .groq-b64 2>/dev/null)\" || {\nlog_error \"B64FAIL\" \"failed to allocate tmp for b64_atomic_write\"\nreturn \"$GROQBASHERRTMP\"\n}\nif ! b64encode > \"$tmp\"; then\nrm -f -- \"$tmp\" 2>/dev/null || true\nlog_error \"B64FAIL\" \"base64 encoding failed\"\nreturn \"$GROQBASHERRTMP\"\nfi\nchmod 600 \"$tmp\" 2>/dev/null || true\nlock_exec \"$lockfile\" \"$timeout\" -- mv -f -- \"$tmp\" \"$dest\" || {\nrc=$?\nrm -f -- \"$tmp\" 2>/dev/null || true\nreturn \"$rc\"\n}\nchmod 600 \"$dest\" 2>/dev/null || true\nreturn 0"
+        },
+        {
+          "fn": "b64_atomic_read",
+          "body": "local src=\"$1\"\n[ -f \"$src\" ] || return 1\nb64decode < \"$src\"\nreturn $?"
+        },
+        {
+          "fn": "ui_state_write",
+          "body": "local name=\"$1\"; local content=\"$2\"\nlocal dir target\nif [ -n \"${GROQBASH_CONFIG_DIR:-}\" ]; then\ndir=\"${GROQBASH_CONFIG_DIR%/}/ui_state\"\nelse\ndir=\"${RUN_TMPDIR%/}/ui_state\"\nfi\nif [ -z \"${name:-}\" ]; then\nlog_error \"UI_STATE\" \"ui_state_write requires a filename\"\nreturn 1\nfi\nmkdir -p \"$dir\" 2>/dev/null || { log_warn \"UI_STATE\" \"failed to create ui_state dir: $dir\"; return 1; }\nchmod 700 \"$dir\" 2>/dev/null || true\ntarget=\"$dir/$name\"\nprintf '%s' \"$content\" | atomic_write \"$target\" 10 || { log_warn \"UI_STATE\" \"atomic write failed for $target\"; return 1; }\nchmod 600 \"$target\" 2>/dev/null || true\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"UI_STATE\" \"wrote $target (size $(wc -c < \"$target\" 2>/dev/null)B)\"\nfi\nreturn 0"
+        },
+        {
+          "fn": "load_provider_module",
+          "body": "local provider=\"$1\"\nif [ \"${LOADED_PROVIDER_NAME:-}\" = \"$provider\" ] && [ \"${PROVIDER_MODULE_LOADED:-0}\" -eq 1 ]; then\nreturn 0\nfi\nLOADED_PROVIDER_NAME=\"$provider\"\nPROVIDER_MODULE_LOADED=0\nPROVIDER_MODULE_PATH=\"$PROVIDERS_DIR/${provider}.sh\"\nPROVIDER_DIR=\"$PROVIDERS_DIR\"\nif [ ! -d \"$PROVIDER_DIR\" ]; then\nmkdir -p \"$PROVIDER_DIR\" 2>/dev/null || { log_error \"PROVIDER\" \"cannot create provider directory.\"; return 1; }\nfi\nif _is_world_writable \"$PROVIDER_DIR\"; then\nlog_error \"SEC\" \"provider directory is world-writable.\"\nreturn 1\nfi\nlocal current_user owner file_owner perms group_write others_write beforesig aftersig invalid_provider _req\ncurrent_user=\"$(id -un 2>/dev/null || printf '')\"\nowner=\"$(_get_owner \"$PROVIDER_DIR\")\"\n[ -n \"$owner\" ] && [ \"$owner\" != \"$current_user\" ] && log_warn \"SEC\" \"provider directory owned by $owner\"\nif [ ! -f \"$PROVIDER_MODULE_PATH\" ]; then\nif [ \"$provider\" != \"groq\" ]; then\nprintf 'Provider %s is not installed.\\n' \"$provider\" >&2\nPROVIDER_MODULE_LOADED=0\nreturn 0\nelse\nPROVIDER_MODULE_LOADED=1\nreturn 0\nfi\nfi\nif [ -L \"$PROVIDER_MODULE_PATH\" ]; then\nlog_error \"SEC\" \"provider file is symlink.\"\nreturn 1\nfi\nfile_owner=\"$(_get_owner \"$PROVIDER_MODULE_PATH\")\"\n[ -n \"$file_owner\" ] && [ \"$file_owner\" != \"$current_user\" ] && { log_error \"SEC\" \"wrong owner for provider file.\"; return 1; }\nperms=\"$(_get_perm_string \"$PROVIDER_MODULE_PATH\")\"\ngroup_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,6,1)}')\"\nothers_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,9,1)}')\"\nif [ \"$group_write\" = \"w\" ] || [ \"$others_write\" = \"w\" ]; then\nlog_error \"SEC\" \"provider file writable by group/world.\"\nreturn 1\nfi\nbeforesig=\"$(getfile_signature \"$PROVIDER_MODULE_PATH\" 2>/dev/null || true)\"\nif bash -n \"$PROVIDER_MODULE_PATH\" 2>/dev/null; then\ndump_file=\"$(_mktemp_in_dir \"$GROQBASH_TMPDIR\" \"provdump.${provider}.XXXXXX\" 2>/dev/null)\"\n[ -z \"$dump_file\" ] && { log_error \"SEC\" \"cannot create provider dump file\"; return 1; }\n(\nset -e\ndeclare -F | awk '{print $3}' | sort > \"$dump_file.before.$$\" 2>/dev/null || true\n. \"$PROVIDER_MODULE_PATH\"\ndeclare -F | awk '{print $3}' | sort > \"$dump_file.after.$$\" 2>/dev/null || true\ncomm -13 \"$dump_file.before.$$\" \"$dump_file.after.$$\" > \"$dump_file.funcs.$$\" 2>/dev/null || true\nreq1=\"buildpayload_${provider}\"\nreq2=\"call_api_${provider}\"\nfor f in \"$req1\" \"$req2\"; do\nif ! grep -xq \"$f\" \"$dump_file.funcs.$$\" 2>/dev/null; then\nif ! type \"$f\" >/dev/null 2>&1; then\nprintf 'ERROR: provider %s missing required function: %s\\n' \"$provider\" \"$f\" >&2\nexit 99\nfi\nfi\ndone\n: > \"$dump_file\"\nwhile IFS= read -r fn; do\n[ -z \"$fn\" ] && continue\nif type \"$fn\" >/dev/null 2>&1; then\ndeclare -f \"$fn\" >> \"$dump_file\"\nfi\ndone < \"$dump_file.funcs.$$\"\nrm -f \"$dump_file.before.$$\" \"$dump_file.after.$$\" \"$dump_file.funcs.$$\" 2>/dev/null || true\n)\nrc=$?\nif [ \"$rc\" -ne 0 ]; then\nlog_error \"PROVIDER\" \"provider module failed isolation load (rc=$rc)\"\nrm -f \"$dump_file\" 2>/dev/null || true\nreturn 1\nfi\nlocal _nounset_was_on=0\nif (set -o | awk '/^nounset/ {print $2}' 2>/dev/null | grep -q on); then\n_nounset_was_on=1\nset +u\nfi\n. \"$dump_file\"\nif [ \"$_nounset_was_on\" -eq 1 ]; then\nset -u\nfi\nunset _nounset_was_on\nPROVIDER_MODULE_LOADED=1\nrm -f \"$dump_file\" 2>/dev/null || true\naftersig=\"$(getfile_signature \"$PROVIDER_MODULE_PATH\" 2>/dev/null || true)\"\n[ \"$beforesig\" != \"$aftersig\" ] && { log_error \"SEC\" \"provider file changed.\"; return 1; }\nelse\nlog_warn \"PROVIDER\" \"provider module invalid; falling back to embedded provider.\"\nPROVIDER_MODULE_LOADED=0\nfi\nif [ -n \"${provider:-}\" ]; then\nsupports_streaming=0\nsupports_refresh_models=0\nif type \"call_api_streaming_${provider}\" >/dev/null 2>&1; then supports_streaming=1; fi\nif type \"refresh_models_${provider}\" >/dev/null 2>&1; then supports_refresh_models=1; fi\nloaded_from=\"${PROVIDER_MODULE_PATH:-embedded}\"\nprov_json=\"$(jq -c -n --arg p \"$provider\" --arg loaded \"$loaded_from\" --argjson sstream \"$supports_streaming\" --argjson srefresh \"$supports_refresh_models\" '{provider:$p, supports_streaming:$sstream, supports_refresh_models:$srefresh, loaded_from:$loaded}')\"\nui_state_write \"provider_capabilities.json\" \"$prov_json\" || log_warn \"UI_STATE\" \"failed to write provider_capabilities for $provider\"\nfi\nreturn 0"
+        },
+        {
+          "fn": "_detect_base64_opts",
+          "body": "B64_WRAP_OPT=\"\"\nB64_DECODE_OPT=\"-d\"\nif printf '' | base64 -w0 >/dev/null 2>&1; then\nB64_WRAP_OPT=\"-w0\"\nelse\nB64_WRAP_OPT=\"\"\nfi\nif printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then\nB64_DECODE_OPT=\"-d\"\nelif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then\nB64_DECODE_OPT=\"-D\"\nelse\nB64_DECODE_OPT=\"-d\"\nfi\nexport B64_WRAP_OPT B64_DECODE_OPT"
+        },
+        {
+          "fn": "list_files_sorted_by_mtime",
+          "body": "local dir=\"$1\"\nfind \"$dir\" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do\ncase \"$(uname 2>/dev/null || echo Linux)\" in\nDarwin) mtime=\"$(stat -f %m \"$f\" 2>/dev/null || echo 0)\" ;;\n*) mtime=\"$(stat -c %Y \"$f\" 2>/dev/null || echo 0)\" ;;\nesac\nprintf '%s|%s\\n' \"$mtime\" \"$f\"\ndone | sort -n"
+        },
+        {
+          "fn": "tac_fallback",
+          "body": "local f=\"$1\"\nif command -v tac >/dev/null 2>&1; then\ntac \"$f\"\nreturn $?\nfi\nawk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' \"$f\"\nreturn 0"
+        },
+        {
+          "fn": "_file_mtime",
+          "body": "local f=\"$1\"\nif [ ! -e \"$f\" ]; then printf '0'; return 0; fi\ncase \"$(uname 2>/dev/null || echo Linux)\" in\nDarwin) stat -f %m \"$f\" 2>/dev/null || printf '0' ;;\n*) stat -c %Y \"$f\" 2>/dev/null || printf '0' ;;\nesac"
+        },
+        {
+          "fn": "jq_safe",
+          "body": "local filter=\"$1\" file=\"$2\" rc\nif [ -z \"$file\" ] || [ ! -s \"$file\" ]; then\nreturn 1\nfi\nif ! jq -e \"$filter\" \"$file\" >/dev/null 2>&1; then\nrc=$?\nif [ -n \"${ERRF:-}\" ]; then\njq \"$filter\" \"$file\" 2>>\"$ERRF\" >/dev/null 2>&1 || true\nfi\nreturn \"$rc\"\nfi\nreturn 0"
+        }
+      ],
+      "blocks": [
+        {
+          "blk": "PRECORE_BOOT_SETUP_SHELL",
+          "body": "set -euo pipefail"
+        },
+        {
+          "blk": "PRECORE_BOOT_SOURCE_ONLY_CHECK",
+          "body": "if [ \"${GROQBASH_SOURCE_ONLY:-0}\" -eq 1 ]; then\nreturn 0 2>/dev/null || exit 0\nfi"
+        },
+        {
+          "blk": "PRECORE_BOOT_VERIFY_CMDS",
+          "body": "for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do\nif ! command -v \"$cmd\" >/dev/null 2>&1; then\nprintf 'groqbash: ERROR: required command not found: %s\\n' \"$cmd\" >&2\nexit 1\nfi\ndone"
+        },
+        {
+          "blk": "PRECORE_BOOT_DIR_RESOLUTION",
+          "body": "if [ -n \"${GROQBASH_DIR:-}\" ]; then\n:\nelif [ -n \"${GROQBASH_ROOT:-}\" ]; then\nGROQBASH_DIR=\"${GROQBASH_ROOT%/}/groqbash.d\"\nelse\nGROQBASH_DIR=\"$SCRIPTDIR/groqbash.d\"\nfi"
+        },
+        {
+          "blk": "PRECORE_BOOT_FALLBACK_PROVIDERS",
+          "body": ": \"${PROVIDERS_DIR:=$(canonical_config_dir)/providers}\"\nexport GROQBASH_EXTRAS_DIR PROVIDERS_DIR"
+        },
+        {
+          "blk": "PRECORE_BOOT_DIR_INVARIANTS",
+          "body": "if [ -z \"${GROQBASH_DIR:-}\" ]; then\nlog_error \"TMP\" \"GROQBASH_DIR is empty; cannot derive GROQBASH_TMPDIR\"\nexit \"${GROQBASHERRTMP:-1}\"\nfi\ncase \"${GROQBASH_TMPDIR:-}\" in\n/tmp|/tmp/*)\nlog_error \"TMP\" \"GROQBASH_TMPDIR must not be /tmp or under /tmp: ${GROQBASH_TMPDIR}\"\nexit \"${GROQBASHERRTMP:-1}\"\n;;\nesac\ncase \"${GROQBASH_TMPDIR:-}\" in\n\"${GROQBASH_DIR}\"|\"${GROQBASH_DIR}\"/*)\n:\n;;\n*)\nlog_error \"TMP\" \"GROQBASH_TMPDIR must be inside GROQBASH_DIR: ${GROQBASH_TMPDIR} (root: ${GROQBASH_DIR})\"\nexit \"${GROQBASHERRTMP:-1}\"\n;;\nesac\nGROQBASH_CONFIG_DIR=\"${GROQBASH_CONFIG_DIR%/}\"\nif [ -z \"$GROQBASH_CONFIG_DIR\" ]; then\nGROQBASH_CONFIG_DIR=\"${GROQBASH_DIR%/}/config\"\nfi"
+        },
+        {
+          "blk": "PRECORE_BOOT_ENSURE_CONFIG_DIR",
+          "body": "ensure_config_dir || { log_error \"CONFIG\" \"config dir unavailable; aborting.\"; exit \"$GROQBASHERRTMP\"; }"
+        },
+        {
+          "blk": "PRECORE_BOOT_FAILFAST_CONFIG_DIR",
+          "body": "if [ -z \"$(canonical_config_dir)\" ]; then\nprintf 'groqbash: ERROR: CONFIG: canonical config dir is empty; aborting.\\n' >&2\nexit 1\nfi"
+        },
+        {
+          "blk": "PRECORE_BOOT_NORMALIZE_DEBUG",
+          "body": "if [ -n \"${GROQBASH_DEBUG:-}\" ] && [ -z \"${DEBUG:-}\" ]; then\nDEBUG=\"${GROQBASH_DEBUG}\"\nfi\nDEBUG=\"${DEBUG:-0}\""
+        },
+        {
+          "blk": "PRECORE_BOOT_EARLY_PRINT_CONFIG",
+          "body": "if [ \"$#\" -gt 0 ]; then\ni=1\nwhile [ \"$i\" -le \"$#\" ]; do\narg=\"${!i}\"\ncase \"$arg\" in\n--print-config-dir)\nprintf '%s\\n' \"$(canonical_config_dir)\"\nexit 0\n;;\n--print-provider-file)\nprintf '%s\\n' \"$(canonical_provider_file)\"\nexit 0\n;;\n--print-model-file)\nnext_index=$((i+1))\nif [ \"$next_index\" -le \"$#\" ]; then\nprov=\"${!next_index}\"\nprintf '%s\\n' \"$(canonical_model_file \"$prov\")\"\nexit 0\nelse\nprintf 'groqbash: ERROR: usage: --print-model-file <provider>\\n' >&2\nexit 2\nfi\n;;\n--print-model-file=*)\nprov=\"${arg#--print-model-file=}\"\nprintf '%s\\n' \"$(canonical_model_file \"$prov\")\"\nexit 0\n;;\n--help|-h)\nbreak\n;;\n*)\n;;\nesac\ni=$((i+1))\ndone\nfi"
+        },
+        {
+          "blk": "PRECORE_BOOT_MKDIR_PERMS",
+          "body": "mkdir -p \"$GROQBASH_HISTORY_DIR/sessions\" 2>/dev/null || true\nmkdir -p \"$GROQBASH_TMPDIR\" 2>/dev/null || true\nchmod 700 \"$GROQBASH_HISTORY_DIR\" \"$GROQBASH_TMPDIR\" 2>/dev/null || true\nSESSION_DIR=\"${GROQBASH_HISTORY_DIR%/}/sessions\"\nmkdir -p \"$SESSION_DIR\" 2>/dev/null || true\nchmod 700 \"$SESSION_DIR\" 2>/dev/null || true\numask 077\nmkdir -p \"$(canonical_config_dir)\" \"$GROQBASH_MODELS_DIR\" \"$GROQBASH_TEMPLATES_DIR\" \"$GROQBASH_HISTORY_DIR\" \"$GROQBASH_TMPDIR\" \"$GROQBASH_EXTRAS_DIR\" \"$(canonical_config_dir)/providers\" 2>/dev/null || true\nfor d in \"$GROQBASH_DIR\" \"$(canonical_config_dir)\" \"$GROQBASH_MODELS_DIR\" \"$GROQBASH_TEMPLATES_DIR\" \"$GROQBASH_HISTORY_DIR\" \"$GROQBASH_TMPDIR\" \"$GROQBASH_EXTRAS_DIR\" \"$(canonical_config_dir)/providers\"; do\nif [ -L \"$d\" ]; then\nprintf 'groqbash: ERROR: directory is a symlink: %s\\n' \"$d\" >&2\nexit \"$GROQBASHERRTMP\"\nfi\nmkdir -p \"$d\" 2>/dev/null || { printf 'groqbash: ERROR: cannot create directory: %s\\n' \"$d\" >&2; exit \"$GROQBASHERRTMP\"; }\nchmod 700 \"$d\" 2>/dev/null || true\ndone"
+        },
+        {
+          "blk": "PRECORE_BOOT_DETECT_B64_OPTS",
+          "body": "_detect_base64_opts"
+        }
+      ]
+    }
+  ]
+}
