@@ -39,85 +39,160 @@ portable tmp helpers, logging and safe provider loading.
 
 Key primitives (documented)
 - resolve_script_dir()
-  Determine canonical script directory; prints path to stdout.
-- canonical_config_dir(), canonical_provider_file(), canonical_model_file(), canonical_provider_url_file()
-  Canonical path helpers; used by CLI --print-* flags and persistence.
-- ensure_config_dir()
-  Create/config dir with perms 700; fail-fast on inability to create or if dir is a symlink.
-- ensure_run_tmpdir([--print])
-  Create per-run RUN_TMPDIR under GROQBASH_TMPDIR; export PAYLOAD/RESP/ERRF; install cleanup trap.
-- _detect_base64_opts(), B64_WRAP_OPT, B64_DECODE_OPT
-  Platform-portable base64 option detection and exported opts.
-- _mktemp_in_dir(), _tmpf(), make_tmpdir()
-  Force creation of tmpfiles/dirs under GROQBASH_TMPDIR; explicitly reject /tmp or external dirs.
-- atomic_write(dest [,timeout])
-  Write stdin to temp file then mv atomically under lock_exec.
-- b64_atomic_write/read, stage_b64(src|stdin dst)
-  Atomic base64 staging with MAX_STAGE_BYTES checks.
-- lock_exec(lockfile timeout -- command ...)
-  Acquire exclusive flock with timeout and run command in subshell; clear rc on failure.
-- log_info(code,msg), log_warn(code,msg), log_error(code,msg)
-  Structured logging helpers honoring DEBUG and GROQBASH_LOG.
+  Determine canonical script directory ($SCRIPTDIR); prints path to stdout.
+- canonical_config_dir()
+  Normalize and return the canonical config directory path ($GROQBASH_CONFIG_DIR).
+- canonical_provider_file()
+  Return the path to the provider persistence file under the canonical config directory.
+- canonical_model_file(provider)
+  Return the path to the default model file for the specified provider under config.
+- canonical_provider_url_file()
+  Return the path to the active provider API URL file under config.
+- ensure_api_key_for_provider(provider)
+  Validate API key presence in environment. If missing in non-interactive TTY, fail with
+  GROQBASHERRNOAPIKEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
+  export to env, and show permanent save instructions.
 - enforce_network_policy()
   Central policy check: returns 0 if network allowed; non-zero if blocked.
   Respects DRY_RUN, GROQBASH_SKIP_NETWORK, GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET, QUIET.
-- ui_state_write(relpath, json-string)
-  Atomically write JSON state under $GROQBASH_CONFIG_DIR/ui_state with perms 600; best-effort.
+- log_prefix()
+  Return unified log header prefix: groqbash: <SCRIPT_NAME>:.
+- log_info(code, msg), log_warn(code, msg), log_error(code, msg)
+  Structured logging helpers writing to stderr (if DEBUG active) and appending to GROQBASH_LOG.
+- dbg(...)
+  Print fast diagnostic messages to stderr when DEBUG is enabled.
+- ensure_config_dir()
+  Create config dir with permissions 700, test write access, and fail-fast if unable or if it is a symlink.
+- write_provider_url_if_missing(provider, url)
+  Atomically and transactionally write provider API URL to the canonical URL file; set permissions 600.
+- resolve_provider_url(provider)
+  Determine active API URL: prioritize ENV (GROQBASH_API_URL/GROQBASH_PROVIDER_URL), then provider-url file,
+  falling back to Groq native default. Exports GROQBASH_PROVIDER_URL.
+- provider_api_env_var_name(provider)
+  Normalize provider name to uppercase, replace non-alphanumeric chars with "_" and append "_API_KEY".
+- is_valid_json_string(string)
+  Validate if input string is syntactically correct JSON using jq.
+- b64encode() / b64decode()
+  Base64 stream encoding and decoding utilizing platform-portable options.
+- is_truthy(val)
+  Return 0 (true) if value matches 1, true, TRUE, True, yes, YES, Yes; 1 otherwise.
+- file_size(path)
+  Determine precise file size in bytes using portable stat flags.
+- is_valid_json_file(path)
+  Validate if file exists, contains data, and is valid JSON.
+- stage_b64([src,] dst)
+  Securely encode source (file or stdin) to Base64 under size limits ($MAX_STAGE_BYTES), writing atomically to dst with permissions 600.
+- lock_exec(lockfile, timeout -- command ...)
+  Acquire exclusive flock with timeout and run command in subshell; fail with status 124 on timeout.
+- _mktemp_in_dir(root_dir, [prefix])
+  Create unique temp file inside the designated root directory.
+- show_payload_head(path, [lines])
+  Extract and print first lines of payload for debugging; decodes base64 (.b64) payloads on the fly.
+- atomic_write(dest, [timeout])
+  Write stdin to temp file inside dest's parent folder, apply mode 600, lock parent, and mv atomically to dest.
+- extract_text_from_resp()
+  Resilient extraction of assistant text from RESP JSON. Supports OpenAI delta/message content, plain text,
+  custom outputs, and recursive fallback; writes malformed/diagnostic indicators to ERRF.
+- ensure_run_tmpdir([--print])
+  Create per-run isolated RUN_TMPDIR (mode 700) under GROQBASH_TMPDIR; export PAYLOAD/RESP/ERRF (mode 600);
+  install EXIT/INT/TERM cleanup trap.
+- cleanup_tmp()
+  Recursively remove RUN_TMPDIR directory when safe.
+- b64_atomic_write(dest, [timeout])
+  Encode stdin to Base64 and write atomically to dest under lock with permissions 600.
+- b64_atomic_read(path)
+  Perform safe, atomic read and real-time Base64 decoding of a file.
+- ui_state_write(filename, json_content)
+  Atomically write state files to the UI state directory under lock with permissions 600.
 - load_provider_module(provider)
-  Safe-load provider module from PROVIDERS_DIR: security checks (no symlink, owner, perms),
-  `bash -n` syntax check, source in isolated subshell, import only function definitions,
-  write provider_capabilities.json via ui_state_write, set LOADED_PROVIDER_NAME/PROVIDER_MODULE_LOADED.
-- validate_provider_interface(p)
-  Verify required functions exist (buildpayload_<p>, call_api_<p>); log missing functions.
+  Safe-load external provider modules with checks (no group/world writable, belongs to owner, `bash -n` check,
+  cryptographic signatures check). Source in a subshell, verify interface functions buildpayload_<p> and call_api_<p>,
+  import into main environment, and write provider_capabilities.json via ui_state_write.
+- _detect_base64_opts()
+  Detect system base64 flags (B64_WRAP_OPT and B64_DECODE_OPT) dynamically for GNU and macOS/BSD.
+- list_files_sorted_by_mtime(dir)
+  List directory files sorted by modification time (ascending) portably.
+- tac_fallback(file)
+  Invert file line order using tac or an awk-based fallback.
+- _file_mtime(file)
+  Get file modification time as a Unix timestamp.
+- jq_safe(filter, json_file)
+  Execute safe jq operations; write errors to ERRF on failure instead of crashing.
 
-Invariants and policies
-- All created dirs: mode 700; files: mode 600.
-- GROQBASH_TMPDIR must be inside GROQBASH_DIR; _tmpf enforces this.
-- Fail-fast on missing mandatory external commands (bash, curl, jq, awk, coreutils).
+Blocks of Code / Flows
+- PRECORE_BOOT_SETUP_SHELL: Set restrictive options (`set -euo pipefail`).
+- PRECORE_BOOT_SOURCE_ONLY_CHECK: If GROQBASH_SOURCE_ONLY=1, exit with status 0 immediately after source.
+- PRECORE_BOOT_VERIFY_CMDS: Validate the presence of mandatory utilities (bash, jq, curl, mktemp, stat, flock, etc.).
+- PRECORE_BOOT_DIR_RESOLUTION: Resolve $GROQBASH_DIR dynamically.
+- PRECORE_BOOT_FALLBACK_PROVIDERS: Export fallback paths for $GROQBASH_EXTRAS_DIR and $PROVIDERS_DIR.
+- PRECORE_BOOT_DIR_INVARIANTS: Ensure safe directory boundaries (e.g., $GROQBASH_TMPDIR must reside inside $GROQBASH_DIR, not system /tmp).
+- PRECORE_BOOT_ENSURE_CONFIG_DIR: Ensure active configuration directory is valid.
+- PRECORE_BOOT_FAILFAST_CONFIG_DIR: Fail-fast if canonical configuration path resolution returns empty.
+- PRECORE_BOOT_NORMALIZE_DEBUG: Normalize DEBUG environment flags (defaulting to 0).
+- PRECORE_BOOT_EARLY_PRINT_CONFIG: Early intercept and execution of command-line path printing queries.
+- PRECORE_BOOT_MKDIR_PERMS: Create the workspace structure, enforce 700 directory permissions (no symlinks), and apply umask 077.
+- PRECORE_BOOT_DETECT_B64_OPTS: Execute _detect_base64_opts.
 
 -------------------------------------------------------------------------------
 PRECORE_RUN (runtime primitives: history, manifest, session, cache)
 -------------------------------------------------------------------------------
 Purpose
 Provide atomic, lock-protected runtime primitives for history rotation, multimodal
-manifest staging, session NDJSON handling and session cache.
+manifest staging, session NDJSON handling, and session cache.
 
 Key primitives (documented)
-- rotate_history()
-  Rotate history under HISTORY_LOCK using GROQBASH_HISTORY_MAX_FILES / MAX_BYTES / KEEP_DAYS.
-- save_to_history(payload_json)
-  Atomically append/save history entry, update last_history.json via ui_state_write, call rotate_history when needed.
-- manifest_create(manifest_path), manifest_add_part(manifest, srcfile), manifest_read(manifest)
-  Multimodal manifest management: parts array + staged base64 parts; manifest.b64 staging;
-  manifest_add_part stages part via stage_b64, updates manifest under lock, writes manifest.b64.
+- rotate_history([timeout])
+  Rotate history under HISTORY_LOCK using GROQBASH_HISTORY_MAX_FILES, MAX_BYTES, and KEEP_DAYS.
+- save_to_history(text)
+  Atomically append/save history entry, update last_history.json via ui_state_write, call rotate_history.
+- manifest_create(manifest_path, [timeout])
+  Initialize new manifest JSON part-array and .b64 counterpart atomically with permissions 600.
+- manifest_add_part(manifest, part_name, src_file, mime_type, [timeout])
+  Stage source file as Base64, append details to manifest JSON under lock, and regenerate manifest.b64.
+- manifest_read(manifest)
+  Read and print manifest JSON contents, fallback to decoding .b64 if needed.
+- _get_perm_string(path) / _get_owner(path)
+  Retrieve file symbolic permissions and user ownership portably.
+- getfile_signature(path)
+  Generate integrity footprint: hash and/or file system metadata (device, inode, size, mtime, permissions, uid, gid).
+- _is_world_writable(path)
+  Check if a path is group/world writable (vulnerable to external writing).
+- make_tmpdir()
+  Create unique directory inside $GROQBASH_TMPDIR under lock with permissions 700.
+- _tmpf(type, base_dir, [prefix])
+  Strict temp file (600) or directory (700) generator verifying path containment inside allowed tmp boundaries.
 - session_validate_id(sid)
-  Validate session id pattern and length; return 0/1.
+  Validate session ID structure (alphanumeric, ".", "-", "_" with length 1 to 128 characters).
 - session_now_ts()
-  Return epoch UTC timestamp for session records.
+  Return current time as an ISO 8601 UTC timestamp.
 - session_messages_tmp_path(session_id)
-  Path helper for session tmp files under RUN_TMPDIR.
-- session_read_window(session_id, N, out_file)
-  Read last N NDJSON lines from sessions/<sid>.ndjson, normalize roles, produce {"messages":[...]} atomically.
-  Requires RUN_TMPDIR writable; updates ui_state best-effort.
+  Return path to temporary messages file inside RUN_TMPDIR.
+- session_sanitize_cmd(cmd)
+  Mask sensitive env variables, credentials, and API keys with [REDACTED], truncating strings to 256 characters.
+- session_read_window(session_id, [window_size], out_file)
+  Extract last N session lines from NDJSON file, build normalized messages array JSON, and update UI state.
 - session_append(session_id, role, content, meta_json)
-  Idempotent append: generate message_id if missing, create marker dir, acquire flock on session file,
-  check duplicates, append NDJSON, leave done marker, update ui_state; cleans markers on failure.
-- session_marker_create / session_cache_key / session_cache_get / session_cache_set / session_cache_invalidate
-  Session cache primitives:
-  - Key format: sid|sha256(params_string)
-  - Cache file format: first line = expiry_epoch; subsequent lines = payload JSON.
-  - session_cache_get removes expired files and returns 0 on hit.
-  - session_cache_set writes atomically under GROQBASH_CONFIG_DIR/session_cache with perms 600.
-  - TTL enforced by expiry epoch first line.
-- _get_perm_string, _get_owner, getfile_signature, _is_world_writable
-  Portable file metadata helpers; used for security checks.
-- list_files_sorted_by_mtime, _file_mtime, tac_fallback
-  Portable utilities for file ordering and fallback behaviors.
+  Idempotent append: generate unique message_id, manage block marker (.lockdir), lock session file,
+  append NDJSON line, update index, and write session metadata via ui_state_write.
+- _session_hash(string)
+  Generate SHA-256 hash or fallback to truncated Base64 if tools are missing.
+- session_cache_key(sid, params)
+  Generate cache key matching sid and SHA-256 of parameters.
+- session_cache_get(sid, params, [out_file])
+  Retrieve cached response; delete and return 1 if expired based on Unix epoch TTL first-line header.
+- session_cache_set(sid, params, [ttl], [src_file])
+  Write cache atomically with TTL expiration Unix timestamp as first line under session_cache (perms 600).
+- session_cache_invalidate(sid, [params])
+  Selectively or completely purge cache files for a given session.
+- _normalize_bool_env()
+  Convert boolean environment flags (ALLOW_API_CALLS, DRY_RUN, DEBUG) to normalized 0 or 1 integers.
 
-Invariants and policies
-- All session and cache files are NDJSON or JSON; session NDJSON: one record per line {ts, role, content, meta}.
-- Atomicity: all writes under locks and mv atomic within same filesystem.
-- No use of system /tmp; all tmp under GROQBASH_TMPDIR/RUN_TMPDIR.
+Blocks of Code / Flows
+- block_mkdir_session_cache: Allocate and configure $SESSION_CACHE_DIR with permissions 700.
+- block_ensure_config_dir: Ensure configuration directory is present and accessible.
+- block_ensure_run_tmpdir: Invoke ensure_run_tmpdir if GROQBASH_SOURCE_ONLY=0.
+- block_normalize_bool_env_call: Normalize environment flags.
+- block_last_check_lines_default: Default LAST_CHECK_LINES to 50 if unset.
 
 -------------------------------------------------------------------------------
 PROVIDER (embedded: groq)
@@ -127,69 +202,95 @@ Provider-specific implementation for Groq-compatible API: payload builder,
 non-streaming and streaming calls, models refresh and validation.
 
 Key functions (documented)
-- buildpayload_groq()
-  Build and validate payload JSON from MODEL, TURE (temperature), MAX_TOKENS, MESSAGES_JSON,
-  BUILD_MESSAGES_FILE, JSON_INPUT, CONTENT, STREAM_MODE. Produce GROQBASH_TMP_PAYLOAD or PAYLOAD.
-  Fail with diagnostics if payload empty or jq fails.
+- _cleanup_local_tmp(payload, b64, json)
+  Securely remove local work files.
+- buildpayload_groq() / buildpayloadgroq() (alias)
+  Compile and write Groq-compatible JSON payload from variables (MODEL, TURE, MAX_TOKENS, and message sources:
+  JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, or CONTENT). Perform Base64 staging.
 - call_api_groq()
-  Non-streaming HTTP call using CURL_BASE_OPTS; decode .b64 payload if needed; enforce_network_policy;
-  require GROQ_API_KEY or PROVIDER_API_ENV_groq/GROQBASH_API_KEY; write RESP (resp.json) and diagnostics.
-- call_api_streaming_groq()
-  Streaming (SSE) call: write resp.raw, parse lines prefixed with data:, extract JSON chunks,
-  build resp.chunks.json and resp.text.txt incrementally, write final RESP atomically.
-- refresh_models_groq()
-  Call /openai/v1/models, normalize names, filter supported models, write MODELS_FILE atomically via b64_atomic_write
-  under MODELS_LOCK; respect MAX_MODELS; produce diagnostics on failure.
-- validate_model_groq(model)
-  Check presence in MODELS_FILE (if exists) and call is_supported_model; return 0 if valid.
-- auto_select_model_groq()
-  Scan MODELS_FILE and return first supported normalized model on stdout; return 1 if none.
+  Sincronous HTTP call. Handles .b64 payload decoding, appends buffering parameters (stdbuf), builds curl headers with
+  GROQ_API_KEY, isolates clean JSON outputs (cuts trailing non-JSON data), writes RESP (600) or diagnostic JSON.
+- call_api_streaming_groq() / call_api_streaming_groq_legacy() (alias)
+  Streaming HTTP SSE call. Pipeline processing of SSE streams, incremental print of tokens to stdout, writes raw stream
+  and chunk accumulators under RUN_TMPDIR, compiles final RESP, and updates last_api.json.
+- refresh_models_groq() / refreshmodelsgroq() (alias)
+  Query /openai/v1/models, normalize names, enforce MAX_MODELS, and write MODELS_FILE atomically under lock (10s) in Base64.
+- validate_model_groq(model) / validatemodelgroq() (alias)
+  Validate requested model against local MODELS_FILE and support checks (is_supported_model).
+- auto_select_model_groq() / autoselectmodelgroq() (alias)
+  Extract first supported text-only model from local models file and print to stdout.
 
-Operational notes
-- Uses RUN_TMPDIR, MODELS_FILE, MODELS_LOCK, MAX_MODELS.
-- All network calls respect enforce_network_policy and DRY_RUN.
-- On any error produce RESP diagnostic JSON with reason, timestamp and stderr fragment.
+Blocks of Code / Flows
+- GROQ_API_KEY_override: Override GROQ_API_KEY with PROVIDER_API_ENV_groq if defined in the active environment.
 
 -------------------------------------------------------------------------------
 CORE_SETUP (CLI, model resolution, request orchestration)
 -------------------------------------------------------------------------------
 Purpose
 Normalize CLI and env flags, resolve FINAL_MODEL, dispatch to provider functions,
-handle retries, extract text from RESP, detect edge cases and finalize output.
+handle retries, extract text from RESP, detect edge cases, and finalize output.
 
 Key flows and functions (documented)
-- resolve_model()
-  Priority (highest → lowest):
-    1) CLI -m/--model
-    2) per-provider persisted file groqbash.d/config/model.<provider> (first non-empty line)
-    3) provider auto-select (auto_select_model_<provider>())
-    4) first supported entry in MODELS_FILE (normalized)
-    5) MODEL in groqbash.d/config
-    6) first supported entry in ALLOWED_MODELS
-  Sets FINAL_MODEL or returns non-zero if unresolved.
 - call_provider(function_name, ...)
-  Generic dispatch: call buildpayload_<prov>, call_api_<prov>, etc.; return 127 if function missing.
-- refresh_models_dispatch(), validate_model_dispatch(), auto_select_model_dispatch()
-  Provider-dispatch wrappers with clear error codes and logging.
+  Execute dynamic provider-specific function; returns status 127 if function is not loaded.
+- refresh_models_dispatch([models_file])
+  Dispatch model refresh routine to active provider, with fallback for backward-compatible signatures.
+- validate_model_dispatch(model)
+  Dispatch model validation; fall back to a permissive warning if provider validation is not implemented.
+- resolve_model()
+  Determine FINAL_MODEL by resolving priorities (highest to lowest):
+    1) CLI -m/--model
+    2) Persisted default model file: groqbash.d/config/model.<provider>
+    3) Provider auto-select (auto_select_model_<provider>())
+    4) First supported model in local MODELS_FILE
+    5) MODEL variable in groqbash.d/config
+    6) First supported entry in global ALLOWED_MODELS
+  Returns non-zero on total resolution failure.
 - build_payload_from_vars()
-  Ensure RUN_TMPDIR and delegate to buildpayload_<PROVIDER>; set GROQBASH_TMP_PAYLOAD/PAYLOAD.
+  Ensure RUN_TMPDIR is active, delegate to buildpayload_<PROVIDER>, and set payload variables.
 - call_api_once() / call_api_streaming()
-  Wrapper that respects DRY_RUN and delegates to provider call_api_* functions.
-- perform_request_once()
-  Retry loop with MAX_RETRIES and linear backoff for transport errors; distinguishes API errors vs transport errors.
-  After response: extract_text_from_resp(), detect_empty_edge_case(), finalize_and_output().
-- extract_text_from_resp()
-  Heuristics to extract textual content from RESP JSON; supports multiple response shapes; writes diagnostics to ERRF.
+  Wrapper that respects DRY_RUN and delegates to call_api_<PROVIDER> or call_api_streaming_<PROVIDER>.
+- extract_api_error()
+  Inspect RESP JSON to parse formal error messages or extract plain error fragments.
 - detect_empty_edge_case()
-  Inspect RESP for empty completions; set GROQBASH_EDGE_EMPTY and related GROQBASH_EDGE_* diagnostics.
+  Check RESP for empty text completions with status 200 (stop signal, zero tokens generated). Set GROQBASH_EDGE_EMPTY=1
+  and export request diagnostics.
 - finalize_and_output(mode, text)
-  Emit output according to OUTPUT_MODE (json/pretty/text/raw), save long outputs via save_to_history when FORCE_SAVE_MODE or THRESHOLD exceeded,
-  write last_api.json fallback via ui_state_write.
+  Format output (json/pretty/raw/text). Automatically save results via save_to_history if content exceeds character
+  THRESHOLD or if FORCE_SAVE_MODE is active.
+- perform_request_once()
+  Execute call_api_once with linear backoff retry loops (up to MAX_RETRIES). Extract text, detect empty completions,
+  parse errors, update last_api.json, and finalize outputs.
+- collect_input_from_files(file_list...)
+  Concatenate source files with visual delimiters separating structures.
+- expand_args_to_content(args...)
+  Read existing files or append arguments literally to build prompt content.
+- file_readable(path)
+  Confirm file is regular and readable.
+- trim(string)
+  Remove leading and trailing whitespaces and tabs via awk.
+- is_number(val)
+  Verify string is a valid numeric value (integer or decimal).
+- is_supported_model(model)
+  Filter out non-textual model formats (vision, audio, whisper, tts, embedding, multimodal) to prevent errors.
+- list_models_cli()
+  Print local models to stderr, highlighting unsupported non-textual models.
+- validate_model_core(model)
+  Central validation routine: normalize names, verify against local files, and check is_supported_model.
+- load_local_config()
+  Parse the user configuration file (groqbash.d/config/config) and populate operational variables.
+- load_whitelist()
+  Load allowed models into the global whitelist string $ALLOWED_MODELS.
+- is_tty_out()
+  Check if stdout is a real interactive terminal (TTY).
 
-Operational invariants
-- CURL_BASE_OPTS is the conservative base for all curl invocations.
-- DRY_RUN prevents real network calls; call_api wrappers must honor DRY_RUN.
-- All provider errors produce RESP diagnostic JSON when possible.
+Blocks of Code / Flows
+- parse_cli_arguments: Process parameters (inputs, batches, sessions, formats, providers, flags). Append unmatched positional arguments to $ARGS.
+- source_session_engine: Dry-run and source the external session engine extension if available; set SE_AVAILABLE=1.
+- verify_api_calls_and_rebuild_providers: Intercept network blocks and scan providers/ directory to rebuild $SUPPORTED_PROVIDERS.
+- raw_listings: Intercept and fulfill immediate raw provider or model queries, exiting with status 0.
+- immediate_actions: Process actions not requiring model calls (help, listings, default model persistence, extension installation).
+- normalize_boolean_flags: Convert active flag configurations to pure 0 or 1 booleans.
 
 -------------------------------------------------------------------------------
 CORE_PROVIDER (discovery, selection, persistence)
@@ -198,26 +299,22 @@ Purpose
 Discover available providers (builtin + extras), persist provider choice, resolve provider URL and API key, and validate provider interface.
 
 Key behaviors (documented)
-- Discovery
-  SUPPORTED_PROVIDERS built from builtin providers + files under GROQBASH_EXTRAS_DIR/providers or PROVIDERS_DIR.
-- Persistence
-  canonical_provider_file() returns groqbash.d/config/provider; writing uses atomic_write and chmod 600.
-  When provider changes, invalidate MODELS_FILE to avoid stale lists.
-- resolve_provider_url(provider)
-  Resolution precedence: ENV (GROQBASH_API_URL / GROQBASH_PROVIDER_URL) > provider-url file > embedded default (for groq).
-  Exports GROQBASH_PROVIDER_URL on success.
-- ensure_api_key_for_provider(provider)
-  Compute provider API env var name via provider_api_env_var_name; if missing:
-    - If interactive TTY: prompt and export; else fail with GROQBASHERRNOAPIKEY unless DRY_RUN.
 - validate_provider_interface(provider)
-  Ensure required functions exist; log and return non-zero if missing.
-- load_provider_module(provider)
-  See PRECORE_BOOT: security checks, bash -n, subshell import, write provider_capabilities.json via ui_state_write.
+  Verify that the loaded provider module defines the mandatory buildpayload_<p> and call_api_<p> functions.
+- assemble_content()
+  Build the prompt $CONTENT with strict priorities:
+    1) Clear content if JSON_INPUT is defined.
+    2) Concatenate files from FILE_INPUTS and append pos args.
+    3) Apply TEMPLATE placeholders (replacing {{CONTENT}} with the prompt).
+    4) Use captured standard input ($STDIN_CONTENT).
+    5) Fall back to expanding $ARGS.
 
-Security and side-effects
-- Provider modules must not bypass PRECORE primitives for I/O or locking.
-- Provider selection persistence uses atomic_write and perms 600.
-- write_provider_url_if_missing(provider, url) writes provider-url file atomically when safe.
+Blocks of Code / Flows
+- CORE_PROVIDER_PRO_LOAD_INITIALIZATION: Locate modules and resolve the active provider from CLI or configuration. Perform interactive selector menus, write choice to PROVIDER_FILE (600), invalidate old models/URLs, and trigger secure loading.
+- CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH: Validate the active provider interface. Trigger local model alignment (automatic background or manual CLI refresh requests) requiring provider API keys.
+- CORE_PROVIDER_SHOW: Process diagnostics and settings configurations (print paths or render the configuration/integrity diagnostic checklist).
+- CORE_PROVIDER_MAIN_RESOLVE: Handle BOOTSTRAP_ONLY halts, load configurations, resolve and validate the model, and capture standard input ($STDIN_CONTENT).
+- CORE_PROVIDER_MAIN_EXECUTION: Run prompt assembly and parameter validation. Execute the three main operation tracks: BATCH processing, interactive CHAT_MODE loop (Ctrl+D capture), or Single Prompt standard execution.
 
 -------------------------------------------------------------------------------
 SESSION CACHE (explicit)
@@ -312,8 +409,24 @@ SESSION_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
 GROQBASH_TMPDIR, GROQBASH_HISTORY_DIR, GROQBASH_LOCK_TIMEOUT_*,
 GROQBASH_ROTATE_HISTORY, GROQBASH_HISTORY_MAX_FILES, GROQBASH_HISTORY_MAX_BYTES,
 GROQBASH_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS, CURL_BASE_OPTS,
-B64_WRAP_OPT, B64_DECODE_OPT, GROQ_API_KEY, PROVIDER_API_ENV_groq, GROQBASH_API_KEY,
+B64_WRAP_OPT, B64_DECODE_OPT, GROQ_API_KEY, PROVIDER_API_ENV_groq,
+SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE, SCRIPTDIR, CANONICAL_EXTRAS_DIR,
+LEGACY_EXTRAS_DIR, GROQBASH_MODELS_DIR, GROQBASH_TEMPLATES_DIR, SESSION_DIR,
+HISTORY_LOCK, TMP_LOCK, GROQBASH_LOCK_TIMEOUT_TMP, GROQBASH_LOCK_TIMEOUT_MODELS,
+GROQBASH_LOCK_TIMEOUT_HISTORY, LAST_CHECK_LINES, BOOTSTRAP_ONLY, SE_ENGINE_PATH,
+SE_AVAILABLE, FINAL_MODEL, CONTENT, JSON_INPUT, BATCH_FILE, CHAT_MODE,
+SET_DEFAULT_MODEL, REFRESH_MODELS, LIST_MODELS, OUT_PATH, SYSTEM_PROMPT,
+MAX_TOKENS, MODEL, AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER,
 TURE (temperature alias), TEMPERATURE (recommended alias).
+
+Error Code Constants & Direct Alias Mappings:
+- GROQBASH_ERR_NO_API_KEY (10) / GROQBASHERRNOAPIKEY
+- GROQBASH_ERR_BAD_MODEL (11) / GROQBASHERRBAD_MODEL
+- GROQBASH_ERR_CURL_FAILED (12) / GROQBASHERRCURL_FAILED
+- GROQBASH_ERR_INVALID_JSON (13) / GROQBASHERRINVALID_JSON
+- GROQBASH_ERR_NO_PROMPT (14) / GROQBASHERRNO_PROMPT
+- GROQBASH_ERR_TMP (15) / GROQBASHERRTMP
+- GROQBASH_ERR_API (16) / GROQBASHERRAPI
 
 Notes
 - TURE is retained for backward compatibility; document TEMPERATURE as alias in user-facing docs.
@@ -341,9 +454,8 @@ EXAMPLES (short)
 CHANGE NOTES (summary)
 -------------------------------------------------------------------------------
 This document is the authoritative core notes aligned to:
-- groqbash_compact_no_code (functions, variables, code_map)
-- SPEC TECNICA STRUTTURALE (PRECORE_BOOT, PRECORE_RUN, PROVIDER, CORE_SETUP, CORE_PROVIDER)
-All critical primitives and invariants from the SPEC are explicitly documented above.
+- groqbash_lossless_logic_outline.txt
+All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 -------------------------------------------------------------------------------
 END
