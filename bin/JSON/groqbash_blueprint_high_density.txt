@@ -1,0 +1,254 @@
+=== PRECORE_BOOT ===
+
+V:SCRIPT_NAME="groqbash"
+V:SCRIPT_VERSION="2.0.0"
+V:SCRIPT_DATE="2026-06-09"
+V:GROQBASH_ERR_NO_API_KEY=10 (mancanza API key)
+V:GROQBASH_ERR_BAD_MODEL=11 (modello non valido)
+V:GROQBASH_ERR_CURL_FAILED=12 (fallimento curl)
+V:GROQBASH_ERR_INVALID_JSON=13 (JSON non valido)
+V:GROQBASH_ERR_NO_PROMPT=14 (mancanza prompt)
+V:GROQBASH_ERR_TMP=15 (errore temp/lock)
+V:GROQBASH_ERR_API=16 (errore API/HTTP)
+V:GROQBASHERRNOAPIKEY=10 (alias)
+V:GROQBASHERRBAD_MODEL=11 (alias)
+V:GROQBASHERRCURL_FAILED=12 (alias)
+V:GROQBASHERRINVALID_JSON=13 (alias)
+V:GROQBASHERRNO_PROMPT=14 (alias)
+V:GROQBASHERRTMP=15 (alias)
+V:GROQBASHERRAPI=16 (alias)
+V:DEBUG=Flag debug. Eredita ${DEBUG} o default 0
+V:GROQBASH_LOG=File log. Eredita ${GROQBASH_LOG} o vuoto
+V:SCRIPTDIR=Directory assoluta script
+V:CANONICAL_EXTRAS_DIR=$GROQBASH_DIR/extras
+V:LEGACY_EXTRAS_DIR=$SCRIPTDIR/extras
+V:GROQBASH_EXTRAS_DIR=$CANONICAL_EXTRAS_DIR
+V:PROVIDERS_DIR=Directory provider. Ambiente o $GROQBASH_EXTRAS_DIR/providers
+V:GROQBASH_CONFIG_DIR=Directory config. Ambiente o $GROQBASH_DIR/config
+V:GROQBASH_MODELS_DIR=Directory modelli. Ambiente o $GROQBASH_DIR/models
+V:GROQBASH_TEMPLATES_DIR=Directory template. Ambiente o $GROQBASH_DIR/templates
+V:GROQBASH_HISTORY_DIR=Directory storico. Ambiente o $GROQBASH_DIR/history
+V:GROQBASH_TMPDIR=Directory temp. Ambiente o $GROQBASH_DIR/tmp
+V:MODELS_FILE=File modelli. Ambiente o $GROQBASH_MODELS_DIR/models.txt
+V:MAX_MODELS=Limite max modelli. Eredita ${MAX_MODELS} o default 200
+V:PROVIDER_FILE=File persistenza provider
+V:SESSION_DIR=$GROQBASH_HISTORY_DIR/sessions
+V:MODELS_LOCK=Lock modelli. Ambiente o $GROQBASH_MODELS_DIR/models.lock
+V:HISTORY_LOCK=Lock storico. Ambiente o $GROQBASH_HISTORY_DIR/history.lock
+V:TMP_LOCK=Lock temp. Ambiente o $GROQBASH_TMPDIR/tmp.lock
+V:GROQBASH_LOCK_TIMEOUT_TMP=Timeout lock temp. Ambiente o default 10
+V:GROQBASH_LOCK_TIMEOUT_MODELS=Timeout lock modelli. Ambiente o default 10
+V:GROQBASH_LOCK_TIMEOUT_HISTORY=Timeout lock storico. Ambiente o default 10
+
+F:resolve_script_dir|p:Trova directory reale script risolvendo symlink|i:Nessuno ($0)|o:Percorso assoluto normalizzato su stdout|s:Nessuno|d:readlink,dirname,cd,pwd,printf
+F:canonical_config_dir|p:Normalizza percorso directory config|i:Nessuno ($GROQBASH_CONFIG_DIR)|o:Percorso canonico su stdout|s:Nessuno|d:printf
+F:canonical_provider_file|p:Genera percorso canonico file provider|i:Nessuno|o:Percorso file /provider su stdout|s:Chiama canonical_config_dir|d:printf,canonical_config_dir
+F:canonical_model_file|p:Genera percorso file modello default provider|i:$1:provider|o:Percorso /model.provider su stdout|s:Chiama canonical_config_dir|d:printf,canonical_config_dir
+F:canonical_provider_url_file|p:Genera percorso canonico file endpoint provider|i:Nessuno|o:Percorso /provider-url su stdout|s:Chiama canonical_config_dir|d:type,canonical_config_dir,printf
+F:ensure_api_key_for_provider|p:Valida o acquisisce interattivamente API key|i:$1:provider|o:Stato 0 o GROQBASHERRNOAPIKEY, esporta key|s:Esporta key ambiente, prompt TTY stderr|d:provider_api_env_var_name,printf,tr,sed,grep,export
+F:enforce_network_policy|p:Valuta se connessioni rete consentite|i:Nessuno|o:Stato 1 (bloccate) o 0 (autorizzate)|s:Log debug se attivo|d:is_truthy,log_info
+F:log_prefix|p:Genera prefisso unificato log|i:Nessuno|o:Stringa prefisso su stdout|s:Nessuno|d:printf
+F:log_info|p:Traccia messaggi informativi|i:$1:categoria(default INFO),$2:messaggio|o:Messaggio su stderr se DEBUG, appende file log|s:Scrittura log file/stderr|d:log_prefix,date,printf
+F:log_warn|p:Traccia avvisi non critici|i:$1:modulo(default WARN),$2:messaggio|o:Messaggio su stderr e file log|s:Scrittura stderr/file|d:log_prefix,date,printf
+F:log_error|p:Traccia errori critici|i:$1:modulo(default ERROR),$2:messaggio|o:Messaggio su stderr e file log|s:Scrittura stderr/file|d:log_prefix,date,printf
+F:dbg|p:Stampa diagnostica rapida se debug attivo|i:Argomenti testuali|o:Testo inviato a stderr|s:Scrittura su stderr|d:printf
+F:ensure_config_dir|p:Verifica, crea e blinda cartella config|i:Nessuno|o:Stato 0 (scrivibile) o 1|s:Creazione directory, chmod 700, test scrittura|d:mkdir,chmod,rm,log_error
+F:write_provider_url_if_missing|p:Scrive atomicamente URL provider se assente|i:$1:provider,$2:URL|o:Stato 0 o 1|s:File temporaneo, chmod 600, mv atomico|d:canonical_provider_url_file,dirname,mkdir,mktemp,printf,mv,cp,rm,chmod
+F:resolve_provider_url|p:Risolve ed esporta URL API provider|i:$1:provider(default $PROVIDER)|o:Stato 0 o 1, esporta GROQBASH_PROVIDER_URL|s:Esporta GROQBASH_PROVIDER_URL|d:canonical_provider_url_file,sed,awk,export
+F:provider_api_env_var_name|p:Standardizza nome variabile ambiente API key|i:$1:provider|o:Nome normalizzato su stdout|s:Nessuno|d:printf,tr
+F:is_valid_json_string|p:Valida sintassi JSON di stringa|i:$1:stringa|o:Stato 0 o 1|s:Nessuno|d:printf,jq
+F:b64encode|p:Codifica stdin in Base64 riga singola|i:stdin|o:Stringa codificata su stdout|s:Nessuno|d:base64,tr
+F:b64decode|p:Decodifica Base64 da stdin|i:stdin|o:Flusso decodificato su stdout|s:Nessuno|d:base64
+F:is_truthy|p:Valuta se valore booleano vero|i:$1:stringa|o:Stato 0 o 1|s:Nessuno|d:Nessuna
+F:file_size|p:Ottiene dimensione file in byte portabile|i:$1:percorso|o:Dimensione in byte su stdout|s:Nessuno|d:uname,stat,printf
+F:is_valid_json_file|p:Valida esistenza e sintassi file JSON|i:$1:percorso|o:Stato 0 o 1|s:Nessuno|d:jq
+F:stage_b64|p:Codifica transazionale Base64 payload su file|i:$1:sorgente(opz),$2:destinazione|o:Stato 0 o 1|s:File temporanei, chmod 600, lock, mv atomico|d:dirname,mkdir,_tmpf,cat,rm,file_size,base64,tr,chmod,lock_exec,mv,log_error,log_info
+F:lock_exec|p:Esegue comando sotto lock flock protetto|i:$1:file_lock,$2:timeout(default 10),--comandi|o:Stato comando, 124 timeout, 2 errore|s:Creazione cartella lock, blocco concorrente|d:dirname,mkdir,command,flock,printf,log_error
+F:_mktemp_in_dir|p:Crea file temporaneo sicuro in cartella|i:$1:cartella,$2:prefisso(default groq)|o:Percorso temporaneo su stdout o GROQBASHERRTMP|s:Creazione file|d:_tmpf,log_error
+F:show_payload_head|p:Estrae prime righe payload (decodifica se .b64)|i:$1:payload(default $PAYLOAD),$2:righe(default 200)|o:Righe decodificate su stderr|s:Lettura file|d:printf,grep,b64decode,head
+F:atomic_write|p:Scrittura atomica, transazionale e protetta|i:$1:destinazione,$2:timeout(default 10),stdin|o:Stato 0 o errore|s:File temporaneo, chmod 600, lock, mv atomica|d:dirname,mkdir,mktemp,cat,rm,chmod,lock_exec,mv,log_error
+F:extract_text_from_resp|p:Estrae testo risposta da JSON API|i:Nessuno|o:Stato 0, 1 (assente), 2 (diagnostico)|s:Copia temporanea isolata su disco|d:_tmpf,cp,is_valid_json_file,jq,log_warn,log_error,rm
+F:ensure_run_tmpdir|p:Inizializza, esporta e protegge directory temp istanza|i:$1:opzionale --print|o:Stato 0 o GROQBASHERRTMP, esporta RUN_TMPDIR, PAYLOAD, RESP, ERRF|s:Creazione cartelle/file, chmod 700/600, trap pulizia|d:mkdir,chmod,_tmpf,rm,trap,log_warn,log_error,printf
+F:cleanup_tmp|p:Rimuove ricorsivamente RUN_TMPDIR|i:Nessuno|o:Rimozione file|s:Rimozione cartella da disco|d:rm
+F:b64_atomic_write|p:Codifica Base64 e scrive atomicamente|i:$1:destinazione,$2:timeout(default 10),stdin|o:Stato 0 o GROQBASHERRTMP|s:File temporaneo, chmod 600, lock, mv atomica|d:dirname,mkdir,_tmpf,b64encode,chmod,lock_exec,mv,rm,log_error
+F:b64_atomic_read|p:Legge e decodifica file Base64|i:$1:percorso|o:Testo decodificato su stdout|s:Nessuno|d:b64decode
+F:ui_state_write|p:Scrive atomicamente JSON stato interfaccia|i:$1:file,$2:JSON|o:Stato 0 o 1|s:Creazione directory, chmod 600, lock, atomic_write|d:mkdir,chmod,atomic_write,wc,log_info,log_warn
+F:load_provider_module|p:Carica e convalida modulo provider esterno|i:$1:provider|o:Stato 0 o 1|s:Verifiche sicurezza, dry-run, firma, source sotto-shell, esporta funzioni|d:mkdir,_is_world_writable,_get_owner,_get_perm_string,getfile_signature,bash,_mktemp_in_dir,awk,sort,comm,grep,type,declare,rm,ui_state_write,jq
+F:_detect_base64_opts|p:Rileva opzioni base64 portabili sistema|i:Nessuno|o:Esporta B64_WRAP_OPT e B64_DECODE_OPT|s:Esporta variabili ambiente|d:printf,base64,grep
+F:list_files_sorted_by_mtime|p:Elenca file ordinati per ultima modifica|i:$1:cartella|o:Lista timestamp|percorso su stdout|s:Nessuno|d:find,stat,uname,sort
+F:tac_fallback|p:Inverte ordine righe file|i:$1:percorso|o:Righe invertite su stdout|s:Nessuno|d:command,tac,awk
+F:_file_mtime|p:Ottiene data modifica file portabile|i:$1:percorso|o:Timestamp Unix su stdout|s:Nessuno|d:uname,stat
+F:jq_safe|p:Esegue filtro jq salvando diagnostica se fallisce|i:$1:filtro,$2:JSON|o:Stato 0 o errore jq|s:Scrittura log errore su $ERRF|d:jq
+
+B:PRECORE_BOOT_SETUP_SHELL|p:Inizializzazione primaria|a:Imposta set -euo pipefail arresto rapido
+B:PRECORE_BOOT_SOURCE_ONLY_CHECK|p:Verifica caricamento passivo|a:Se GROQBASH_SOURCE_ONLY=1 esce 0 per sola importazione
+B:PRECORE_BOOT_VERIFY_CMDS|p:Verifica requisiti sistema|a:Valida presenza utilità essenziali, esce 1 se assenti
+B:PRECORE_BOOT_DIR_RESOLUTION|p:Risoluzione cartella runtime|a:Determina GROQBASH_DIR tramite priorità ambiente o SCRIPTDIR
+B:PRECORE_BOOT_FALLBACK_PROVIDERS|p:Configurazione estensioni fallback|a:Imposta ed esporta PROVIDERS_DIR e GROQBASH_EXTRAS_DIR
+B:PRECORE_BOOT_DIR_INVARIANTS|p:Controlli sicurezza file-system|a:Previene symlink attack su tmp, valida config e tmp, inizializza config
+B:PRECORE_BOOT_ENSURE_CONFIG_DIR|p:Allocazione cartelle persistenza|a:Chiama ensure_config_dir, esce GROQBASHERRTMP se fallisce
+B:PRECORE_BOOT_FAILFAST_CONFIG_DIR|p:Controllo sicurezza post-configurazione|a:Esce 1 se percorso canonico config vuoto
+B:PRECORE_BOOT_NORMALIZE_DEBUG|p:Allineamento verbosità|a:Normalizza DEBUG tramite GROQBASH_DEBUG, default 0
+B:PRECORE_BOOT_EARLY_PRINT_CONFIG|p:Intercettazione anticipata opzioni CLI|a:Controlla flag stampa percorsi, stampa ed esce 0/2 prima di avviare
+B:PRECORE_BOOT_MKDIR_PERMS|p:Creazione e blindatura cartelle|a:Crea gerarchia cartelle, vieta symlink, imposta chmod 700, umask 077
+B:PRECORE_BOOT_DETECT_B64_OPTS|p:Configurazione runtime codifica|a:Chiama _detect_base64_opts per opzioni base64
+
+=== PRECORE_RUN ===
+
+V:GROQBASH_ROTATE_HISTORY=Flag rotazione storico. Default 0
+V:GROQBASH_HISTORY_MAX_FILES=Soglia max file storico. Default 100
+V:GROQBASH_HISTORY_MAX_BYTES=Soglia byte storico. Default 104857600 (100MB)
+V:GROQBASH_HISTORY_KEEP_DAYS=Giorni conservazione storico. Default 90
+V:SESSION_CACHE_DIR=Directory cache sessioni
+V:CONTENT=Prompt testuale utente
+V:JSON_INPUT=Input JSON utente
+V:SESSION_ID=ID sessione chat multi-turno
+V:SESSION_WINDOW=Finestra messaggi contesto chat
+V:TEMPLATE=File template prompt
+V:BATCH_FILE=File prompt sequenziali (batch)
+V:CHAT_MODE=Flag chat interattiva. Default 0
+V:SET_DEFAULT_MODEL=Modello default provider
+V:REFRESH_MODELS=Forza aggiornamento modelli. Default 0
+V:LIST_MODELS=Flag mostra modelli. Default 0
+V:FORCE_SAVE_MODE=Regola salvataggio output (save/nosave/0)
+V:OUT_PATH=Percorso salvataggio risultati
+V:SYSTEM_PROMPT=Prompt sistema condizionamento LLM
+V:TURE=Temperatura campionamento. Default 1.0
+V:MAX_TOKENS=Limite token risposta. Default 4096
+V:MODEL=Modello LLM richiesto
+V:AUTO_POLICY=Politica fallback modello. Default preferred
+V:QUIET=Flag soppressione log. Default 0
+V:DRY_RUN=Flag simulazione esecuzione. Default 0
+V:STREAM_MODE=Flag streaming token. Default 0
+V:OUTPUT_MODE=Stile output (text/raw/json/pretty)
+V:THRESHOLD=Soglia caratteri storico. Default 1000
+V:MAX_RETRIES=Tentativi max rete. Default 3
+V:SUPPORTED_PROVIDERS=Provider supportati
+V:PROVIDER=Provider attivo. Default "groq"
+V:CURL_BASE_OPTS=Array parametri base curl
+
+F:rotate_history|p:Pura storico se supera limiti byte/giorni/file|i:$1:timeout_lock(default $GROQBASH_LOCK_TIMEOUT_HISTORY)|o:Nessuno|s:Lock concorrenza, rimozione file fisici|d:find,lock_exec,sh,rm,sort,awk,read
+F:save_to_history|p:Archivia risposta LLM in file storico unico|i:$1:testo_risposta|o:Stato 0 o errore|s:Scrittura atomica, lock, aggiorna last_history.json, chiama rotate_history|d:date,mkdir,_tmpf,printf,rm,lock_exec,chmod,file_size,basename,jq,ui_state_write,rotate_history,log_error,log_warn
+F:manifest_create|p:Inizializza manifesto JSON e copia Base64|i:$1:destinazione,$2:timeout(default $GROQBASH_LOCK_TIMEOUT_MODELS)|o:Stato 0 o 1|s:Creazione file, Base64, lock concorrente|d:mkdir,dirname,lock_exec,mktemp,printf,base64,mv,chmod
+F:manifest_add_part|p:Aggiunge allegato Base64 a manifesto JSON|i:$1:manifesto,$2:nome_parte,$3:sorgente,$4:mime,$5:timeout(default $GROQBASH_LOCK_TIMEOUT_MODELS)|o:Stato 0 o 1|s:Codifica allegato, aggiorna JSON via jq, rigenera Base64|d:log_error,mkdir,dirname,_tmpf,b64encode,mv,chmod,lock_exec,mktemp,cp,base64,jq,rm
+F:manifest_read|p:Legge e decodifica manifesto JSON|i:$1:percorso|o:Contenuto JSON su stdout|s:Nessuno|d:cat,b64decode
+F:_get_perm_string|p:Ottiene permessi simbolici portabili file/directory|i:$1:percorso|o:Permessi su stdout (es. -rwxr-xr-x)|s:Nessuno|d:uname,stat,ls,awk,printf
+F:_get_owner|p:Ottiene utente proprietario portabile|i:$1:percorso|o:Nome proprietario su stdout|s:Nessuno|d:uname,stat,ls,awk,printf
+F:_get_file_signature|p:Calcola impronta crittografica/metadati file|i:$1:percorso|o:Stringa firma su stdout|s:Nessuno|d:sha256sum,awk,uname,stat,read
+F:getfile_signature|p:Wrapper diretto per _get_file_signature|i:$1:percorso|o:Stringa firma su stdout|s:Nessuno|d:Nessuna
+F:_is_world_writable|p:Verifica se cartella è scrivibile pubblicamente|i:$1:percorso|o:Stato 0 (vulnerabile) o 1 (sicura)|s:Nessuno|d:_get_perm_string,awk,printf
+F:make_tmpdir|p:Crea directory temporanea protetta sotto lock|i:Nessuno|o:Percorso directory su stdout o errore|s:Creazione cartella, chmod 700, lock|d:mkdir,chmod,lock_exec,_tmpf,printf
+F:_tmpf|p:Crea file/dir temporanei sicuri contro symlink|i:$1:modalità(file/dir),$2:base_dir,$3:prefisso(default groq)|o:Percorso oggetto o errore|s:Scrittura disco, chmod 600/700|d:log_error,chmod,mktemp,printf
+F:session_validate_id|p:Valida sintassi ID sessione contro path traversal|i:$1:session_id|o:Stato 0 (valido) o 1|s:Nessuno|d:grep
+F:session_now_ts|p:Genera data corrente UTC ISO 8601|i:Nessuno|o:Stringa timestamp su stdout|s:Nessuno|d:date
+F:session_messages_tmp_path|p:Calcola percorso JSON messaggi temporanei|i:$1:session_id|o:Percorso file su stdout o errore|s:Chiama ensure_run_tmpdir|d:ensure_run_tmpdir,printf
+F:session_sanitize_cmd|p:Pulisce segreti da log comandi storici|i:$1:comando_crudo|o:Comando sanificato su stdout|s:Nessuno|d:printf,sed,cut
+F:session_read_window|p:Estrae ultime n interazioni da NDJSON sessione|i:$1:session_id,$2:n(default 10),$3:output_json|o:Stato 0 o 1, file JSON scritto|s:Lock concorrente, file temporanei, aggiorna stato UI|d:mkdir,chmod,lock_exec,sh,awk,cp,tail,_tmpf,jq,wc,ui_state_write,log_warn,printf
+F:session_append|p:Accoda interazione a NDJSON sessione con ID univoco|i:$1:session_id,$2:ruolo,$3:messaggio,$4:metadati_json|o:Stato 0 o 1|s:Generazione hash ID, lock concorrente, accoda file, aggiorna stato/indice UI|d:session_now_ts,jq,sed,awk,sha256sum,openssl,mkdir,chmod,_tmpf,flock,grep,wc,tail,ui_state_write,log_error,log_warn
+F:_session_hash|p:Genera hash SHA-256 o Base64 di fallback|i:$1:stringa|o:Stringa hash su stdout|s:Nessuno|d:sha256sum,awk,openssl,base64,tr,cut,printf
+F:session_cache_key|p:Calcola chiave cache tramite sessione e parametri|i:$1:session_id,$2:parametri|o:Chiave cache su stdout|s:Nessuno|d:_session_hash,printf
+F:session_cache_get|p:Estrae dati da cache se validi|i:$1:session_id,$2:parametri,$3:destinazione(opz)|o:Stato 0 (successo/stampa) o 1|s:Rimozione file cache se scaduto|d:session_cache_key,date,rm,tail
+F:session_cache_set|p:Salva dati in cache con scadenza TTL|i:$1:session_id,$2:parametri,$3:TTL_secondi(default 300),$4:sorgente(opz)|o:Stato 0 o 1|s:Scrittura atomica file cache, chmod 600|d:session_cache_key,date,cat,_tmpf,mv,rm,chmod
+F:session_cache_invalidate|p:Invalida e cancella cache sessione|i:$1:session_id,$2:parametri(opz)|o:Stato 0 o 1|s:Rimozione file cache da disco|d:session_cache_key,rm
+F:_normalize_bool_env|p:Normalizza flag booleani ambiente a 0/1|i:Nessuno|o:Esporta variabili allineate|s:Modifica variabili ambiente|d:is_truthy,export
+
+B:block_mkdir_session_cache|p:Inizializzazione cache|a:Crea cartella cache sessioni con permessi 700
+B:block_ensure_config_dir|p:Validazione ambiente config|a:Garantisce esistenza/sicurezza directory config
+B:block_ensure_run_tmpdir|p:Inizializzazione directory temporanea|a:Se GROQBASH_SOURCE_ONLY=0 chiama ensure_run_tmpdir, esce se fallisce
+B:block_normalize_bool_env_call|p:Normalizzazione ambiente|a:Esegue _normalize_bool_env per flag booleani
+B:block_last_check_lines_default|p:Inizializzazione variabili controllo|a:Imposta LAST_CHECK_LINES a 50 se vuota
+
+=== PROVIDER ===
+
+V:GROQ_API_KEY=Chiave API autenticazione provider Groq
+
+F:_cleanup_local_tmp|p:Rimuove file temporanei locali lavoro|i:$1:payload,$2:b64,$3:json_input|o:File cancellati|s:Rimozione fisica da disco|d:rm
+F:buildpayload_groq|p:Compila file JSON payload per Groq|i:Parametri opzionali|o:Assegna percorso payload a GROQBASH_TMP_PAYLOAD/PAYLOAD, stato 0 o errore|s:File temporanei, codifica Base64, log avvisi|d:ensure_run_tmpdir,_mktemp_in_dir,_tmpf,is_truthy,grep,log_warn,is_valid_json_string,jq,is_valid_json_file,stage_b64,rm,wc,head,log_error,log_info
+F:buildpayloadgroq|p:Wrapper legacy alias buildpayload_groq|i:Parametri opzionali|o:Vedi buildpayload_groq|s:Vedi buildpayload_groq|d:buildpayload_groq
+F:call_api_groq|p:Richiesta API sincrona non-streaming Groq|i:Nessuno|o:File risposta in RESP, stato 0 o errore|s:Decodifica, chiamata curl, isolamento JSON, file temporanei|d:ensure_run_tmpdir,enforce_network_policy,resolve_provider_url,_tmpf,b64decode,stdbuf,curl,jq,tail,awk,mv,chmod,log_error,log_info,rm,head
+F:call_api_streaming_groq|p:Chiamata streaming token SSE Groq|i:Nessuno|o:Flusso stdout, file JSON in RESP, stato pipeline|s:Decodifica, curl buffer-off, pipeline SSE, accumula risposta, aggiorna last_api.json|d:ensure_run_tmpdir,enforce_network_policy,resolve_provider_url,_tmpf,b64decode,stdbuf,curl,tee,jq,grep,sed,mv,chmod,ui_state_write,log_error,log_info,log_warn,rm,head
+F:call_api_streaming_groq_legacy|p:Wrapper legacy alias call_api_streaming_groq|i:Nessuno|o:Vedi call_api_streaming_groq|s:Vedi call_api_streaming_groq|d:call_api_streaming_groq
+F:refresh_models_groq|p:Aggiorna locale modelli da API Groq|i:Nessuno|o:File MODELS_FILE aggiornato, stato 0 o errore|s:Chiamata GET, parsing, normalizzazione, Base64 lock MODELS_FILE|d:ensure_api_key_for_provider,ensure_run_tmpdir,mktemp,resolve_provider_url,curl,jq,awk,sed,sort,_mktemp_in_dir,_tmpf,b64_atomic_write,lock_exec,base64,chmod,rm,log_error,log_info
+F:refreshmodelsgroq|p:Wrapper legacy alias refresh_models_groq|i:Nessuno|o:Vedi refresh_models_groq|s:Vedi refresh_models_groq|d:refresh_models_groq
+F:validate_model_groq|p:Convalida compatibilità modello per Groq|i:$1:modello|o:Stato 0 o 1|s:Nessuno|d:sed,grep,awk,is_supported_model,printf
+F:validatemodelgroq|p:Wrapper legacy alias validate_model_groq|i:$1:modello|o:Stato 0 o 1|s:Nessuno|d:validate_model_groq
+F:auto_select_model_groq|p:Seleziona primo modello supportato locale|i:Nessuno|o:Nome modello stdout, stato 0 o 1|s:Nessuno|d:sed,is_supported_model,printf
+F:autoselectmodelgroq|p:Wrapper legacy alias auto_select_model_groq|i:Nessuno|o:Vedi auto_select_model_groq|s:Vedi auto_select_model_groq|d:auto_select_model_groq
+
+B:GROQ_API_KEY_override|p:Autenticazione provider Groq|a:Esporta PROVIDER_API_ENV_groq in GROQ_API_KEY se valorizzata
+
+=== CORE_SETUP ===
+
+V:JSON_INPUT=JSON fornito direttamente da utente
+V:TEMPLATE=Template da applicare
+V:BATCH_FILE=Percorso file per elaborazione batch
+V:CHAT_MODE=Flag modalità chat interattiva
+V:SET_DEFAULT_MODEL=Modello default da salvare
+V:LIST_MODELS=Flag mostra lista modelli
+V:LIST_PROVIDERS=Flag mostra lista provider
+V:LIST_PROVIDERS_RAW=Flag interno provider formato crudo
+V:LIST_MODELS_RAW=Flag interno modelli formato crudo
+V:FORCE_SAVE_MODE=Flag forzatura salvataggio risultati
+V:OUT_PATH=Percorso output personalizzato
+V:DRY_RUN=Flag simulazione chiamate rete
+V:STREAM_MODE=Flag abilitazione streaming
+V:QUIET=Flag soppressione log informativi
+V:INSTALL_EXTRAS=Flag installazione estensioni
+V:DEBUG=Flag output diagnostica sviluppo
+V:PROVIDER_CLI=Provider impostato da riga comando
+V:PROVIDER_INTERACTIVE=Flag selezione interattiva provider
+V:SHOW_CONFIG=Flag stampa configurazione runtime
+V:DIAGNOSTICS=Flag avvio ciclo diagnostica
+V:FILE_INPUTS=Array percorsi file input -f
+V:ARGS=Array argomenti posizionali CLI
+V:OUTPUT_MODE=Formato visualizzazione output
+V:MODEL_CLI_SET=Flag modello esplicito da CLI
+V:INSTALL_EXTRAS_SRC=Directory sorgente estensioni
+V:BOOTSTRAP_ONLY=Flag arresto post bootstrap
+V:SE_ENGINE_PATH=Percorso script Session Engine
+V:SE_AVAILABLE=Flag disponibilità Session Engine
+V:_supported_providers_arr=Array interno provider installati
+
+F:call_provider|p:Esegue funzione dinamica modulo provider|i:$1:funzione,argomenti|o:Stato uscita funzione o 127|s:Esecuzione codice dinamico|d:type
+F:refresh_models_dispatch|p:Dispaccia aggiornamento modelli a provider attivo|i:$1:file_dest(opz,default_MODELS_FILE)|o:Stato 0 o errore o 127|s:Modelli aggiornati localmente|d:type,log_error,log_info
+F:validate_model_dispatch|p:Dispaccia validazione modello a provider attivo|i:$1:modello|o:Stato uscita validatore o 0|s:Nessuno|d:type,log_warn
+F:resolve_model|p:Risolve e assegna modello finale|i:Nessuno|o:Stato 0 o 1, assegna FINAL_MODEL|s:Scansione file-system, validazione modelli|d:canonical_model_file,canonical_provider_file,sed,awk,validate_model_core,validate_model_dispatch,auto_select_model_dispatch,is_supported_model,log_warn,log_error
+F:build_payload_from_vars|p:Orchestra costruzione JSON payload via provider|i:Nessuno|o:Generazione file payload o errore|s:Scrittura payload, assicura run_tmpdir|d:ensure_run_tmpdir,call_provider,log_error
+F:call_api_once|p:Richiesta sincrona non-streaming via provider|i:Nessuno|o:Stato uscita o 0|s:Simulazione dry-run o chiamata reale|d:call_provider,show_payload_head,log_info,log_error
+F:call_api_streaming|p:Chiamata streaming via provider|i:Nessuno|o:Stato uscita o 0|s:Simulazione dry-run o chiamata streaming|d:call_provider,show_payload_head,log_info,log_error
+F:extract_api_error|p:Estrae errore formale da risposta RESP|i:Nessuno|o:Messaggio errore su stdout|s:Nessuno|d:jq,awk
+F:detect_empty_edge_case|p:Rileva risposte vuote anomale API|i:Nessuno|o:Assegna GROQBASH_EDGE_EMPTY (0/1)|s:Estrazione metadati, copia temporanea file|d:_tmpf,cp,is_valid_json_file,jq,rm
+F:finalize_and_output|p:Formatta, visualizza e salva output|i:$1:formato,$2:testo|o:Output stampato, stato 0 o errore|s:Salvataggio file storico, creazione directory|d:_tmpf,cp,cat,jq,printf,wc,tr,date,mkdir,dirname,save_to_history,log_error,log_warn
+F:perform_request_once|p:Esegue richiesta sincrona con retry/backoff|i:Nessuno|o:Stato 0 o errore GROQBASHERRAPI|s:Chiamate rete, sleep, aggiornamento stato UI|d:call_api_once,extract_text_from_resp,detect_empty_edge_case,jq,ui_state_write,extract_api_error,finalize_and_output,sleep,log_info,log_error,log_warn
+F:collect_input_from_files|p:Concatena file input con delimitatori|i:Array percorsi|o:Testo unificato su stdout o esce se illeggibile|s:Nessuno|d:file_readable,cat,log_error
+F:expand_args_to_content|p:Converte argomenti CLI in prompt|i:Array ARGS|o:Prompt unificato su stdout|s:Nessuno|d:file_readable,cat
+F:file_readable|p:Verifica se file esiste ed è leggibile|i:$1:percorso|o:Stato 0 o 1|s:Nessuno|d:Nessuna
+F:trim|p:Rimuove spazi/tab/a capo iniziali e finali|i:$1:stringa|o:Stringa pulita su stdout|s:Nessuno|d:awk,printf
+F:is_number|p:Verifica se stringa è valore numerico|i:$1:stringa|o:Stato 0 o 1|s:Nessuno|d:awk,printf
+F:is_supported_model|p:Filtra ed esclude modelli non testuali|i:$1:modello|o:Stato 0 (testo) o 1 (escluso)|s:Nessuno|d:tr
+F:list_models_cli|p:Visualizza modelli locali evidenziando non supportati|i:Nessuno|o:Stato 0 o 1, stampa su stderr|s:Lettura file MODELS_FILE|d:sed,is_supported_model,printf
+F:validate_model_core|p:Algoritmo centrale validazione modelli|i:$1:modello|o:Stato 0 o 1|s:Nessuno|d:sed,grep,awk,is_supported_model,printf
+F:load_local_config|p:Carica parametri config locale in memoria|i:Nessuno|o:Assegna variabili globali|s:Lettura config, esporta variabili|d:Nessuna
+F:load_whitelist|p:Popola whitelist modelli autorizzati|i:Nessuno|o:Assegna ALLOWED_MODELS|s:Nessuno|d:awk
+F:is_tty_out|p:Verifica se stdout è terminale interattivo|i:Nessuno|o:Stato 0 (TTY) o 1|s:Nessuno|d:Nessuna
+
+B:parse_cli_arguments|p:Parsing argomenti riga comando|a:Itera e configura opzioni CLI, gestisce --help e --version
+B:source_session_engine|p:Integrazione moduli esterni|a:Valida e importa session-engine.sh, imposta SE_AVAILABLE=1 o fallback
+B:verify_api_calls_and_rebuild_providers|p:Validazione chiamate e mappa plug-in|a:Blocca se rete inibita senza dry-run, scansiona provider/*.sh, compila SUPPORTED_PROVIDERS
+B:raw_listings|p:Interrogazioni rapide elenco|a:Intercetta ed elabora --list-providers-raw o --list-models-raw, esce 0
+B:immediate_actions|p:Azioni immediate ed estensioni|a:Gestisce --list-providers, --list-models, --set-default, --install-extras con verifiche sicurezza, esce 0
+B:normalize_boolean_flags|p:Normalizzazione logica flag|a:Uniforma variabili controllo booleane a 0/1 tramite is_truthy
+
+=== CORE_PROVIDER ===
+
+V:_supported_providers_arr=Array interno indicizzazione provider
+V:SUPPORTED_PROVIDERS=Stringa provider supportati
+
+F:validate_provider_interface|p:Valida conformità interfaccia modulo provider|i:$1:provider|o:Stato 0 o 1|s:Tracciamento e log diagnostici in memoria|d:type,log_error,log_info
+F:assemble_content|p:Compila prompt input finale CONTENT|i:Nessuno|o:Assegna stringa a CONTENT|s:Lettura file, staging temporaneo, sostituzione template|d:collect_input_from_files,expand_args_to_content,cat,ensure_run_tmpdir,_mktemp_in_dir,awk,mv,rm,printf
+
+B:CORE_PROVIDER_PRO_LOAD_INITIALIZATION|p:Caricamento sicuro modulo provider|a:Scansiona directory, seleziona attivo, menu interattivo, persiste in PROVIDER_FILE, carica modulo, risolve URL
+B:CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH|p:Validazione modulo e aggiornamento modelli|a:Verifica interfaccia provider, esegue refresh modelli se richiesto o se MODELS_FILE vuoto
+B:CORE_PROVIDER_SHOW|p:Esecuzione diagnostiche immediate|a:Esegue --print-config-dir, SHOW_CONFIG (riepilogo), DIAGNOSTICS (autoverifica completa), esce 0
+B:CORE_PROVIDER_MAIN_RESOLVE|p:Risoluzione modello e cattura stdin|a:Esce se bootstrap-only, carica config/whitelist, risolve e valida modello, cattura stdin
+B:CORE_PROVIDER_MAIN_EXECUTION|p:Flusso esecuzione principale prompt|a:Genera prompt, convalida, avvia flussi BATCH (sequenziale), CHAT (interattivo TTY), o SINGOLO (sincrono/streaming con salvataggio)
