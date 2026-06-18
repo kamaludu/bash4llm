@@ -280,3 +280,4 @@ B:CORE_PROVIDER_MAIN_EXECUTION|p:Flusso esecuzione principale prompt|a:Genera pr
   3. **SINGOLO**: se $SESSION_ID valida ID, determina finestra, compila $BUILD_MESSAGES_FILE (Session Engine/legacy), build_payload_from_vars, verifica API key. 
      * Se streaming ($STREAM_MODE=1): call_api_streaming; se successo e sessione attiva, sanifica e accoda msg utente a NDJSON (Session Engine/legacy session_append); se $RESP valido, estrae testo assistente, pulisce da a-capo, accoda a NDJSON (Session Engine/legacy), print newline, esce 0. In caso di errore termina con errore curl.
      * Se sincrono ($STREAM_MODE=0): print diagnostica se TTY verboso, perform_request_once; se successo e sessione attiva, sanifica/registra msg utente; se $RESP valido, estrae testo, pulisce e registra assistente in NDJSON, esce 0. Se fallisce sincrona, accoda comunque msg utente come interazione fallita ed esce GROQBASHERRAPI.
+
