@@ -1,10 +1,10 @@
-[![bash4llm](https://img.shields.io/badge/_bash4llm⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README-en.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README-en.md)
 
 # SECURITY POLICY  [🇮🇹](SECURITY.md) 🇬🇧
 
-## bash4llm⁺ — Security Policy
+## Bash4LLM⁺ — Security Policy
 
-bash4llm is a single Bash script designed with strong focus on **security**, **portability**, and **transparency**.  
+Bash4LLM is a single Bash script designed with strong focus on **security**, **portability**, and **transparency**.  
 This document describes the **threat model**, **security assumptions**, **known limitations**, **recommendations**, and the **responsible disclosure** process.
 
 ---
@@ -17,7 +17,7 @@ Only the latest stable release receives security fixes.
 
 ## 2. Threat model
 
-bash4llm is designed for **single‑user** environments, such as:
+Bash4LLM is designed for **single‑user** environments, such as:
 
 - personal PCs/laptops  
 - private servers  
@@ -25,7 +25,7 @@ bash4llm is designed for **single‑user** environments, such as:
 - WSL environments  
 - local development shells  
 
-bash4llm is **not** designed for:
+Bash4LLM is **not** designed for:
 
 - multi‑tenant or hostile servers  
 - environments where untrusted users can modify the filesystem  
@@ -34,12 +34,12 @@ bash4llm is **not** designed for:
 
 ### Fundamental assumptions
 
-bash4llm assumes that:
+Bash4LLM assumes that:
 
-- The user **owns** and **controls** the directories where bash4llm and extras reside.  
+- The user **owns** and **controls** the directories where Bash4LLM and extras reside.  
 - No untrusted user can write to:
-  - `$bash4llmEXTRASDIR`
-  - `$bash4llmTMPDIR`
+  - `$BASH4LLMEXTRASDIR`
+  - `$BASH4LLMTMPDIR`
   - the directory containing `bash4llm`
 - Environment variables are **trusted configuration**, not untrusted input.
 - Providers are **trusted code**, not plugins from unknown sources.
@@ -49,16 +49,16 @@ bash4llm assumes that:
 ## 3. Security principles
 
 ### ✔ No execution of model output  
-bash4llm **never executes** API responses as shell commands.
+Bash4LLM **never executes** API responses as shell commands.
 
 ### ✔ No `eval`  
 The script does not use `eval` or equivalent constructs.
 
 ### ✔ No use of `/tmp`  
 Internal temporary files are **never** created in `/tmp`.  
-bash4llm uses:
+Bash4LLM uses:
 
-- `$bash4llmTMPDIR` (if set)  
+- `$BASH4LLMTMPDIR` (if set)  
 - a safe fallback in the user’s home directory  
 
 Temporary files are created with:
@@ -67,7 +67,7 @@ Temporary files are created with:
 - permissions `700`
 
 ### ✔ No hidden fallback  
-If the model list is empty, bash4llm fails safely.
+If the model list is empty, Bash4LLM fails safely.
 
 ### Provider security:
 verifies that the provider defines required functions  
@@ -75,7 +75,7 @@ verifies that the provider defines required functions
 
 ### API key security
 The code checks:  
-presence of API key for model refresh, presence of API key for API calls, clear errors: `bash4llmERRNOAPIKEY`
+presence of API key for model refresh, presence of API key for API calls, clear errors: `BASH4LLMERRNOAPIKEY`
 
 ### Model security
 The code checks:  
@@ -91,13 +91,13 @@ creates session directories with `mkdir -p`, sets permissions 700, uses JSON fil
 
 ### Tmpdir security
 The code:  
-uses `bash4llm_TMPDIR`, fails if not writable, does NOT use system `/tmp`
+uses `BASH4LLM_TMPDIR`, fails if not writable, does NOT use system `/tmp`
 
 ---
 
 ## 4. Known limitations
 
-bash4llm is a Bash script, not a sandboxed runtime.
+Bash4LLM is a Bash script, not a sandboxed runtime.
 
 ### ⚠ Residual TOCTOU risks  
 Bash cannot fully eliminate race conditions.
@@ -113,19 +113,19 @@ They must be:
 ### ⚠ Environment variables are considered trusted  
 Examples:
 
-- `bash4llmEXTRASDIR`
-- `bash4llmTMPDIR`
+- `BASH4LLMEXTRASDIR`
+- `BASH4LLMTMPDIR`
 - `GROQ_API_KEY`
 - `GROQ_MODEL`
 
 ### ⚠ No multi‑user isolation  
-bash4llm does not attempt to isolate itself from other users on the same system.
+Bash4LLM does not attempt to isolate itself from other users on the same system.
 
 ---
 
 ## 5. Recommendations for safe usage
 
-### ✔ Keep bash4llm in a directory you own
+### ✔ Keep Bash4LLM in a directory you own
 
 `CODEON
 mkdir -p "$HOME/.local/bin"
@@ -134,15 +134,15 @@ CODEOFF`
 ### ✔ Keep extras directories secure
 
 `CODEON
-chmod 700 "$bash4llmEXTRASDIR"
-chmod -R go-w "$bash4llmEXTRASDIR"
+chmod 700 "$BASH4LLMEXTRASDIR"
+chmod -R go-w "$BASH4LLMEXTRASDIR"
 CODEOFF`
 
 ### ✔ Install providers only from trusted sources  
 Providers are shell scripts executed directly.
 
 ### ✔ Avoid shared or hostile environments  
-bash4llm is not designed for multi‑tenant servers.
+Bash4LLM is not designed for multi‑tenant servers.
 
 ### ✔ Use `--debug` only in safe environments  
 Debug mode preserves potentially sensitive temporary files.
@@ -155,7 +155,7 @@ If you discover a security issue, report it **privately**.
 
 #### Contact (private disclosure)
 - **Email:** opensource​@​cevangel.​anonaddy.​me  
-- **Subject:** `[bash4llm Security Report]`
+- **Subject:** `[Bash4LLM Security Report]`
 
 Include:
 
@@ -179,7 +179,7 @@ Typical response time: **within 72 hours**.
 
 ## 8. Security extras
 
-bash4llm includes optional tools in `extras/security/`:
+Bash4LLM includes optional tools in `extras/security/`:
 
 - `verify.sh` — checks provider integrity  
 - `validate-env.sh` — verifies environment security  
@@ -190,7 +190,7 @@ They do not modify core behavior.
 
 ## 9. Final notes
 
-bash4llm is built with strong attention to security, but it remains a Bash script.  
+Bash4LLM is built with strong attention to security, but it remains a Bash script.  
 The user must understand its assumptions and limitations before using it in sensitive environments.
 
 Full documentation:
