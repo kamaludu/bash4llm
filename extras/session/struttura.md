@@ -8,14 +8,14 @@
 - Applicare politiche di deduplicazione e marcatura `ignored`.  
 - Costruire la finestra di messaggi per il CORE secondo due modalità (override N oppure target_bytes).  
 - Fornire snapshot diagnostici e caching in-process con TTL.  
-- Usare esclusivamente primitive sicure (RUN_TMPDIR, lock_exec, atomic write) e non scrivere fuori da `GROQBASH_DIR`.
+- Usare esclusivamente primitive sicure (RUN_TMPDIR, lock_exec, atomic write) e non scrivere fuori da `BASH4LLM_DIR`.
 
 ---
 
 #### Interfaccia pubblica e contratti
 **Funzioni esportate (contratto):**
 - `session_engine_enabled() -> 0|1`  
-  Verifica se l’engine è attivato e utilizzabile (controlla `GROQBASH_SESSION_ENGINE`, presenza `SE_DIR`, disponibilità `RUN_TMPDIR`).
+  Verifica se l’engine è attivato e utilizzabile (controlla `BASH4LLM_SESSION_ENGINE`, presenza `SE_DIR`, disponibilità `RUN_TMPDIR`).
 - `session_engine_append <session_id> <role> <content> <meta_json> -> 0|1`  
   Append idempotente di un record NDJSON in `SE_SESSION_DIR`. Implementa marker idempotenza, lock, rotazione pre/post, dedup, aggiornamento cache in-process.
 - `session_engine_build_window <session_id> <N> <target_bytes> <out_file> -> 0|1`  
@@ -33,19 +33,19 @@
 #### Dipendenze e variabili di configurazione
 **Dipendenze esterne:** `jq`, `mktemp`, `tac`, `tail`, `stat`, `sha256sum` o `openssl` (fallback), `gzip` o altro comando di compressione se abilitato. Deve poter invocare le primitive del PRECORE: `ensure_run_tmpdir`, `lock_exec`, `log_info/log_warn/log_error` (se presenti).  
 **Variabili di configurazione (env, con valori di default nel file):**
-- `GROQBASH_SESSION_ENGINE` (on|off)  
-- `GROQBASH_SESSION_SEGMENT_MAX_BYTES` (default 1048576)  
-- `GROQBASH_SESSION_SEGMENT_MAX_FILES` (default 100)  
-- `GROQBASH_SESSION_COMPRESSION_ENABLED` (0|1)  
-- `GROQBASH_SESSION_COMPRESSION_CMD` (es. gzip)  
-- `GROQBASH_SESSION_TARGET_BYTES` (default 32768)  
-- `GROQBASH_SESSION_MIN_MESSAGES`, `GROQBASH_SESSION_MAX_MESSAGES`  
-- `GROQBASH_SESSION_DEDUP_ENABLED`, `GROQBASH_SESSION_DEDUP_WINDOW`  
+- `BASH4LLM_SESSION_ENGINE` (on|off)  
+- `BASH4LLM_SESSION_SEGMENT_MAX_BYTES` (default 1048576)  
+- `BASH4LLM_SESSION_SEGMENT_MAX_FILES` (default 100)  
+- `BASH4LLM_SESSION_COMPRESSION_ENABLED` (0|1)  
+- `BASH4LLM_SESSION_COMPRESSION_CMD` (es. gzip)  
+- `BASH4LLM_SESSION_TARGET_BYTES` (default 32768)  
+- `BASH4LLM_SESSION_MIN_MESSAGES`, `BASH4LLM_SESSION_MAX_MESSAGES`  
+- `BASH4LLM_SESSION_DEDUP_ENABLED`, `BASH4LLM_SESSION_DEDUP_WINDOW`  
 - `SESSION_CACHE_ENABLED`, `SESSION_CACHE_TTL_SEC`  
 **Percorsi runtime calcolati:**
-- `SE_DIR=${GROQBASH_EXTRAS_DIR%/}/session` (sorgente extra)  
-- `SE_SESSION_DIR=${GROQBASH_HISTORY_DIR%/}/sessions` (runtime session files)  
-- `RUN_TMPDIR` (obbligatorio per l’engine; fallback su `GROQBASH_TMPDIR`)
+- `SE_DIR=${BASH4LLM_EXTRAS_DIR%/}/session` (sorgente extra)  
+- `SE_SESSION_DIR=${BASH4LLM_HISTORY_DIR%/}/sessions` (runtime session files)  
+- `RUN_TMPDIR` (obbligatorio per l’engine; fallback su `BASH4LLM_TMPDIR`)
 
 ---
 
@@ -80,7 +80,7 @@
 - Se append fallisce dopo creazione marker, il marker viene rimosso per evitare blocchi permanenti.  
 - Cache in-process invalidata su append per evitare serving di finestre stale.  
 **Invarianti critiche mantenute:**
-- Tutti i file runtime risiedono sotto `GROQBASH_HISTORY_DIR` e `RUN_TMPDIR`.  
+- Tutti i file runtime risiedono sotto `BASH4LLM_HISTORY_DIR` e `RUN_TMPDIR`.  
 - Nessuna scrittura su `/tmp` di sistema; tmp creati solo in `RUN_TMPDIR`.  
 - Locking e atomicità garantiscono consistenza in presenza di concorrenza.  
 - File di sessione con permessi restrittivi (600/700).
@@ -108,7 +108,7 @@
 **Raccomandazioni operative:**  
 - Persistere `RUN_TMPDIR` e `GROQABASH_HISTORY_DIR` nello stesso ambiente del processo che esegue il CORE.  
 - Abilitare `SESSION_CACHE_ENABLED` con TTL breve (es. 30s) per ridurre latenza su richieste ripetute.  
-- Abilitare compressione solo se `GROQBASH_SESSION_COMPRESSION_CMD` è disponibile e testato; la build_window ignora segmenti compressi, quindi prevedere policy di decompressione se si vuole includerli.  
+- Abilitare compressione solo se `BASH4LLM_SESSION_COMPRESSION_CMD` è disponibile e testato; la build_window ignora segmenti compressi, quindi prevedere policy di decompressione se si vuole includerli.  
 - Documentare chiaramente che `session-engine.sh` è **un extra opzionale** che si appoggia alle primitive CORE; non deve sostituirle né bypassare PRECORE.
 
 ---
