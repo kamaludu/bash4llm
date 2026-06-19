@@ -1,14 +1,14 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 # INSTALLAZIONE  🇮🇹 [🇬🇧](INSTALL-en.md)
 
-GroqBash è un wrapper Bash portabile e sicuro per l’API Groq.  
+Bash4LLM è un wrapper Bash portabile e sicuro per l’API Groq.  
 Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
 
 ---
 
 ## 1. Requisiti
 
-GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
+Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 
 - ***bash***
 - coreutils
@@ -20,7 +20,7 @@ GroqBash richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 
 ### Compatibilità
 
-GroqBash funziona su:
+Bash4LLM funziona su:
 
 - GNU/Linux
 - macOS (con pacchetti GNU installabili via Homebrew)
@@ -32,18 +32,18 @@ GroqBash funziona su:
 
 ## 2. Installazione di base
 
-### 2.1 Clonare o scaricare GroqBash
+### 2.1 Clonare o scaricare Bash4LLM
 
-`git clone https://github.com/<tuo-repo>/groqbash.git`  
-`cd groqbash`
+`git clone https://github.com/<tuo-repo>/bash4llm.git`  
+`cd bash4llm`
 
-Oppure scarica il file `groqbash` e rendilo eseguibile:
+Oppure scarica il file `bash4llm` e rendilo eseguibile:
 
-`chmod +x groqbash`
+`chmod +x bash4llm`
 
 ### 2.2 Impostare la chiave API
 
-GroqBash usa la variabile:
+Bash4LLM usa la variabile:
 
 `export GROQ_API_KEY="la_tua_chiave"`
 
@@ -53,9 +53,9 @@ Puoi inserirla nel tuo `.bashrc` o `.zshrc`.
 
 ## 3. Struttura delle directory
 
-Alla prima esecuzione, GroqBash crea automaticamente:
+Alla prima esecuzione, Bash4LLM crea automaticamente:
 `
-groqbash.d/
+bash4llm.d/
     config/
     models/
     templates/
@@ -72,19 +72,19 @@ Tutte le directory sono create con permessi 700 (best‑effort su filesystem non
 
 ### Prompt singolo
 
-`./groqbash -m mixtral-8x7b -- "Scrivi un haiku sul vento."`
+`./bash4llm -m mixtral-8x7b -- "Scrivi un haiku sul vento."`
 
 ### Modalità streaming
 
-`./groqbash --stream -- "Genera testo in streaming."`
+`./bash4llm --stream -- "Genera testo in streaming."`
 
 ### Input da file
 
-`./groqbash -f input.txt`
+`./bash4llm -f input.txt`
 
 ### Output in JSON
 
-`./groqbash --json -- "Cosa sai di Bash?"`
+`./bash4llm --json -- "Cosa sai di Bash?"`
 
 ---
 
@@ -92,65 +92,65 @@ Tutte le directory sono create con permessi 700 (best‑effort su filesystem non
 
 ### Aggiornare la lista dei modelli
 
-`./groqbash --refresh-models`
+`./bash4llm --refresh-models`
 
 La lista viene salvata in:
 
-`groqbash.d/models/models.txt`
+`bash4llm.d/models/models.txt`
 
 ### Elencare i modelli
 
-`./groqbash --list-models`
+`./bash4llm --list-models`
 
 ---
 
 ## 6. History e salvataggio automatico
 
-GroqBash salva automaticamente l’output quando:
+Bash4LLM salva automaticamente l’output quando:
 
 - supera una certa dimensione (THRESHOLD, default 1000 byte), oppure  
 - è attivo `--save`.
 
 I file vengono salvati in:
 
-`groqbash.d/history/`
+`bash4llm.d/history/`
 
 La rotazione è configurabile tramite:
 
-- GROQBASH_ROTATE_HISTORY  
-- GROQBASH_HISTORY_MAX_FILES  
-- GROQBASH_HISTORY_MAX_BYTES  
-- GROQBASH_HISTORY_KEEP_DAYS  
+- BASH4LLM_ROTATE_HISTORY  
+- BASH4LLM_HISTORY_MAX_FILES  
+- BASH4LLM_HISTORY_MAX_BYTES  
+- BASH4LLM_HISTORY_KEEP_DAYS  
 
 ---
 
 ## 7. Installazione degli extras (opzione `--install-extras`)
 
-GroqBash include un installer sicuro e portabile per copiare componenti aggiuntivi (script, provider, template, documentazione) nella directory:
+Bash4LLM include un installer sicuro e portabile per copiare componenti aggiuntivi (script, provider, template, documentazione) nella directory:
 
-`groqbash.d/extras/`
+`bash4llm.d/extras/`
 
 ### 7.1 Uso base
 
-`./groqbash --install-extras`
+`./bash4llm --install-extras`
 
 Se non specifichi componenti, vengono installati **tutti** i file presenti nella directory sorgente degli extras.
 
 ### 7.2 Installare componenti specifici
 
-`./groqbash --install-extras provider1 templateA`
+`./bash4llm --install-extras provider1 templateA`
 
 ### 7.3 Sorgente personalizzata
 
-`./groqbash --install-extras --source /path/to/extras`
+`./bash4llm --install-extras --source /path/to/extras`
 
 ### 7.4 Sovrascrivere file in conflitto
 
-`./groqbash --install-extras --force`
+`./bash4llm --install-extras --force`
 
 ### 7.5 Modalità dry‑run
 
-`./groqbash --install-extras --dry-run`
+`./bash4llm --install-extras --dry-run`
 
 Nessun file viene modificato.
 
@@ -165,13 +165,13 @@ Nessun file viene modificato.
   - cat (portabile)  
   - mv -f atomico  
 - Ogni operazione è protetta da lock (flock) su:
-  `groqbash.d/extras/.install.lock`
+  `bash4llm.d/extras/.install.lock`
 
 ### 8.2 Permessi
 
 - File normali → chmod 600  
 - File eseguibili → chmod 700  
-- Se il filesystem non supporta i permessi (NTFS/WSL), GroqBash mostra un **warning**, non un errore.
+- Se il filesystem non supporta i permessi (NTFS/WSL), Bash4LLM mostra un **warning**, non un errore.
 
 ### 8.3 Symlink
 
@@ -180,7 +180,7 @@ Nessun file viene modificato.
 
 ### 8.4 Conflitti
 
-- Se un file esiste già e **è diverso**, GroqBash:
+- Se un file esiste già e **è diverso**, Bash4LLM:
   - mostra un **warning**,  
   - **non sovrascrive**,  
   - **non fallisce** (exit code 0),  
@@ -190,7 +190,7 @@ Nessun file viene modificato.
 
 Il timeout del lock è configurabile:
 
-`export GROQBASH_LOCK_TIMEOUT_MODELS=10`
+`export BASH4LLM_LOCK_TIMEOUT_MODELS=10`
 
 Default: **10 secondi**.
 
@@ -203,7 +203,7 @@ Default: **10 secondi**.
 - TURE / TEMPERATURE — temperatura  
 - MAX_TOKENS  
 - OUTPUT_MODE — text, raw, json, pretty  
-- GROQBASH_DEBUG=1 — abilita log dettagliati  
+- BASH4LLM_DEBUG=1 — abilita log dettagliati  
 - ALLOW_API_CALLS=0 — blocca chiamate reali (utile per test)
 
 ---
@@ -212,12 +212,12 @@ Default: **10 secondi**.
 
 ### 10.1 NTFS / WSL
 
-- chmod può fallire → GroqBash mostra un warning.  
+- chmod può fallire → Bash4LLM mostra un warning.  
 - Le operazioni restano atomiche.
 
 ### 10.2 NFS
 
-- flock può essere inaffidabile → GroqBash mostra un warning in modalità debug.
+- flock può essere inaffidabile → Bash4LLM mostra un warning in modalità debug.
 
 ### 10.3 BusyBox
 
@@ -227,10 +227,10 @@ Default: **10 secondi**.
 
 ## 11. Disinstallazione
 
-Per rimuovere GroqBash:
+Per rimuovere Bash4LLM:
 
-`rm -rf groqbash.d`  
-`rm groqbash`
+`rm -rf bash4llm.d`  
+`rm bash4llm`
 
 ---
 
@@ -241,21 +241,21 @@ Per rimuovere GroqBash:
 - Verifica GROQ_API_KEY  
 - Verifica connessione  
 - Attiva debug:  
-  `GROQBASH_DEBUG=1 ./groqbash -- "test"`
+  `BASH4LLM_DEBUG=1 ./bash4llm -- "test"`
 
 ### Errore su permessi
 
 Probabile filesystem non‑POSIX (NTFS).  
-GroqBash continua comunque l’installazione.
+Bash4LLM continua comunque l’installazione.
 
 ### Lock timeout
 
 Aumenta:
 
-`export GROQBASH_LOCK_TIMEOUT_MODELS=30`
+`export BASH4LLM_LOCK_TIMEOUT_MODELS=30`
 
 ---
 
 ## 13. Licenza
 
-GroqBash è distribuito sotto licenza [**GNU GPL v3**](LICENSE)
+Bash4LLM è distribuito sotto licenza [**GNU GPL v3**](LICENSE)
