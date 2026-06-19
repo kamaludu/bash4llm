@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/test/json-sse-suite.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 # Requirements
 #  - python3 must be available in PATH (required). Exits with code 3 if missing.
