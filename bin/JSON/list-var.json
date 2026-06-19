@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "software": "GroqBash",
+    "software": "Bash4LLM",
     "version": "2.0.0",
     "date": "2026-06-09"
   },
@@ -9,7 +9,7 @@
       "name": "SCRIPT_NAME",
       "category": "PRECORE_BOOT",
       "description": "Nome identificativo del programma.",
-      "value_definition": "Impostato a \"groqbash\"."
+      "value_definition": "Impostato a \"bash4llm\"."
     },
     {
       "name": "SCRIPT_VERSION",
@@ -24,88 +24,88 @@
       "value_definition": "Impostata a \"2026-06-09\"."
     },
     {
-      "name": "GROQBASH_ERR_NO_API_KEY",
+      "name": "BASH4LLM_ERR_NO_API_KEY",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata alla mancanza di una chiave API.",
       "value_definition": "Valore 10."
     },
     {
-      "name": "GROQBASH_ERR_BAD_MODEL",
+      "name": "BASH4LLM_ERR_BAD_MODEL",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata alla richiesta di un modello non valido o non supportato.",
       "value_definition": "Valore 11."
     },
     {
-      "name": "GROQBASH_ERR_CURL_FAILED",
+      "name": "BASH4LLM_ERR_CURL_FAILED",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata al fallimento della chiamata di rete curl.",
       "value_definition": "Valore 12."
     },
     {
-      "name": "GROQBASH_ERR_INVALID_JSON",
+      "name": "BASH4LLM_ERR_INVALID_JSON",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata alla ricezione o generazione di un JSON non valido.",
       "value_definition": "Valore 13."
     },
     {
-      "name": "GROQBASH_ERR_NO_PROMPT",
+      "name": "BASH4LLM_ERR_NO_PROMPT",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata alla mancanza di un prompt di input.",
       "value_definition": "Valore 14."
     },
     {
-      "name": "GROQBASH_ERR_TMP",
+      "name": "BASH4LLM_ERR_TMP",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata a problemi del file-system temporaneo o dei file di lock.",
       "value_definition": "Valore 15."
     },
     {
-      "name": "GROQBASH_ERR_API",
+      "name": "BASH4LLM_ERR_API",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata a risposte d'errore o codici HTTP non validi restituiti dal provider API.",
       "value_definition": "Valore 16."
     },
     {
-      "name": "GROQBASHERRNOAPIKEY",
+      "name": "BASH4LLMERRNOAPIKEY",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_NO_API_KEY.",
-      "value_definition": "Valore di GROQBASH_ERR_NO_API_KEY (10)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_NO_API_KEY.",
+      "value_definition": "Valore di BASH4LLM_ERR_NO_API_KEY (10)."
     },
     {
-      "name": "GROQBASHERRBAD_MODEL",
+      "name": "BASH4LLMERRBAD_MODEL",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_BAD_MODEL.",
-      "value_definition": "Valore di GROQBASH_ERR_BAD_MODEL (11)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_BAD_MODEL.",
+      "value_definition": "Valore di BASH4LLM_ERR_BAD_MODEL (11)."
     },
     {
-      "name": "GROQBASHERRCURL_FAILED",
+      "name": "BASH4LLMERRCURL_FAILED",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_CURL_FAILED.",
-      "value_definition": "Valore di GROQBASH_ERR_CURL_FAILED (12)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_CURL_FAILED.",
+      "value_definition": "Valore di BASH4LLM_ERR_CURL_FAILED (12)."
     },
     {
-      "name": "GROQBASHERRINVALID_JSON",
+      "name": "BASH4LLMERRINVALID_JSON",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_INVALID_JSON.",
-      "value_definition": "Valore di GROQBASH_ERR_INVALID_JSON (13)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_INVALID_JSON.",
+      "value_definition": "Valore di BASH4LLM_ERR_INVALID_JSON (13)."
     },
     {
-      "name": "GROQBASHERRNO_PROMPT",
+      "name": "BASH4LLMERRNO_PROMPT",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_NO_PROMPT.",
-      "value_definition": "Valore di GROQBASH_ERR_NO_PROMPT (14)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_NO_PROMPT.",
+      "value_definition": "Valore di BASH4LLM_ERR_NO_PROMPT (14)."
     },
     {
-      "name": "GROQBASHERRTMP",
+      "name": "BASH4LLMERRTMP",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_TMP.",
-      "value_definition": "Valore di GROQBASH_ERR_TMP (15)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_TMP.",
+      "value_definition": "Valore di BASH4LLM_ERR_TMP (15)."
     },
     {
-      "name": "GROQBASHERRAPI",
+      "name": "BASH4LLMERRAPI",
       "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di GROQBASH_ERR_API.",
-      "value_definition": "Valore di GROQBASH_ERR_API (16)."
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_API.",
+      "value_definition": "Valore di BASH4LLM_ERR_API (16)."
     },
     {
       "name": "DEBUG",
@@ -114,10 +114,10 @@
       "value_definition": "Eredita il valore di ambiente ${DEBUG} o viene impostato su 0 (disattivo)."
     },
     {
-      "name": "GROQBASH_LOG",
+      "name": "BASH4LLM_LOG",
       "category": "PRECORE_BOOT",
       "description": "Percorso assoluto o relativo del file in cui registrare i log di tracciamento.",
-      "value_definition": "Eredita ${GROQBASH_LOG} (vuoto se disattivato)."
+      "value_definition": "Eredita ${BASH4LLM_LOG} (vuoto se disattivato)."
     },
     {
       "name": "SCRIPTDIR",
@@ -129,7 +129,7 @@
       "name": "CANONICAL_EXTRAS_DIR",
       "category": "PRECORE_BOOT",
       "description": "Percorso della directory canonica delle estensioni.",
-      "value_definition": "Calcolato rimuovendo la barra finale da GROQBASH_DIR e annettendo /extras."
+      "value_definition": "Calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras."
     },
     {
       "name": "LEGACY_EXTRAS_DIR",
@@ -138,7 +138,7 @@
       "value_definition": "Relativo alla cartella dello script (SCRIPTDIR/extras)."
     },
     {
-      "name": "GROQBASH_EXTRAS_DIR",
+      "name": "BASH4LLM_EXTRAS_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory attiva per l'accesso alle risorse aggiuntive dello script.",
       "value_definition": "Assegnata a CANONICAL_EXTRAS_DIR."
@@ -150,40 +150,40 @@
       "value_definition": "Impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto la directory delle estensioni alla voce /providers."
     },
     {
-      "name": "GROQBASH_CONFIG_DIR",
+      "name": "BASH4LLM_CONFIG_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory dei file di configurazione utente persistenti.",
-      "value_definition": "Impostata a GROQBASH_CONFIG_DIR di ambiente o posizionata sotto $GROQBASH_DIR/config."
+      "value_definition": "Impostata a BASH4LLM_CONFIG_DIR di ambiente o posizionata sotto $BASH4LLM_DIR/config."
     },
     {
-      "name": "GROQBASH_MODELS_DIR",
+      "name": "BASH4LLM_MODELS_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory dei file relativi ai modelli supportati.",
-      "value_definition": "Impostata a GROQBASH_MODELS_DIR di ambiente o posizionata sotto $GROQBASH_DIR/models."
+      "value_definition": "Impostata a BASH4LLM_MODELS_DIR di ambiente o posizionata sotto $BASH4LLM_DIR/models."
     },
     {
-      "name": "GROQBASH_TEMPLATES_DIR",
+      "name": "BASH4LLM_TEMPLATES_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory contenente i file dei modelli di template.",
-      "value_definition": "Impostata a GROQBASH_TEMPLATES_DIR di ambiente o posizionata sotto $GROQBASH_DIR/templates."
+      "value_definition": "Impostata a BASH4LLM_TEMPLATES_DIR di ambiente o posizionata sotto $BASH4LLM_DIR/templates."
     },
     {
-      "name": "GROQBASH_HISTORY_DIR",
+      "name": "BASH4LLM_HISTORY_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory contenente lo storico e i log delle interazioni dello script.",
-      "value_definition": "Impostata a GROQBASH_HISTORY_DIR di ambiente o posizionata sotto $GROQBASH_DIR/history."
+      "value_definition": "Impostata a BASH4LLM_HISTORY_DIR di ambiente o posizionata sotto $BASH4LLM_DIR/history."
     },
     {
-      "name": "GROQBASH_TMPDIR",
+      "name": "BASH4LLM_TMPDIR",
       "category": "PRECORE_BOOT",
-      "description": "Directory radice per l'allocazione dei dati temporanei di GroqBash.",
-      "value_definition": "Impostata a GROQBASH_TMPDIR di ambiente o posizionata sotto $GROQBASH_DIR/tmp."
+      "description": "Directory radice per l'allocazione dei dati temporanei di Bash4LLM.",
+      "value_definition": "Impostata a BASH4LLM_TMPDIR di ambiente o posizionata sotto $BASH4LLM_DIR/tmp."
     },
     {
       "name": "MODELS_FILE",
       "category": "PRECORE_BOOT",
       "description": "File di testo locale in cui memorizzare la lista dei modelli recuperati.",
-      "value_definition": "Impostato su MODELS_FILE di ambiente o posizionato sotto $GROQBASH_MODELS_DIR/models.txt."
+      "value_definition": "Impostato su MODELS_FILE di ambiente o posizionato sotto $BASH4LLM_MODELS_DIR/models.txt."
     },
     {
       "name": "MAX_MODELS",
@@ -201,64 +201,64 @@
       "name": "SESSION_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory dedicata alla registrazione dei log storici delle chat multi-turno.",
-      "value_definition": "Posizionata in $GROQBASH_HISTORY_DIR/sessions."
+      "value_definition": "Posizionata in $BASH4LLM_HISTORY_DIR/sessions."
     },
     {
       "name": "MODELS_LOCK",
       "category": "PRECORE_BOOT",
       "description": "Percorso del file di lock di sincronizzazione per l'accesso ai modelli.",
-      "value_definition": "Impostato su MODELS_LOCK di ambiente o localizzato sotto $GROQBASH_MODELS_DIR/models.lock."
+      "value_definition": "Impostato su MODELS_LOCK di ambiente o localizzato sotto $BASH4LLM_MODELS_DIR/models.lock."
     },
     {
       "name": "HISTORY_LOCK",
       "category": "PRECORE_BOOT",
       "description": "Percorso del file di lock per l'accesso concorrente ai log di storico e sessione.",
-      "value_definition": "Impostato su HISTORY_LOCK di ambiente o localizzato sotto $GROQBASH_HISTORY_DIR/history.lock."
+      "value_definition": "Impostato su HISTORY_LOCK di ambiente o localizzato sotto $BASH4LLM_HISTORY_DIR/history.lock."
     },
     {
       "name": "TMP_LOCK",
       "category": "PRECORE_BOOT",
       "description": "Percorso del file di lock esclusivo per la gestione sicura della directory temporanea dello script.",
-      "value_definition": "Impostato su TMP_LOCK di ambiente o localizzato sotto $GROQBASH_TMPDIR/tmp.lock."
+      "value_definition": "Impostato su TMP_LOCK di ambiente o localizzato sotto $BASH4LLM_TMPDIR/tmp.lock."
     },
     {
-      "name": "GROQBASH_LOCK_TIMEOUT_TMP",
+      "name": "BASH4LLM_LOCK_TIMEOUT_TMP",
       "category": "PRECORE_BOOT",
       "description": "Timeout massimo di attesa espresso in secondi per acquisire il lock temporaneo.",
-      "value_definition": "Eredita GROQBASH_LOCK_TIMEOUT_TMP o imposta 10."
+      "value_definition": "Eredita BASH4LLM_LOCK_TIMEOUT_TMP o imposta 10."
     },
     {
-      "name": "GROQBASH_LOCK_TIMEOUT_MODELS",
+      "name": "BASH4LLM_LOCK_TIMEOUT_MODELS",
       "category": "PRECORE_BOOT",
       "description": "Timeout in secondi per acquisire il lock sui modelli.",
-      "value_definition": "Eredita GROQBASH_LOCK_TIMEOUT_MODELS o imposta 10."
+      "value_definition": "Eredita BASH4LLM_LOCK_TIMEOUT_MODELS o imposta 10."
     },
     {
-      "name": "GROQBASH_LOCK_TIMEOUT_HISTORY",
+      "name": "BASH4LLM_LOCK_TIMEOUT_HISTORY",
       "category": "PRECORE_BOOT",
       "description": "Timeout in secondi per acquisire il lock sullo storico dei messaggi e delle sessioni.",
-      "value_definition": "Eredita GROQBASH_LOCK_TIMEOUT_HISTORY o imposta 10."
+      "value_definition": "Eredita BASH4LLM_LOCK_TIMEOUT_HISTORY o imposta 10."
     },
     {
-      "name": "GROQBASH_ROTATE_HISTORY",
+      "name": "BASH4LLM_ROTATE_HISTORY",
       "category": "PRECORE_RUN",
       "description": "Flag di configurazione per attivare la rotazione automatica periodica dello storico delle interazioni.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
-      "name": "GROQBASH_HISTORY_MAX_FILES",
+      "name": "BASH4LLM_HISTORY_MAX_FILES",
       "category": "PRECORE_RUN",
       "description": "Soglia numerica massima di file memorizzabili nello storico delle risposte. Superata la soglia, i file più vecchi vengono rimossi.",
       "value_definition": "Default 100."
     },
     {
-      "name": "GROQBASH_HISTORY_MAX_BYTES",
+      "name": "BASH4LLM_HISTORY_MAX_BYTES",
       "category": "PRECORE_RUN",
       "description": "Soglia massima del peso cumulativo di tutti i file storici archiviati.",
       "value_definition": "Default 104857600 (equivalente a 100MB)."
     },
     {
-      "name": "GROQBASH_HISTORY_KEEP_DAYS",
+      "name": "BASH4LLM_HISTORY_KEEP_DAYS",
       "category": "PRECORE_RUN",
       "description": "Limite di tempo espresso in giorni per la conservazione dei log e dello storico. I file più vecchi della soglia vengono eliminati.",
       "value_definition": "Default 90."
@@ -591,7 +591,7 @@
       "name": "SE_ENGINE_PATH",
       "category": "CORE_SETUP",
       "description": "Percorso assoluto del file dello script del Session Engine esterno.",
-      "value_definition": "Impostato su $GROQBASH_EXTRAS_DIR/session/session-engine.sh."
+      "value_definition": "Impostato su $BASH4LLM_EXTRAS_DIR/session/session-engine.sh."
     },
     {
       "name": "SE_AVAILABLE",
