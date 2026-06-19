@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash⁺ — Bash-first wrapper for the Groq API
+# Bash4LLM⁺ — Bash-first wrapper for the Groq API
 # File: gemini.sh
 # Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # =============================================================================
 # Provider: Gemini (extras/providers/gemini.sh)
-# Purpose: GroqBash provider adapter for Gemini-style APIs (compat shim)
+# Purpose: Bash4LLM provider adapter for Gemini-style APIs (compat shim)
 # =============================================================================
 
 # Configura il file dei modelli specifico per questo provider
-MODELS_FILE="${MODELS_FILE:-${GROQBASH_MODELS_DIR:-}/gemini.txt}"
+MODELS_FILE="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/gemini.txt}"
 
 # -------------------------
 # Helpers
 # -------------------------
 _get_work_tmpdir_gemini() {
   # RUN_TMPDIR è sempre definita ed esportata dal core prima dell'esecuzione
-  printf '%s' "${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  printf '%s' "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}"
 }
 
 _mktemp_in_dir_gemini() {
@@ -201,7 +201,7 @@ gemini_report_error() {
 # -------------------------
 call_api_gemini() {
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return "$GROQBASHERRTMP"
+    ensure_run_tmpdir || return "$BASH4LLMERRTMP"
   fi
 
   if ! ensure_api_key_for_provider "gemini"; then
@@ -212,13 +212,13 @@ call_api_gemini() {
     umask 077
     jq -n --arg err "API key required for provider gemini" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   local prov_env
   prov_env="$(provider_api_env_var_name "gemini")"
   local key
-  key="${!prov_env:-${GROQBASH_API_KEY:-${GEMINI_API_KEY:-}}}"
+  key="${!prov_env:-${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
 
   if [ -z "$key" ]; then
     log_error "APIKEY" "API key not available in env $prov_env"
@@ -228,7 +228,7 @@ call_api_gemini() {
     umask 077
     jq -n --arg err "API key not available for provider gemini" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   if [ ! -s "${PAYLOAD:-}" ]; then
@@ -254,7 +254,7 @@ call_api_gemini() {
   fi
 
   local workdir tmpout tmpresp errf api_url model_subst key_trim http_code time_total
-  workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
   [ -n "$workdir" ] || return 4
 
   tmpout="$(_mktemp_in_dir_gemini "$workdir")" || return 4
@@ -343,7 +343,7 @@ call_api_gemini() {
 # -------------------------
 call_api_streaming_gemini() {
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return "$GROQBASHERRTMP"
+    ensure_run_tmpdir || return "$BASH4LLMERRTMP"
   fi
 
   if ! ensure_api_key_for_provider "gemini"; then
@@ -354,13 +354,13 @@ call_api_streaming_gemini() {
     umask 077
     jq -n --arg err "API key required for provider gemini" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   local prov_env
   prov_env="$(provider_api_env_var_name "gemini")"
   local key
-  key="${!prov_env:-${GROQBASH_API_KEY:-${GEMINI_API_KEY:-}}}"
+  key="${!prov_env:-${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
   if [ -z "$key" ]; then
     log_error "APIKEY" "API key not available in env $prov_env"
     local workdir_err
@@ -369,7 +369,7 @@ call_api_streaming_gemini() {
     umask 077
     jq -n --arg err "API key not available for provider gemini" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   if is_truthy "${DRY_RUN:-0}"; then
@@ -384,7 +384,7 @@ call_api_streaming_gemini() {
   fi
 
   local workdir RESP_RAW errf api_url model_subst key_trim rc
-  workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
   [ -n "$workdir" ] || return 4
 
   RESP_RAW="$(_mktemp_in_dir_gemini "$workdir")" || RESP_RAW="${workdir%/}/resp.raw"
@@ -484,13 +484,13 @@ refresh_models_gemini() {
   if type canonical_provider_url_file >/dev/null 2>&1; then
     provider_url_file="$(canonical_provider_url_file)"
   else
-    provider_url_file="${GROQBASH_CONFIG_DIR:-${GROQBASH_DIR:-./groqbash.d}}/provider-url.gemini"
+    provider_url_file="${BASH4LLM_CONFIG_DIR:-${BASH4LLM_DIR:-./bash4llm.d}}/provider-url.gemini"
   fi
 
   if is_truthy "${DRY_RUN:-0}"; then
     if [ -z "$outpath" ]; then
       log_error "MODELREFRESH" "MODELS file path not provided."
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     fi
     umask 077
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
@@ -500,7 +500,7 @@ refresh_models_gemini() {
     if type b64_atomic_write >/dev/null 2>&1; then
       if ! b64_atomic_write "${outpath}.b64" 10 < "$tmp_models"; then
         rm -f "$tmp_models" 2>/dev/null || true
-        return "$GROQBASHERRTMP"
+        return "$BASH4LLMERRTMP"
       fi
       lockfile="${MODELS_LOCK:-${outpath}.lock}"
       lock_exec "$lockfile" 10 -- sh -c '
@@ -509,7 +509,7 @@ refresh_models_gemini() {
         dest="$2"
         base64 ${B64_DECODE_OPT:-} < "$manifest_b64" > "$dest"
         chmod 600 "$dest" 2>/dev/null || true
-      ' _ "${outpath}.b64" "$outpath" || { rm -f "$tmp_models" 2>/dev/null || true; return "$GROQBASHERRTMP"; }
+      ' _ "${outpath}.b64" "$outpath" || { rm -f "$tmp_models" 2>/dev/null || true; return "$BASH4LLMERRTMP"; }
     else
       mv "$tmp_models" "${outpath}.new" 2>/dev/null || cp -f "$tmp_models" "${outpath}.new" 2>/dev/null || true
       chmod 600 "${outpath}.new" 2>/dev/null || true
@@ -539,7 +539,7 @@ refresh_models_gemini() {
       chmod 600 "$provider_url_file" 2>/dev/null || true
     fi
 
-    GROQBASH_PROVIDER_URL="${provider_url_value}"
+    BASH4LLM_PROVIDER_URL="${provider_url_value}"
     return 0
   fi
 
@@ -551,10 +551,10 @@ refresh_models_gemini() {
     umask 077
     jq -n --arg err "API key required to refresh models" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
-  local key="${!prov_env:-${GROQBASH_API_KEY:-${GEMINI_API_KEY:-}}}"
+  local key="${!prov_env:-${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
   if [ -z "$key" ]; then
     log_error "APIKEY" "API key not available in env $prov_env"
     local workdir_err
@@ -563,23 +563,23 @@ refresh_models_gemini() {
     umask 077
     jq -n --arg err "API key not available for provider gemini" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   if [ -z "$outpath" ]; then
     log_error "MODELREFRESH" "MODELS file path not provided."
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return "$GROQBASHERRTMP"
+    ensure_run_tmpdir || return "$BASH4LLMERRTMP"
   fi
 
   local workdir tmpd out errf curlout parsed tmpfinal http_code time_total key_trim tmpout lockfile resp_path
-  workdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-}}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  [ -n "$workdir" ] || return "$BASH4LLMERRTMP"
 
-  tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)" || return "$GROQBASHERRTMP"
+  tmpd="$(mktemp -d -p "$workdir" gemini-models.XXXX 2>/dev/null || true)" || return "$BASH4LLMERRTMP"
 
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
@@ -602,7 +602,7 @@ refresh_models_gemini() {
     jq -n --arg stderr "$(head -n 200 "$errf" 2>/dev/null || true)" '{error:{stderr:$stderr}}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   if [ -s "${curlout:-}" ]; then
@@ -625,7 +625,7 @@ refresh_models_gemini() {
     jq -n --arg code "${http_code:-000}" --arg stderr "$(head -n 200 "$errf" 2>/dev/null || true)" '{error:{code:$code,stderr:$stderr}}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   if ! jq -e . "$out" >/dev/null 2>&1; then
@@ -636,7 +636,7 @@ refresh_models_gemini() {
     jq -n --arg stderr "$(head -n 200 "$errf" 2>/dev/null || true)" '{error:{stderr:$stderr}}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   jq -r '.models[]?.name // empty' "$out" | awk 'NF{print}' | sort -u > "$parsed" 2>/dev/null || true
@@ -647,7 +647,7 @@ refresh_models_gemini() {
     jq -n --arg msg "parsed models list empty" '{error:$msg}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' "$parsed" > "$tmpfinal" || true
@@ -668,7 +668,7 @@ refresh_models_gemini() {
       log_error "MODELREFRESH" "failed to stage models file"
       rm -f "$tmpout" 2>/dev/null || true
       rm -rf "$tmpd"
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     fi
     lockfile="${MODELS_LOCK:-${outpath}.lock}"
     lock_exec "$lockfile" 10 -- sh -c '
@@ -677,7 +677,7 @@ refresh_models_gemini() {
       dest="$2"
       base64 ${B64_DECODE_OPT:-} < "$manifest_b64" > "$dest"
       chmod 600 "$dest" 2>/dev/null || true
-    ' _ "${outpath}.b64" "$outpath" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+    ' _ "${outpath}.b64" "$outpath" || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$BASH4LLMERRTMP"; }
   else
     mv "$tmpout" "${outpath}.new" 2>/dev/null || cp -f "$tmpout" "${outpath}.new" 2>/dev/null || true
     chmod 600 "${outpath}.new" 2>/dev/null || true
@@ -707,7 +707,7 @@ refresh_models_gemini() {
     chmod 600 "$provider_url_file" 2>/dev/null || true
   fi
 
-  GROQBASH_PROVIDER_URL="${provider_url_value}"
+  BASH4LLM_PROVIDER_URL="${provider_url_value}"
 
   log_info "MODELREFRESH" "Gemini models refreshed and saved to: $outpath (max ${MAX_MODELS:-200})"
 
