@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/providers/huggingface.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 
 # When sourced, avoid enabling strict mode globally.
@@ -20,8 +20,8 @@ _get_work_tmpdir_hf() {
     printf '%s' "$RUN_TMPDIR"
     return 0
   fi
-  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
-    printf '%s' "$GROQBASH_TMPDIR"
+  if [ -n "${BASH4LLM_TMPDIR:-}" ] && [ -d "${BASH4LLM_TMPDIR:-}" ]; then
+    printf '%s' "$BASH4LLM_TMPDIR"
     return 0
   fi
   if type make_tmpdir >/dev/null 2>&1; then
@@ -52,7 +52,7 @@ hf_default_endpoints_file() {
   # derive repo root relative to this script if possible
   local base
   base="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd 2>/dev/null || pwd)"
-  printf '%s' "${HF_ENDPOINTS_FILE:-${base}/groqbash.d/config/providers/hf_endpoints}"
+  printf '%s' "${HF_ENDPOINTS_FILE:-${base}/bash4llm.d/config/providers/hf_endpoints}"
 }
 
 # Load endpoints file (no remote calls). Returns 0 if file exists or empty file is acceptable.
@@ -152,11 +152,11 @@ buildpayload_huggingface() {
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $GROQBASHERRTMP
+    ensure_run_tmpdir || return $BASH4LLMERRTMP
   fi
 
-  workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
-  tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
+  workdir="$(_get_work_tmpdir_hf)" || return $BASH4LLMERRTMP
+  tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
   umask 077
 
   # Ensure PAYLOAD/RESP variables point to safe file paths (use .json for clarity)
@@ -234,7 +234,7 @@ call_api_huggingface() {
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "huggingface"; then
       log_error "APIKEY" "HF API key required to call Hugging Face."
-      return $GROQBASHERRNOAPIKEY
+      return $BASH4LLMERRNOAPIKEY
     fi
   fi
 
@@ -245,16 +245,16 @@ call_api_huggingface() {
 
   if [ -z "${HFAPIKEY:-}" ]; then
     log_error "APIKEY" "HF API key not set (env ${prov_env:-HUGGINGFACE_API_KEY})."
-    return $GROQBASHERRNOAPIKEY
+    return $BASH4LLMERRNOAPIKEY
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $GROQBASHERRTMP
+    ensure_run_tmpdir || return $BASH4LLMERRTMP
   fi
 
   # Ensure PAYLOAD/RESP have sensible defaults inside the project tmpdir
-  workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
+  workdir="$(_get_work_tmpdir_hf)" || return $BASH4LLMERRTMP
   PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
   RESP="${RESP:-${workdir}/resp.json}"
   ERRF="${ERRF:-${workdir}/curl.err}"
@@ -263,11 +263,11 @@ call_api_huggingface() {
   dbg "RESP path: ${RESP:-<unset>}"
 
   # Expose payload path for reproducibility (stderr)
-  printf 'groqbash: DEBUG: using payload file: %s\n' "${PAYLOAD:-<unset>}" >&2
+  printf 'bash4llm: DEBUG: using payload file: %s\n' "${PAYLOAD:-<unset>}" >&2
 
   if [ ! -s "${PAYLOAD:-}" ]; then
     log_error "HTTP" "payload file missing or empty: ${PAYLOAD:-<unset>}"
-    return $GROQBASHERRTMP
+    return $BASH4LLMERRTMP
   fi
   if is_truthy "${DRY_RUN:-0}"; then
     printf 'DRY-RUN: skipping HTTP call (exit 0)\n' >&2
@@ -278,10 +278,10 @@ call_api_huggingface() {
   local endpoint_url
   endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
   if [ -z "${endpoint_url:-}" ]; then
-    log_error "HTTP" "Model '$MODEL' not registered in local HF endpoints. Use groqbash --provider to add an endpoint."
-    printf '{"error":"model_not_registered","model":"%s","hint":"Register endpoint in groqbash.d/config/providers/hf_endpoints"}\n' "$MODEL" > "${RESP}" 2>/dev/null || true
+    log_error "HTTP" "Model '$MODEL' not registered in local HF endpoints. Use bash4llm --provider to add an endpoint."
+    printf '{"error":"model_not_registered","model":"%s","hint":"Register endpoint in bash4llm.d/config/providers/hf_endpoints"}\n' "$MODEL" > "${RESP}" 2>/dev/null || true
     chmod 600 "${RESP}" 2>/dev/null || true
-    return $GROQBASHERRAPI
+    return $BASH4LLMERRAPI
   fi
 
   # Build api_url from endpoint_url (user-provided endpoint is authoritative)
@@ -291,9 +291,9 @@ call_api_huggingface() {
   dbg "Repro curl (redacted): curl -H 'Authorization: Bearer <REDACTED>' -H 'Content-Type: application/json' --data-binary @\"$PAYLOAD\" \"$api_url\""
 
   local tmpout tmpresp hdr_file http_result http_code time_total http_ct http_body err_text rc
-  tmpout="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
-  tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
-  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
+  tmpout="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
+  tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
 
   : > "$tmpout" 2>/dev/null || true
   : > "$ERRF" 2>/dev/null || true
@@ -344,7 +344,7 @@ EOF
       else
         dbg "HF non-json response (truncated): $(printf '%s' "$http_body" | head -c 2048)"
         log_error "HTTP" "API returned non-JSON response (status $http_code). See debug logs."
-        return $GROQBASHERRAPI
+        return $BASH4LLMERRAPI
       fi
       ;;
     404)
@@ -359,7 +359,7 @@ EOF
       chmod 600 "${RESP}" 2>/dev/null || true
 
       rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
-      return $GROQBASHERRAPI
+      return $BASH4LLMERRAPI
       ;;
     *)
       # Other non-2xx errors: extract textual error from HTML if possible
@@ -385,7 +385,7 @@ EOF
       chmod 600 "${RESP}" 2>/dev/null || true
 
       rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
-      return $GROQBASHERRAPI
+      return $BASH4LLMERRAPI
       ;;
   esac
 }
@@ -400,7 +400,7 @@ call_api_streaming_huggingface() {
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "huggingface"; then
       log_error "APIKEY" "HF API key required to call Hugging Face."
-      return $GROQBASHERRNOAPIKEY
+      return $BASH4LLMERRNOAPIKEY
     fi
   fi
 
@@ -411,7 +411,7 @@ call_api_streaming_huggingface() {
 
   if [ -z "${HFAPIKEY:-}" ]; then
     log_error "APIKEY" "HF API key not set (env ${prov_env:-HUGGINGFACE_API_KEY})."
-    return $GROQBASHERRNOAPIKEY
+    return $BASH4LLMERRNOAPIKEY
   fi
 
   if is_truthy "${DRY_RUN:-0}"; then
@@ -421,24 +421,24 @@ call_api_streaming_huggingface() {
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $GROQBASHERRTMP
+    ensure_run_tmpdir || return $BASH4LLMERRTMP
   fi
 
   local api_url rc RESP_RAW workdir hdr_file ERRF
-  workdir="$(_get_work_tmpdir_hf)" || return $GROQBASHERRTMP
+  workdir="$(_get_work_tmpdir_hf)" || return $BASH4LLMERRTMP
   RESP_RAW="${RESP_RAW:-${workdir}/resp.raw}"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
   ERRF="${ERRF:-${workdir}/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
-  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $GROQBASHERRTMP
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
 
   # Resolve endpoint for requested model from local endpoints file
   local endpoint_url
   endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
   if [ -z "${endpoint_url:-}" ]; then
-    log_error "HTTP" "Model '$MODEL' not registered in local HF endpoints. Use groqbash --provider to add an endpoint."
-    return $GROQBASHERRAPI
+    log_error "HTTP" "Model '$MODEL' not registered in local HF endpoints. Use bash4llm --provider to add an endpoint."
+    return $BASH4LLMERRAPI
   fi
 
   # Build api_url from endpoint_url (user-provided endpoint is authoritative)
@@ -469,7 +469,7 @@ call_api_streaming_huggingface() {
   [ "$rc" -ne 0 ] && {
     dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
     rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
-    return $GROQBASHERRCURL_FAILED
+    return $BASH4LLMERRCURL_FAILED
   }
 
   # Post-processing: build resp.chunks.json, resp.text.txt and write RESP atomically
@@ -487,12 +487,12 @@ call_api_streaming_huggingface() {
     jq -s '.' "$workdir/resp.valid.jsons" > "$workdir/resp.chunks.json" 2>/dev/null || true
     jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$workdir/resp.chunks.json" > "$workdir/resp.text.txt" 2>/dev/null || true
     if type atomic_write >/dev/null 2>&1; then
-      cat "$workdir/resp.chunks.json" | atomic_write "${RESP:-$workdir/resp.json}" "${GROQBASH_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      cat "$workdir/resp.chunks.json" | atomic_write "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
     else
       cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
     fi
 
-    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${GROQBASH_TMPDIR:-}"/*) true;; "${GROQBASH_TMPDIR:-}") true;; *) false;; esac; then
+    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${BASH4LLM_TMPDIR:-}"/*) true;; "${BASH4LLM_TMPDIR:-}") true;; *) false;; esac; then
       rm -f "$workdir/resp.lines" "$workdir/resp.valid.jsons" 2>/dev/null || true
     fi
   else
@@ -516,16 +516,16 @@ refresh_models_huggingface() {
 
   if [ -z "$outpath" ]; then
     log_error "MODELREFRESH" "MODELS file path not provided."
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
-  f="$(hf_load_endpoints)" || return "$GROQBASHERRTMP"
+  f="$(hf_load_endpoints)" || return "$BASH4LLMERRTMP"
 
   # Create a temp file under project tmpdir and write model names
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return "$GROQBASHERRTMP"
+    ensure_run_tmpdir || return "$BASH4LLMERRTMP"
   fi
-  tmpd="$(_get_work_tmpdir_hf)" || tmpd="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  tmpd="$(_get_work_tmpdir_hf)" || tmpd="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}"
   tmpout="$(_mktemp_in_dir_hf "$tmpd" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
 
