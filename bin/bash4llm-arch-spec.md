@@ -1,8 +1,8 @@
-# SPECIFICA TECNICA DEL SISTEMA GROQBASH (v2.0.0)
+# SPECIFICA TECNICA DEL SISTEMA BASH4LLM (v2.0.0)
 
 ## SEZIONE 1: ARCHITETTURA GENERALE E RELAZIONI TRA MACRO-SEZIONI
 
-Il sistema GroqBash è strutturato in cinque macro-sezioni logiche, progettate per operare in modo sequenziale e integrato. La stabilità e l'integrità del runtime sono garantite da una gerarchia di dipendenze, requisiti di sistema rigorosi e costanti di sicurezza (invarianti) applicate a livello di file-system.
+Il sistema Bash4LLM è strutturato in cinque macro-sezioni logiche, progettate per operare in modo sequenziale e integrato. La stabilità e l'integrità del runtime sono garantite da una gerarchia di dipendenze, requisiti di sistema rigorosi e costanti di sicurezza (invarianti) applicate a livello di file-system.
 
 ### 1.1 Dipendenze tra Macro-Sezioni
 *   **PRECORE_RUN**: Dipende da `PRECORE_BOOT` per il caricamento dei percorsi canonici, la gestione delle variabili di ambiente, gli helper di codifica/decodifica Base64, l'utilità di acquisizione dei lock esclusivi (`lock_exec`) e l'inizializzazione sicura della directory temporanea (`ensure_run_tmpdir`).
@@ -39,8 +39,8 @@ Prima di consentire qualunque elaborazione, il sistema verifica la presenza nel 
 24. `type` (o equivalente di shell integrato)
 
 ### 1.3 Invarianti Globali di Sicurezza e File-System
-Il runtime di GroqBash impone regole di isolamento e protezione dei dati persistenti e temporanei per prevenire attacchi di elevazione dei privilegi, manipolazione concorrente ("Race Condition") o iniezione di percorsi ("Directory Traversal"):
-*   **Politica dei File Temporanei**: La directory principale `$GROQBASH_TMPDIR` deve risiedere interamente all'interno della cartella radice `$GROQBASH_DIR`. È vietato l'uso della cartella globale `/tmp` del sistema operativo per i file temporanei dello script. Il sistema si arresta se `$GROQBASH_TMPDIR` coincide con `/tmp` o vi risiede direttamente.
+Il runtime di Bash4LLM impone regole di isolamento e protezione dei dati persistenti e temporanei per prevenire attacchi di elevazione dei privilegi, manipolazione concorrente ("Race Condition") o iniezione di percorsi ("Directory Traversal"):
+*   **Politica dei File Temporanei**: La directory principale `$BASH4LLM_TMPDIR` deve risiedere interamente all'interno della cartella radice `$BASH4LLM_DIR`. È vietato l'uso della cartella globale `/tmp` del sistema operativo per i file temporanei dello script. Il sistema si arresta se `$BASH4LLM_TMPDIR` coincide con `/tmp` o vi risiede direttamente.
 *   **Mitigazione Attacchi Symlink**: All'avvio, viene verificato che nessuna delle directory operative dello script (configurazione, modelli, template, storico, sessioni, cache, runtime) sia un collegamento simbolico. Se viene rilevato un symlink su un percorso sensibile, l'esecuzione viene interrotta.
 *   **Controllo dei Permessi e Maschera Umask**: All'avvio viene applicata la maschera di processo `umask 077`. Tutte le directory operative vengono create o forzate con permessi `700` (accesso esclusivo per l'utente proprietario). Tutti i file generati (configurazioni, chiavi, cache, risposte, registri) vengono blindati con permessi `600`.
 *   **Proprietà dei Moduli Esterni**: Qualunque estensione o modulo provider esterno (`plugin`) deve appartenere all'utente esecutore corrente e non deve presentare permessi di scrittura pubblici o di gruppo (`group/world-writable`).
@@ -53,26 +53,26 @@ Il runtime di GroqBash impone regole di isolamento e protezione dei dati persist
 Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi preventiva degli argomenti CLI, la convalida dell'ambiente operativo e l'esposizione delle funzioni fondamentali di logging, codifica e I/O.
 
 ### 2.1 Variabili di PRECORE_BOOT
-*   **SCRIPT_NAME**: Nome identificativo del programma (costante: `"groqbash"`).
+*   **SCRIPT_NAME**: Nome identificativo del programma (costante: `"bash4llm"`).
 *   **SCRIPT_VERSION**: Versione corrente del software (costante: `"2.0.0"`).
 *   **SCRIPT_DATE**: Data di rilascio del software (costante: `"2026-06-09"`).
 *   **Costanti d'Errore Globali**:
-    *   `GROQBASH_ERR_NO_API_KEY` (Valore `10`): Assenza di una chiave API valida.
-    *   `GROQBASH_ERR_BAD_MODEL` (Valore `11`): Modello non supportato, non valido o escluso.
-    *   `GROQBASH_ERR_CURL_FAILED` (Valore `12`): Fallimento di rete o errore di curl.
-    *   `GROQBASH_ERR_INVALID_JSON` (Valore `13`): Sintassi JSON non conforme o corrotta.
-    *   `GROQBASH_ERR_NO_PROMPT` (Valore `14`): Assenza di prompt testuale o JSON di input.
-    *   `GROQBASH_ERR_TMP` (Valore `15`): Errore di I/O, permessi o lock sui file temporanei.
-    *   `GROQBASH_ERR_API` (Valore `16`): Errore applicativo o codice HTTP non valido inviato dalle API.
-*   **Alias delle Costanti**: `GROQBASHERRNOAPIKEY` (10), `GROQBASHERRBAD_MODEL` (11), `GROQBASHERRCURL_FAILED` (12), `GROQBASHERRINVALID_JSON` (13), `GROQBASHERRNO_PROMPT` (14), `GROQBASHERRTMP` (15), `GROQBASHERRAPI` (16).
+    *   `BASH4LLM_ERR_NO_API_KEY` (Valore `10`): Assenza di una chiave API valida.
+    *   `BASH4LLM_ERR_BAD_MODEL` (Valore `11`): Modello non supportato, non valido o escluso.
+    *   `BASH4LLM_ERR_CURL_FAILED` (Valore `12`): Fallimento di rete o errore di curl.
+    *   `BASH4LLM_ERR_INVALID_JSON` (Valore `13`): Sintassi JSON non conforme o corrotta.
+    *   `BASH4LLM_ERR_NO_PROMPT` (Valore `14`): Assenza di prompt testuale o JSON di input.
+    *   `BASH4LLM_ERR_TMP` (Valore `15`): Errore di I/O, permessi o lock sui file temporanei.
+    *   `BASH4LLM_ERR_API` (Valore `16`): Errore applicativo o codice HTTP non valido inviato dalle API.
+*   **Alias delle Costanti**: `BASH4LLMERRNOAPIKEY` (10), `BASH4LLMERRBAD_MODEL` (11), `BASH4LLMERRCURL_FAILED` (12), `BASH4LLMERRINVALID_JSON` (13), `BASH4LLMERRNO_PROMPT` (14), `BASH4LLMERRTMP` (15), `BASH4LLMERRAPI` (16).
 *   **Variabili Lette**:
-    *   `DEBUG`, `GROQBASH_DEBUG`: Configurazione dei tracciamenti di sviluppo.
-    *   `GROQBASH_DIR`, `GROQBASH_ROOT`: Percorso radice di installazione.
-    *   `GROQBASH_CONFIG_DIR`, `GROQBASH_MODELS_DIR`, `GROQBASH_TEMPLATES_DIR`, `GROQBASH_HISTORY_DIR`, `GROQBASH_TMPDIR`, `GROQBASH_EXTRAS_DIR`, `PROVIDERS_DIR`: Directory di lavoro operative.
+    *   `DEBUG`, `BASH4LLM_DEBUG`: Configurazione dei tracciamenti di sviluppo.
+    *   `BASH4LLM_DIR`, `BASH4LLM_ROOT`: Percorso radice di installazione.
+    *   `BASH4LLM_CONFIG_DIR`, `BASH4LLM_MODELS_DIR`, `BASH4LLM_TEMPLATES_DIR`, `BASH4LLM_HISTORY_DIR`, `BASH4LLM_TMPDIR`, `BASH4LLM_EXTRAS_DIR`, `PROVIDERS_DIR`: Directory di lavoro operative.
     *   `MAX_STAGE_BYTES`: Soglia massima di byte per i payload Base64 (default `10485760` byte, pari a 10MB).
     *   `MAX_MODELS`: Limite massimo di modelli importabili locali (default `200`).
-    *   `GROQBASH_LOG`: Percorso del file di tracciamento centralizzato.
-    *   `GROQBASH_LOCK_TIMEOUT_TMP`, `GROQBASH_LOCK_TIMEOUT_MODELS`, `GROQBASH_LOCK_TIMEOUT_HISTORY`: Timeout per i lock esclusivi (default `10` secondi).
+    *   `BASH4LLM_LOG`: Percorso del file di tracciamento centralizzato.
+    *   `BASH4LLM_LOCK_TIMEOUT_TMP`, `BASH4LLM_LOCK_TIMEOUT_MODELS`, `BASH4LLM_LOCK_TIMEOUT_HISTORY`: Timeout per i lock esclusivi (default `10` secondi).
 *   **Variabili Scritte/Modificate**:
     *   `SCRIPTDIR`: Risoluzione assoluta del percorso dello script.
     *   `CANONICAL_EXTRAS_DIR`, `LEGACY_EXTRAS_DIR`: Percorsi normalizzati delle estensioni.
@@ -93,7 +93,7 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi
 
 #### canonical_config_dir
 *   **Ruolo**: Restituisce il percorso di configurazione normalizzato eliminando le barre finali ridondanti.
-*   **Input**: Variabile `$GROQBASH_CONFIG_DIR`.
+*   **Input**: Variabile `$BASH4LLM_CONFIG_DIR`.
 *   **Output**: Stampa il percorso normalizzato su standard output.
 
 #### canonical_provider_file / canonical_provider_url_file
@@ -112,27 +112,27 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi
 *   **Logica**:
     1.  Calcola il nome della variabile attesa tramite `provider_api_env_var_name`.
     2.  Se presente nell'ambiente, la esporta e sincronizza la variabile globale generica `GROQ_API_KEY`.
-    3.  Se assente in ambiente non interattivo, restituisce `GROQBASHERRNOAPIKEY`.
+    3.  Se assente in ambiente non interattivo, restituisce `BASH4LLMERRNOAPIKEY`.
     4.  Se assente in ambiente interattivo (TTY), richiede l'inserimento allo standard input. Pulisce la stringa ricevuta eliminando prefissi di assegnazione come `export` e spazi. Esporta la chiave e visualizza su standard error le istruzioni per il salvataggio permanente nella configurazione utente.
-*   **Output**: Ritorna codice di stato `0` in caso di successo, altrimenti `GROQBASHERRNOAPIKEY`.
+*   **Output**: Ritorna codice di stato `0` in caso di successo, altrimenti `BASH4LLMERRNOAPIKEY`.
 
 #### enforce_network_policy
 *   **Ruolo**: Centralizza la valutazione sull'opportunità di inibire le chiamate di rete esterne.
-*   **Input**: Analizza i flag `$DRY_RUN`, `$GROQBASH_SKIP_NETWORK`, `$GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET`, `$QUIET`.
+*   **Input**: Analizza i flag `$DRY_RUN`, `$BASH4LLM_SKIP_NETWORK`, `$BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET`, `$QUIET`.
 *   **Output**: Ritorna codice `1` se la rete è bloccata o si opera in modalità simulazione (dry-run), `0` se le chiamate esterne sono ammesse.
 
 #### log_prefix / log_info / log_warn / log_error / dbg
 *   **Ruolo**: Gestiscono la formattazione, la visualizzazione e l'archiviazione dei log strutturati.
 *   **Input**: Categoria e testo del messaggio.
 *   **Logica**:
-    *   `log_prefix` genera l'intestazione standard `groqbash: <SCRIPT_NAME>: `.
+    *   `log_prefix` genera l'intestazione standard `bash4llm: <SCRIPT_NAME>: `.
     *   Tutti i messaggi vengono indirizzati esclusivamente su standard error (`stderr`).
-    *   Se `$GROQBASH_LOG` è configurato, i log vengono registrati nel file con data in formato UTC e categoria associata.
+    *   Se `$BASH4LLM_LOG` è configurato, i log vengono registrati nel file con data in formato UTC e categoria associata.
     *   `dbg` invia log di diagnostica immediata solo se la variabile globale `$DEBUG` è impostata su `1`.
 
 #### ensure_config_dir
 *   **Ruolo**: Crea e blinda la directory di configurazione utente.
-*   **Input**: Variabile `$GROQBASH_CONFIG_DIR`.
+*   **Input**: Variabile `$BASH4LLM_CONFIG_DIR`.
 *   **Logica**: Crea la cartella se assente applicando permessi `700`. Scrive e cancella immediatamente un file temporaneo di prova al suo interno per verificare i permessi effettivi di I/O sul file-system ospite.
 *   **Output**: Ritorna codice `0` se la directory è pronta e scrivibile, `1` in caso di errore.
 
@@ -145,8 +145,8 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi
 #### resolve_provider_url
 *   **Ruolo**: Identifica ed esporta l'URL di connessione per le API.
 *   **Input**: Nome del provider (default `$PROVIDER`).
-*   **Logica**: Ispeziona prioritariamente le variabili d'ambiente `$GROQBASH_API_URL` o `$GROQBASH_PROVIDER_URL`. In assenza di esse, legge la prima riga del file canonico dell'URL del provider. Se il file non esiste e il provider attivo è `"groq"`, esporta l'endpoint nativo di default di Groq.
-*   **Output**: Esporta la variabile `$GROQBASH_PROVIDER_URL` e ritorna codice `0`. Ritorna `1` in caso di fallimento di risoluzione.
+*   **Logica**: Ispeziona prioritariamente le variabili d'ambiente `$BASH4LLM_API_URL` o `$BASH4LLM_PROVIDER_URL`. In assenza di esse, legge la prima riga del file canonico dell'URL del provider. Se il file non esiste e il provider attivo è `"groq"`, esporta l'endpoint nativo di default di Groq.
+*   **Output**: Esporta la variabile `$BASH4LLM_PROVIDER_URL` e ritorna codice `0`. Ritorna `1` in caso di fallimento di risoluzione.
 
 #### provider_api_env_var_name
 *   **Ruolo**: Calcola il nome standardizzato della variabile d'ambiente deputata a contenere la chiave API di un provider.
@@ -187,17 +187,17 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi
 #### ensure_run_tmpdir / cleanup_tmp
 *   **Ruolo**: Alloca e isola la directory operativa temporanea esclusiva per l'istanza o sotto-shell dello script in esecuzione.
 *   **Logica**:
-    *   `ensure_run_tmpdir` crea una sottocartella provvisoria `$RUN_TMPDIR` all'interno della directory temporanea principale sicura `$GROQBASH_TMPDIR`, blindandone i permessi a `700`.
+    *   `ensure_run_tmpdir` crea una sottocartella provvisoria `$RUN_TMPDIR` all'interno della directory temporanea principale sicura `$BASH4LLM_TMPDIR`, blindandone i permessi a `700`.
     *   Inizializza tre file vuoti con permessi `600`: `$PAYLOAD` (payload inviato alle API), `$RESP` (risposta ricevuta dal server o diagnostica) e `$ERRF` (log di errore interni).
     *   Registra una trap di sistema (`EXIT`, `INT`, `TERM`) incaricata della pulizia automatica ricorsiva richiamando `cleanup_tmp`.
     *   Se abilitato il debug di conservazione (`$DEBUG_PRESERVE == 1`), la rimozione fisica dei file temporanei viene bypassata.
     *   Se richiamata con il parametro `--print`, stampa semplicemente il percorso su stdout ed esce.
-*   **Output**: Esporta le variabili `$RUN_TMPDIR`, `$PAYLOAD`, `$RESP`, `$ERRF`. Ritorna `0` in caso di successo, altrimenti `GROQBASHERRTMP`.
+*   **Output**: Esporta le variabili `$RUN_TMPDIR`, `$PAYLOAD`, `$RESP`, `$ERRF`. Ritorna `0` in caso di successo, altrimenti `BASH4LLMERRTMP`.
 
 #### ui_state_write
 *   **Ruolo**: Persiste in modo atomico lo stato corrente dell'interfaccia utente dello script in formato JSON.
 *   **Input**: Nome del file di stato, stringa del contenuto JSON.
-*   **Logica**: Crea la cartella degli stati sotto `$GROQBASH_CONFIG_DIR/ui_state` o `$RUN_TMPDIR`, esegue la scrittura transazionale atomica con permessi `600` e lock concorrente.
+*   **Logica**: Crea la cartella degli stati sotto `$BASH4LLM_CONFIG_DIR/ui_state` o `$RUN_TMPDIR`, esegue la scrittura transazionale atomica con permessi `600` e lock concorrente.
 *   **Output**: Ritorna codice `0` se completato, altrimenti `1` in caso di anomalie fisiche di I/O.
 
 #### load_provider_module
@@ -223,25 +223,25 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi
     *   `set -o pipefail`: Propaga lo stato d'errore all'interno delle pipeline.
 
 #### PRECORE_BOOT_SOURCE_ONLY_CHECK
-*   **Azione**: Verifica se la variabile `$GROQBASH_SOURCE_ONLY` è impostata su `1`. In tal caso, lo script interrompe l'esecuzione del blocco di istruzioni principale e ritorna immediatamente il controllo al chiamante (restituendo codice `0`), consentendo esclusivamente l'importazione passiva e provvisoria di variabili e funzioni.
+*   **Azione**: Verifica se la variabile `$BASH4LLM_SOURCE_ONLY` è impostata su `1`. In tal caso, lo script interrompe l'esecuzione del blocco di istruzioni principale e ritorna immediatamente il controllo al chiamante (restituendo codice `0`), consentendo esclusivamente l'importazione passiva e provvisoria di variabili e funzioni.
 
 #### PRECORE_BOOT_VERIFY_CMDS
 *   **Azione**: Scansiona il sistema ospite per verificare la presenza delle 24 utilità richieste. Se una o più mancano, invia un messaggio di errore a standard error ed interrompe il runtime con codice `1`.
 
 #### PRECORE_BOOT_DIR_RESOLUTION
-*   **Azione**: Determina la directory principale `$GROQBASH_DIR`. Verifica l'ambiente adottando in ordine di priorità la variabile `$GROQBASH_DIR` configurata, `$GROQBASH_ROOT` (derivando la cartella `groqbash.d`), o calcolando il percorso predefinito relativo a `$SCRIPTDIR/groqbash.d`.
+*   **Azione**: Determina la directory principale `$BASH4LLM_DIR`. Verifica l'ambiente adottando in ordine di priorità la variabile `$BASH4LLM_DIR` configurata, `$BASH4LLM_ROOT` (derivando la cartella `bash4llm.d`), o calcolando il percorso predefinito relativo a `$SCRIPTDIR/bash4llm.d`.
 
 #### PRECORE_BOOT_FALLBACK_PROVIDERS
-*   **Azione**: Esporta globalmente la directory `$PROVIDERS_DIR`. Se non pre-configurata, la localizza sotto la directory delle estensioni utente nel percorso `$GROQBASH_EXTRAS_DIR/providers`.
+*   **Azione**: Esporta globalmente la directory `$PROVIDERS_DIR`. Se non pre-configurata, la localizza sotto la directory delle estensioni utente nel percorso `$BASH4LLM_EXTRAS_DIR/providers`.
 
 #### PRECORE_BOOT_DIR_INVARIANTS
-*   **Azione**: Convalida che la directory temporanea `$GROQBASH_TMPDIR` risieda all'interno del percorso principale `$GROQBASH_DIR` e che non coincida o risieda sotto `/tmp`. In caso contrario, interrompe l'esecuzione.
+*   **Azione**: Convalida che la directory temporanea `$BASH4LLM_TMPDIR` risieda all'interno del percorso principale `$BASH4LLM_DIR` e che non coincida o risieda sotto `/tmp`. In caso contrario, interrompe l'esecuzione.
 
 #### PRECORE_BOOT_ENSURE_CONFIG_DIR / PRECORE_BOOT_FAILFAST_CONFIG_DIR
-*   **Azione**: Richiama `ensure_config_dir` per configurare e testare la cartella. Se l'operazione fallisce o se il percorso normalizzato risulta vuoto, interrompe con codice `GROQBASHERRTMP` o `1` a seconda del livello di anomalia riscontrato.
+*   **Azione**: Richiama `ensure_config_dir` per configurare e testare la cartella. Se l'operazione fallisce o se il percorso normalizzato risulta vuoto, interrompe con codice `BASH4LLMERRTMP` o `1` a seconda del livello di anomalia riscontrato.
 
 #### PRECORE_BOOT_NORMALIZE_DEBUG
-*   **Azione**: Sincronizza ed allinea i parametri di debug ereditando `$GROQBASH_DEBUG` se `$DEBUG` non è esplicitamente impostato dall'utente, forzando il valore di default a `0`.
+*   **Azione**: Sincronizza ed allinea i parametri di debug ereditando `$BASH4LLM_DEBUG` se `$DEBUG` non è esplicitamente impostato dall'utente, forzando il valore di default a `0`.
 
 #### PRECORE_BOOT_EARLY_PRINT_CONFIG
 *   **Azione**: Analizza sequenzialmente gli argomenti della riga di comando passati in input all'avvio assoluto dello script. Se intercetta opzioni di ispezione dei percorsi (`--print-config-dir`, `--print-provider-file`, `--print-model-file <provider>`), stampa immediatamente il percorso canonico associato su standard output e termina il processo con codice `0` (o `2` in caso di sintassi non corretta), prima di allocare o inizializzare il runtime completo. Se intercetta `-h` o `--help`, interrompe questa scansione anticipata.
@@ -258,10 +258,10 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
 
 ### 3.1 Variabili di PRECORE_RUN
 *   **Variabili Lette**:
-    *   `GROQBASH_ROTATE_HISTORY`: Flag (`0` o `1`) per l'attivazione della manutenzione automatica del registro storico (default `0`).
-    *   `GROQBASH_HISTORY_MAX_FILES`: Numero massimo di file memorizzabili nello storico delle risposte (default `100`).
-    *   `GROQBASH_HISTORY_MAX_BYTES`: Peso totale cumulativo dei file dello storico espresso in byte (default `104857600`, pari a 100MB).
-    *   `GROQBASH_HISTORY_KEEP_DAYS`: Soglia temporale di mantenimento dei log espressa in giorni (default `90`).
+    *   `BASH4LLM_ROTATE_HISTORY`: Flag (`0` o `1`) per l'attivazione della manutenzione automatica del registro storico (default `0`).
+    *   `BASH4LLM_HISTORY_MAX_FILES`: Numero massimo di file memorizzabili nello storico delle risposte (default `100`).
+    *   `BASH4LLM_HISTORY_MAX_BYTES`: Peso totale cumulativo dei file dello storico espresso in byte (default `104857600`, pari a 100MB).
+    *   `BASH4LLM_HISTORY_KEEP_DAYS`: Soglia temporale di mantenimento dei log espressa in giorni (default `90`).
     *   `SESSION_CACHE_DIR`: Directory di allocazione dei file temporanei della cache delle sessioni.
     *   `CONTENT`: Prompt testuale o testo inserito dall'utente.
     *   `JSON_INPUT`: Input strutturato in formato JSON fornito dall'utente.
@@ -296,12 +296,12 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
 
 #### rotate_history
 *   **Ruolo**: Esegue la manutenzione della directory storica prevenendo la saturazione del disco o l'accumulo di file obsoleti.
-*   **Input**: Timeout del lock (default `$GROQBASH_LOCK_TIMEOUT_HISTORY`).
+*   **Input**: Timeout del lock (default `$BASH4LLM_LOCK_TIMEOUT_HISTORY`).
 *   **Logica**:
     1.  Acquisisce il lock esclusivo su `$HISTORY_LOCK`.
-    2.  Identifica ed elimina i file all'interno di `$GROQBASH_HISTORY_DIR` che risultano più vecchi di `$GROQBASH_HISTORY_KEEP_DAYS`.
-    3.  Se il numero di file rimanenti supera `$GROQBASH_HISTORY_MAX_FILES`, esegue una purga progressiva partendo dai più datati.
-    4.  Se la dimensione cumulativa in byte supera `$GROQBASH_HISTORY_MAX_BYTES`, scansiona i file ordinati temporalmente tramite `list_files_sorted_by_mtime` ed elimina i più vecchi fino al rientro sotto la soglia stabilita.
+    2.  Identifica ed elimina i file all'interno di `$BASH4LLM_HISTORY_DIR` che risultano più vecchi di `$BASH4LLM_HISTORY_KEEP_DAYS`.
+    3.  Se il numero di file rimanenti supera `$BASH4LLM_HISTORY_MAX_FILES`, esegue una purga progressiva partendo dai più datati.
+    4.  Se la dimensione cumulativa in byte supera `$BASH4LLM_HISTORY_MAX_BYTES`, scansiona i file ordinati temporalmente tramite `list_files_sorted_by_mtime` ed elimina i più vecchi fino al rientro sotto la soglia stabilita.
 *   **Output**: Rimuove fisicamente i file dal disco e ritorna codice `0`.
 
 #### save_to_history
@@ -311,9 +311,9 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
     1.  Crea la directory storica se mancante.
     2.  Genera un file temporaneo in transizione.
     3.  Scrive il contenuto, imposta i permessi a `600`, acquisisce il lock esclusivo su `$HISTORY_LOCK`.
-    4.  Sposta il file temporaneo nella destinazione finale all'interno di `$GROQBASH_HISTORY_DIR`, contrassegnando il nome del file con data in formato ISO 8601 UTC e PID del processo chiamante.
+    4.  Sposta il file temporaneo nella destinazione finale all'interno di `$BASH4LLM_HISTORY_DIR`, contrassegnando il nome del file con data in formato ISO 8601 UTC e PID del processo chiamante.
     5.  Aggiorna lo stato JSON `last_history.json` registrandone i metadati (percorso, nome, timestamp UTC, dimensione in byte) tramite la funzione `ui_state_write`.
-    6.  Se `$GROQBASH_ROTATE_HISTORY` è abilitato, avvia asincronamente `rotate_history`.
+    6.  Se `$BASH4LLM_ROTATE_HISTORY` è abilitato, avvia asincronamente `rotate_history`.
 *   **Output**: Ritorna codice `0` in caso di successo, altrimenti ritorna codice d'errore temporaneo.
 
 #### manifest_create / manifest_add_part / manifest_read
@@ -328,15 +328,15 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
 *   **Logica**:
     *   `_get_perm_string` restituisce la stringa simbolica dei permessi (es. `-rw-------`) gestendo le discrepanze strutturali di `stat` tra Linux e macOS.
     *   `_get_owner` restituisce il nome dell'utente proprietario del file.
-    *   `_get_file_signature` (e il suo wrapper `getfile_signature`) calcola l'impronta di stato di una risorsa. Se `sha256sum` è disponibile e `$GROQBASH_SIG_HASH` è attivo, genera l'hash SHA-256 del contenuto. In aggiunta, concatena i metadati fisici della risorsa (device, inode, size, ctime, mtime, uid, gid, permessi ottali) in una stringa protetta per rilevare alterazioni di data o contenuto.
+    *   `_get_file_signature` (e il suo wrapper `getfile_signature`) calcola l'impronta di stato di una risorsa. Se `sha256sum` è disponibile e `$BASH4LLM_SIG_HASH` è attivo, genera l'hash SHA-256 del contenuto. In aggiunta, concatena i metadati fisici della risorsa (device, inode, size, ctime, mtime, uid, gid, permessi ottali) in una stringa protetta per rilevare alterazioni di data o contenuto.
     *   `_is_world_writable` analizza la stringa simbolica dei permessi e ritorna codice `0` (vulnerabile) se i permessi indicano che la risorsa è modificabile da utenti di gruppi esterni o pubblici, altrimenti ritorna `1`.
 
 #### make_tmpdir / _tmpf
-*   **Ruolo**: Generano cartelle e file temporanei protetti da lock all'interno del perimetro di sicurezza di `$GROQBASH_TMPDIR`.
+*   **Ruolo**: Generano cartelle e file temporanei protetti da lock all'interno del perimetro di sicurezza di `$BASH4LLM_TMPDIR`.
 *   **Logica**:
     *   `make_tmpdir` crea una directory temporanea univoca applicando permessi `700` sotto la protezione del lock esclusivo `$TMP_LOCK`.
-    *   `_tmpf` verifica che la directory temporanea principale non sia un link simbolico. Convalida che il percorso di base in cui si desidera allocare il file o cartella risieda strettamente all'interno di `$GROQBASH_TMPDIR` per mitigare attacchi di Directory Traversal. Applica `umask 077` e alloca la risorsa (permessi `600` per i file, `700` per le directory) tramite `mktemp`.
-*   **Output**: Stampano il percorso finale su stdout. Ritorna codice `GROQBASHERRTMP` in caso di anomalie.
+    *   `_tmpf` verifica che la directory temporanea principale non sia un link simbolico. Convalida che il percorso di base in cui si desidera allocare il file o cartella risieda strettamente all'interno di `$BASH4LLM_TMPDIR` per mitigare attacchi di Directory Traversal. Applica `umask 077` e alloca la risorsa (permessi `600` per i file, `700` per le directory) tramite `mktemp`.
+*   **Output**: Stampano il percorso finale su stdout. Ritorna codice `BASH4LLMERRTMP` in caso di anomalie.
 
 #### session_validate_id / session_now_ts / session_messages_tmp_path / session_sanitize_cmd
 *   **Ruolo**: Utility per la convalida dei contesti e l'allineamento dei registri.
@@ -385,7 +385,7 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
 *   **Azione**: Garantisce la stabilità del runtime richiamando `ensure_config_dir` o verificando preventivamente la presenza della directory utente per accertare che non operi in contesti corrotti o non scrivibili.
 
 #### block_ensure_run_tmpdir
-*   **Azione**: Se lo script non è importato in modalità solo-sorgente (`$GROQBASH_SOURCE_ONLY == 0`), invoca `ensure_run_tmpdir` per allineare l'ambiente transazionale di istanza. Se fallisce, termina l'esecuzione con codice `GROQBASHERRTMP`.
+*   **Azione**: Se lo script non è importato in modalità solo-sorgente (`$BASH4LLM_SOURCE_ONLY == 0`), invoca `ensure_run_tmpdir` per allineare l'ambiente transazionale di istanza. Se fallisce, termina l'esecuzione con codice `BASH4LLMERRTMP`.
 
 #### block_normalize_bool_env_call
 *   **Azione**: Esegue l'allineamento e la normalizzazione logica di tutti i parametri di controllo richiamando `_normalize_bool_env`.
@@ -404,7 +404,7 @@ Questa macro-sezione stabilisce i criteri per l'allineamento dei provider, la va
     *   `GROQ_API_KEY`: Chiave API del provider Groq.
     *   `PROVIDER_API_ENV_groq`: Variabile d'ambiente personalizzata per la chiave API di Groq.
 *   **Variabili Scritte/Modificate**:
-    *   `GROQBASH_TMP_PAYLOAD`: Percorso del file del payload generato.
+    *   `BASH4LLM_TMP_PAYLOAD`: Percorso del file del payload generato.
     *   `PAYLOAD`: Percorso normalizzato del file di payload inviato alle API.
     *   `RESP`: Percorso del file di risposta finale dell'istanza.
     *   `MODELS_FILE`: Percorso locale del file contenente l'elenco dei modelli.
@@ -428,7 +428,7 @@ Questa macro-sezione stabilisce i criteri per l'allineamento dei provider, la va
     4.  In assenza totale di input, genera un record utente con testo vuoto ed emette un warning log su `stderr`.
     5.  Se non definito nel payload, tenta di estrarre il modello da utilizzare dai metadati dei messaggi.
     6.  Scrive il file JSON temporaneo e lo codifica in formato Base64 tramite `stage_b64` se presente.
-*   **Output**: Assegna il percorso del file finale a `$GROQBASH_TMP_PAYLOAD` e `$PAYLOAD`. Ritorna `0` in caso di successo, altrimenti `GROQBASHERRTMP`.
+*   **Output**: Assegna il percorso del file finale a `$BASH4LLM_TMP_PAYLOAD` e `$PAYLOAD`. Ritorna `0` in caso di successo, altrimenti `BASH4LLMERRTMP`.
 
 #### call_api_groq
 *   **Ruolo**: Esegue la chiamata HTTP sincrona non-streaming verso l'endpoint del provider.
@@ -567,7 +567,7 @@ Questa macro-sezione gestisce la configurazione iniziale dell'ambiente runtime g
 #### detect_empty_edge_case
 *   **Ruolo**: Rileva risposte API prive di contenuto testuale (stato HTTP 200, arresto regolare, ma assenza di token utili nella generazione).
 *   **Logica**: Copia temporaneamente il file `$RESP` per ispezionarlo in sicurezza, estraendo metadati quali l'ID della richiesta, il `finish_reason` e il conteggio dei token generati (`completion_tokens`).
-*   **Output**: Assegna il verdetto booleano a `$GROQBASH_EDGE_EMPTY` (`1` se rilevato caso vuoto anomalo, `0` altrimenti) e compila le variabili diagnostiche `$GROQBASH_EDGE_REQ_ID`, `$GROQBASH_EDGE_FINISH_REASON` e `$GROQBASH_EDGE_COMPLETION_TOKENS`.
+*   **Output**: Assegna il verdetto booleano a `$BASH4LLM_EDGE_EMPTY` (`1` se rilevato caso vuoto anomalo, `0` altrimenti) e compila le variabili diagnostiche `$BASH4LLM_EDGE_REQ_ID`, `$BASH4LLM_EDGE_FINISH_REASON` e `$BASH4LLM_EDGE_COMPLETION_TOKENS`.
 
 #### finalize_and_output
 *   **Ruolo**: Formatta e presenta i risultati a schermo e gestisce l'archiviazione dello storico sul disco.
@@ -584,7 +584,7 @@ Questa macro-sezione gestisce la configurazione iniziale dell'ambiente runtime g
     3.  In caso di errore applicativo restituito dalle API, non effettua alcun tentativo di reinvio e gestisce l'eccezione tramite `extract_api_error`.
     4.  Analizza la risposta via `extract_text_from_resp` e verifica scenari vuoti tramite `detect_empty_edge_case`.
     5.  Registra l'ultima transazione in `last_api.json` tramite `ui_state_write` e formatta l'output via `finalize_and_output`.
-*   **Output**: Ritorna codice `0` per transazioni completate con successo, altrimenti `GROQBASHERRAPI`.
+*   **Output**: Ritorna codice `0` per transazioni completate con successo, altrimenti `BASH4LLMERRAPI`.
 
 #### collect_input_from_files / expand_args_to_content / file_readable
 *   **Ruolo**: Helper per l'acquisizione dei prompt da file o argomenti CLI.
@@ -600,7 +600,7 @@ Questa macro-sezione gestisce la configurazione iniziale dell'ambiente runtime g
     *   `is_supported_model` scarta i modelli che richiedono formati non-testuali esclusivi (audio, video, immagini, whisper, vettori, tts).
     *   `list_models_cli` formatta ed evidenzia sulla console l'elenco dei modelli locali in `$MODELS_FILE`, escludendo o segnalando quelli non supportati.
     *   `validate_model_core` normalizza il nome del modello, controlla che sia registrato nel file dei modelli locali e che sia compatibile via `is_supported_model`.
-    *   `load_local_config` analizza il file di configurazione locale (`config` sotto `$GROQBASH_CONFIG_DIR`), interpretando le righe chiave/valore e impostando le variabili di ambiente corrispondenti (`MODEL`, `TEMPERATURE`, `MAX_TOKENS`, `OUTPUT_MODE`, `THRESHOLD`).
+    *   `load_local_config` analizza il file di configurazione locale (`config` sotto `$BASH4LLM_CONFIG_DIR`), interpretando le righe chiave/valore e impostando le variabili di ambiente corrispondenti (`MODEL`, `TEMPERATURE`, `MAX_TOKENS`, `OUTPUT_MODE`, `THRESHOLD`).
     *   `load_whitelist` normalizza e popola la stringa globale `$ALLOWED_MODELS` con i modelli autorizzati presenti sul disco.
     *   `is_tty_out` verifica se lo standard output è collegato ad un terminale interattivo reale (TTY).
 
@@ -669,7 +669,7 @@ Questa macro-sezione gestisce la convalida dei moduli provider caricati in memor
     *   Se l'interfaccia interattiva viene eseguita senza comandi o parametri aggiuntivi, stampa la conferma del provider impostato ed esce direttamente con stato `0`.
 
 #### CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH
-*   **Azione**: Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida dell'interfaccia chiamando `validate_provider_interface`. Se non va a buon fine, interrompe il runtime con codice `GROQBASHERRAPI`.
+*   **Azione**: Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida dell'interfaccia chiamando `validate_provider_interface`. Se non va a buon fine, interrompe il runtime con codice `BASH4LLMERRAPI`.
     *   Se è richiesto il refresh dei modelli (`$REFRESH_MODELS=1`), verifica le credenziali tramite `ensure_api_key_for_provider` ed avvia l'allineamento locale chiamando `refresh_models_dispatch`, terminando con codice `0`.
     *   Se il file dei modelli locali `$MODELS_FILE` risulta assente o completamente vuoto all'avvio, ma le chiavi di accesso sono presenti nel sistema, avvia una procedura di aggiornamento automatico dei modelli in background (in modalità best-effort, tollerando eventuali errori di rete per non bloccare l'esecuzione dello script).
 
@@ -680,10 +680,10 @@ Questa macro-sezione gestisce la convalida dei moduli provider caricati in memor
     *   `DIAGNOSTICS`: Esegue un'analisi di integrità completa. Verifica l'esistenza e l'accessibilità di tutte le directory operative, attesta che le funzioni obbligatorie del provider siano mappate in memoria, convalida il modello attivo rispetto alla whitelist locale e controlla la presenza della chiave API correlandola con il nome esatto della variabile attesa dal provider.
 
 #### CORE_PROVIDER_MAIN_RESOLVE
-*   **Azione**: Se l'avvio è configurato per solo bootstrap (`$BOOTSTRAP_ONLY`), termina immediatamente l'esecuzione con codice `0`. Carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea `$RUN_TMPDIR`, risolve il modello LLM finale da adottare via `resolve_model` ed esegue le convalide sintattiche (terminando con codice `GROQBASH_ERR_BAD_MODEL` se falliscono). Cattura e memorizza l'eventuale flusso di testo in arrivo da una redirezione o pipeline nello standard input (`cat -`) all'interno della variabile `$STDIN_CONTENT`.
+*   **Azione**: Se l'avvio è configurato per solo bootstrap (`$BOOTSTRAP_ONLY`), termina immediatamente l'esecuzione con codice `0`. Carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea `$RUN_TMPDIR`, risolve il modello LLM finale da adottare via `resolve_model` ed esegue le convalide sintattiche (terminando con codice `BASH4LLM_ERR_BAD_MODEL` se falliscono). Cattura e memorizza l'eventuale flusso di testo in arrivo da una redirezione o pipeline nello standard input (`cat -`) all'interno della variabile `$STDIN_CONTENT`.
 
 #### CORE_PROVIDER_MAIN_EXECUTION
-*   **Azione**: Invoca `assemble_content` per generare il prompt definitivo. Se lo script è richiamato in modalità interattiva e non contiene prompt, visualizza la notifica del provider attivo ed esce. Controlla la presenza di prompt testuali o JSON di input bloccando l'esecuzione con codice `GROQBASHERRNO_PROMPT` in caso di assenza (tranne se in chat interattiva o elaborazione batch). Valida la correttezza dei parametri di temperatura e token massimi. Verifica che il modello sia supportato ispezionando la whitelist e garantisce la presenza di `$RUN_TMPDIR`. Procede quindi con i tre flussi di esecuzione principali:
+*   **Azione**: Invoca `assemble_content` per generare il prompt definitivo. Se lo script è richiamato in modalità interattiva e non contiene prompt, visualizza la notifica del provider attivo ed esce. Controlla la presenza di prompt testuali o JSON di input bloccando l'esecuzione con codice `BASH4LLMERRNO_PROMPT` in caso di assenza (tranne se in chat interattiva o elaborazione batch). Valida la correttezza dei parametri di temperatura e token massimi. Verifica che il modello sia supportato ispezionando la whitelist e garantisce la presenza di `$RUN_TMPDIR`. Procede quindi con i tre flussi di esecuzione principali:
     1.  **Elaborazione BATCH** (`$BATCH_FILE` attivo): Scansiona il file batch riga per riga, escludendo righe vuote o commenti. Per ciascun prompt: configura l'ambiente di sessione se richiesto (validando l'ID sessione, limitando la finestra dei messaggi, e richiamando `session_engine_build_window` o `session_read_window` per generare `$BUILD_MESSAGES_FILE`), compila il payload via `build_payload_from_vars`, verifica la presenza della chiave API per il provider ed esegue la chiamata sincrona o streaming.
     2.  **Chat Interattiva** (`$CHAT_MODE` attivo): Previene l'avvio se l'input non è collegato ad un terminale reale (TTY). Stampa l'intestazione di avvio e apre un ciclo continuo di lettura: acquisisce la riga inserita dall'utente, la pulisce e la accumula nella memoria storica. Se è configurata una sessione attiva, convalida l'ID, inizializza la cartella e compila `$BUILD_MESSAGES_FILE` tramite l'estensione del Session Engine o la routine legacy NDJSON. Compila il payload per il provider tramite `build_payload_from_vars`, controlla la chiave API e invoca la chiamata streaming o sincrona. Il ciclo si ripete fino alla cattura del segnale di fine trasmissione (Ctrl+D).
     3.  **Esecuzione Standard di Singolo Prompt**:
@@ -691,4 +691,4 @@ Questa macro-sezione gestisce la convalida dei moduli provider caricati in memor
         *   Compila il payload via `build_payload_from_vars`.
         *   Se si opera in esecuzione reale, convalida la presenza della chiave API del provider.
         *   Se lo streaming è attivo (`$STREAM_MODE == 1`): invoca `call_api_streaming`. In caso di completamento con successo: se vi è una sessione attiva, sanifica e registra il messaggio dell'utente e la risposta dell'assistente nel registro storico (via `session_engine_append` o `session_append`). Stampa un carattere di a capo e termina l'esecuzione con stato `0`.
-        *   Se la chiamata è sincrona standard (`$STREAM_MODE == 0`): invoca `perform_request_once`. In caso di successo: se è configurata una sessione, sanifica e registra il messaggio dell'utente e la risposta dell'assistente nel file NDJSON di sessione. Esce con stato `0`. In caso di fallimento della chiamata, accoda comunque il messaggio utente alla sessione contrassegnandolo come interazione fallita ed interrompe l'esecuzione con codice `GROQBASHERRAPI`.
+        *   Se la chiamata è sincrona standard (`$STREAM_MODE == 0`): invoca `perform_request_once`. In caso di successo: se è configurata una sessione, sanifica e registra il messaggio dell'utente e la risposta dell'assistente nel file NDJSON di sessione. Esce con stato `0`. In caso di fallimento della chiamata, accoda comunque il messaggio utente alla sessione contrassegnandolo come interazione fallita ed interrompe l'esecuzione con codice `BASH4LLMERRAPI`.
