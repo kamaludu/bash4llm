@@ -17,7 +17,7 @@ Un *provider* è un modulo Bash che implementa un adattatore alternativo all’A
 
 I provider vengono caricati in modalità isolata dal percorso di installazione degli extra:
 
-groqbash.d/extras/providers/.sh
+`groqbash.d/extras/providers/nome.sh`
 
 
 ---
@@ -218,197 +218,159 @@ call_api_example() {
 
 ## 🇬🇧 English Section
 
-Provider Contract
+# Provider Contract
 
-This document defines the official contract to create or integrate external
-providers compatible with GroqBash.
-A provider is a Bash module that implements an alternative adapter to the Groq
-API (e.g., Gemini, HuggingFace, Mistral, etc.).
+This document defines the **official contract** to create or integrate external providers compatible with GroqBash.  
+A *provider* is a Bash module that implements an alternative adapter to the Groq API (e.g., Gemini, HuggingFace, Mistral, etc.).
 
 Providers are loaded in an isolated mode from the extras installation path:
 
-groqbash.d/extras/providers/<name>.sh
+`groqbash.d/extras/providers/<name>.sh`
 
-1. Loading and Isolation (Sandbox)
+---
 
-To protect system security, GroqBash does not execute provider code directly in
-the main shell. Instead, it applies an isolation mechanism:
+## 1. Loading and Isolation (Sandbox)
 
-1.  The provider file is analyzed in an isolated subshell (sandbox) via
-    load_provider_module.
-2.  Only function definitions are captured and exported into the main shell (via
-    declare -f).
-3.  Global variables or initialization code located outside functions in the
-    provider file do not persist in the main runtime. Any configuration
-    parameters, URLs, or constants must therefore be defined internally within
-    the functions or managed through the CORE's resolution mechanisms.
+To protect system security, GroqBash **does not** execute provider code directly in the main shell. Instead, it applies an isolation mechanism:
 
-2. File Security Requirements
+1. The provider file is analyzed in an **isolated subshell (sandbox)** via `load_provider_module`.
+2. Only **function definitions are captured and exported** into the main shell (via `declare -f`).
+3. **Global variables or initialization code located outside functions in the provider file do not persist in the main runtime.** Any configuration parameters, URLs, or constants must therefore be defined internally within the functions or managed through the CORE's resolution mechanisms.
 
-Every provider module must pass the integrity checks of
-extras/security/verify.sh and meet the following requirements:
+---
 
-  - Be a regular file (-f).
-  - Not be a symbolic link (symlink).
-  - Be owned by the current user running the script.
-  - Not have write permissions for the group or other users (not
-    world/group-writable).
-  - Reside in a non-world-writable directory.
+## 2. File Security Requirements
 
-The provider name is determined by the filename without its extension (e.g.,
-gemini.sh identifies the "gemini" provider).
+Every provider module must pass the integrity checks of `extras/security/verify.sh` and meet the following requirements:
 
-3. Provider Interface
+- Be a regular file (`-f`).
+- Not be a symbolic link (symlink).
+- Be owned by the current user running the script.
+- Not have write permissions for the group or other users (not world/group-writable).
+- Reside in a non-world-writable directory.
 
-The GroqBash core interacts with providers through dedicated functions. To be
-considered valid by the interface validator, a provider must implement the two
-main functions (non-streaming), while streaming and model refreshing functions
-are treated as optional integrations.
+The provider name is determined by the filename without its extension (e.g., `gemini.sh` identifies the `"gemini"` provider).
 
-3.1. Mandatory Functions (Core Interface)
+---
 
-✔️ buildpayload_<provider>()
+## 3. Provider Interface
 
-Responsibilities:
+The GroqBash core interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while streaming and model refreshing functions are treated as optional integrations.
 
-  - Build a JSON payload in OpenAI-like format (compatible with the Chat
-    Completions structure, e.g., {"model":"...","messages":[...]}).
-  - Read global variables provided by the CORE:
-      - MODEL (active model)
-      - CONTENT (text prompt entered by the user)
-      - TURE (validated temperature)
-      - MAX_TOKENS (maximum tokens)
-      - STREAM_MODE (indicates if the generation requires streaming)
-      - SYSTEM_PROMPT (system prompt if set via CLI)
-      - BUILD_MESSAGES_FILE (temporary file containing the current session's
-        message history, if active)
-  - If BUILD_MESSAGES_FILE is defined and valid, the provider must prioritize
-    reading the array of historical messages contained within it, inserting them
-    into the payload to guarantee session persistence (multi-turn).
-  - If SYSTEM_PROMPT is set, the provider must integrate it (e.g., by inserting
-    it as a message with a "system" role at the beginning of the messages
-    array).
-  - Write the final payload into the $PAYLOAD file (whether in raw JSON format
-    or base64-staged via the stage_b64 utility).
-  - Produce no output on stdout.
+---
 
-✔️ call_api_<provider>() (Non-streaming)
+### 3.1. Mandatory Functions (Core Interface)
 
-Responsibilities:
+#### ✔️ `buildpayload_<provider>()`
 
-  - Read the pre-compiled payload from $PAYLOAD.
-  - Execute the HTTP network call to the respective API server.
-  - Save the complete JSON response (including any native error metadata) into
-    $RESP.
-  - Return exit status 0 on success, non-zero on error.
-  - The successful JSON response must conform to the OpenAI-like schema to be
-    compatible with the core's extraction function (choices[].message.content).
-    Otherwise, the function must reshape the response before writing it to
-    $RESP.
+**Responsibilities:**
+- Build a JSON payload in **OpenAI-like** format (compatible with the Chat Completions structure, e.g., `{"model":"...","messages":[...]}`).
+- Read global variables provided by the CORE:
+  - `MODEL` (active model)
+  - `CONTENT` (text prompt entered by the user)
+  - `TURE` (validated temperature)
+  - `MAX_TOKENS` (maximum tokens)
+  - `STREAM_MODE` (indicates if the generation requires streaming)
+  - `SYSTEM_PROMPT` (system prompt if set via CLI)
+  - `BUILD_MESSAGES_FILE` (temporary file containing the current session's message history, if active)
+- If `BUILD_MESSAGES_FILE` is defined and valid, the provider must prioritize reading the array of historical messages contained within it, inserting them into the payload to guarantee session persistence (multi-turn).
+- If `SYSTEM_PROMPT` is set, the provider must integrate it (e.g., by inserting it as a message with a `"system"` role at the beginning of the messages array).
+- Write the final payload **into the `$PAYLOAD` file** (whether in raw JSON format or base64-staged via the `stage_b64` utility).
+- Produce no output on stdout.
 
-3.2. Optional Functions (Extended Interface)
+---
 
-➕ call_api_streaming_<provider>()
+#### ✔️ `call_api_<provider>()` (Non-streaming)
 
-Responsibilities:
+**Responsibilities:**
+- Read the pre-compiled payload from `$PAYLOAD`.
+- Execute the HTTP network call to the respective API server.
+- Save the complete JSON response (including any native error metadata) into `$RESP`.
+- Return exit status `0` on success, non-zero on error.
+- The successful JSON response must conform to the OpenAI-like schema to be compatible with the core's extraction function (`choices[].message.content`). Otherwise, the function must reshape the response before writing it to `$RESP`.
 
-  - Execute the HTTP request in streaming chunk mode (Server-Sent Events).
-  - Print the raw text of the chunks directly to stdout as they are received to
-    ensure a smooth, real-time typing effect on the terminal.
-    (Note: the GroqBash core does not decode the streaming output of external
-    providers; therefore, the provider must not print raw SSE JSON lines like
-    data: {...} on screen, but must decode them internally in real time).
-  - Accumulate the received chunks and write the complete, aggregated JSON
-    response into $RESP before the function terminates (crucial to allow session
-    and history persistence).
-  - Return 0 on success, non-zero on network error.
+---
 
-➕ refresh_models_<provider>()
+### 3.2. Optional Functions (Extended Interface)
 
-Responsibilities:
+#### ➕ `call_api_streaming_<provider>()`
 
-  - Query the model catalog endpoint of the respective provider.
-  - Generate the model list and save it in the provider-specific model file.
-  - To avoid write collisions between different providers, each module must
-    locally redefine the MODELS_FILE variable pointing to a specific file (e.g.,
-    gemini.txt instead of the shared models.txt file):
-    `MODELS_FILE="${MODELS_FILE:-${GROQBASH_MODELS_DIR:-}/gemini.txt}"`
-  - Write the provider's base URL into the file returned by
-    canonical_provider_url_file via atomic write, and consistently set the
-    GROQBASH_PROVIDER_URL variable.
-  - Respect security constraints (umask 077, no use of global shared directories
-    like /tmp, no use of eval or cd).
-  - Return 0 on success.
+**Responsibilities:**
+- Execute the HTTP request in streaming chunk mode (Server-Sent Events).
+- **Print the raw text of the chunks directly to stdout as they are received** to ensure a smooth, real-time typing effect on the terminal.  
+  *(Note: the GroqBash core does not decode the streaming output of external providers; therefore, the provider must not print raw SSE JSON lines like `data: {...}` on screen, but must decode them internally in real time).*
+- Accumulate the received chunks and write the complete, aggregated JSON response into `$RESP` before the function terminates (crucial to allow session and history persistence).
+- Return `0` on success, non-zero on network error.
 
-Note on capabilities: The GroqBash core automatically detects whether a provider
-supports this feature by inspecting the presence of the function via type
-"refresh_models_${provider}". No external enablement variables are required.
+---
 
-4. Variables Guaranteed by the CORE
+#### ➕ `refresh_models_<provider>()`
 
-The GroqBash CORE makes available and populates the following environment and
-state variables for the provider before invoking its respective functions:
+**Responsibilities:**
+- Query the model catalog endpoint of the respective provider.
+- Generate the model list and save it in the provider-specific model file.
+- To avoid write collisions between different providers, each module must locally redefine the `MODELS_FILE` variable pointing to a specific file (e.g., `gemini.txt` instead of the shared `models.txt` file):
+  `MODELS_FILE="${MODELS_FILE:-${GROQBASH_MODELS_DIR:-}/gemini.txt}"`
+- Write the provider's base URL into the file returned by `canonical_provider_url_file` via atomic write, and consistently set the `GROQBASH_PROVIDER_URL` variable.
+- Respect security constraints (umask 077, no use of global shared directories like `/tmp`, no use of `eval` or `cd`).
+- Return `0` on success.
 
-  - MODEL (model to use)
-  - CONTENT (user's text prompt)
-  - TURE / TEMPERATURE (validated numerical temperature parameter)
-  - MAX_TOKENS (maximum token limit)
-  - STREAM_MODE (1 if streaming active, 0 otherwise)
-  - PAYLOAD (payload file path)
-  - RESP (path where the JSON response should be written)
-  - RUN_TMPDIR (secure and isolated temporary directory specific to the current
-    transaction)
-  - CURL_BASE_OPTS (array containing the default curl options of the program)
-  - BUILD_MESSAGES_FILE (file path containing the current session's message
-    history)
-  - SYSTEM_PROMPT (system prompt if specified)
-  - GROQBASH_PROVIDER_URL (base URL of the currently active provider)
-  - GROQBASH_API_KEY (generic or inherited authentication key)
+*Note on capabilities: The GroqBash core automatically detects whether a provider supports this feature by inspecting the presence of the function via `type "refresh_models_${provider}"`. No external enablement variables are required.*
 
-The provider must under no circumstances modify or overwrite these variables in
-the main runtime of the core.
+---
 
-4.1. API Key Resolution
+## 4. Variables Guaranteed by the CORE
 
-Each provider must determine and extract the authentication key following this
-strict descending order of priority:
+The GroqBash CORE makes available and populates the following environment and state variables for the provider before invoking its respective functions:
 
-1.  PROVIDER_API_ENV_<provider> (if defined in the environment, it indicates the
-    custom environment variable to read).
-2.  The provider-specific key (e.g., GEMINI_API_KEY or HF_API_KEY).
-3.  The generic global fallback key GROQBASH_API_KEY.
+- `MODEL` (model to use)
+- `CONTENT` (user's text prompt)
+- `TURE` / `TEMPERATURE` (validated numerical temperature parameter)
+- `MAX_TOKENS` (maximum token limit)
+- `STREAM_MODE` (`1` if streaming active, `0` otherwise)
+- `PAYLOAD` (payload file path)
+- `RESP` (path where the JSON response should be written)
+- `RUN_TMPDIR` (secure and isolated temporary directory specific to the current transaction)
+- `CURL_BASE_OPTS` (array containing the default curl options of the program)
+- `BUILD_MESSAGES_FILE` (file path containing the current session's message history)
+- `SYSTEM_PROMPT` (system prompt if specified)
+- `GROQBASH_PROVIDER_URL` (base URL of the currently active provider)
+- `GROQBASH_API_KEY` (generic or inherited authentication key)
 
-In the absence of a valid key for endpoints requiring authentication, the
-provider's functions must abort safely, returning a non-zero exit status and
-recording a formatted error in $RESP.
+The provider **must under no circumstances modify or overwrite** these variables in the main runtime of the core.
 
-5. Behavioral Rules and Invariants
+---
 
-🚫 The provider MUST NOT:
+### 4.1. API Key Resolution
+Each provider must determine and extract the authentication key following this strict descending order of priority:
 
-  - Change the current working directory (never use cd).
-  - Modify or pollute the global variables of the main core script.
-  - Use the global /tmp directory or unmanaged paths (all temporary files must
-    reside within RUN_TMPDIR).
-  - Use the eval command.
-  - Generate spurious text output on stdout (except for real-time decoded
-    streaming text).
-  - Hardcode fixed URLs within calling functions, but always refer to the
-    resolution of GROQBASH_PROVIDER_URL.
+1. `PROVIDER_API_ENV_<provider>` (if defined in the environment, it indicates the custom environment variable to read).
+2. The provider-specific key (e.g., `GEMINI_API_KEY` or `HF_API_KEY`).
+3. The generic global fallback key `GROQBASH_API_KEY`.
 
-⚠️ The provider MUST:
+In the absence of a valid key for endpoints requiring authentication, the provider's functions must abort safely, returning a non-zero exit status and recording a formatted error in `$RESP`.
 
-  - Generate valid JSON files free of syntax errors.
-  - Respect generated file security constraints by setting restrictive
-    permissions (umask 077).
-  - Respect the DRY_RUN option. If DRY_RUN=1, the core automatically blocks
-    network calls upstream via the central enforce_network_policy; the provider
-    must still behave predictably, ensuring that dummy but formally valid $RESP
-    or $PAYLOAD files are written.
-  - Ensure that every written file (JSON or text lists) always ends with a
-    trailing newline (\n) character.
+---
 
-6. Minimal Structure Example
+## 5. Behavioral Rules and Invariants
+
+🚫 **The provider MUST NOT:**
+- Change the current working directory (never use `cd`).
+- Modify or pollute the global variables of the main core script.
+- Use the global `/tmp` directory or unmanaged paths (all temporary files must reside within `RUN_TMPDIR`).
+- Use the `eval` command.
+- Generate spurious text output on stdout (except for real-time decoded streaming text).
+- Hardcode fixed URLs within calling functions, but always refer to the resolution of `GROQBASH_PROVIDER_URL`.
+
+⚠️ **The provider MUST:**
+- Generate valid JSON files free of syntax errors.
+- Respect generated file security constraints by setting restrictive permissions (umask 077).
+- Respect the `DRY_RUN` option. If `DRY_RUN=1`, the core automatically blocks network calls upstream via the central `enforce_network_policy`; the provider must still behave predictably, ensuring that dummy but formally valid `$RESP` or `$PAYLOAD` files are written.
+- Ensure that every written file (JSON or text lists) always ends with a trailing newline (`\n`) character.
+
+---
+
+## 6. Minimal Structure Example
 
 ```sh
 # -------------------------
