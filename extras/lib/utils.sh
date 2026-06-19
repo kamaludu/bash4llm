@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash⁺ — Bash-first wrapper for the Groq API
+# Bash4LLM⁺ — Bash-first wrapper for the Groq API
 # File: extras/lib/utils.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
-# utils.sh — utility functions for groqbash extras
+# utils.sh — utility functions for bash4llm extras
 # Provides small, portable and safe helpers (trim, numbers, join, tmpfile, debug).
 # Used by providers and extras to avoid duplicated logic.
 # No global side effects: only function definitions.
-# Load with:  . "$GROQBASH_EXTRAS_DIR/lib/utils.sh"
+# Load with:  . "$BASH4LLM_EXTRAS_DIR/lib/utils.sh"
 # ---
 # gb_mktempfile, gb_ensure_tmpdir - handle secure temporary files.
 # gb_trim, gb_is_number, gb_join - simplify string parsing and manipulation.
 # gb_debug - enables diagnostic logging only when DEBUG is set.
 
 # Load guard (exact, valid POSIX/Bash form)
-if [ -n "${GROQBASHUTILSLOADED:-}" ]; then
+if [ -n "${BASH4LLMUTILSLOADED:-}" ]; then
   return 0
 fi
-GROQBASHUTILSLOADED=1
+BASH4LLMUTILSLOADED=1
 
 # No side effects on source: only function definitions and the load guard above.
 
@@ -74,15 +74,15 @@ gb_mktempfile() {
   local prefix="${1:-tmp}"
   local tmpf=""
 
-  # Prefer GROQBASH_TMPDIR if set and appears safe
-  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR}" ]; then
+  # Prefer BASH4LLM_TMPDIR if set and appears safe
+  if [ -n "${BASH4LLM_TMPDIR:-}" ] && [ -d "${BASH4LLM_TMPDIR}" ]; then
     # Reject if tmpdir is a symlink
-    if [ -L "${GROQBASH_TMPDIR}" ]; then
+    if [ -L "${BASH4LLM_TMPDIR}" ]; then
       return 1
     fi
     # Prefer mktemp -p when available (GNU, BusyBox)
-    if mktemp -p "${GROQBASH_TMPDIR}" "${prefix}.XXXXXX" >/dev/null 2>&1; then
-      tmpf="$(mktemp -p "${GROQBASH_TMPDIR}" "${prefix}.XXXXXX" 2>/dev/null || true)"
+    if mktemp -p "${BASH4LLM_TMPDIR}" "${prefix}.XXXXXX" >/dev/null 2>&1; then
+      tmpf="$(mktemp -p "${BASH4LLM_TMPDIR}" "${prefix}.XXXXXX" 2>/dev/null || true)"
     fi
   fi
 
@@ -115,24 +115,24 @@ gb_debug() {
   printf '[gb-debug] %s\n' "$(printf "$@")" >&2
 }
 
-# gb_ensure_tmpdir: ensure GROQBASH_TMPDIR exists and is writable (optional helper)
+# gb_ensure_tmpdir: ensure BASH4LLM_TMPDIR exists and is writable (optional helper)
 # Usage: gb_ensure_tmpdir && echo ok || echo fail
 # Behavior: creates directory with mode 700, rejects symlink paths.
 gb_ensure_tmpdir() {
-  [ -n "${GROQBASH_TMPDIR:-}" ] || return 1
+  [ -n "${BASH4LLM_TMPDIR:-}" ] || return 1
 
   # Reject if path is a symlink
-  if [ -L "${GROQBASH_TMPDIR}" ]; then
+  if [ -L "${BASH4LLM_TMPDIR}" ]; then
     return 1
   fi
 
-  if [ -d "${GROQBASH_TMPDIR}" ]; then
-    [ -w "${GROQBASH_TMPDIR}" ] || return 1
+  if [ -d "${BASH4LLM_TMPDIR}" ]; then
+    [ -w "${BASH4LLM_TMPDIR}" ] || return 1
     return 0
   fi
 
-  mkdir -p "${GROQBASH_TMPDIR}" 2>/dev/null || return 1
-  chmod 700 "${GROQBASH_TMPDIR}" 2>/dev/null || true
+  mkdir -p "${BASH4LLM_TMPDIR}" 2>/dev/null || return 1
+  chmod 700 "${BASH4LLM_TMPDIR}" 2>/dev/null || true
   return 0
 }
 
