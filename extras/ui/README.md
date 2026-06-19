@@ -1,12 +1,12 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
-[![GroqBash⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
+[![Bash4LLM⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
 ## [🇮🇹](#-interfaccia-web-minimalista) [🇬🇧](#-minimalist-web-interface)
 
-# GroqBash⁺ GUI
+# Bash4LLM⁺ GUI
 ## 🇮🇹 Interfaccia Web Minimalista
 
 ## 🧩 Panoramica
-Questa è la GUI HTML ufficiale di GroqBash, progettata per essere:
+Questa è la GUI HTML ufficiale di Bash4LLM, progettata per essere:
 
 - completamente portabile  
 - Bash‑only (nessuna dipendenza esterna oltre a bash, coreutils, findutils, util-linux, gawk, curl, jq)  
@@ -16,7 +16,7 @@ Questa è la GUI HTML ufficiale di GroqBash, progettata per essere:
 
 La GUI fornisce:
 
-- Chat con GroqBash  
+- Chat con Bash4LLM  
 - Gestione conversazioni  
 - Localizzazione multilingua  
 - Temi chiaro/scuro  
@@ -34,8 +34,8 @@ Per istruzioni dettagliate di installazione, consulta anche:
 ui/
   gui-server.sh          ← entrypoint CGI
   gui-bootstrap.sh       ← bootstrap portabile (ambiente, percorsi, atomic_write, lock, ecc.)
-  groqbash-gui-adapt.sh
-  groqbash-gui-install.sh
+  bash4llm-gui-adapt.sh
+  bash4llm-gui-install.sh
   
   static/
     gui-lang.conf
@@ -82,7 +82,7 @@ Contiene la logica applicativa:
 - routing GET/POST  
 - rendering template  
 - gestione conversazioni  
-- chiamate a GroqBash  
+- chiamate a Bash4LLM  
 - sanitizzazione input  
 
 ### gui-bootstrap.sh  
@@ -95,7 +95,7 @@ Viene importato da gui-server.sh e gestisce tutto l’ambiente:
 - lock globale tramite flock  
 - logging  
 - HTTP header  
-- risoluzione GROQBASH_CMD  
+- risoluzione BASH4LLM_CMD  
 - configurazioni di default  
 
 Questa separazione garantisce portabilità totale e manutenibilità.
@@ -108,7 +108,7 @@ Questa separazione garantisce portabilità totale e manutenibilità.
 
 Usa l’installa‑script ufficiale:
 
-`./groqbash-gui-install.sh`
+`./bash4llm-gui-install.sh`
 
 L’installer:
 
@@ -123,7 +123,7 @@ L’installer:
 
 Dopo l’installazione, apri:
 
-`http://localhost:19970/groqbash-gui/cgi`
+`http://localhost:19970/bash4llm-gui/cgi`
 
 ---
 
@@ -155,8 +155,8 @@ Ogni chiave può avere:
 
 Esempio:
 
-`TXT_TITLE.en=GroqBash Web UI`  
-`TXT_TITLE.it=Interfaccia Web GroqBash`
+`TXT_TITLE.en=Bash4LLM Web UI`  
+`TXT_TITLE.it=Interfaccia Web Bash4LLM`
 
 ---
 
@@ -195,7 +195,7 @@ Il tema selezionato viene salvato in:
 - curl  
 - jq  
 - un web server con CGI abilitato  
-- GroqBash installato nel PATH (o percorso configurato)  
+- Bash4LLM installato nel PATH (o percorso configurato)  
 
 ---
 
@@ -207,11 +207,11 @@ Log disponibili in:
 - `logs/errors.log`  
 
 ---
-# GroqBash⁺ GUI
+# Bash4LLM⁺ GUI
 ## 🇬🇧 Minimalist Web Interface
 
 ## 🧩 Overview
-This is the official HTML GUI for GroqBash, designed to be:
+This is the official HTML GUI for Bash4LLM, designed to be:
 
 - fully portable  
 - Bash‑only (no external dependencies beyond bash, coreutils, findutils, util-linux, gawk, curl, jq)  
@@ -221,7 +221,7 @@ This is the official HTML GUI for GroqBash, designed to be:
 
 The GUI provides:
 
-- Chat with GroqBash  
+- Chat with Bash4LLM  
 - Conversation management  
 - Multilingual localization  
 - Light/Dark themes  
@@ -263,7 +263,7 @@ Executed by the web server. Handles:
 - GET/POST routing  
 - template rendering  
 - conversation management  
-- GroqBash calls  
+- Bash4LLM calls  
 - input sanitization  
 
 ### gui-bootstrap.sh  
@@ -276,7 +276,7 @@ Imported by gui-server.sh. Handles:
 - global flock lock  
 - logging  
 - HTTP headers  
-- GROQBASH_CMD resolution  
+- BASH4LLM_CMD resolution  
 - default configuration  
 
 ---
@@ -287,7 +287,7 @@ Imported by gui-server.sh. Handles:
 
 Run:
 
-`./groqbash-gui-install.sh`
+`./bash4llm-gui-install.sh`
 
 The installer:
 
@@ -302,7 +302,7 @@ The installer:
 
 Open:
 
-`http://localhost:19970/groqbash-gui/cgi`
+`http://localhost:19970/bash4llm-gui/cgi`
 
 ---
 
@@ -367,7 +367,7 @@ Stored in:
 - curl  
 - jq  
 - any CGI-capable web server  
-- GroqBash available in PATH  
+- Bash4LLM available in PATH  
 
 ---
 
