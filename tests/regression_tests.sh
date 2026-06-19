@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: tests/regression_tests.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
@@ -66,7 +66,7 @@ check_core_executable() {
   return 0
 }
 
-check_core_executable || { printf '\nCritical: groqbash not executable. Aborting.\n'; printf 'Passed: %d, Failed: %d, Skipped: %d\n' "$PASS_COUNT" "$FAIL_COUNT" "$SKIP_COUNT"; exit 2; }
+check_core_executable || { printf '\nCritical: bash4llm not executable. Aborting.\n'; printf 'Passed: %d, Failed: %d, Skipped: %d\n' "$PASS_COUNT" "$FAIL_COUNT" "$SKIP_COUNT"; exit 2; }
 
 # ---------- Core integrity (critical) ----------
 test_core_no_tmp() {
