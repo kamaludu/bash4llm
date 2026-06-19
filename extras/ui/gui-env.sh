@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Environment layer for GroqBash GUI
+# Environment layer for Bash4LLM GUI
 # File: gui-env.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 #
 # Centralized error / logging / diagnostics layer and runtime environment.
@@ -76,7 +76,7 @@ _safe_printf() {
 # Structured logging primitives (server vs error logs)
 # -------------------------
 # Log format:
-#   TIMESTAMP groqbash: LEVEL: TAG: pid=PID: MESSAGE
+#   TIMESTAMP bash4llm: LEVEL: TAG: pid=PID: MESSAGE
 _log_common() {
   # _log_common LEVEL TAG MSG...
   local level="$1"; shift
@@ -85,7 +85,7 @@ _log_common() {
   local ts pid out target_dir target_file
   ts="$(_now_iso)"
   pid="$$"
-  out="${ts} groqbash: ${level}: ${tag}: pid=${pid}: ${msg}"
+  out="${ts} bash4llm: ${level}: ${tag}: pid=${pid}: ${msg}"
 
   # Decide destination: ERROR -> ERROR_LOG, others -> SERVER_LOG
   if [[ "${level}" == "ERROR" || "${level}" == "FATAL" || "${level}" == "CGI_FATAL" ]]; then
@@ -587,7 +587,7 @@ env_detect() {
 
 # ---------------------------------------------------------------------------
 # env_prepare_runtime
-# - performs environment-specific runtime preparation BEFORE ensure_groqbash_available
+# - performs environment-specific runtime preparation BEFORE ensure_bash4llm_available
 # - IMPORTANT: runtime must be read-only for shadow/wrapper persistence unless
 #   INSTALL_MODE=1 (explicit install/adapt invocation).
 # ---------------------------------------------------------------------------
@@ -634,113 +634,113 @@ env_prepare_runtime() {
   fi
 
   # Determine deterministic real binary locations (robust list)
-  local groqbash_real groqbash_shadow BIN_DIR wrapper tmp_shadow rc real_hash shadow_hash
-  groqbash_shadow="/data/data/com.termux/files/usr/bin/groqbash"
+  local bash4llm_real bash4llm_shadow BIN_DIR wrapper tmp_shadow rc real_hash shadow_hash
+  bash4llm_shadow="/data/data/com.termux/files/usr/bin/bash4llm"
 
   local candidates=(
-    "${UI_ROOT%/}/../groqbash/groqbash"
-    "${UI_ROOT%/}/../../groqbash/groqbash"
-    "${PWD%/}/groqbash"
-    "${HOME%/}/groqbash/groqbash"
-    "/data/data/com.termux/files/home/groqbash/groqbash"
+    "${UI_ROOT%/}/../bash4llm/bash4llm"
+    "${UI_ROOT%/}/../../bash4llm/bash4llm"
+    "${PWD%/}/bash4llm"
+    "${HOME%/}/bash4llm/bash4llm"
+    "/data/data/com.termux/files/home/bash4llm/bash4llm"
   )
 
-  groqbash_real=""
+  bash4llm_real=""
   for cand in "${candidates[@]}"; do
     if [[ -x "$cand" ]]; then
-      groqbash_real="$cand"
-      log_info "ENV" "Found local groqbash candidate: $groqbash_real"
+      bash4llm_real="$cand"
+      log_info "ENV" "Found local bash4llm candidate: $bash4llm_real"
       break
     fi
   done
 
   # RUNTIME-ONLY behavior (no persistent writes)
   if [[ "${INSTALL_MODE:-0}" -ne 1 ]]; then
-    # Prefer persisted groqbash-path if present and valid
-    if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
+    # Prefer persisted bash4llm-path if present and valid
+    if [[ -f "${CFG_DIR%/}/bash4llm-path" ]]; then
       local persisted
-      persisted="$(sed -n '1p' "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true)"
+      persisted="$(sed -n '1p' "${CFG_DIR%/}/bash4llm-path" 2>/dev/null || true)"
       if [[ -n "$persisted" && -x "$persisted" ]]; then
-        GROQBASH_CMD="$persisted"
-        export GROQBASH_CMD
+        BASH4LLM_CMD="$persisted"
+        export BASH4LLM_CMD
         PATH="${UI_ROOT%/}/bin:${PATH:-}"
         export PATH
-        log_info "ENV" "Runtime mode: using persisted GROQBASH_CMD=${GROQBASH_CMD}"
+        log_info "ENV" "Runtime mode: using persisted BASH4LLM_CMD=${BASH4LLM_CMD}"
         return 0
       else
-        log_warn "ENV" "Persisted groqbash-path exists but is not executable or empty; ignoring in runtime"
+        log_warn "ENV" "Persisted bash4llm-path exists but is not executable or empty; ignoring in runtime"
       fi
     fi
 
     # If Termux, prefer wrapper/shadow only if already present and executable
     if [[ "${IS_TERMUX:-0}" -eq 1 ]]; then
       BIN_DIR="${UI_ROOT%/}/bin"
-      wrapper="$BIN_DIR/groqbash-wrapper"
+      wrapper="$BIN_DIR/bash4llm-wrapper"
       if [[ -x "$wrapper" ]]; then
-        GROQBASH_CMD="$wrapper"
-        export GROQBASH_CMD
+        BASH4LLM_CMD="$wrapper"
+        export BASH4LLM_CMD
         PATH="$BIN_DIR:${PATH:-}"
         export PATH
         log_info "ENV" "Runtime mode (Termux): using existing wrapper $wrapper"
         return 0
       fi
-      # If no wrapper, prefer groqbash_real if available
-      if [[ -n "$groqbash_real" && -x "$groqbash_real" ]]; then
-        GROQBASH_CMD="$groqbash_real"
-        export GROQBASH_CMD
-        log_info "ENV" "Runtime mode (Termux): no wrapper found, using local repo binary $groqbash_real"
+      # If no wrapper, prefer bash4llm_real if available
+      if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
+        BASH4LLM_CMD="$bash4llm_real"
+        export BASH4LLM_CMD
+        log_info "ENV" "Runtime mode (Termux): no wrapper found, using local repo binary $bash4llm_real"
         return 0
       fi
-      log_warn "ENV" "Runtime mode (Termux): no wrapper and no local repo binary found; leaving GROQBASH_CMD unset"
+      log_warn "ENV" "Runtime mode (Termux): no wrapper and no local repo binary found; leaving BASH4LLM_CMD unset"
       return 0
     fi
 
     # Non-Termux runtime: prefer local repo binary if present
-    if [[ -n "$groqbash_real" && -x "$groqbash_real" ]]; then
-      GROQBASH_CMD="$groqbash_real"
-      export GROQBASH_CMD
-      log_info "ENV" "Runtime mode (non-Termux): using local repo binary $groqbash_real"
+    if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
+      BASH4LLM_CMD="$bash4llm_real"
+      export BASH4LLM_CMD
+      log_info "ENV" "Runtime mode (non-Termux): using local repo binary $bash4llm_real"
       return 0
     fi
 
     # Nothing resolved; leave defaults
-    log_warn "ENV" "Runtime mode: no groqbash resolved (no persisted path, no wrapper, no local binary)"
+    log_warn "ENV" "Runtime mode: no bash4llm resolved (no persisted path, no wrapper, no local binary)"
     return 0
   fi
 
   # ---------------------------
   # INSTALL_MODE=1 (install/adapt)
-  # Allowed to create/update shadow/wrapper/persist groqbash-path
+  # Allowed to create/update shadow/wrapper/persist bash4llm-path
   # ---------------------------
 
-  # If not Termux, do not create a shadow; persist groqbash_real into groqbash-path
+  # If not Termux, do not create a shadow; persist bash4llm_real into bash4llm-path
   if [[ "${IS_TERMUX:-0}" -ne 1 ]]; then
-    if [[ -n "$groqbash_real" && -x "$groqbash_real" ]]; then
-      # Persist groqbash_real into CFG_DIR/groqbash-path atomically
+    if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
+      # Persist bash4llm_real into CFG_DIR/bash4llm-path atomically
       mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
       if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" ]]; then
-        tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
-        if printf '%s\n' "$groqbash_real" >"$tmp_path" 2>/dev/null; then
+        tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/bash4llm-path.tmp"
+        if printf '%s\n' "$bash4llm_real" >"$tmp_path" 2>/dev/null; then
           line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
           if [[ "$line_count" -eq 1 ]]; then
-            mv -f -- "$tmp_path" "${CFG_DIR%/}/groqbash-path"
-            chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
-            log_info "ENV" "INSTALL_MODE: persisted groqbash-path -> $groqbash_real"
-            GROQBASH_CMD="$groqbash_real"
-            export GROQBASH_CMD
+            mv -f -- "$tmp_path" "${CFG_DIR%/}/bash4llm-path"
+            chmod 600 "${CFG_DIR%/}/bash4llm-path" 2>/dev/null || true
+            log_info "ENV" "INSTALL_MODE: persisted bash4llm-path -> $bash4llm_real"
+            BASH4LLM_CMD="$bash4llm_real"
+            export BASH4LLM_CMD
             return 0
           else
-            log_warn "ENV" "INSTALL_MODE: refusing to persist groqbash-path: temp file contains ${line_count} non-empty lines"
+            log_warn "ENV" "INSTALL_MODE: refusing to persist bash4llm-path: temp file contains ${line_count} non-empty lines"
             rm -f -- "$tmp_path" 2>/dev/null || true
             return 0
           fi
         else
-          log_warn "ENV" "INSTALL_MODE: failed to write temporary groqbash-path at $tmp_path"
+          log_warn "ENV" "INSTALL_MODE: failed to write temporary bash4llm-path at $tmp_path"
           rm -f -- "$tmp_path" 2>/dev/null || true
           return 0
         fi
       else
-        log_warn "ENV" "INSTALL_MODE: CFG_DIR not writable; cannot persist groqbash-path"
+        log_warn "ENV" "INSTALL_MODE: CFG_DIR not writable; cannot persist bash4llm-path"
         return 0
       fi
     else
@@ -772,17 +772,17 @@ env_prepare_runtime() {
   }
 
   # Compute hashes once to decide whether to update shadow
-  real_hash="$(compute_hash "$groqbash_real" 2>/dev/null || true)"
-  shadow_hash="$(compute_hash "$groqbash_shadow" 2>/dev/null || true)"
+  real_hash="$(compute_hash "$bash4llm_real" 2>/dev/null || true)"
+  shadow_hash="$(compute_hash "$bash4llm_shadow" 2>/dev/null || true)"
 
   # Initialize rc defensively
   rc=1
 
   if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
-    tmp_shadow="$(portable_mktemp "$TMP_DIR" "groqbash-shadow.XXXXXX")" || tmp_shadow=""
+    tmp_shadow="$(portable_mktemp "$TMP_DIR" "bash4llm-shadow.XXXXXX")" || tmp_shadow=""
     if [[ -n "$tmp_shadow" ]]; then
-      if ! cp -f -- "$groqbash_real" "$tmp_shadow" 2>/dev/null; then
-        log_warn "ENV" "Failed to copy real groqbash to tmp shadow"
+      if ! cp -f -- "$bash4llm_real" "$tmp_shadow" 2>/dev/null; then
+        log_warn "ENV" "Failed to copy real bash4llm to tmp shadow"
         rm -f -- "$tmp_shadow" 2>/dev/null || true
         _release_lock
         return 0
@@ -795,7 +795,7 @@ env_prepare_runtime() {
         fi
       fi
 
-      if ! mv -f -- "$tmp_shadow" "$groqbash_shadow" 2>/dev/null; then
+      if ! mv -f -- "$tmp_shadow" "$bash4llm_shadow" 2>/dev/null; then
         log_warn "ENV" "Failed to move tmp shadow into place"
         rm -f -- "$tmp_shadow" 2>/dev/null || true
         _release_lock
@@ -804,7 +804,7 @@ env_prepare_runtime() {
       rc=0
     else
       # portable_mktemp failed: log explicit reason and do NOT perform unsafe direct copy
-      log_warn "ENV" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform direct copy to $groqbash_shadow in INSTALL_MODE"
+      log_warn "ENV" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform direct copy to $bash4llm_shadow in INSTALL_MODE"
       _release_lock
       return 0
     fi
@@ -815,11 +815,11 @@ env_prepare_runtime() {
       return 0
     fi
 
-    chmod 750 "$groqbash_shadow" 2>/dev/null || true
-    shadow_hash="$(compute_hash "$groqbash_shadow" 2>/dev/null || true)"
-    log_info "ENV" "INSTALL_MODE: Updated groqbash shadow at $groqbash_shadow"
+    chmod 750 "$bash4llm_shadow" 2>/dev/null || true
+    shadow_hash="$(compute_hash "$bash4llm_shadow" 2>/dev/null || true)"
+    log_info "ENV" "INSTALL_MODE: Updated bash4llm shadow at $bash4llm_shadow"
   else
-    log_info "ENV" "INSTALL_MODE: groqbash shadow already up-to-date"
+    log_info "ENV" "INSTALL_MODE: bash4llm shadow already up-to-date"
   fi
 
   # Ensure BASH_PATH resolved and executable before creating wrapper
@@ -833,13 +833,13 @@ env_prepare_runtime() {
   BIN_DIR="${UI_ROOT%/}/bin"
   mkdir -p "$BIN_DIR" 2>/dev/null || true
   chmod 700 "$BIN_DIR" 2>/dev/null || true
-  wrapper="$BIN_DIR/groqbash-wrapper"
+  wrapper="$BIN_DIR/bash4llm-wrapper"
 
   # Write wrapper atomically into TMP_DIR, then move only if different
   local tmp_wrapper new_wrapper_hash existing_wrapper_hash wrapper_hash
   tmp_wrapper="$(portable_mktemp "$TMP_DIR" "wrapper.XXXXXX")" || tmp_wrapper=""
   if [[ -n "$tmp_wrapper" ]]; then
-    printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$groqbash_shadow\" \"\$@\"" >"$tmp_wrapper" 2>/dev/null || {
+    printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$bash4llm_shadow\" \"\$@\"" >"$tmp_wrapper" 2>/dev/null || {
       log_warn "ENV" "Failed to write tmp wrapper"
       rm -f -- "$tmp_wrapper" 2>/dev/null || true
       _release_lock
@@ -888,38 +888,38 @@ env_prepare_runtime() {
 
   # Export wrapper preference for runtime if executable
   if [[ -x "$wrapper" ]]; then
-    GROQBASH_CMD="$wrapper"
-    export GROQBASH_CMD
+    BASH4LLM_CMD="$wrapper"
+    export BASH4LLM_CMD
     PATH="$BIN_DIR:${PATH:-}"
     export PATH
     log_info "ENV" "INSTALL_MODE: Termux wrapper ensured at $wrapper (hash: ${wrapper_hash:-<none>})"
   else
-    log_warn "ENV" "Wrapper not executable; GROQBASH_CMD not set to wrapper"
+    log_warn "ENV" "Wrapper not executable; BASH4LLM_CMD not set to wrapper"
   fi
 
-  # Persist groqbash-path into CFG_DIR atomically; ensure CFG_DIR exists
+  # Persist bash4llm-path into CFG_DIR atomically; ensure CFG_DIR exists
   if [[ -n "${CFG_DIR:-}" ]]; then
     mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
     if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" && -x "$wrapper" ]]; then
       # write into a temp file inside CFG_DIR and validate it contains exactly one non-empty line
-      tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/groqbash-path.tmp"
+      tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/bash4llm-path.tmp"
       if printf '%s\n' "$wrapper" >"$tmp_path" 2>/dev/null; then
         # normalize and count non-empty lines
         line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
         if [[ "$line_count" -eq 1 ]]; then
-          mv -f -- "$tmp_path" "${CFG_DIR%/}/groqbash-path"
-          chmod 600 "${CFG_DIR%/}/groqbash-path" 2>/dev/null || true
-          log_info "ENV" "INSTALL_MODE: Persisted groqbash-path to ${CFG_DIR%/}/groqbash-path -> $wrapper"
+          mv -f -- "$tmp_path" "${CFG_DIR%/}/bash4llm-path"
+          chmod 600 "${CFG_DIR%/}/bash4llm-path" 2>/dev/null || true
+          log_info "ENV" "INSTALL_MODE: Persisted bash4llm-path to ${CFG_DIR%/}/bash4llm-path -> $wrapper"
         else
-          log_warn "ENV" "INSTALL_MODE: Refusing to persist groqbash-path: temp file contains ${line_count} non-empty lines (expected 1); tmp: $tmp_path"
+          log_warn "ENV" "INSTALL_MODE: Refusing to persist bash4llm-path: temp file contains ${line_count} non-empty lines (expected 1); tmp: $tmp_path"
           rm -f -- "$tmp_path" 2>/dev/null || true
         fi
       else
-        log_warn "ENV" "INSTALL_MODE: Failed to write temporary groqbash-path at $tmp_path; skipping persist"
+        log_warn "ENV" "INSTALL_MODE: Failed to write temporary bash4llm-path at $tmp_path; skipping persist"
         rm -f -- "$tmp_path" 2>/dev/null || true
       fi
     else
-      log_warn "ENV" "INSTALL_MODE: CFG_DIR not writable or wrapper unset/not executable; skipping persist of groqbash-path"
+      log_warn "ENV" "INSTALL_MODE: CFG_DIR not writable or wrapper unset/not executable; skipping persist of bash4llm-path"
     fi
   fi
 
@@ -927,17 +927,17 @@ env_prepare_runtime() {
 }
 
 # ---------------------------------------------------------------------------
-# env_after_groqbash_resolved
-# - operations that require GROQBASH_CMD already resolved
+# env_after_bash4llm_resolved
+# - operations that require BASH4LLM_CMD already resolved
 # ---------------------------------------------------------------------------
-env_after_groqbash_resolved() {
-  if [[ -n "${GROQBASH_CMD:-}" && -x "${GROQBASH_CMD}" ]]; then
+env_after_bash4llm_resolved() {
+  if [[ -n "${BASH4LLM_CMD:-}" && -x "${BASH4LLM_CMD}" ]]; then
     # Lightweight diagnostic: count providers if possible (best-effort)
     local prov_count
-    prov_count="$("${GROQBASH_CMD}" --list-providers-raw 2>/dev/null | wc -l 2>/dev/null || true)"
-    log_info "ENV" "groqbash resolved: ${GROQBASH_CMD} (providers: ${prov_count:-0})"
+    prov_count="$("${BASH4LLM_CMD}" --list-providers-raw 2>/dev/null | wc -l 2>/dev/null || true)"
+    log_info "ENV" "bash4llm resolved: ${BASH4LLM_CMD} (providers: ${prov_count:-0})"
   else
-    log_warn "ENV" "groqbash not resolved in env_after_groqbash_resolved"
+    log_warn "ENV" "bash4llm not resolved in env_after_bash4llm_resolved"
   fi
   return 0
 }
@@ -1176,8 +1176,8 @@ gui_env_health_check() {
     log_warn "HEALTH" "flock not available"
     ok=1
   fi
-  if [[ -n "${GROQBASH_CMD:-}" && ! -x "${GROQBASH_CMD}" ]]; then
-    log_warn "HEALTH" "GROQBASH_CMD set but not executable: ${GROQBASH_CMD:-<unset>}"
+  if [[ -n "${BASH4LLM_CMD:-}" && ! -x "${BASH4LLM_CMD}" ]]; then
+    log_warn "HEALTH" "BASH4LLM_CMD set but not executable: ${BASH4LLM_CMD:-<unset>}"
     ok=1
   fi
   return $ok
@@ -1190,7 +1190,7 @@ gui_env_dump_diag() {
   printf 'UI_ROOT=%s\n' "${UI_ROOT:-<unset>}"
   printf 'TMP_DIR=%s\n' "${TMP_DIR:-<unset>}"
   printf 'LOG_DIR=%s\n' "${LOG_DIR:-<unset>}"
-  printf 'GROQBASH_CMD=%s\n' "${GROQBASH_CMD:-<unset>}"
+  printf 'BASH4LLM_CMD=%s\n' "${BASH4LLM_CMD:-<unset>}"
   printf '--- SERVER_LOG (last %s lines) ---\n' "$lines"
   if [[ -f "${SERVER_LOG:-}" ]]; then
     tail -n "$lines" "${SERVER_LOG}" 2>/dev/null || true
