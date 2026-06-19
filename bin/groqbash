@@ -2300,7 +2300,6 @@ _normalize_bool_env
 ########################################
 # SECTION: PRECORE_RUN - END
 ########################################
-
 ########################################
 # SECTION: PROVIDER - BEGIN
 ########################################
@@ -2322,20 +2321,11 @@ fi
 # - Supports: JSON_INPUT (messages or prompt), SYSTEM_PROMPT + CONTENT,
 #   or CONTENT alone.
 # - Honors STREAM_MODE via stream boolean in payload.
-# - Uses local helpers stage_b64 and _cleanup_local_tmp for atomicity and cleanup.
 # ---------------------------------------------------------------------------
-# _cleanup_local_tmp: helper to remove local temporary artifacts
-_cleanup_local_tmp() {
-  local tmp_payload="$1" tmp_b64_local="$2" json_input_file="$3"
-  [ -n "$tmp_payload" ] && rm -f -- "$tmp_payload" 2>/dev/null || true
-  [ -n "$tmp_b64_local" ] && rm -f -- "$tmp_b64_local" 2>/dev/null || true
-  [ -n "$json_input_file" ] && rm -f -- "$json_input_file" 2>/dev/null || true
-}
-
 buildpayload_groq() {
   # Build payload for Groq provider into tmp_payload
   # Assumes: MODEL, TURE, MAX_TOKENS, MESSAGES_JSON, BUILD_MESSAGES_FILE, STREAM_MODE, JSON_INPUT, CONTENT may be set
-  local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs
+  local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs msgs_from_file
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
 
@@ -2390,7 +2380,11 @@ buildpayload_groq() {
   fi
 
   if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
-    VALID_MESSAGES_JSON="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
+    msgs_from_file="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
+    # CORRETTO: se il file di sessione ha zero messaggi storici, lascia VALID_MESSAGES_JSON vuota per cadere nel fallback successivo (CONTENT)
+    if printf '%s' "$msgs_from_file" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
+      VALID_MESSAGES_JSON="$msgs_from_file"
+    fi
   fi
 
   if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${CONTENT:-}" ]; then
@@ -2405,6 +2399,11 @@ buildpayload_groq() {
   if ! printf '%s' "$VALID_MESSAGES_JSON" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
     log_warn "PAYLOAD" "VALID_MESSAGES_JSON is empty or not an array; using fallback single empty user message"
     VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
+  fi
+
+  # CORRETTO: Se SYSTEM_PROMPT è presente, inserisce un messaggio con ruolo "system" in testa all'array dei messaggi
+  if [ -n "${SYSTEM_PROMPT:-}" ]; then
+    VALID_MESSAGES_JSON="$(jq -n --argjson messages "$VALID_MESSAGES_JSON" --arg sys "$SYSTEM_PROMPT" '[{role:"system", content:$sys}] + $messages' 2>/dev/null || printf '%s' "$VALID_MESSAGES_JSON")"
   fi
 
   if [ -z "${MODEL:-}" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
@@ -2466,8 +2465,6 @@ buildpayload_groq() {
 
   return 0
 }
-
-buildpayloadgroq() { buildpayload_groq "$@"; }
 
 # ---------------------------------------------------------------------------
 # call_api_groq (non-streaming) - with enforcement network policy
@@ -2659,7 +2656,8 @@ call_api_groq() {
   if [ -z "${RESP:-}" ]; then
     RESP="${RUN_TMPDIR%/}/resp.json"
   fi
-  mkdir -p "$(dirname "$RESP")" 2>/dev/null || true
+  p_dir="$(dirname "$RESP")"
+  mkdir -p "$p_dir" 2>/dev/null || true
 
   # Move resp_tmp → RESP
   if [ -s "$resp_tmp" ]; then
@@ -2680,7 +2678,7 @@ call_api_groq() {
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
     jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
-      '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
+          '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
   fi
 
   # remove resp_tmp if still present
@@ -2698,7 +2696,7 @@ call_api_groq() {
 call_api_streaming_groq() {
   # Streaming call for Groq provider with robust checks and diagnostics.
   # Expects: RUN_TMPDIR, RESP variable, and payload file (GROQBASH_TMP_PAYLOAD or PAYLOAD).
-  local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD
+  local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code
 
   ensure_run_tmpdir || return "$GROQBASHERRTMP"
 
@@ -2770,26 +2768,40 @@ call_api_streaming_groq() {
     send_payload="$tmp_payload"
   fi
 
-  if command -v stdbuf >/dev/null 2>&1; then
-    CURL_CMD=(stdbuf -oL curl --http1.1 -sS -N)
-  else
-    CURL_CMD=(curl --http1.1 -sS -N)
+  # CORRETTO: rimosso stdbuf per evitare abort/blocchi sul linker dinamico di Android (Termux)
+  CURL_CMD=(curl --http1.1 -sS -N)
+
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    CURL_CMD+=("${CURL_BASE_OPTS[@]}")
   fi
 
-  "${CURL_CMD[@]}" -H "Authorization: Bearer ${GROQ_API_KEY:-${GROQBASH_API_KEY:-}}" -H "Content-Type: application/json" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | tee -a "$resp_raw" | \
-  while IFS= read -r line; do
+  CURL_CMD+=( -H "Content-Type: application/json" )
+  if [ -n "${GROQ_API_KEY:-}" ]; then
+    CURL_CMD+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
+  elif [ -n "${GROQBASH_API_KEY:-}" ]; then
+    CURL_CMD+=( -H "Authorization: Bearer ${GROQBASH_API_KEY}" )
+  fi
+
+  # CORRETTO: rimosso tee dalla pipeline per azzerare il buffering e abilitare lo streaming immediato
+  # CORRETTO: modificata la query jq per gestire in modo sicuro frammenti sia in formato stringa sia in oggetti JSON nativi (evitando errori da fromjson)
+  # CORRETTO: applicata la tecnica della "x" fittizia abbinata a "jq -j" per preservare intatti i caratteri di a capo (\n) reali eliminando quelli fittizi di jq
+  "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | \
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line" >> "$resp_raw"
     case "$line" in
       'data: [DONE]'|'data:[DONE]') break ;;
       data:\ * )
         json="${line#data: }"
-        content="$(printf '%s' "$json" | jq -r 'try (fromjson | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true)"
+        content="$(printf '%s' "$json" | jq -j 'try (if type=="string" then fromjson else . end | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true; printf 'x')"
+        content="${content%x}"
         if [ -n "$content" ]; then
           printf '%s' "$content"
         fi
         ;;
       *)
         if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
-          content="$(printf '%s' "$line" | jq -r '(.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$ERRF" || true)"
+          content="$(printf '%s' "$line" | jq -j '(.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$ERRF" || true; printf 'x')"
+          content="${content%x}"
           if [ -n "$content" ]; then
             printf '%s' "$content"
           fi
@@ -2858,42 +2870,39 @@ call_api_streaming_groq() {
   if [ -z "${RESP:-}" ]; then
     RESP="${RUN_TMPDIR%/}/resp.json"
   fi
-  mkdir -p "$(dirname "$RESP")" 2>/dev/null || true
+  p_dir="$(dirname "$RESP")"
+  mkdir -p "$p_dir" 2>/dev/null || true
 
+  # Move resp_tmp → RESP
   if [ -s "$resp_tmp" ]; then
     if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
-      chmod 600 "${RESP}" 2>/dev/null || true
-      if [ "${DEBUG:-0}" -eq 1 ]; then
-        log_info "CALL_STREAM" "RESP already at resp_tmp: ${RESP}"
-      fi
+      chmod 600 "$RESP" 2>/dev/null || true
     else
       if mv -f "$resp_tmp" "${RESP}" 2>/dev/null; then
         chmod 600 "${RESP}" 2>/dev/null || true
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "CALL_STREAM" "Wrote RESP from streaming output: ${RESP}"
-        fi
       else
-        log_error "CALL_STREAM" "mv failed; writing diagnostic RESP"
+        log_error "RESP" "mv failed; writing diagnostic RESP"
         now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
-        jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
-          '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
+        jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
+          '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
       fi
     fi
   else
-    if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_warn "CALL_STREAM" "No JSON chunks extracted from stream; writing diagnostic RESP"
-    fi
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    stderr_head="$(head -c 200 "$ERRF" 2>/dev/null | sed 's/"/\\"/g' || true)"
-    jq -c -n --arg http "0" --arg ts "$now_ts" --arg err "$stderr_head" \
-      '{diagnostic:true, streaming:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
+    stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+    jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
+          '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
   fi
 
+  # remove resp_tmp if still present
   rm -f "$resp_tmp" 2>/dev/null || true
+
+  # remove ERRF after diagnostics
   rm -f "$ERRF" 2>/dev/null || true
 
   if ensure_run_tmpdir >/dev/null 2>&1; then
+    # CORRETTO: Inizializzata http_code=200 per evitare l'errore "http_code: unbound variable" sotto set -u
     http_code=200
     finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "${RESP}" 2>/dev/null || echo "")"
     req_id="$(jq -r '.x_groq?.id // .id // empty' "${RESP}" 2>/dev/null || echo "")"
@@ -2906,8 +2915,6 @@ call_api_streaming_groq() {
 
   return "${rc:-0}"
 }
-
-call_api_streaming_groq_legacy() { call_api_streaming_groq "$@"; }
 
 # ---------------------------------------------------------------------------
 # refresh_models_groq
@@ -2939,21 +2946,10 @@ refresh_models_groq() {
     origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
     api_url="${origin%/}/openai/v1/models"
   else
-    if [ "${PROVIDER:-}" = "groq" ]; then
-      resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
-      if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
-        origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
-        api_url="${origin%/}/openai/v1/models"
-      else
-        log_error "MODELREFRESH" "no provider URL available to refresh models"
-        rm -rf "$tmpd"
-        return "$GROQBASHERRAPI"
-      fi
-    else
-      log_error "MODELREFRESH" "no provider URL available to refresh models"
-      rm -rf "$tmpd"
-      return "$GROQBASHERRAPI"
-    fi
+    # CORRETTO: Eliminata logica condizionale non raggiungibile (il provider attivo qui è sempre groq)
+    log_error "MODELREFRESH" "no provider URL available to refresh models"
+    rm -rf "$tmpd"
+    return "$GROQBASHERRAPI"
   fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
@@ -2978,11 +2974,12 @@ refresh_models_groq() {
   tmp_parsed="$tmpd/parsed_models.txt"
   : > "$tmp_parsed"
 
+  # CORRETTO: Cambiato (.name // .id // empty) in (.id // .name // empty) per evitare l'esclusione di modelli con spazi
   jq -r '
     if (has("data") and (.data|type) == "array") then
-      .data[]? | (.name // .id // empty)
+      .data[]? | (.id // .name // empty)
     elif (type == "array") then
-      .[]? | (.name // .id // empty)
+      .[]? | (.id // .name // empty)
     else
       empty
     end
@@ -3038,8 +3035,6 @@ refresh_models_groq() {
   return 0
 }
 
-refreshmodelsgroq() { refresh_models_groq "$@"; }
-
 # ---------------------------------------------------------------------------
 # validate_model_groq
 # - If MODELS_FILE exists and is non-empty, require the model to be present.
@@ -3084,8 +3079,6 @@ validate_model_groq() {
   return 0
 }
 
-validatemodelgroq() { validate_model_groq "$@"; }
-
 # ---------------------------------------------------------------------------
 # auto_select_model_groq
 # ---------------------------------------------------------------------------
@@ -3109,8 +3102,6 @@ auto_select_model_groq() {
   fi
   return 1
 }
-
-autoselectmodelgroq() { auto_select_model_groq "$@"; }
 ########################################
 # SECTION: PROVIDER - END
 ########################################
