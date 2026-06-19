@@ -1,15 +1,15 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
-[![ShellCheck](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml)
-[![Smoke Tests](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml)
+[![ShellCheck](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml)
+[![Smoke Tests](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml)
 
-# GroqBash⁺ [🇮🇹](README.md) 🇬🇧
+# Bash4LLM⁺ [🇮🇹](README.md) 🇬🇧
 
-**GroqBash⁺** — secure, Bash‑first, fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API.
+**Bash4LLM⁺** — secure, Bash‑first, fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API.
 
-GroqBash is a single Bash script, self‑contained, readable, and verifiable.  
+Bash4LLM is a single Bash script, self‑contained, readable, and verifiable.  
 Download it, make it executable, export your API key, and start using it immediately.
 
 Compatible with Unix‑like environments: Linux, macOS, WSL, Cygwin, Termux, BSD.
@@ -47,10 +47,10 @@ Compatible with Unix‑like environments: Linux, macOS, WSL, Cygwin, Termux, BSD
 
 ## Threat model (short version)
 
-GroqBash is designed for single‑user environments (PC/laptop, personal servers).
+Bash4LLM is designed for single‑user environments (PC/laptop, personal servers).
 
 - Providers are code executed in your shell: they must reside in secure directories.  
-- Variables such as `GROQBASH_EXTRAS_DIR` and `GROQBASH_TMPDIR` are considered trusted configuration.  
+- Variables such as `BASH4LLM_EXTRAS_DIR` and `BASH4LLM_TMPDIR` are considered trusted configuration.  
 - The script never executes model output.  
 - TOCTOU risks and JSON/SSE parsing limits are mitigated and documented.
 
@@ -60,7 +60,7 @@ Full details in **`[Sembra che non fosse sicuro mostrare il risultato. Cambiamo 
 
 ## Requirements
 
-GroqBash requires the following packages (or equivalents) to be available in PATH:
+Bash4LLM requires the following packages (or equivalents) to be available in PATH:
 
 - ***bash***
 - coreutils
@@ -77,20 +77,20 @@ GroqBash requires the following packages (or equivalents) to be available in PAT
 > [!TIP]
 > **⏩ Quick Installation (Fast-Forward)**
 > 
-> Run these commands in your terminal to get **GroqBash** up and running immediately:
+> Run these commands in your terminal to get **Bash4LLM** up and running immediately:
 > 
 > ```sh
 > # 1. Clone the repository (shallow clone for maximum speed)
-> git clone --depth 1 --branch main https://github.com/kamaludu/groqbash.git repo-groqbash  
+> git clone --depth 1 --branch main https://github.com/kamaludu/bash4llm.git repo-bash4llm  
 > 
 > # 2. Create a working directory and extract the executable
-> mkdir -p groqbash
-> cp repo-groqbash/bin/groqbash groqbash/
-> chmod +x groqbash/groqbash
+> mkdir -p bash4llm
+> cp repo-bash4llm/bin/bash4llm bash4llm/
+> chmod +x bash4llm/bash4llm
 > 
 > # 3. Enter the directory and refresh the models 
-> cd groqbash 
-> ./groqbash --refresh-models
+> cd bash4llm 
+> ./bash4llm --refresh-models
 > ```
 > 
 > The script will prompt you to enter your API key:
@@ -100,7 +100,7 @@ GroqBash requires the following packages (or equivalents) to be available in PAT
 > 
 > `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
 > 
-> Enjoy GroqBash! ⚡
+> Enjoy Bash4LLM! ⚡
 
 
 Detailed instructions in: **`[Sembra che non fosse sicuro mostrare il risultato. Cambiamo le cose e facciamo un altro tentativo.]`**
@@ -108,15 +108,15 @@ Detailed instructions in: **`[Sembra che non fosse sicuro mostrare il risultato.
 In short:
 
 ```sh
-chmod +x groqbash
+chmod +x bash4llm
 export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
-./groqbash --help
+./bash4llm --help
 ```
 
 Optional extras:
 
 ```sh
-./groqbash --install-extras
+./bash4llm --install-extras
 ```
 
 With options:
@@ -125,7 +125,7 @@ With options:
 - `--force`  
 - `--dry-run`  
 - selective installation:  
-  `./groqbash --install-extras provider1 templateA`
+  `./bash4llm --install-extras provider1 templateA`
 
 ---
 
@@ -134,13 +134,13 @@ With options:
 Direct prompt:
 
 ```sh
-./groqbash "write a short poem in Italian"
+./bash4llm "write a short poem in Italian"
 ```
 
 Multiline prompt:
 
 ```sh
-./groqbash <<'EOF'
+./bash4llm <<'EOF'
 write a short poem
 in Italian
 EOF
@@ -149,31 +149,31 @@ EOF
 Input from file:
 
 ```sh
-./groqbash -f prompt.txt
+./bash4llm -f prompt.txt
 ```
 
 Pipe:
 
 ```sh
-echo "explain relativity to me" | ./groqbash
+echo "explain relativity to me" | ./bash4llm
 ```
 
 Specific model:
 
 ```sh
-./groqbash -m llama-3.3-70b-versatile "write a short essay"
+./bash4llm -m llama-3.3-70b-versatile "write a short essay"
 ```
 
 Dry run:
 
 ```sh
-./groqbash --dry-run "hello"
+./bash4llm --dry-run "hello"
 ```
 
 External provider (if installed):
 
 ```sh
-./groqbash --provider gemini "translate this"
+./bash4llm --provider gemini "translate this"
 ```
 
 ---
@@ -198,7 +198,7 @@ External provider (if installed):
 |------|-----------|---------|
 | `-f <file>` | yes | Adds file to `FILE_INPUTS`. |
 | `--json-input <json>` | yes | Sets JSON input. |
-| `--template <name>` | yes | Applies template from `GROQBASH_TEMPLATES_DIR`. |
+| `--template <name>` | yes | Applies template from `BASH4LLM_TEMPLATES_DIR`. |
 | `--batch <file>` | yes | Executes batch requests (one line = one prompt). |
 
 ### Sessions
@@ -264,10 +264,10 @@ External provider (if installed):
 
 ### Configuration files
 
-- `$GROQBASH_CONFIG_DIR/config`  
+- `$BASH4LLM_CONFIG_DIR/config`  
   → local parameters (MODEL, TURE, MAX_TOKENS, FORMAT, THRESHOLD)
 
-- `$GROQBASH_CONFIG_DIR/model.$PROVIDER`  
+- `$BASH4LLM_CONFIG_DIR/model.$PROVIDER`  
   → default model for provider
 
 - `$MODELS_FILE`  
@@ -288,16 +288,16 @@ External provider (if installed):
 - No use of `/tmp`.  
 - Temporary files in dedicated directory with permissions 700.  
 - Saved files with permissions 600.  
-- With `--out`, GroqBash creates the directory if possible.
+- With `--out`, Bash4LLM creates the directory if possible.
 
 ---
 
 # 📁 UI State System (ui_state)
 
-GroqBash exposes operational metadata intended for GUIs/external tools via atomic JSON files in:
+Bash4LLM exposes operational metadata intended for GUIs/external tools via atomic JSON files in:
 
 ```
-$GROQBASH_CONFIG_DIR/ui_state
+$BASH4LLM_CONFIG_DIR/ui_state
 ```
 
 Contains:
@@ -313,21 +313,21 @@ Placeholder semantics are defined in the *Unified Source of Truth for Placeholde
 
 ---
 
-# 📘 Contextual memory in GroqBash
+# 📘 Contextual memory in Bash4LLM
 
-GroqBash **does not maintain memory by itself**.  
+Bash4LLM **does not maintain memory by itself**.  
 Memory exists **only if you enable a session** via `--session`.
 
 Each session creates a persistent NDJSON file:
 
 ```
-$GROQBASH_HISTORY_DIR/sessions/<session_id>.ndjson
+$BASH4LLM_HISTORY_DIR/sessions/<session_id>.ndjson
 ```
 
-And GroqBash maintains session metadata in:
+And Bash4LLM maintains session metadata in:
 
 ```
-$GROQBASH_CONFIG_DIR/ui_state/sessions/<session_id>.json
+$BASH4LLM_CONFIG_DIR/ui_state/sessions/<session_id>.json
 ```
 
 These metadata files are the canonical source for GUIs/external tools.
@@ -337,14 +337,14 @@ These metadata files are the canonical source for GUIs/external tools.
 ### 🟩 Correct use of `--session`
 
 ```sh
-./groqbash --session chat1 "Hello"
-./groqbash --session chat1 "Summarize what I said"
+./bash4llm --session chat1 "Hello"
+./bash4llm --session chat1 "Summarize what I said"
 ```
 
 ### 🟩 Correct use of `--session-window`
 
 ```sh
-./groqbash --session chat1 --session-window 10 "continue"
+./bash4llm --session chat1 --session-window 10 "continue"
 ```
 
 ### 🟧 Fundamental rule
@@ -368,13 +368,13 @@ To have contextual memory **you must always** include `--session <id>`.
 | Code | Meaning |
 |--------|-------------|
 | 0 | Success |
-| `GROQBASHERRTMP` | Generic / temporary error |
-| `GROQBASHERRCURL_FAILED` | Network/curl error |
-| `GROQBASHERRAPI` | HTTP/API error |
-| `GROQBASHERRBAD_MODEL` | Invalid model |
-| `GROQBASHERRNO_PROMPT` | No prompt provided |
-| `GROQBASHERRNOAPIKEY` | Missing API key |
-| `GROQBASHERRINSTALL` | Extras installer error |
+| `BASH4LLMERRTMP` | Generic / temporary error |
+| `BASH4LLMERRCURL_FAILED` | Network/curl error |
+| `BASH4LLMERRAPI` | HTTP/API error |
+| `BASH4LLMERRBAD_MODEL` | Invalid model |
+| `BASH4LLMERRNO_PROMPT` | No prompt provided |
+| `BASH4LLMERRNOAPIKEY` | Missing API key |
+| `BASH4LLMERRINSTALL` | Extras installer error |
 
 ---
 
@@ -383,10 +383,10 @@ To have contextual memory **you must always** include `--session <id>`.
 | Variable | Required | Description |
 |-----------|------------|-------------|
 | `GROQ_API_KEY` | yes for API calls | Provider API key. |
-| `GROQBASH_CONFIG_DIR` | recommended | Configuration directory. |
-| `GROQBASH_MODELS_DIR` | recommended | Models directory. |
-| `GROQBASH_TMPDIR` | yes | Temporary directory. |
-| `GROQBASH_HISTORY_DIR` | recommended | Sessions directory. |
+| `BASH4LLM_CONFIG_DIR` | recommended | Configuration directory. |
+| `BASH4LLM_MODELS_DIR` | recommended | Models directory. |
+| `BASH4LLM_TMPDIR` | yes | Temporary directory. |
+| `BASH4LLM_HISTORY_DIR` | recommended | Sessions directory. |
 | `MODEL` | no | Active model. |
 | `PROVIDER` | no | Active provider. |
 | `ALLOWED_MODELS` | no | Model whitelist. |
@@ -395,7 +395,7 @@ To have contextual memory **you must always** include `--session <id>`.
 
 ## License
 
-GroqBash is distributed under GPL v3.  
+Bash4LLM is distributed under GPL v3.  
 See `LICENSE`.
 
 ---
@@ -404,6 +404,6 @@ See `LICENSE`.
 
 Author: Cristian Evangelisti  
 Email: opensource​@​cevangel.​anonaddy.​me  
-Repository: [https://github.com/kamaludu/groqbash](https://github.com/kamaludu/groqbash)
+Repository: [https://github.com/kamaludu/bash4llm](https://github.com/kamaludu/bash4llm)
 
 ---
