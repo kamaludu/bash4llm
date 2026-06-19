@@ -1,22 +1,22 @@
-[![GroqBash GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
-# GroqBash⁺ GUI   [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
+[![Bash4LLM GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
+# Bash4LLM⁺ GUI   [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
 ---
 ## 🇮🇹 Sezione Italiana
-# Installazione della GroqBash⁺ GUI
+# Installazione della Bash4LLM⁺ GUI
 
-Questa guida descrive l’intero processo per installare e attivare la **GroqBash GUI**, sia tramite Apache (installazione automatica) sia tramite qualsiasi altro server con supporto CGI (installazione manuale).
+Questa guida descrive l’intero processo per installare e attivare la **Bash4LLM GUI**, sia tramite Apache (installazione automatica) sia tramite qualsiasi altro server con supporto CGI (installazione manuale).
 
-La GUI è un extra opzionale di GroqBash e fornisce un’interfaccia web locale con backend CGI sicuro e isolato.
+La GUI è un extra opzionale di Bash4LLM e fornisce un’interfaccia web locale con backend CGI sicuro e isolato.
 
 ---
-## 1. Installazione della UI (extra di GroqBash)
+## 1. Installazione della UI (extra di Bash4LLM)
 ---
 
-La GUI vive nella struttura standard di GroqBash:
+La GUI vive nella struttura standard di Bash4LLM:
 
 ```
-groqbash/
-  groqbash.d/
+bash4llm/
+  bash4llm.d/
     extras/
       ui/
         gui-server.sh
@@ -25,21 +25,21 @@ groqbash/
         static/
 ```
 
-### ✔️ Installazione tramite GroqBash
+### ✔️ Installazione tramite Bash4LLM
 
-Se GroqBash è già installato:
+Se Bash4LLM è già installato:
 
-`groqbash extras install ui`
+`bash4llm extras install ui`
 
 Oppure dal repository:
 
-`./groqbash extras install ui`
+`./bash4llm extras install ui`
 
 Questo comando:
 - posiziona la UI nella directory corretta
 - prepara gli script CGI
 - crea la struttura runtime
-- verifica la disponibilità di groqbash
+- verifica la disponibilità di bash4llm
 
 ---
 ## 2. Attivazione della GUI in modalità CGI
@@ -54,22 +54,22 @@ La GUI può essere attivata in due modi:
 ## 2.1 Installazione automatica su Apache
 ---
 
-Lo script `groqbash-gui-install.sh`:
+Lo script `bash4llm-gui-install.sh`:
 - rileva automaticamente la UI
 - rileva la configurazione di Apache tramite `apachectl -V`
 - trova una directory di configurazione realmente inclusa
-- genera `groqbash-gui.conf`
+- genera `bash4llm-gui.conf`
 - abilita ScriptSock e CGI
 - esegue `configtest`
 - ricarica Apache
 
 ### ✔️ Esecuzione
 
-`extras/ui/groqbash-gui-install.sh`
+`extras/ui/bash4llm-gui-install.sh`
 
 Oppure:
 
-`groqbash gui install`
+`bash4llm gui install`
 
 ### ✔️ Risultato
 
@@ -77,18 +77,18 @@ Lo script mostra un riepilogo simile:
 
 ```
 APP_ROOT: /path/to/project
-APACHE_CONF: /etc/apache2/conf.d/groqbash-gui.conf
+APACHE_CONF: /etc/apache2/conf.d/bash4llm-gui.conf
 PORT: 19970
-URL: http://localhost:19970/groqbash-gui/cgi
+URL: http://localhost:19970/bash4llm-gui/cgi
 ```
 
 Apri il browser e visita l’URL indicato.
 
 ---
 
-## 2.2 Installazione manuale della GroqBash GUI (senza installer)
+## 2.2 Installazione manuale della Bash4LLM GUI (senza installer)
 
-Questa procedura è allineata alla versione aggiornata di §groqbash-gui-install.sh§  
+Questa procedura è allineata alla versione aggiornata di §bash4llm-gui-install.sh§  
 ed è pensata per:
 
 - integrazione in VirtualHost esistenti  
@@ -121,13 +121,13 @@ sudo systemctl restart apache2
 La UI vive qui:
 
 ```
-<APP_ROOT>/groqbash/groqbash.d/extras/ui
+<APP_ROOT>/bash4llm/bash4llm.d/extras/ui
 ```
 
 La CGI principale è:
 
 ```
-<APP_ROOT>/groqbash/groqbash.d/extras/ui/gui-server.sh
+<APP_ROOT>/bash4llm/bash4llm.d/extras/ui/gui-server.sh
 ```
 
 Rendila eseguibile:
@@ -149,19 +149,19 @@ Apache deve poter:
 
 ```sh
 chmod u+x <APP_ROOT>
-chmod u+x <APP_ROOT>/groqbash
-chmod u+x <APP_ROOT>/groqbash/groqbash.d
-chmod u+x <APP_ROOT>/groqbash/groqbash.d/extras
-chmod u+x <APP_ROOT>/groqbash/groqbash.d/extras/ui
+chmod u+x <APP_ROOT>/bash4llm
+chmod u+x <APP_ROOT>/bash4llm/bash4llm.d
+chmod u+x <APP_ROOT>/bash4llm/bash4llm.d/extras
+chmod u+x <APP_ROOT>/bash4llm/bash4llm.d/extras/ui
 
-find <APP_ROOT>/groqbash/groqbash.d/extras/ui -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \;
-find <APP_ROOT>/groqbash/groqbash.d/extras/ui/static -type f -exec chmod 644 {} \;
-chmod 755 <APP_ROOT>/groqbash/groqbash.d/extras/ui/static
+find <APP_ROOT>/bash4llm/bash4llm.d/extras/ui -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \;
+find <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/static -type f -exec chmod 644 {} \;
+chmod 755 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/static
 
 # Permessi runtime e cache
-chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime
-chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime/cgid
-chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
+chmod 700 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/runtime
+chmod 700 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/runtime/cgid
+chmod 700 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/config
 ```
 
 ---
@@ -170,10 +170,10 @@ chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
 
 ```apache
 <VirtualHost *:80>
-    ServerName groqbash.local
+    ServerName bash4llm.local
 
-    ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
-    Alias /groqbash-gui/static /path/to/ui
+    ScriptAlias /bash4llm-gui/cgi /path/to/ui/gui-server.sh
+    Alias /bash4llm-gui/static /path/to/ui
 
     <Directory "/path/to/ui">
         Options +ExecCGI -Indexes
@@ -192,14 +192,14 @@ chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
 
 Sostituisci:
 
-```/path/to/ui``` → ```<APP_ROOT>/groqbash/groqbash.d/extras/ui```
+```/path/to/ui``` → ```<APP_ROOT>/bash4llm/bash4llm.d/extras/ui```
 
 ---
 
 ### 5. Attivare il sito
 
 ```sh
-sudo a2ensite groqbash
+sudo a2ensite bash4llm
 sudo systemctl reload apache2
 ```
 
@@ -208,7 +208,7 @@ sudo systemctl reload apache2
 ### 6. Aprire la GUI
 
 ```
-http://localhost/groqbash-gui/cgi
+http://localhost/bash4llm-gui/cgi
 ```
 
 ---
@@ -233,8 +233,8 @@ http://localhost/groqbash-gui/cgi
 ### 2. Configurazione server generica
 
 ```apache
-ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
-Alias /groqbash-gui/static /path/to/ui
+ScriptAlias /bash4llm-gui/cgi /path/to/ui/gui-server.sh
+Alias /bash4llm-gui/static /path/to/ui
 ```
 
 ### 3. Permessi
@@ -258,18 +258,18 @@ chmod 700 /path/to/ui/runtime/cgid
 ### 6. Apertura GUI
 
 ```
-http://localhost:<PORT>/groqbash-gui/cgi
+http://localhost:<PORT>/bash4llm-gui/cgi
 ```
 
 ---
 ## 3. Aggiornamento della GUI
 ---
 
-`groqbash extras update ui`
+`bash4llm extras update ui`
 
 Poi, se usi Apache:
 
-`extras/ui/groqbash-gui-install.sh`
+`extras/ui/bash4llm-gui-install.sh`
 
 ---
 ## 4. Rimozione della GUI
@@ -277,13 +277,13 @@ Poi, se usi Apache:
 
 ### ✔️ Rimozione UI
 
-`groqbash extras remove ui`
+`bash4llm extras remove ui`
 
 ### ✔️ Rimozione configurazione Apache
 
 Elimina:
 
-`/path/to/apache/conf.d/groqbash-gui.conf`
+`/path/to/apache/conf.d/bash4llm-gui.conf`
 
 Poi:
 
@@ -302,7 +302,7 @@ Poi:
 
 ### ❗ Errore 500
 - Controlla i log Apache
-- Verifica groqbash:
+- Verifica bash4llm:
   - `extras/ui/gui-bootstrap.sh`
 
 ### ❗ Porta occupata
@@ -310,21 +310,21 @@ Lo script lo rileva automaticamente.
 
 ---
 ## 🇬🇧 English Section
-# Installing GroqBash⁺ GUI
+# Installing Bash4LLM⁺ GUI
 
-This guide explains how to install and activate the **GroqBash GUI**, either through Apache (automatic installation) or any CGI-capable server (manual installation).
+This guide explains how to install and activate the **Bash4LLM GUI**, either through Apache (automatic installation) or any CGI-capable server (manual installation).
 
-The GUI is an optional GroqBash extra providing a local web interface with a secure CGI backend.
+The GUI is an optional Bash4LLM extra providing a local web interface with a secure CGI backend.
 
 ---
-## 1. Installing the UI (GroqBash extra)
+## 1. Installing the UI (Bash4LLM extra)
 ---
 
-The GUI lives inside the standard GroqBash structure:
+The GUI lives inside the standard Bash4LLM structure:
 
 ```
-groqbash/
-  groqbash.d/
+bash4llm/
+  bash4llm.d/
     extras/
       ui/
         gui-server.sh
@@ -334,21 +334,21 @@ groqbash/
         runtime/
 ```
 
-### ✔️ Install via GroqBash
+### ✔️ Install via Bash4LLM
 
-If GroqBash is installed:
+If Bash4LLM is installed:
 
-`groqbash extras install ui`
+`bash4llm extras install ui`
 
 Or from the repository:
 
-`./groqbash extras install ui`
+`./bash4llm extras install ui`
 
 This command:
 - places the UI in the correct directory
 - prepares the CGI scripts
 - creates runtime directories
-- verifies groqbash availability
+- verifies bash4llm availability
 
 ---
 ## 2. Activating the GUI in CGI mode
@@ -363,22 +363,22 @@ Two activation methods:
 ## 2.1 Automatic Apache installation
 ---
 
-The script `groqbash-gui-install.sh`:
+The script `bash4llm-gui-install.sh`:
 - auto-detects the UI
 - reads Apache configuration via `apachectl -V`
 - finds an actually included config directory
-- generates `groqbash-gui.conf`
+- generates `bash4llm-gui.conf`
 - enables ScriptSock and CGI
 - runs `configtest`
 - reloads Apache
 
 ### ✔️ Run it
 
-`extras/ui/groqbash-gui-install.sh`
+`extras/ui/bash4llm-gui-install.sh`
 
 Or:
 
-`groqbash gui install`
+`bash4llm gui install`
 
 ### ✔️ Result
 
@@ -386,18 +386,18 @@ You will see something like:
 
 ```
 APP_ROOT: /path/to/project
-APACHE_CONF: /etc/apache2/conf.d/groqbash-gui.conf
+APACHE_CONF: /etc/apache2/conf.d/bash4llm-gui.conf
 PORT: 19970
-URL: http://localhost:19970/groqbash-gui/cgi
+URL: http://localhost:19970/bash4llm-gui/cgi
 ```
 
 Open the URL in your browser.
 
 ---
 
-## 2.2 Manual installation of the GroqBash GUI (without installer)
+## 2.2 Manual installation of the Bash4LLM GUI (without installer)
 
-This procedure matches the updated §groqbash-gui-install.sh§  
+This procedure matches the updated §bash4llm-gui-install.sh§  
 and is intended for:
 
 - integration into existing VirtualHosts  
@@ -430,13 +430,13 @@ sudo systemctl restart apache2
 The UI lives here:
 
 ```
-<APP_ROOT>/groqbash/groqbash.d/extras/ui
+<APP_ROOT>/bash4llm/bash4llm.d/extras/ui
 ```
 
 The main CGI is:
 
 ```
-<APP_ROOT>/groqbash/groqbash.d/extras/ui/gui-server.sh
+<APP_ROOT>/bash4llm/bash4llm.d/extras/ui/gui-server.sh
 ```
 
 Make it executable:
@@ -458,19 +458,19 @@ Apache must be able to:
 
 ```sh
 chmod u+x <APP_ROOT>
-chmod u+x <APP_ROOT>/groqbash
-chmod u+x <APP_ROOT>/groqbash/groqbash.d
-chmod u+x <APP_ROOT>/groqbash/groqbash.d/extras
-chmod u+x <APP_ROOT>/groqbash/groqbash.d/extras/ui
+chmod u+x <APP_ROOT>/bash4llm
+chmod u+x <APP_ROOT>/bash4llm/bash4llm.d
+chmod u+x <APP_ROOT>/bash4llm/bash4llm.d/extras
+chmod u+x <APP_ROOT>/bash4llm/bash4llm.d/extras/ui
 
-find <APP_ROOT>/groqbash/groqbash.d/extras/ui -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \;
-find <APP_ROOT>/groqbash/groqbash.d/extras/ui/static -type f -exec chmod 644 {} \;
-chmod 755 <APP_ROOT>/groqbash/groqbash.d/extras/ui/static
+find <APP_ROOT>/bash4llm/bash4llm.d/extras/ui -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \;
+find <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/static -type f -exec chmod 644 {} \;
+chmod 755 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/static
 
 # Runtime and cache permissions
-chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime
-chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/runtime/cgid
-chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
+chmod 700 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/runtime
+chmod 700 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/runtime/cgid
+chmod 700 <APP_ROOT>/bash4llm/bash4llm.d/extras/ui/config
 ```
 
 ---
@@ -479,10 +479,10 @@ chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
 
 ```apache
 <VirtualHost *:80>
-    ServerName groqbash.local
+    ServerName bash4llm.local
 
-    ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
-    Alias /groqbash-gui/static /path/to/ui
+    ScriptAlias /bash4llm-gui/cgi /path/to/ui/gui-server.sh
+    Alias /bash4llm-gui/static /path/to/ui
 
     <Directory "/path/to/ui">
         Options +ExecCGI -Indexes
@@ -501,14 +501,14 @@ chmod 700 <APP_ROOT>/groqbash/groqbash.d/extras/ui/config
 
 Replace:
 
-```/path/to/ui``` → ```<APP_ROOT>/groqbash/groqbash.d/extras/ui```
+```/path/to/ui``` → ```<APP_ROOT>/bash4llm/bash4llm.d/extras/ui```
 
 ---
 
 ### 5. Enable the site
 
 ```sh
-sudo a2ensite groqbash
+sudo a2ensite bash4llm
 sudo systemctl reload apache2
 ```
 
@@ -517,7 +517,7 @@ sudo systemctl reload apache2
 ### 6. Open the GUI
 
 ```
-http://localhost/groqbash-gui/cgi
+http://localhost/bash4llm-gui/cgi
 ```
 
 ---
@@ -542,8 +542,8 @@ http://localhost/groqbash-gui/cgi
 ### 2. Generic server configuration
 
 ```apache
-ScriptAlias /groqbash-gui/cgi /path/to/ui/gui-server.sh
-Alias /groqbash-gui/static /path/to/ui
+ScriptAlias /bash4llm-gui/cgi /path/to/ui/gui-server.sh
+Alias /bash4llm-gui/static /path/to/ui
 ```
 
 ### 3. Permissions
@@ -567,18 +567,18 @@ chmod 700 /path/to/ui/runtime/cgid
 ### 6. Open GUI
 
 ```
-http://localhost:<PORT>/groqbash-gui/cgi
+http://localhost:<PORT>/bash4llm-gui/cgi
 ```
 
 ---
 ## 3. Updating the GUI
 ---
 
-`groqbash extras update ui`
+`bash4llm extras update ui`
 
 Then, if using Apache:
 
-`extras/ui/groqbash-gui-install.sh`
+`extras/ui/bash4llm-gui-install.sh`
 
 ---
 ## 4. Removing the GUI
@@ -586,13 +586,13 @@ Then, if using Apache:
 
 ### ✔️ Remove UI
 
-`groqbash extras remove ui`
+`bash4llm extras remove ui`
 
 ### ✔️ Remove Apache config
 
 Delete:
 
-`/path/to/apache/conf.d/groqbash-gui.conf`
+`/path/to/apache/conf.d/bash4llm-gui.conf`
 
 Then:
 
@@ -611,7 +611,7 @@ Then:
 
 ### ❗ 500 Internal Server Error
 - Check Apache logs
-- Verify groqbash:
+- Verify bash4llm:
   - `extras/ui/gui-bootstrap.sh`
 
 ### ❗ Port already in use
