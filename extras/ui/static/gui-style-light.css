@@ -153,7 +153,7 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
   main::after { content: ""; display: table; clear: both; }
 }
 
-/* GroqBash⁺ Logo */
+/* Bash4LLM⁺ Logo */
 .glogo {
   font-weight: bold;
   padding: 0 10px;
