@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Minimal, robust installer for GroqBash GUI (Apache CGI)
-# File: extras/ui/groqbash-gui-install.sh
+# Minimal, robust installer for Bash4LLM GUI (Apache CGI)
+# File: extras/ui/bash4llm-gui-install.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 set -euo pipefail
 umask 077
 
-PROJECT_NAME="groqbash-gui"
+PROJECT_NAME="bash4llm-gui"
 CONF_FILENAME="${PROJECT_NAME}.conf"
 DEFAULT_PORT="19970"
-CGI_URL_PATH="/groqbash-gui/cgi"
-STATIC_URL_PATH="/groqbash-gui/static"
+CGI_URL_PATH="/bash4llm-gui/cgi"
+STATIC_URL_PATH="/bash4llm-gui/static"
 
 # runtime
 APP_ROOT=""
@@ -305,11 +305,11 @@ check_permissions_and_dirs() {
   [[ -d "$app_bin/config" ]] && find "$app_bin/config" -maxdepth 1 -type f -exec chmod 600 {} \; 2>/dev/null || true
 }
 
-check_groqbash_bootstrap() {
+check_bash4llm_bootstrap() {
   local bootstrap="$1/gui-bootstrap.sh"
   if [[ ! -f "$bootstrap" ]]; then err "Missing $bootstrap"; return 1; fi
-  if ! { . "$bootstrap"; ensure_groqbash_available; }; then
-    err "ensure_groqbash_available failed"; return 1
+  if ! { . "$bootstrap"; ensure_bash4llm_available; }; then
+    err "ensure_bash4llm_available failed"; return 1
   fi
   return 0
 }
@@ -677,13 +677,13 @@ main() {
   done
 
   # If APP_ROOT not provided, derive it deterministically from the script location:
-  # prefer the repository root that contains groqbash/groqbash.d/extras/ui.
+  # prefer the repository root that contains bash4llm/bash4llm.d/extras/ui.
   if [[ -z "${APP_ROOT:-}" ]]; then
-    # Start from the directory containing this installer script and walk up until we find groqbash/groqbash.d/extras/ui
+    # Start from the directory containing this installer script and walk up until we find bash4llm/bash4llm.d/extras/ui
     script_dir="$(cd "$(dirname -- "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd -P || printf '%s' "$PWD")"
     candidate="$script_dir"
     while [[ "$candidate" != "/" && "$candidate" != "." ]]; do
-      if [[ -f "$candidate/groqbash/groqbash.d/extras/ui/gui-server.sh" ]]; then
+      if [[ -f "$candidate/bash4llm/bash4llm.d/extras/ui/gui-server.sh" ]]; then
         APP_ROOT="$candidate"
         break
       fi
@@ -695,7 +695,7 @@ main() {
     fi
   fi
 
-  APP_BIN="${APP_ROOT}/groqbash/groqbash.d/extras/ui"
+  APP_BIN="${APP_ROOT}/bash4llm/bash4llm.d/extras/ui"
   APP_STATIC="${APP_BIN}/static"
   APP_RUNTIME_DIR="${APP_BIN}/runtime"
   APP_CGI_RUNTIME_DIR="${APP_RUNTIME_DIR}/cgid"
@@ -725,23 +725,23 @@ main() {
   # Run UI adaptation early to confine artifacts and fix shebangs
   # This ensures any wrappers or generated files are created under APP_BIN (UI_ROOT)
   # before the bootstrap is sourced or any global user paths are touched.
-  if [[ -f "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
+  if [[ -f "${APP_BIN}/bash4llm-gui-adapt.sh" ]]; then
     info "Found UI adapt script; ensuring executable and running it (install mode)"
-    chmod 0755 "${APP_BIN}/groqbash-gui-adapt.sh" 2>/dev/null || true
-    if [[ -x "${APP_BIN}/groqbash-gui-adapt.sh" ]]; then
-      INSTALL_MODE=1 "${APP_BIN}/groqbash-gui-adapt.sh" || warn "groqbash-gui-adapt.sh returned non-zero; continuing"
-      info "Delegated groqbash shadow/wrapper/groqbash-path persistence to groqbash-gui-adapt.sh (INSTALL_MODE=1)"
+    chmod 0755 "${APP_BIN}/bash4llm-gui-adapt.sh" 2>/dev/null || true
+    if [[ -x "${APP_BIN}/bash4llm-gui-adapt.sh" ]]; then
+      INSTALL_MODE=1 "${APP_BIN}/bash4llm-gui-adapt.sh" || warn "bash4llm-gui-adapt.sh returned non-zero; continuing"
+      info "Delegated bash4llm shadow/wrapper/bash4llm-path persistence to bash4llm-gui-adapt.sh (INSTALL_MODE=1)"
     else
-      warn "groqbash-gui-adapt.sh present but not executable; skipping"
+      warn "bash4llm-gui-adapt.sh present but not executable; skipping"
     fi
   else
-    info "No UI adapt script found at ${APP_BIN}/groqbash-gui-adapt.sh; skipping adapt step"
+    info "No UI adapt script found at ${APP_BIN}/bash4llm-gui-adapt.sh; skipping adapt step"
   fi
 
   # --- Ensure bootstrap is loaded early so installer can use its helper functions ---
-  if ! check_groqbash_bootstrap "$APP_BIN"; then
-    err "Bootstrap check failed: ensure $APP_BIN/gui-bootstrap.sh exists and groqbash binary is in allowed locations"
-    err "See ensure_groqbash_available in the bootstrap for allowed locations"
+  if ! check_bash4llm_bootstrap "$APP_BIN"; then
+    err "Bootstrap check failed: ensure $APP_BIN/gui-bootstrap.sh exists and bash4llm binary is in allowed locations"
+    err "See ensure_bash4llm_available in the bootstrap for allowed locations"
     exit 1
   fi
 
@@ -787,7 +787,7 @@ main() {
   chmod 700 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
 
   check_permissions_and_dirs "$APP_BIN" || exit 1
-  check_groqbash_bootstrap "$APP_BIN" || exit 1
+  check_bash4llm_bootstrap "$APP_BIN" || exit 1
 
   # Conservative CGI module handling:
   # - Always probe loaded modules via apachectl -M (detect_cgi_mode).
