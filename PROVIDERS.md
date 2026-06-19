@@ -1,9 +1,9 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 # Providers  
 **[🇮🇹 Italiano](#-sezione-italiana) / [🇬🇧 English](#-english-section)**
  
-GroqBash 2.x
+Bash4LLM 2.x
 
 ---
 
@@ -12,19 +12,19 @@ GroqBash 2.x
 
 # Contratto Provider
 
-Questo documento definisce il **contratto ufficiale** per creare o integrare provider esterni compatibili con GroqBash.  
+Questo documento definisce il **contratto ufficiale** per creare o integrare provider esterni compatibili con Bash4LLM.  
 Un *provider* è un modulo Bash che implementa un adattatore alternativo all’API Groq (es. Gemini, HuggingFace, Mistral, ecc.).
 
 I provider vengono caricati in modalità isolata dal percorso di installazione degli extra:
 
-`groqbash.d/extras/providers/nome.sh`
+`bash4llm.d/extras/providers/nome.sh`
 
 
 ---
 
 ## 1. Caricamento e Isolamento (Sandbox)
 
-A tutela della sicurezza del sistema, GroqBash **non** esegue il codice dei provider direttamente nel flusso principale del programma, bensì applica un meccanismo di isolamento:
+A tutela della sicurezza del sistema, Bash4LLM **non** esegue il codice dei provider direttamente nel flusso principale del programma, bensì applica un meccanismo di isolamento:
 
 1. Il file del provider viene analizzato in una **sotto-shell isolata (sandbox)** tramite `load_provider_module`.
 2. Vengono catturate ed esportate nel guscio principale **esclusivamente le definizioni delle funzioni** (tramite `declare -f`).
@@ -48,7 +48,7 @@ Il nome del provider è determinato dal nome del file senza estensione (es. `gem
 
 ## 3. Interfaccia del Provider
 
-Il core di GroqBash interagisce con i provider tramite funzioni dedicate. Per essere considerato valido dal validatore d'interfaccia, un provider **deve implementare obbligatoriamente le due funzioni principali** (non-streaming), mentre le funzioni di streaming e di refresh dei modelli sono considerati moduli opzionali integrativi.
+Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per essere considerato valido dal validatore d'interfaccia, un provider **deve implementare obbligatoriamente le due funzioni principali** (non-streaming), mentre le funzioni di streaming e di refresh dei modelli sono considerati moduli opzionali integrativi.
 
 ---
 
@@ -91,7 +91,7 @@ Il core di GroqBash interagisce con i provider tramite funzioni dedicate. Per es
 **Responsabilità:**
 - Eseguire la richiesta HTTP in modalità streaming a pacchetti (Server-Sent Events).
 - **Stampare direttamente su stdout il testo grezzo dei frammenti (chunk) non appena vengono ricevuti** per garantire l'effetto di digitazione fluida in tempo reale sul terminale.  
-  *(Nota: il core di GroqBash non decodifica l'output dello streaming dei provider esterni; pertanto il provider non deve stampare le buste JSON SSE tipo `data: {...}` a schermo, ma deve decodificarle internamente in tempo reale).*
+  *(Nota: il core di Bash4LLM non decodifica l'output dello streaming dei provider esterni; pertanto il provider non deve stampare le buste JSON SSE tipo `data: {...}` a schermo, ma deve decodificarle internamente in tempo reale).*
 - Accumulare i frammenti ricevuti e scrivere la risposta JSON aggregata e completa in `$RESP` prima del termine della funzione (fondamentale per consentire la persistenza della sessione e della cronologia).
 - Restituire `0` in caso di successo, non-zero in caso di errore di rete.
 
@@ -103,19 +103,19 @@ Il core di GroqBash interagisce con i provider tramite funzioni dedicate. Per es
 - Interrogare l'endpoint di catalogo dei modelli del rispettivo fornitore.
 - Generare la lista dei modelli e salvarla nel file dei modelli configurato per il provider.
 - Per evitare collisioni di scrittura tra diversi provider, ciascun modulo deve ridefinire localmente la variabile `MODELS_FILE` puntando a un file specifico (es. `gemini.txt` anziché il file generico condiviso `models.txt`):
-  `MODELS_FILE="${MODELS_FILE:-${GROQBASH_MODELS_DIR:-}/gemini.txt}"`
-- Scrivere l'URL base del provider all'interno del file restituito da canonical_provider_url_file tramite scrittura atomica, e impostare coerentemente la variabile GROQBASH_PROVIDER_URL.
+  `MODELS_FILE="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/gemini.txt}"`
+- Scrivere l'URL base del provider all'interno del file restituito da canonical_provider_url_file tramite scrittura atomica, e impostare coerentemente la variabile BASH4LLM_PROVIDER_URL.
 - Rispettare i vincoli di sicurezza (umask 077, nessun uso di cartelle condivise globali come /tmp, nessun uso di eval o cd).
 - Restituire 0 in caso di successo.
 
-Nota sulle capacità: Il core di GroqBash rileva automaticamente se un provider
+Nota sulle capacità: Il core di Bash4LLM rileva automaticamente se un provider
 supporta questa funzionalità ispezionando la presenza della funzione tramite
 type "refresh_models_${provider}". Non è richiesto l'uso di variabili di
 abilitazione esterne.
 
 4. Variabili garantite dal CORE
 
-Il CORE di GroqBash rende disponibili e valorizza per il provider le seguenti
+Il CORE di Bash4LLM rende disponibili e valorizza per il provider le seguenti
 variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
 
   - MODEL (modello da utilizzare)
@@ -131,8 +131,8 @@ variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
   - BUILD_MESSAGES_FILE (percorso del file contenente la cronologia dei messaggi
     della sessione corrente)
   - SYSTEM_PROMPT (prompt di sistema se specificato)
-  - GROQBASH_PROVIDER_URL (URL base del provider attualmente attivo)
-  - GROQBASH_API_KEY (chiave di autenticazione generica o ereditata)
+  - BASH4LLM_PROVIDER_URL (URL base del provider attualmente attivo)
+  - BASH4LLM_API_KEY (chiave di autenticazione generica o ereditata)
 
 Il provider non deve in nessun caso modificare o sovrascrivere queste variabili
 nel runtime principale del core.
@@ -145,7 +145,7 @@ seguendo rigorosamente questo ordine di priorità decrescente:
 1.  PROVIDER_API_ENV_<provider> (se definita nell'ambiente, indica la variabile
     d'ambiente personalizzata da leggere).
 2.  La chiave specifica del provider (es. GEMINI_API_KEY o HF_API_KEY).
-3.  La chiave generica globale di fallback GROQBASH_API_KEY.
+3.  La chiave generica globale di fallback BASH4LLM_API_KEY.
 
 In assenza di una chiave valida per gli endpoint che richiedono autenticazione,
 le funzioni del provider devono interrompersi in sicurezza restituendo un codice
@@ -163,7 +163,7 @@ di stato non-zero e registrando un errore formattato in $RESP.
   - Generare output testuale spurio su stdout (ad eccezione dello streaming
     testuale decodificato in tempo reale).
   - Hardcodare URL fissi all'interno delle funzioni di chiamata, ma fare sempre
-    riferimento alla risoluzione di GROQBASH_PROVIDER_URL.
+    riferimento alla risoluzione di BASH4LLM_PROVIDER_URL.
 
 ⚠️ Il provider DEVE:
 
@@ -220,18 +220,18 @@ call_api_example() {
 
 # Provider Contract
 
-This document defines the **official contract** to create or integrate external providers compatible with GroqBash.  
+This document defines the **official contract** to create or integrate external providers compatible with Bash4LLM.  
 A *provider* is a Bash module that implements an alternative adapter to the Groq API (e.g., Gemini, HuggingFace, Mistral, etc.).
 
 Providers are loaded in an isolated mode from the extras installation path:
 
-`groqbash.d/extras/providers/<name>.sh`
+`bash4llm.d/extras/providers/<name>.sh`
 
 ---
 
 ## 1. Loading and Isolation (Sandbox)
 
-To protect system security, GroqBash **does not** execute provider code directly in the main shell. Instead, it applies an isolation mechanism:
+To protect system security, Bash4LLM **does not** execute provider code directly in the main shell. Instead, it applies an isolation mechanism:
 
 1. The provider file is analyzed in an **isolated subshell (sandbox)** via `load_provider_module`.
 2. Only **function definitions are captured and exported** into the main shell (via `declare -f`).
@@ -255,7 +255,7 @@ The provider name is determined by the filename without its extension (e.g., `ge
 
 ## 3. Provider Interface
 
-The GroqBash core interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while streaming and model refreshing functions are treated as optional integrations.
+The Bash4LLM core interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while streaming and model refreshing functions are treated as optional integrations.
 
 ---
 
@@ -298,7 +298,7 @@ The GroqBash core interacts with providers through dedicated functions. To be co
 **Responsibilities:**
 - Execute the HTTP request in streaming chunk mode (Server-Sent Events).
 - **Print the raw text of the chunks directly to stdout as they are received** to ensure a smooth, real-time typing effect on the terminal.  
-  *(Note: the GroqBash core does not decode the streaming output of external providers; therefore, the provider must not print raw SSE JSON lines like `data: {...}` on screen, but must decode them internally in real time).*
+  *(Note: the Bash4LLM core does not decode the streaming output of external providers; therefore, the provider must not print raw SSE JSON lines like `data: {...}` on screen, but must decode them internally in real time).*
 - Accumulate the received chunks and write the complete, aggregated JSON response into `$RESP` before the function terminates (crucial to allow session and history persistence).
 - Return `0` on success, non-zero on network error.
 
@@ -310,18 +310,18 @@ The GroqBash core interacts with providers through dedicated functions. To be co
 - Query the model catalog endpoint of the respective provider.
 - Generate the model list and save it in the provider-specific model file.
 - To avoid write collisions between different providers, each module must locally redefine the `MODELS_FILE` variable pointing to a specific file (e.g., `gemini.txt` instead of the shared `models.txt` file):
-  `MODELS_FILE="${MODELS_FILE:-${GROQBASH_MODELS_DIR:-}/gemini.txt}"`
-- Write the provider's base URL into the file returned by `canonical_provider_url_file` via atomic write, and consistently set the `GROQBASH_PROVIDER_URL` variable.
+  `MODELS_FILE="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/gemini.txt}"`
+- Write the provider's base URL into the file returned by `canonical_provider_url_file` via atomic write, and consistently set the `BASH4LLM_PROVIDER_URL` variable.
 - Respect security constraints (umask 077, no use of global shared directories like `/tmp`, no use of `eval` or `cd`).
 - Return `0` on success.
 
-*Note on capabilities: The GroqBash core automatically detects whether a provider supports this feature by inspecting the presence of the function via `type "refresh_models_${provider}"`. No external enablement variables are required.*
+*Note on capabilities: The Bash4LLM core automatically detects whether a provider supports this feature by inspecting the presence of the function via `type "refresh_models_${provider}"`. No external enablement variables are required.*
 
 ---
 
 ## 4. Variables Guaranteed by the CORE
 
-The GroqBash CORE makes available and populates the following environment and state variables for the provider before invoking its respective functions:
+The Bash4LLM CORE makes available and populates the following environment and state variables for the provider before invoking its respective functions:
 
 - `MODEL` (model to use)
 - `CONTENT` (user's text prompt)
@@ -334,8 +334,8 @@ The GroqBash CORE makes available and populates the following environment and st
 - `CURL_BASE_OPTS` (array containing the default curl options of the program)
 - `BUILD_MESSAGES_FILE` (file path containing the current session's message history)
 - `SYSTEM_PROMPT` (system prompt if specified)
-- `GROQBASH_PROVIDER_URL` (base URL of the currently active provider)
-- `GROQBASH_API_KEY` (generic or inherited authentication key)
+- `BASH4LLM_PROVIDER_URL` (base URL of the currently active provider)
+- `BASH4LLM_API_KEY` (generic or inherited authentication key)
 
 The provider **must under no circumstances modify or overwrite** these variables in the main runtime of the core.
 
@@ -346,7 +346,7 @@ Each provider must determine and extract the authentication key following this s
 
 1. `PROVIDER_API_ENV_<provider>` (if defined in the environment, it indicates the custom environment variable to read).
 2. The provider-specific key (e.g., `GEMINI_API_KEY` or `HF_API_KEY`).
-3. The generic global fallback key `GROQBASH_API_KEY`.
+3. The generic global fallback key `BASH4LLM_API_KEY`.
 
 In the absence of a valid key for endpoints requiring authentication, the provider's functions must abort safely, returning a non-zero exit status and recording a formatted error in `$RESP`.
 
@@ -360,7 +360,7 @@ In the absence of a valid key for endpoints requiring authentication, the provid
 - Use the global `/tmp` directory or unmanaged paths (all temporary files must reside within `RUN_TMPDIR`).
 - Use the `eval` command.
 - Generate spurious text output on stdout (except for real-time decoded streaming text).
-- Hardcode fixed URLs within calling functions, but always refer to the resolution of `GROQBASH_PROVIDER_URL`.
+- Hardcode fixed URLs within calling functions, but always refer to the resolution of `BASH4LLM_PROVIDER_URL`.
 
 ⚠️ **The provider MUST:**
 - Generate valid JSON files free of syntax errors.
