@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Core Notes
+# Bash4LLM — Core Notes
 # File: extras/docs/core-notes.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/<your-repo>/groqbash
+# Source: https://github.com/<your-repo>/bash4llm
 # =============================================================================
-# Purpose: Design notes and operational guidance for groqbash core.
-# This file is documentation only. It is safe to source for tests (GROQBASH_SOURCE_ONLY)
+# Purpose: Design notes and operational guidance for bash4llm core.
+# This file is documentation only. It is safe to source for tests (BASH4LLM_SOURCE_ONLY)
 # and must not change runtime behavior when sourced.
 
 : <<'DOC'
-groqbash — Core Notes
+bash4llm — Core Notes
 =================================
 
 Overview
 --------
-groqbash is a Bash-first orchestrator for LLM provider calls with a Groq-first
+bash4llm is a Bash-first orchestrator for LLM provider calls with a Groq-first
 embedded provider. The core provides secure primitives (atomic writes, locks,
 base64 staging), session and history management, provider discovery and a
 provider contract (buildpayload_*, call_api_*). Provider modules live under
@@ -24,7 +24,7 @@ runtime extras and are loaded on demand.
 
 Design goals
 - Minimal trusted core; provider extensions as runtime extras.
-- Strong filesystem invariants: all runtime files under GROQBASH_DIR.
+- Strong filesystem invariants: all runtime files under BASH4LLM_DIR.
 - Atomicity and locking for all persistent writes.
 - No eval, no execution of model-generated content.
 - DRY_RUN and centralized network policy to prevent accidental network calls.
@@ -41,7 +41,7 @@ Key primitives (documented)
 - resolve_script_dir()
   Determine canonical script directory ($SCRIPTDIR); prints path to stdout.
 - canonical_config_dir()
-  Normalize and return the canonical config directory path ($GROQBASH_CONFIG_DIR).
+  Normalize and return the canonical config directory path ($BASH4LLM_CONFIG_DIR).
 - canonical_provider_file()
   Return the path to the provider persistence file under the canonical config directory.
 - canonical_model_file(provider)
@@ -50,15 +50,15 @@ Key primitives (documented)
   Return the path to the active provider API URL file under config.
 - ensure_api_key_for_provider(provider)
   Validate API key presence in environment. If missing in non-interactive TTY, fail with
-  GROQBASHERRNOAPIKEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
+  BASH4LLMERRNOAPIKEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
   export to env, and show permanent save instructions.
 - enforce_network_policy()
   Central policy check: returns 0 if network allowed; non-zero if blocked.
-  Respects DRY_RUN, GROQBASH_SKIP_NETWORK, GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET, QUIET.
+  Respects DRY_RUN, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET.
 - log_prefix()
-  Return unified log header prefix: groqbash: <SCRIPT_NAME>:.
+  Return unified log header prefix: bash4llm: <SCRIPT_NAME>:.
 - log_info(code, msg), log_warn(code, msg), log_error(code, msg)
-  Structured logging helpers writing to stderr (if DEBUG active) and appending to GROQBASH_LOG.
+  Structured logging helpers writing to stderr (if DEBUG active) and appending to BASH4LLM_LOG.
 - dbg(...)
   Print fast diagnostic messages to stderr when DEBUG is enabled.
 - ensure_config_dir()
@@ -66,8 +66,8 @@ Key primitives (documented)
 - write_provider_url_if_missing(provider, url)
   Atomically and transactionally write provider API URL to the canonical URL file; set permissions 600.
 - resolve_provider_url(provider)
-  Determine active API URL: prioritize ENV (GROQBASH_API_URL/GROQBASH_PROVIDER_URL), then provider-url file,
-  falling back to Groq native default. Exports GROQBASH_PROVIDER_URL.
+  Determine active API URL: prioritize ENV (BASH4LLM_API_URL/BASH4LLM_PROVIDER_URL), then provider-url file,
+  falling back to Groq native default. Exports BASH4LLM_PROVIDER_URL.
 - provider_api_env_var_name(provider)
   Normalize provider name to uppercase, replace non-alphanumeric chars with "_" and append "_API_KEY".
 - is_valid_json_string(string)
@@ -94,7 +94,7 @@ Key primitives (documented)
   Resilient extraction of assistant text from RESP JSON. Supports OpenAI delta/message content, plain text,
   custom outputs, and recursive fallback; writes malformed/diagnostic indicators to ERRF.
 - ensure_run_tmpdir([--print])
-  Create per-run isolated RUN_TMPDIR (mode 700) under GROQBASH_TMPDIR; export PAYLOAD/RESP/ERRF (mode 600);
+  Create per-run isolated RUN_TMPDIR (mode 700) under BASH4LLM_TMPDIR; export PAYLOAD/RESP/ERRF (mode 600);
   install EXIT/INT/TERM cleanup trap.
 - cleanup_tmp()
   Recursively remove RUN_TMPDIR directory when safe.
@@ -121,11 +121,11 @@ Key primitives (documented)
 
 Blocks of Code / Flows
 - PRECORE_BOOT_SETUP_SHELL: Set restrictive options (`set -euo pipefail`).
-- PRECORE_BOOT_SOURCE_ONLY_CHECK: If GROQBASH_SOURCE_ONLY=1, exit with status 0 immediately after source.
+- PRECORE_BOOT_SOURCE_ONLY_CHECK: If BASH4LLM_SOURCE_ONLY=1, exit with status 0 immediately after source.
 - PRECORE_BOOT_VERIFY_CMDS: Validate the presence of mandatory utilities (bash, jq, curl, mktemp, stat, flock, etc.).
-- PRECORE_BOOT_DIR_RESOLUTION: Resolve $GROQBASH_DIR dynamically.
-- PRECORE_BOOT_FALLBACK_PROVIDERS: Export fallback paths for $GROQBASH_EXTRAS_DIR and $PROVIDERS_DIR.
-- PRECORE_BOOT_DIR_INVARIANTS: Ensure safe directory boundaries (e.g., $GROQBASH_TMPDIR must reside inside $GROQBASH_DIR, not system /tmp).
+- PRECORE_BOOT_DIR_RESOLUTION: Resolve $BASH4LLM_DIR dynamically.
+- PRECORE_BOOT_FALLBACK_PROVIDERS: Export fallback paths for $BASH4LLM_EXTRAS_DIR and $PROVIDERS_DIR.
+- PRECORE_BOOT_DIR_INVARIANTS: Ensure safe directory boundaries (e.g., $BASH4LLM_TMPDIR must reside inside $BASH4LLM_DIR, not system /tmp).
 - PRECORE_BOOT_ENSURE_CONFIG_DIR: Ensure active configuration directory is valid.
 - PRECORE_BOOT_FAILFAST_CONFIG_DIR: Fail-fast if canonical configuration path resolution returns empty.
 - PRECORE_BOOT_NORMALIZE_DEBUG: Normalize DEBUG environment flags (defaulting to 0).
@@ -142,7 +142,7 @@ manifest staging, session NDJSON handling, and session cache.
 
 Key primitives (documented)
 - rotate_history([timeout])
-  Rotate history under HISTORY_LOCK using GROQBASH_HISTORY_MAX_FILES, MAX_BYTES, and KEEP_DAYS.
+  Rotate history under HISTORY_LOCK using BASH4LLM_HISTORY_MAX_FILES, MAX_BYTES, and KEEP_DAYS.
 - save_to_history(text)
   Atomically append/save history entry, update last_history.json via ui_state_write, call rotate_history.
 - manifest_create(manifest_path, [timeout])
@@ -158,7 +158,7 @@ Key primitives (documented)
 - _is_world_writable(path)
   Check if a path is group/world writable (vulnerable to external writing).
 - make_tmpdir()
-  Create unique directory inside $GROQBASH_TMPDIR under lock with permissions 700.
+  Create unique directory inside $BASH4LLM_TMPDIR under lock with permissions 700.
 - _tmpf(type, base_dir, [prefix])
   Strict temp file (600) or directory (700) generator verifying path containment inside allowed tmp boundaries.
 - session_validate_id(sid)
@@ -190,7 +190,7 @@ Key primitives (documented)
 Blocks of Code / Flows
 - block_mkdir_session_cache: Allocate and configure $SESSION_CACHE_DIR with permissions 700.
 - block_ensure_config_dir: Ensure configuration directory is present and accessible.
-- block_ensure_run_tmpdir: Invoke ensure_run_tmpdir if GROQBASH_SOURCE_ONLY=0.
+- block_ensure_run_tmpdir: Invoke ensure_run_tmpdir if BASH4LLM_SOURCE_ONLY=0.
 - block_normalize_bool_env_call: Normalize environment flags.
 - block_last_check_lines_default: Default LAST_CHECK_LINES to 50 if unset.
 
@@ -240,10 +240,10 @@ Key flows and functions (documented)
 - resolve_model()
   Determine FINAL_MODEL by resolving priorities (highest to lowest):
     1) CLI -m/--model
-    2) Persisted default model file: groqbash.d/config/model.<provider>
+    2) Persisted default model file: bash4llm.d/config/model.<provider>
     3) Provider auto-select (auto_select_model_<provider>())
     4) First supported model in local MODELS_FILE
-    5) MODEL variable in groqbash.d/config
+    5) MODEL variable in bash4llm.d/config
     6) First supported entry in global ALLOWED_MODELS
   Returns non-zero on total resolution failure.
 - build_payload_from_vars()
@@ -253,7 +253,7 @@ Key flows and functions (documented)
 - extract_api_error()
   Inspect RESP JSON to parse formal error messages or extract plain error fragments.
 - detect_empty_edge_case()
-  Check RESP for empty text completions with status 200 (stop signal, zero tokens generated). Set GROQBASH_EDGE_EMPTY=1
+  Check RESP for empty text completions with status 200 (stop signal, zero tokens generated). Set BASH4LLM_EDGE_EMPTY=1
   and export request diagnostics.
 - finalize_and_output(mode, text)
   Format output (json/pretty/raw/text). Automatically save results via save_to_history if content exceeds character
@@ -278,7 +278,7 @@ Key flows and functions (documented)
 - validate_model_core(model)
   Central validation routine: normalize names, verify against local files, and check is_supported_model.
 - load_local_config()
-  Parse the user configuration file (groqbash.d/config/config) and populate operational variables.
+  Parse the user configuration file (bash4llm.d/config/config) and populate operational variables.
 - load_whitelist()
   Load allowed models into the global whitelist string $ALLOWED_MODELS.
 - is_tty_out()
@@ -326,7 +326,7 @@ Key points
 - session_cache_key(sid, params) => sid|sha256(params_string).
 - Cache file format: first line expiry_epoch; subsequent lines payload JSON.
 - session_cache_get removes expired files and returns 0 on hit; session_cache_set writes atomically.
-- Cache stored under ${GROQBASH_CONFIG_DIR%/}/session_cache with perms 600.
+- Cache stored under ${BASH4LLM_CONFIG_DIR%/}/session_cache with perms 600.
 - TTL enforced by expiry_epoch; invalidation via session_cache_invalidate() when session changes.
 
 -------------------------------------------------------------------------------
@@ -337,7 +337,7 @@ Persist conversation history and multimodal manifests safely.
 
 Key points
 - save_to_history() writes entries atomically and updates last_history.json via ui_state_write.
-- rotate_history() enforces GROQBASH_HISTORY_MAX_FILES, GROQBASH_HISTORY_MAX_BYTES, GROQBASH_HISTORY_KEEP_DAYS under HISTORY_LOCK.
+- rotate_history() enforces BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES, BASH4LLM_HISTORY_KEEP_DAYS under HISTORY_LOCK.
 - manifest_create/add_part/read:
   - manifest JSON contains "parts" array; each part staged as .b64 via stage_b64.
   - manifest.b64 is the base64-encoded manifest; both manifest and manifest.b64 updated under lock.
@@ -351,11 +351,11 @@ Centralize decision to allow or block network calls.
 
 Key points
 - enforce_network_policy() is the single gate for network access.
-- Inputs: DRY_RUN, GROQBASH_SKIP_NETWORK, GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET, QUIET, DEBUG.
+- Inputs: DRY_RUN, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET, DEBUG.
 - Behavior:
   - If DRY_RUN => block real network calls (simulate).
-  - If GROQBASH_SKIP_NETWORK=1 => block network.
-  - If QUIET and GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET=1 => block network.
+  - If BASH4LLM_SKIP_NETWORK=1 => block network.
+  - If QUIET and BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET=1 => block network.
   - When blocked, call_api_* must return non-zero and produce RESP diagnostic.
 - All provider call sites must call enforce_network_policy() before curl.
 
@@ -383,7 +383,7 @@ Key points
   - 0: text extracted
   - 1: no text
   - 2: diagnostic-only (malformed JSON)
-- detect_empty_edge_case() sets GROQBASH_EDGE_EMPTY and related GROQBASH_EDGE_* variables.
+- detect_empty_edge_case() sets BASH4LLM_EDGE_EMPTY and related BASH4LLM_EDGE_* variables.
 - perform_request_once() uses these signals to decide retry vs fail and logs a single structured diagnostic entry.
 
 -------------------------------------------------------------------------------
@@ -393,7 +393,7 @@ Purpose
 Expose provider capabilities and last API call state for UI/automation.
 
 Key points
-- ui_state_write(relpath, json) writes under $GROQBASH_CONFIG_DIR/ui_state with perms 600.
+- ui_state_write(relpath, json) writes under $BASH4LLM_CONFIG_DIR/ui_state with perms 600.
 - provider_capabilities.json written by load_provider_module() describing provider features.
 - last_api.json written as fallback by CORE_SETUP when RESP exists; used by UI and automation.
 - save_to_history() and finalize_and_output() update ui_state best-effort.
@@ -402,31 +402,31 @@ Key points
 CANONICAL VARIABLES (reference)
 -------------------------------------------------------------------------------
 Important names (use exact names):
-GROQBASH_DIR, GROQBASH_EXTRAS_DIR, PROVIDERS_DIR, GROQBASH_CONFIG_DIR,
-MODELS_FILE, MODELS_LOCK, PROVIDER_FILE, RUN_TMPDIR, GROQBASH_TMP_PAYLOAD,
+BASH4LLM_DIR, BASH4LLM_EXTRAS_DIR, PROVIDERS_DIR, BASH4LLM_CONFIG_DIR,
+MODELS_FILE, MODELS_LOCK, PROVIDER_FILE, RUN_TMPDIR, BASH4LLM_TMP_PAYLOAD,
 PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG, QUIET, SESSION_ID,
 SESSION_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
-GROQBASH_TMPDIR, GROQBASH_HISTORY_DIR, GROQBASH_LOCK_TIMEOUT_*,
-GROQBASH_ROTATE_HISTORY, GROQBASH_HISTORY_MAX_FILES, GROQBASH_HISTORY_MAX_BYTES,
-GROQBASH_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS, CURL_BASE_OPTS,
+BASH4LLM_TMPDIR, BASH4LLM_HISTORY_DIR, BASH4LLM_LOCK_TIMEOUT_*,
+BASH4LLM_ROTATE_HISTORY, BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES,
+BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS, CURL_BASE_OPTS,
 B64_WRAP_OPT, B64_DECODE_OPT, GROQ_API_KEY, PROVIDER_API_ENV_groq,
 SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE, SCRIPTDIR, CANONICAL_EXTRAS_DIR,
-LEGACY_EXTRAS_DIR, GROQBASH_MODELS_DIR, GROQBASH_TEMPLATES_DIR, SESSION_DIR,
-HISTORY_LOCK, TMP_LOCK, GROQBASH_LOCK_TIMEOUT_TMP, GROQBASH_LOCK_TIMEOUT_MODELS,
-GROQBASH_LOCK_TIMEOUT_HISTORY, LAST_CHECK_LINES, BOOTSTRAP_ONLY, SE_ENGINE_PATH,
+LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR, BASH4LLM_TEMPLATES_DIR, SESSION_DIR,
+HISTORY_LOCK, TMP_LOCK, BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS,
+BASH4LLM_LOCK_TIMEOUT_HISTORY, LAST_CHECK_LINES, BOOTSTRAP_ONLY, SE_ENGINE_PATH,
 SE_AVAILABLE, FINAL_MODEL, CONTENT, JSON_INPUT, BATCH_FILE, CHAT_MODE,
 SET_DEFAULT_MODEL, REFRESH_MODELS, LIST_MODELS, OUT_PATH, SYSTEM_PROMPT,
 MAX_TOKENS, MODEL, AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER,
 TURE (temperature alias), TEMPERATURE (recommended alias).
 
 Error Code Constants & Direct Alias Mappings:
-- GROQBASH_ERR_NO_API_KEY (10) / GROQBASHERRNOAPIKEY
-- GROQBASH_ERR_BAD_MODEL (11) / GROQBASHERRBAD_MODEL
-- GROQBASH_ERR_CURL_FAILED (12) / GROQBASHERRCURL_FAILED
-- GROQBASH_ERR_INVALID_JSON (13) / GROQBASHERRINVALID_JSON
-- GROQBASH_ERR_NO_PROMPT (14) / GROQBASHERRNO_PROMPT
-- GROQBASH_ERR_TMP (15) / GROQBASHERRTMP
-- GROQBASH_ERR_API (16) / GROQBASHERRAPI
+- BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERRNOAPIKEY
+- BASH4LLM_ERR_BAD_MODEL (11) / BASH4LLMERRBAD_MODEL
+- BASH4LLM_ERR_CURL_FAILED (12) / BASH4LLMERRCURL_FAILED
+- BASH4LLM_ERR_INVALID_JSON (13) / BASH4LLMERRINVALID_JSON
+- BASH4LLM_ERR_NO_PROMPT (14) / BASH4LLMERRNO_PROMPT
+- BASH4LLM_ERR_TMP (15) / BASH4LLMERRTMP
+- BASH4LLM_ERR_API (16) / BASH4LLMERRAPI
 
 Notes
 - TURE is retained for backward compatibility; document TEMPERATURE as alias in user-facing docs.
@@ -435,26 +435,26 @@ Notes
 -------------------------------------------------------------------------------
 OPERATIONAL TIPS (concise)
 -------------------------------------------------------------------------------
-- To add a provider: install groqbash.d/extras/providers/<prov>.sh implementing buildpayload_<prov> and call_api_<prov>.
-- To refresh models: groqbash --refresh-models (dispatches to refresh_models_<prov>).
-- To debug model selection: check groqbash.d/config/model.<provider>, groqbash.d/models/models.txt, and MODEL env.
+- To add a provider: install bash4llm.d/extras/providers/<prov>.sh implementing buildpayload_<prov> and call_api_<prov>.
+- To refresh models: bash4llm --refresh-models (dispatches to refresh_models_<prov>).
+- To debug model selection: check bash4llm.d/config/model.<provider>, bash4llm.d/models/models.txt, and MODEL env.
 - Preflight checklist before release: verify perms (700/600), ensure _tmpf rejects /tmp, run static checks (bash -n) on provider modules, test enforce_network_policy with DRY_RUN.
 
 -------------------------------------------------------------------------------
 EXAMPLES (short)
 -------------------------------------------------------------------------------
 - Single prompt:
-  groqbash "Summarize this text"
+  bash4llm "Summarize this text"
 - Refresh models (embedded groq):
-  groqbash --refresh-models
+  bash4llm --refresh-models
 - Start session and append:
-  groqbash --session myid --append "User message"
+  bash4llm --session myid --append "User message"
 
 -------------------------------------------------------------------------------
 CHANGE NOTES (summary)
 -------------------------------------------------------------------------------
 This document is the authoritative core notes aligned to:
-- groqbash_lossless_logic_outline.txt
+- bash4llm_lossless_logic_outline.txt
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 -------------------------------------------------------------------------------
