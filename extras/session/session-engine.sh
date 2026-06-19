@@ -1,47 +1,47 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Optional Session Engine for GroqBash
+# Optional Session Engine for Bash4LLM
 # File: session-engine.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 # Contract: exposes session_engine_enabled, session_engine_build_window,
 #           session_engine_append, session_engine_snapshot
-# Safety: uses only RUN_TMPDIR and GROQBASH_HISTORY_DIR; uses lock_exec/atomic_write;
+# Safety: uses only RUN_TMPDIR and BASH4LLM_HISTORY_DIR; uses lock_exec/atomic_write;
 #         on any failure returns non-zero and leaves original files untouched.
 # Behavior: Option A for --session-window: explicit N -> last N messages across segments,
 #           do not apply target_bytes trimming in that case.
 #
-# NOTE (contractual): this engine requires a valid RUN_TMPDIR (or GROQBASH_TMPDIR)
+# NOTE (contractual): this engine requires a valid RUN_TMPDIR (or BASH4LLM_TMPDIR)
 # to create temporary files. If RUN_TMPDIR is unset or not writable the engine
 # will return non-zero and the core must fallback to legacy session handling.
 # =============================================================================
 
 # --- Defaults (can be overridden via env) ---
-: "${GROQBASH_SESSION_ENGINE:=on}"
-: "${GROQBASH_SESSION_SEGMENT_MAX_BYTES:=1048576}"
-: "${GROQBASH_SESSION_SEGMENT_MAX_FILES:=100}"
-: "${GROQBASH_SESSION_COMPRESSION_ENABLED:=0}"
-: "${GROQBASH_SESSION_COMPRESSION_CMD:=gzip}"
-: "${GROQBASH_SESSION_SUMMARY_ENABLED:=0}"
-: "${GROQBASH_SESSION_SUMMARY_THRESHOLD_MESSAGES:=500}"
-: "${GROQBASH_SESSION_SUMMARY_MAX_DEPTH:=3}"
-: "${GROQBASH_SESSION_TARGET_BYTES:=32768}"
-: "${GROQBASH_SESSION_MIN_MESSAGES:=3}"
-: "${GROQBASH_SESSION_MAX_MESSAGES:=200}"
-: "${GROQBASH_SESSION_DEDUP_ENABLED:=1}"
-: "${GROQBASH_SESSION_MIN_CONTENT_BYTES:=8}"
-: "${GROQBASH_SESSION_DEDUP_WINDOW:=20}"
+: "${BASH4LLM_SESSION_ENGINE:=on}"
+: "${BASH4LLM_SESSION_SEGMENT_MAX_BYTES:=1048576}"
+: "${BASH4LLM_SESSION_SEGMENT_MAX_FILES:=100}"
+: "${BASH4LLM_SESSION_COMPRESSION_ENABLED:=0}"
+: "${BASH4LLM_SESSION_COMPRESSION_CMD:=gzip}"
+: "${BASH4LLM_SESSION_SUMMARY_ENABLED:=0}"
+: "${BASH4LLM_SESSION_SUMMARY_THRESHOLD_MESSAGES:=500}"
+: "${BASH4LLM_SESSION_SUMMARY_MAX_DEPTH:=3}"
+: "${BASH4LLM_SESSION_TARGET_BYTES:=32768}"
+: "${BASH4LLM_SESSION_MIN_MESSAGES:=3}"
+: "${BASH4LLM_SESSION_MAX_MESSAGES:=200}"
+: "${BASH4LLM_SESSION_DEDUP_ENABLED:=1}"
+: "${BASH4LLM_SESSION_MIN_CONTENT_BYTES:=8}"
+: "${BASH4LLM_SESSION_DEDUP_WINDOW:=20}"
 : "${SESSION_CACHE_ENABLED:=1}"
 : "${SESSION_CACHE_TTL_SEC:=30}"
 
 # Ensure required globals exist (provided by core)
-: "${GROQBASH_HISTORY_DIR:?}"
-: "${RUN_TMPDIR:=${GROQBASH_TMPDIR:-}}"
+: "${BASH4LLM_HISTORY_DIR:?}"
+: "${RUN_TMPDIR:=${BASH4LLM_TMPDIR:-}}"
 
-SE_DIR="${GROQBASH_EXTRAS_DIR%/}/session"
-SE_SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
+SE_DIR="${BASH4LLM_EXTRAS_DIR%/}/session"
+SE_SESSION_DIR="${BASH4LLM_HISTORY_DIR%/}/sessions"
 
 # In-process cache (non-persistent)
 declare -A SE_CACHE_MTIME    # file mtime at cache creation (for invalidation)
@@ -64,7 +64,7 @@ _se_log() {
 
 # safe tmp file in RUN_TMPDIR (creates file and returns path)
 _se_tmpf() {
-  local base="${RUN_TMPDIR:-$GROQBASH_TMPDIR}"
+  local base="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}"
   [ -n "$base" ] || return 1
   mkdir -p "$base" 2>/dev/null || return 1
   if command -v mktemp >/dev/null 2>&1; then
@@ -114,7 +114,7 @@ _se_compute_weight() {
 
 # dedupe check in last N lines (returns 0 if duplicate found)
 _se_dedupe_check() {
-  local session_file="$1" role="$2" content="$3" window="${4:-$GROQBASH_SESSION_DEDUP_WINDOW}"
+  local session_file="$1" role="$2" content="$3" window="${4:-$BASH4LLM_SESSION_DEDUP_WINDOW}"
   [ -f "$session_file" ] || return 1
 
   local tmp
@@ -135,15 +135,15 @@ _se_dedupe_check() {
 # compress segment if enabled and tool exists (non-destructive)
 _se_compress_segment() {
   local seg="$1"
-  if [ "${GROQBASH_SESSION_COMPRESSION_ENABLED:-0}" -ne 1 ]; then return 0; fi
+  if [ "${BASH4LLM_SESSION_COMPRESSION_ENABLED:-0}" -ne 1 ]; then return 0; fi
   if [ ! -f "$seg" ]; then return 0; fi
-  if ! command -v "${GROQBASH_SESSION_COMPRESSION_CMD}" >/dev/null 2>&1; then
-    _se_log warn "compression cmd not found: ${GROQBASH_SESSION_COMPRESSION_CMD}; skipping compression"
+  if ! command -v "${BASH4LLM_SESSION_COMPRESSION_CMD}" >/dev/null 2>&1; then
+    _se_log warn "compression cmd not found: ${BASH4LLM_SESSION_COMPRESSION_CMD}; skipping compression"
     return 0
   fi
   local tmpc
   tmpc="$(_se_tmpf).gz" || return 1
-  if "${GROQBASH_SESSION_COMPRESSION_CMD}" -c "$seg" > "$tmpc" 2>/dev/null; then
+  if "${BASH4LLM_SESSION_COMPRESSION_CMD}" -c "$seg" > "$tmpc" 2>/dev/null; then
     if mv -f "$tmpc" "${seg}.gz" 2>/dev/null; then
       chmod 600 "${seg}.gz" 2>/dev/null || true
       return 0
@@ -161,7 +161,7 @@ _se_compress_segment() {
 # NOTE: next index computation is performed INSIDE the lock to avoid races.
 _se_segment_rotate_if_needed() {
   local session_file="$1"
-  local max_bytes="${GROQBASH_SESSION_SEGMENT_MAX_BYTES:-1048576}"
+  local max_bytes="${BASH4LLM_SESSION_SEGMENT_MAX_BYTES:-1048576}"
   [ -f "$session_file" ] || return 0
   local sz
   sz="$(_se_file_size "$session_file")"
@@ -205,9 +205,9 @@ _se_segment_rotate_if_needed() {
   local cnt
   cnt="$( (ls -1 "${SE_SESSION_DIR%/}/$(basename "$session_file" .ndjson)."*.ndjson 2>/dev/null || true) | wc -l | tr -d ' ' )"
   if [ -z "$cnt" ]; then cnt=0; fi
-  if [ "$cnt" -gt "${GROQBASH_SESSION_SEGMENT_MAX_FILES:-100}" ]; then
+  if [ "$cnt" -gt "${BASH4LLM_SESSION_SEGMENT_MAX_FILES:-100}" ]; then
     local to_compress
-    to_compress="$(ls -1 "${SE_SESSION_DIR%/}/$(basename "$session_file" .ndjson)."*.ndjson 2>/dev/null | sort | head -n $((cnt - GROQBASH_SESSION_SEGMENT_MAX_FILES)) )"
+    to_compress="$(ls -1 "${SE_SESSION_DIR%/}/$(basename "$session_file" .ndjson)."*.ndjson 2>/dev/null | sort | head -n $((cnt - BASH4LLM_SESSION_SEGMENT_MAX_FILES)) )"
     for s in $to_compress; do
       _se_compress_segment "$s" || _se_log warn "failed to compress $s"
     done
@@ -229,11 +229,11 @@ _se_invalidate_cache_for_sid() {
 
 # --- Public API: session_engine_enabled
 session_engine_enabled() {
-  if [ "${GROQBASH_SESSION_ENGINE:-on}" = "off" ]; then return 1; fi
+  if [ "${BASH4LLM_SESSION_ENGINE:-on}" = "off" ]; then return 1; fi
   if [ ! -d "${SE_DIR}" ]; then return 1; fi
   # require RUN_TMPDIR to be set and writable
-  if [ -z "${RUN_TMPDIR:-}" ] && [ -z "${GROQBASH_TMPDIR:-}" ]; then
-    _se_log warn "session engine disabled: RUN_TMPDIR/GROQBASH_TMPDIR not set"
+  if [ -z "${RUN_TMPDIR:-}" ] && [ -z "${BASH4LLM_TMPDIR:-}" ]; then
+    _se_log warn "session engine disabled: RUN_TMPDIR/BASH4LLM_TMPDIR not set"
     return 1
   fi
   return 0
@@ -278,8 +278,8 @@ session_engine_append() {
 
   # 2) Dedup/noise detection
   local mark_ignored=0
-  if [ "${GROQBASH_SESSION_DEDUP_ENABLED:-1}" -eq 1 ]; then
-    if _se_dedupe_check "$session_file" "$role" "$content" "${GROQBASH_SESSION_DEDUP_WINDOW:-20}"; then
+  if [ "${BASH4LLM_SESSION_DEDUP_ENABLED:-1}" -eq 1 ]; then
+    if _se_dedupe_check "$session_file" "$role" "$content" "${BASH4LLM_SESSION_DEDUP_WINDOW:-20}"; then
       mark_ignored=1
     fi
   fi
@@ -310,7 +310,7 @@ session_engine_append() {
   local message_id
   message_id="$(printf '%s' "$meta_json" | jq -r '.id // empty' 2>/dev/null || true)"
   if [ -n "$message_id" ]; then
-    marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/session-msg-${message_id}.lockdir"
+    marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/session-msg-${message_id}.lockdir"
     if mkdir "$marker_dir" 2>/dev/null; then
       printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
       printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
@@ -321,7 +321,7 @@ session_engine_append() {
       return 0
     fi
   else
-    marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-$$-${RANDOM}.lockdir"
+    marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/run-$$-${RANDOM}.lockdir"
     mkdir -p "$marker_dir" 2>/dev/null || true
     printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
     printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
@@ -387,7 +387,7 @@ session_engine_build_window() {
 
   # Compute params_hash and use it as cache key (sid|params_hash)
   local params_hash
-  params_hash="$(printf '%s|%s|%s' "$N" "$target_bytes" "${GROQBASH_SESSION_TARGET_BYTES:-}" | (command -v sha256sum >/dev/null 2>&1 && sha256sum | awk '{print $1}' || cat) 2>/dev/null || true)"
+  params_hash="$(printf '%s|%s|%s' "$N" "$target_bytes" "${BASH4LLM_SESSION_TARGET_BYTES:-}" | (command -v sha256sum >/dev/null 2>&1 && sha256sum | awk '{print $1}' || cat) 2>/dev/null || true)"
   local cache_key="${sid}|${params_hash}"
 
   # Use cache if available, fresh and TTL not expired
@@ -473,9 +473,9 @@ session_engine_build_window() {
   fi
 
   # Otherwise: use target_bytes / min/max messages logic (existing advanced behavior)
-  local target="${target_bytes:-${GROQBASH_SESSION_TARGET_BYTES:-32768}}"
-  local min_msgs="${GROQBASH_SESSION_MIN_MESSAGES:-3}"
-  local max_msgs="${GROQBASH_SESSION_MAX_MESSAGES:-200}"
+  local target="${target_bytes:-${BASH4LLM_SESSION_TARGET_BYTES:-32768}}"
+  local min_msgs="${BASH4LLM_SESSION_MIN_MESSAGES:-3}"
+  local max_msgs="${BASH4LLM_SESSION_MAX_MESSAGES:-200}"
   local total_bytes=0
   local msg_count=0
   local msgs_tmp
