@@ -1,14 +1,14 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
 ## Session Engine [🇮🇹](#-sezione-italiana)   [🇬🇧](#-english-section)
 
 ### 🇮🇹 Sezione Italiana
 
-# 🗃️ Session Engine (extra opzionale per GroqBash)
+# 🗃️ Session Engine (extra opzionale per Bash4LLM)
 
-Il *Session Engine* è un componente **opzionale** che estende le funzionalità di session management del CORE di GroqBash.  
+Il *Session Engine* è un componente **opzionale** che estende le funzionalità di session management del CORE di Bash4LLM.  
 Non sostituisce le primitive MVP (`session_read_window`, `session_append`, cache), ma le **potenzia** con segmentazione, rotazione, deduplicazione, caching avanzato e snapshot diagnostici.
 
-È progettato per essere **sicuro**, **deterministico**, **auditabile** e completamente confinato in `GROQBASH_HISTORY_DIR` e `RUN_TMPDIR`.
+È progettato per essere **sicuro**, **deterministico**, **auditabile** e completamente confinato in `BASH4LLM_HISTORY_DIR` e `RUN_TMPDIR`.
 
 ---
 
@@ -28,7 +28,7 @@ Non sostituisce le primitive MVP (`session_read_window`, `session_append`, cache
 ## 1. **Segmentazione e Rotazione Automatica**
 - Ogni sessione inizia con un file base:  
   `sessions/<sid>.ndjson`
-- Quando supera `GROQBASH_SESSION_SEGMENT_MAX_BYTES`, viene ruotato in:  
+- Quando supera `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`, viene ruotato in:  
   `sessions/<sid>.NNN.ndjson`
 - La rotazione avviene **sotto lock**, garantendo assenza di corruzione.
 - I segmenti più vecchi possono essere compressi (opzionale).
@@ -75,9 +75,9 @@ Se `N > 0`:
 ### **B) Modalità intelligente (target_bytes)**
 Se `N = 0`:
 - Costruisce una finestra ottimizzata rispettando:
-  - `GROQBASH_SESSION_TARGET_BYTES`
-  - `GROQBASH_SESSION_MIN_MESSAGES`
-  - `GROQBASH_SESSION_MAX_MESSAGES`
+  - `BASH4LLM_SESSION_TARGET_BYTES`
+  - `BASH4LLM_SESSION_MIN_MESSAGES`
+  - `BASH4LLM_SESSION_MAX_MESSAGES`
 - Pesa i messaggi (role+content)
 - Esclude quelli marcati come `ignored`
 
@@ -126,7 +126,7 @@ Il Session Engine garantisce:
 ### `session_engine_enabled`
 Determina se l’engine può essere usato.  
 Controlla:
-- variabile `GROQBASH_SESSION_ENGINE`
+- variabile `BASH4LLM_SESSION_ENGINE`
 - esistenza e scrivibilità di `SE_SESSION_DIR`
 - disponibilità di `RUN_TMPDIR`
 
@@ -152,7 +152,7 @@ Genera un report diagnostico completo.
 ## 1. Installazione dell’extra
 Il file deve trovarsi in:
 ```
-$GROQBASH_EXTRAS_DIR/session/session-engine.sh
+$BASH4LLM_EXTRAS_DIR/session/session-engine.sh
 ```
 
 ## 2. Attivazione
@@ -169,10 +169,10 @@ fi
 ## 3. Configurazione (opzionale)
 Variabili principali:
 
-- `GROQBASH_SESSION_ENGINE=on|off`
-- `GROQBASH_SESSION_SEGMENT_MAX_BYTES`
-- `GROQBASH_SESSION_SEGMENT_MAX_FILES`
-- `GROQBASH_SESSION_DEDUP_ENABLED`
+- `BASH4LLM_SESSION_ENGINE=on|off`
+- `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`
+- `BASH4LLM_SESSION_SEGMENT_MAX_FILES`
+- `BASH4LLM_SESSION_DEDUP_ENABLED`
 - `SESSION_CACHE_ENABLED`
 - `SESSION_CACHE_TTL_SEC`
 
@@ -188,18 +188,18 @@ Usa il Session Engine quando:
 - vuoi snapshot diagnostici
 - vuoi rotazione e compressione dei segmenti
 
-Se non installato o disabilitato, GroqBash usa automaticamente il CORE/MVP.
+Se non installato o disabilitato, Bash4LLM usa automaticamente il CORE/MVP.
 
 ---
 
 ### 🇬🇧 English section
 
-# 🗃️ Session Engine (optional extra for GroqBash)
+# 🗃️ Session Engine (optional extra for Bash4LLM)
 
-The *Session Engine* is an **optional** component that extends the session‑management capabilities of the GroqBash CORE.  
+The *Session Engine* is an **optional** component that extends the session‑management capabilities of the Bash4LLM CORE.  
 It does **not** replace the MVP primitives (`session_read_window`, `session_append`, cache); instead, it **enhances** them with segmentation, rotation, deduplication, advanced caching, and diagnostic snapshots.
 
-It is designed to be **safe**, **deterministic**, **auditable**, and fully confined within `GROQBASH_HISTORY_DIR` and `RUN_TMPDIR`.
+It is designed to be **safe**, **deterministic**, **auditable**, and fully confined within `BASH4LLM_HISTORY_DIR` and `RUN_TMPDIR`.
 
 ---
 
@@ -219,7 +219,7 @@ It is designed to be **safe**, **deterministic**, **auditable**, and fully confi
 ## 1. **Automatic Segmentation and Rotation**
 - Each session starts with a base file:  
   `sessions/<sid>.ndjson`
-- When it exceeds `GROQBASH_SESSION_SEGMENT_MAX_BYTES`, it is rotated into:  
+- When it exceeds `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`, it is rotated into:  
   `sessions/<sid>.NNN.ndjson`
 - Rotation happens **under lock**, ensuring no corruption.
 - Older segments may be compressed (optional).
@@ -264,9 +264,9 @@ If `N > 0`:
 ### **B) Smart mode (target_bytes)**
 If `N = 0`:
 - Builds an optimized window respecting:
-  - `GROQBASH_SESSION_TARGET_BYTES`
-  - `GROQBASH_SESSION_MIN_MESSAGES`
-  - `GROQBASH_SESSION_MAX_MESSAGES`
+  - `BASH4LLM_SESSION_TARGET_BYTES`
+  - `BASH4LLM_SESSION_MIN_MESSAGES`
+  - `BASH4LLM_SESSION_MAX_MESSAGES`
 - Weighs messages (role + content)
 - Excludes those marked as `ignored`
 
@@ -315,7 +315,7 @@ The Session Engine guarantees:
 ## `session_engine_enabled`
 Determines whether the engine can be used.  
 Checks:
-- `GROQBASH_SESSION_ENGINE` variable  
+- `BASH4LLM_SESSION_ENGINE` variable  
 - existence and writability of `SE_SESSION_DIR`  
 - availability of `RUN_TMPDIR`  
 
@@ -341,7 +341,7 @@ Generates a complete diagnostic report.
 ## 1. Installing the extra
 The file must be located at:
 ```
-$GROQBASH_EXTRAS_DIR/session/session-engine.sh
+$BASH4LLM_EXTRAS_DIR/session/session-engine.sh
 ```
 
 ## 2. Enabling it
@@ -358,10 +358,10 @@ fi
 ## 3. Optional configuration
 Main variables:
 
-- `GROQBASH_SESSION_ENGINE=on|off`
-- `GROQBASH_SESSION_SEGMENT_MAX_BYTES`
-- `GROQBASH_SESSION_SEGMENT_MAX_FILES`
-- `GROQBASH_SESSION_DEDUP_ENABLED`
+- `BASH4LLM_SESSION_ENGINE=on|off`
+- `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`
+- `BASH4LLM_SESSION_SEGMENT_MAX_FILES`
+- `BASH4LLM_SESSION_DEDUP_ENABLED`
 - `SESSION_CACHE_ENABLED`
 - `SESSION_CACHE_TTL_SEC`
 
@@ -377,4 +377,4 @@ Use the Session Engine when:
 - you want diagnostic snapshots  
 - you want segment rotation and optional compression  
 
-If not installed or disabled, GroqBash automatically falls back to the CORE/MVP.
+If not installed or disabled, Bash4LLM automatically falls back to the CORE/MVP.
