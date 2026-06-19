@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash⁺ — Bash-first wrapper for the Groq API
-# File: groqbash
+# Bash4LLM⁺ — Bash-first wrapper for the Groq API
+# File: bash4llm
 # Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
@@ -14,36 +14,36 @@
 #--1<---[ SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 set -euo pipefail
 
-SCRIPT_NAME="groqbash"
+SCRIPT_NAME="bash4llm"
 SCRIPT_VERSION="2.0.0"
 SCRIPT_DATE="2026-06-09"
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
 # ---------------------------------------------------------------------------
-GROQBASH_ERR_NO_API_KEY=10
-GROQBASH_ERR_BAD_MODEL=11
-GROQBASH_ERR_CURL_FAILED=12
-GROQBASH_ERR_INVALID_JSON=13
-GROQBASH_ERR_NO_PROMPT=14
-GROQBASH_ERR_TMP=15
-GROQBASH_ERR_API=16
+BASH4LLM_ERR_NO_API_KEY=10
+BASH4LLM_ERR_BAD_MODEL=11
+BASH4LLM_ERR_CURL_FAILED=12
+BASH4LLM_ERR_INVALID_JSON=13
+BASH4LLM_ERR_NO_PROMPT=14
+BASH4LLM_ERR_TMP=15
+BASH4LLM_ERR_API=16
 
-GROQBASHERRNOAPIKEY=$GROQBASH_ERR_NO_API_KEY
-GROQBASHERRBAD_MODEL=$GROQBASH_ERR_BAD_MODEL
-GROQBASHERRCURL_FAILED=$GROQBASH_ERR_CURL_FAILED
-GROQBASHERRINVALID_JSON=$GROQBASH_ERR_INVALID_JSON
-GROQBASHERRNO_PROMPT=$GROQBASH_ERR_NO_PROMPT
-GROQBASHERRTMP=$GROQBASH_ERR_TMP
-GROQBASHERRAPI=$GROQBASH_ERR_API
+BASH4LLMERRNOAPIKEY=$BASH4LLM_ERR_NO_API_KEY
+BASH4LLMERRBAD_MODEL=$BASH4LLM_ERR_BAD_MODEL
+BASH4LLMERRCURL_FAILED=$BASH4LLM_ERR_CURL_FAILED
+BASH4LLMERRINVALID_JSON=$BASH4LLM_ERR_INVALID_JSON
+BASH4LLMERRNO_PROMPT=$BASH4LLM_ERR_NO_PROMPT
+BASH4LLMERRTMP=$BASH4LLM_ERR_TMP
+BASH4LLMERRAPI=$BASH4LLM_ERR_API
 #--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 #--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
 # ---------------------------------------------------------------------------
 # Dev/Test guard for sourcing only
 # ---------------------------------------------------------------------------
-# When set to 1, importing the script (GROQBASH_SOURCE_ONLY=1 . ./groqbash)
+# When set to 1, importing the script (BASH4LLM_SOURCE_ONLY=1 . ./bash4llm)
 # will load function definitions without executing the main runtime flow.
-if [ "${GROQBASH_SOURCE_ONLY:-0}" -eq 1 ]; then
+if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 1 ]; then
   # If sourced from a shell, return to the caller; if executed directly,
   # exit with success to avoid running the main program.
   return 0 2>/dev/null || exit 0
@@ -54,7 +54,7 @@ fi
 # ---------------------------------------------------------------------------
 for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    printf 'groqbash: ERROR: required command not found: %s\n' "$cmd" >&2
+    printf 'bash4llm: ERROR: required command not found: %s\n' "$cmd" >&2
     exit 1
   fi
 done
@@ -72,7 +72,7 @@ resolve_script_dir() {
 }
 # Return canonical config dir (no trailing slash)
 canonical_config_dir() {
-  printf '%s' "${GROQBASH_CONFIG_DIR%/}"
+  printf '%s' "${BASH4LLM_CONFIG_DIR%/}"
 }
 
 # Return canonical provider file path
@@ -93,7 +93,7 @@ canonical_provider_url_file() {
   if type canonical_config_dir >/dev/null 2>&1; then
     cfgdir="$(canonical_config_dir)"
   else
-    cfgdir="${GROQBASH_CONFIG_DIR:-${GROQBASH_DIR%/}/config}"
+    cfgdir="${BASH4LLM_CONFIG_DIR:-${BASH4LLM_DIR%/}/config}"
   fi
   printf '%s' "${cfgdir%/}/provider-url"
 }
@@ -127,15 +127,15 @@ ensure_api_key_for_provider() {
 
   # Non-interactive: fail fast with clear error (do not prompt)
   if [ ! -t 0 ]; then
-    printf 'groqbash: ERROR: missing API key for provider %s (env %s) in non-interactive mode\n' "$prov" "$envvar" >&2
-    return "$GROQBASHERRNOAPIKEY"
+    printf 'bash4llm: ERROR: missing API key for provider %s (env %s) in non-interactive mode\n' "$prov" "$envvar" >&2
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   # Interactive prompt (preserve previous behavior)
   printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
   if ! IFS= read -r input_key; then
-    printf '\ngroqbash: ERROR: no input received. Aborting.\n' >&2
-    return "$GROQBASHERRNOAPIKEY"
+    printf '\nbash4llm: ERROR: no input received. Aborting.\n' >&2
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   # Normalize input: strip CR/LF, leading "export ", and VAR=VALUE forms
@@ -146,8 +146,8 @@ ensure_api_key_for_provider() {
   fi
 
   if [ -z "$input_key" ]; then
-    printf 'groqbash: ERROR: API key required. Aborting.\n' >&2
-    return "$GROQBASHERRNOAPIKEY"
+    printf 'bash4llm: ERROR: API key required. Aborting.\n' >&2
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   export "$envvar"="$input_key"
@@ -166,21 +166,21 @@ ensure_api_key_for_provider() {
 
 # ---------------------------------------------------------------------------
 # enforce_network_policy
-# - Central check to prevent any HTTP call when DRY_RUN or GROQBASH_SKIP_NETWORK set.
+# - Central check to prevent any HTTP call when DRY_RUN or BASH4LLM_SKIP_NETWORK set.
 # - Should be invoked at the start of any provider call_api_* function.
 # - Returns 0 if network allowed, non-zero otherwise.
 # ---------------------------------------------------------------------------
 enforce_network_policy() {
-  # If DRY_RUN or GROQBASH_SKIP_NETWORK are truthy, disallow network.
-  if is_truthy "${DRY_RUN:-0}" || is_truthy "${GROQBASH_SKIP_NETWORK:-0}"; then
+  # If DRY_RUN or BASH4LLM_SKIP_NETWORK are truthy, disallow network.
+  if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "NETWORK" "Network calls disabled by DRY_RUN or GROQBASH_SKIP_NETWORK; skipping HTTP."
+      log_info "NETWORK" "Network calls disabled by DRY_RUN or BASH4LLM_SKIP_NETWORK; skipping HTTP."
     fi
     return 1
   fi
 
   # QUIET does not disable network by itself, but if QUIET is used with a policy variable we enforce it.
-  if is_truthy "${GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET:-0}" && is_truthy "${QUIET:-0}"; then
+  if is_truthy "${BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET:-0}" && is_truthy "${QUIET:-0}"; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "NETWORK" "Network calls disabled due to QUIET policy."
     fi
@@ -191,30 +191,30 @@ enforce_network_policy() {
 }
 #--3<---[ /SUBSECTION: API_NET ]--->3--
 
-# Logging structured (activabile via DEBUG o GROQBASH_LOG)
+# Logging structured (activabile via DEBUG o BASH4LLM_LOG)
 DEBUG="${DEBUG:-0}"
-GROQBASH_LOG="${GROQBASH_LOG:-}" # optional path to append structured logs
+BASH4LLM_LOG="${BASH4LLM_LOG:-}" # optional path to append structured logs
 
-log_prefix() { printf 'groqbash: %s: ' "$SCRIPT_NAME"; }
+log_prefix() { printf 'bash4llm: %s: ' "$SCRIPT_NAME"; }
 
 log_info() {
   local code="${1:-INFO}" msg="${2:-}"
   if [ "${DEBUG:-0}" -eq 1 ]; then
     printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
   fi
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+  if [ -n "$BASH4LLM_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
 log_warn() {
   local code="${1:-WARN}" msg="${2:-}"
   printf '%sWARN: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+  if [ -n "$BASH4LLM_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
 log_error() {
   local code="${1:-ERROR}" msg="${2:-}"
   printf '%sERROR: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
-  if [ -n "$GROQBASH_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$GROQBASH_LOG" 2>/dev/null || true; fi
+  if [ -n "$BASH4LLM_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
 # debug helper: if DEBUG is (1)
@@ -227,67 +227,67 @@ dbg() {
 
 #--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 SCRIPTDIR="$(resolve_script_dir)"
-# Allow external override of repository root via GROQBASH_ROOT.
-# Priority: explicit GROQBASH_DIR env > GROQBASH_ROOT env > SCRIPTDIR-derived default.
-if [ -n "${GROQBASH_DIR:-}" ]; then
-  : # keep explicit GROQBASH_DIR from environment
-elif [ -n "${GROQBASH_ROOT:-}" ]; then
-  GROQBASH_DIR="${GROQBASH_ROOT%/}/groqbash.d"
+# Allow external override of repository root via BASH4LLM_ROOT.
+# Priority: explicit BASH4LLM_DIR env > BASH4LLM_ROOT env > SCRIPTDIR-derived default.
+if [ -n "${BASH4LLM_DIR:-}" ]; then
+  : # keep explicit BASH4LLM_DIR from environment
+elif [ -n "${BASH4LLM_ROOT:-}" ]; then
+  BASH4LLM_DIR="${BASH4LLM_ROOT%/}/bash4llm.d"
 else
-  GROQBASH_DIR="$SCRIPTDIR/groqbash.d"
+  BASH4LLM_DIR="$SCRIPTDIR/bash4llm.d"
 fi
 
-# Canonical runtime destination for extras (always under groqbash.d)
-CANONICAL_EXTRAS_DIR="${GROQBASH_DIR%/}/extras"
+# Canonical runtime destination for extras (always under bash4llm.d)
+CANONICAL_EXTRAS_DIR="${BASH4LLM_DIR%/}/extras"
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 
 # Export canonical extras and providers dirs
-GROQBASH_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
-# Providers shipped as extras live under GROQBASH_EXTRAS_DIR by default;
+BASH4LLM_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
+# Providers shipped as extras live under BASH4LLM_EXTRAS_DIR by default;
 # fall back to a providers dir under canonical config dir only if extras not set.
-PROVIDERS_DIR="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
+PROVIDERS_DIR="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR%/}/providers}"
 # Ensure a canonical fallback exists if extras not configured
 : "${PROVIDERS_DIR:=$(canonical_config_dir)/providers}"
-export GROQBASH_EXTRAS_DIR PROVIDERS_DIR
+export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR
 
-# Standard directories (derived from GROQBASH_DIR, overridable via env)
-GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}"
-GROQBASH_MODELS_DIR="${GROQBASH_MODELS_DIR:-$GROQBASH_DIR/models}"
-GROQBASH_TEMPLATES_DIR="${GROQBASH_TEMPLATES_DIR:-$GROQBASH_DIR/templates}"
-GROQBASH_HISTORY_DIR="${GROQBASH_HISTORY_DIR:-$GROQBASH_DIR/history}"
-GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-$GROQBASH_DIR/tmp}"
-MODELS_FILE="${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}"
+# Standard directories (derived from BASH4LLM_DIR, overridable via env)
+BASH4LLM_CONFIG_DIR="${BASH4LLM_CONFIG_DIR:-$BASH4LLM_DIR/config}"
+BASH4LLM_MODELS_DIR="${BASH4LLM_MODELS_DIR:-$BASH4LLM_DIR/models}"
+BASH4LLM_TEMPLATES_DIR="${BASH4LLM_TEMPLATES_DIR:-$BASH4LLM_DIR/templates}"
+BASH4LLM_HISTORY_DIR="${BASH4LLM_HISTORY_DIR:-$BASH4LLM_DIR/history}"
+BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-$BASH4LLM_DIR/tmp}"
+MODELS_FILE="${MODELS_FILE:-$BASH4LLM_MODELS_DIR/models.txt}"
 MAX_MODELS="${MAX_MODELS:-200}"
 
-# Validate GROQBASH_DIR / GROQBASH_TMPDIR invariants
-if [ -z "${GROQBASH_DIR:-}" ]; then
-  log_error "TMP" "GROQBASH_DIR is empty; cannot derive GROQBASH_TMPDIR"
-  exit "${GROQBASHERRTMP:-1}"
+# Validate BASH4LLM_DIR / BASH4LLM_TMPDIR invariants
+if [ -z "${BASH4LLM_DIR:-}" ]; then
+  log_error "TMP" "BASH4LLM_DIR is empty; cannot derive BASH4LLM_TMPDIR"
+  exit "${BASH4LLMERRTMP:-1}"
 fi
 
-# Forbid using /tmp or subpaths of /tmp as GROQBASH_TMPDIR
-case "${GROQBASH_TMPDIR:-}" in
+# Forbid using /tmp or subpaths of /tmp as BASH4LLM_TMPDIR
+case "${BASH4LLM_TMPDIR:-}" in
   /tmp|/tmp/*)
-    log_error "TMP" "GROQBASH_TMPDIR must not be /tmp or under /tmp: ${GROQBASH_TMPDIR}"
-    exit "${GROQBASHERRTMP:-1}"
+    log_error "TMP" "BASH4LLM_TMPDIR must not be /tmp or under /tmp: ${BASH4LLM_TMPDIR}"
+    exit "${BASH4LLMERRTMP:-1}"
     ;;
 esac
 
-# Enforce GROQBASH_TMPDIR inside GROQBASH_DIR perimeter
-case "${GROQBASH_TMPDIR:-}" in
-  "${GROQBASH_DIR}"|"${GROQBASH_DIR}"/*)
+# Enforce BASH4LLM_TMPDIR inside BASH4LLM_DIR perimeter
+case "${BASH4LLM_TMPDIR:-}" in
+  "${BASH4LLM_DIR}"|"${BASH4LLM_DIR}"/*)
     : # ok
     ;;
   *)
-    log_error "TMP" "GROQBASH_TMPDIR must be inside GROQBASH_DIR: ${GROQBASH_TMPDIR} (root: ${GROQBASH_DIR})"
-    exit "${GROQBASHERRTMP:-1}"
+    log_error "TMP" "BASH4LLM_TMPDIR must be inside BASH4LLM_DIR: ${BASH4LLM_TMPDIR} (root: ${BASH4LLM_DIR})"
+    exit "${BASH4LLMERRTMP:-1}"
     ;;
 esac
 
-# Defensive normalization: ensure GROQBASH_CONFIG_DIR is non-empty and normalized
-GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR%/}"
-if [ -z "$GROQBASH_CONFIG_DIR" ]; then
-  GROQBASH_CONFIG_DIR="${GROQBASH_DIR%/}/config"
+# Defensive normalization: ensure BASH4LLM_CONFIG_DIR is non-empty and normalized
+BASH4LLM_CONFIG_DIR="${BASH4LLM_CONFIG_DIR%/}"
+if [ -z "$BASH4LLM_CONFIG_DIR" ]; then
+  BASH4LLM_CONFIG_DIR="${BASH4LLM_DIR%/}/config"
 fi
 
 #--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
@@ -295,33 +295,33 @@ fi
 # Helper: ensure config dir exists and is usable before any writes
 ensure_config_dir() {
   # Normalize
-  GROQBASH_CONFIG_DIR="${GROQBASH_CONFIG_DIR%/}"
-  if [ -z "$GROQBASH_CONFIG_DIR" ]; then
-    GROQBASH_CONFIG_DIR="${GROQBASH_DIR%/}/config"
+  BASH4LLM_CONFIG_DIR="${BASH4LLM_CONFIG_DIR%/}"
+  if [ -z "$BASH4LLM_CONFIG_DIR" ]; then
+    BASH4LLM_CONFIG_DIR="${BASH4LLM_DIR%/}/config"
   fi
 
   # Try to create directory (idempotent)
-  if ! mkdir -p "${GROQBASH_CONFIG_DIR}" 2>/dev/null; then
-    log_error "CONFIG" "cannot create config dir: ${GROQBASH_CONFIG_DIR}"
+  if ! mkdir -p "${BASH4LLM_CONFIG_DIR}" 2>/dev/null; then
+    log_error "CONFIG" "cannot create config dir: ${BASH4LLM_CONFIG_DIR}"
     return 1
   fi
 
   # Enforce strict perms
-  chmod 700 "${GROQBASH_CONFIG_DIR}" 2>/dev/null || true
+  chmod 700 "${BASH4LLM_CONFIG_DIR}" 2>/dev/null || true
 
   # Quick writability check: try to create a temp file inside
-  if ! : > "${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check" 2>/dev/null; then
-    log_error "CONFIG" "config dir not writable: ${GROQBASH_CONFIG_DIR}"
+  if ! : > "${BASH4LLM_CONFIG_DIR%/}/.bash4llm_tmp_check" 2>/dev/null; then
+    log_error "CONFIG" "config dir not writable: ${BASH4LLM_CONFIG_DIR}"
     return 1
   else
-    rm -f "${GROQBASH_CONFIG_DIR%/}/.groqbash_tmp_check" 2>/dev/null || true
+    rm -f "${BASH4LLM_CONFIG_DIR%/}/.bash4llm_tmp_check" 2>/dev/null || true
   fi
 
   return 0
 }
 
 # Ensure config dir exists now (fail early if not)
-ensure_config_dir || { log_error "CONFIG" "config dir unavailable; aborting."; exit "$GROQBASHERRTMP"; }
+ensure_config_dir || { log_error "CONFIG" "config dir unavailable; aborting."; exit "$BASH4LLMERRTMP"; }
 
 # Write provider-url file (single-line, non-secret). Best-effort; do not write API keys.
 # Usage: write_provider_url_if_missing <provider> <url>
@@ -355,17 +355,17 @@ write_provider_url_if_missing() {
   fi
 }
 
-# Resolve provider URL with priority: ENV (GROQBASH_API_URL / GROQBASH_PROVIDER_URL) > provider-url file > embedded default (groq)
+# Resolve provider URL with priority: ENV (BASH4LLM_API_URL / BASH4LLM_PROVIDER_URL) > provider-url file > embedded default (groq)
 # Usage: resolve_provider_url <provider>
 resolve_provider_url() {
   local prov="${1:-$PROVIDER}" prov_file prov_val
   # 1) ENV
-  if [ -n "${GROQBASH_API_URL:-}" ]; then
-    GROQBASH_PROVIDER_URL="${GROQBASH_API_URL}"
-    export GROQBASH_PROVIDER_URL
+  if [ -n "${BASH4LLM_API_URL:-}" ]; then
+    BASH4LLM_PROVIDER_URL="${BASH4LLM_API_URL}"
+    export BASH4LLM_PROVIDER_URL
     return 0
   fi
-  if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
+  if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
     return 0
   fi
   # 2) provider-url file
@@ -373,15 +373,15 @@ resolve_provider_url() {
   if [ -f "$prov_file" ] && [ -s "$prov_file" ]; then
     prov_val="$(sed -n '1p' "$prov_file" 2>/dev/null | awk '{$1=$1;print}')"
     if [ -n "$prov_val" ]; then
-      GROQBASH_PROVIDER_URL="$prov_val"
-      export GROQBASH_PROVIDER_URL
+      BASH4LLM_PROVIDER_URL="$prov_val"
+      export BASH4LLM_PROVIDER_URL
       return 0
     fi
   fi
   # 3) embedded default for groq only (minimal)
   if [ "${prov:-}" = "groq" ]; then
-    GROQBASH_PROVIDER_URL="https://api.groq.com/openai/v1/chat/completions"
-    export GROQBASH_PROVIDER_URL
+    BASH4LLM_PROVIDER_URL="https://api.groq.com/openai/v1/chat/completions"
+    export BASH4LLM_PROVIDER_URL
     return 0
   fi
   return 1
@@ -389,11 +389,11 @@ resolve_provider_url() {
 
 # Fail-fast if canonical_config_dir is empty for any reason
 if [ -z "$(canonical_config_dir)" ]; then
-  printf 'groqbash: ERROR: CONFIG: canonical config dir is empty; aborting.\n' >&2
+  printf 'bash4llm: ERROR: CONFIG: canonical config dir is empty; aborting.\n' >&2
   exit 1
 fi
 
-# Canonical PROVIDER_FILE path built only from GROQBASH_CONFIG_DIR
+# Canonical PROVIDER_FILE path built only from BASH4LLM_CONFIG_DIR
 PROVIDER_FILE="$(canonical_provider_file)"
 
 #--5<---[ SECTION: PRECORE_BOOT_HELPERS ]--->5--
@@ -466,10 +466,10 @@ is_valid_json_file() {
   jq -e . "$f" >/dev/null 2>&1
 }
 
-# Normalize debug variable: prefer DEBUG, but respect GROQBASH_DEBUG if DEBUG unset
+# Normalize debug variable: prefer DEBUG, but respect BASH4LLM_DEBUG if DEBUG unset
 # Place this after CLI parsing and before any logging or DEBUG checks
-if [ -n "${GROQBASH_DEBUG:-}" ] && [ -z "${DEBUG:-}" ]; then
-  DEBUG="${GROQBASH_DEBUG}"
+if [ -n "${BASH4LLM_DEBUG:-}" ] && [ -z "${DEBUG:-}" ]; then
+  DEBUG="${BASH4LLM_DEBUG}"
 fi
 DEBUG="${DEBUG:-0}"
 
@@ -504,7 +504,7 @@ stage_b64() {
     fi
     tmp_local="$src"
   else
-    tmp_local="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" payload.tmp 2>/dev/null)" || {
+    tmp_local="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" payload.tmp 2>/dev/null)" || {
       log_error "STAGE" "failed to allocate tmp_local"
       return 1
     }
@@ -524,8 +524,8 @@ stage_b64() {
     return 1
   fi
 
-  # Create tmp_b64 inside GROQBASH_TMPDIR (safe), then move into workdir atomically
-  tmp_b64="$(_tmpf file "$GROQBASH_TMPDIR" .groq-b64 2>/dev/null)" || {
+  # Create tmp_b64 inside BASH4LLM_TMPDIR (safe), then move into workdir atomically
+  tmp_b64="$(_tmpf file "$BASH4LLM_TMPDIR" .groq-b64 2>/dev/null)" || {
     [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
     log_error "STAGE" "failed to allocate tmp_b64"
     return 1
@@ -543,7 +543,7 @@ stage_b64() {
   chmod 600 "$tmp_b64" 2>/dev/null || true
 
   # Atomic move into final dst
-  lockfile="${workdir%/}/.groqbash.lock"
+  lockfile="${workdir%/}/.bash4llm.lock"
   if type lock_exec >/dev/null 2>&1; then
     lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" || {
       rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
@@ -609,13 +609,13 @@ _mktemp_in_dir() {
   local base="${1:-}" prefix="${2:-groq}" tmp
   if [ -z "$base" ]; then
     log_error "TMP" "_mktemp_in_dir: base dir required"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
   # Delegate to _tmpf which already enforces umask/perms and returns a path
   tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null)"
   if [ -z "$tmp" ]; then
     log_error "TMP" "_mktemp_in_dir: failed to create temp in $base"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
   printf '%s' "$tmp"
   return 0
@@ -625,22 +625,22 @@ _mktemp_in_dir() {
 show_payload_head() {
   local path="${1:-$PAYLOAD}" lines="${2:-200}"
   if [ -z "${path:-}" ]; then
-    printf 'groqbash: ERROR: payload file missing: %s\n' "<unset>" >&2
-    exit "$GROQBASHERRTMP"
+    printf 'bash4llm: ERROR: payload file missing: %s\n' "<unset>" >&2
+    exit "$BASH4LLMERRTMP"
   fi
   if [ ! -e "$path" ]; then
-    printf 'groqbash: ERROR: payload file missing: %s\n' "$path" >&2
-    exit "$GROQBASHERRTMP"
+    printf 'bash4llm: ERROR: payload file missing: %s\n' "$path" >&2
+    exit "$BASH4LLMERRTMP"
   fi
   if [ ! -s "$path" ]; then
-    printf 'groqbash: INFO: payload exists but is empty: %s\n' "$path" >&2
+    printf 'bash4llm: INFO: payload exists but is empty: %s\n' "$path" >&2
     return 0
   fi
 
   # Diagnostic output only when DEBUG=1
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf 'groqbash: INFO: payload path: %s\n' "$path" >&2
-    printf 'groqbash: INFO: payload (head %d lines):\n' "$lines" >&2
+    printf 'bash4llm: INFO: payload path: %s\n' "$path" >&2
+    printf 'bash4llm: INFO: payload (head %d lines):\n' "$lines" >&2
     if printf '%s' "$path" | grep -qE '\.b64$'; then
       b64decode < "$path" 2>/dev/null | head -n "$lines" >&2 || true
     else
@@ -658,12 +658,12 @@ atomic_write() {
   # Usage: atomic_write /path/to/target [timeout_seconds]
   local dest="$1"
   local timeout="${2:-10}"
-  [ -n "$dest" ] || return "$GROQBASHERRTMP"
+  [ -n "$dest" ] || return "$BASH4LLMERRTMP"
   local destdir tmp lockfile rc
 
   destdir="$(dirname -- "$dest")"
-  mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$GROQBASHERRTMP"; }
-  lockfile="${destdir}/.groqbash.lock"
+  mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$BASH4LLMERRTMP"; }
+  lockfile="${destdir}/.bash4llm.lock"
 
   tmp="$(mktemp "$destdir/.groq-atomic.XXXXXX" 2>/dev/null || true)"
   [ -n "$tmp" ] || tmp="$destdir/.groq-atomic.$$.$RANDOM"
@@ -671,7 +671,7 @@ atomic_write() {
   if ! cat - > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "ATOMICFAIL" "writing to temp failed"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
   chmod 600 "$tmp" 2>/dev/null || true
 
@@ -709,7 +709,7 @@ extract_text_from_resp() {
 
   # Leggere sempre da copia atomica
   local tmp_copy
-  tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" resp_copy 2>/dev/null)" || return 1
+  tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return 1
   cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return 1
   resp_file="$tmp_copy"
 
@@ -756,7 +756,7 @@ extract_text_from_resp() {
   return 1
 }
 
-# Ensure and create a run-specific tmpdir under GROQBASH_TMPDIR and set neutral payload path.
+# Ensure and create a run-specific tmpdir under BASH4LLM_TMPDIR and set neutral payload path.
 # Now uses _tmpf (dir) as the single source of truth. No predictable fallbacks, no /tmp.
 DEBUG_PRESERVE="${DEBUG_PRESERVE:-0}"
 
@@ -769,10 +769,10 @@ ensure_run_tmpdir() {
     subshell=1
   fi
 
-  # Reuse existing RUN_TMPDIR if valid and inside GROQBASH_TMPDIR
+  # Reuse existing RUN_TMPDIR if valid and inside BASH4LLM_TMPDIR
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     case "$RUN_TMPDIR" in
-      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+      "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
         chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
         : "${PAYLOAD:=$RUN_TMPDIR/payload}"
         : "${RESP:=$RUN_TMPDIR/resp.json}"
@@ -788,31 +788,31 @@ ensure_run_tmpdir() {
         return 0
         ;;
       *)
-        log_warn "TMP" "existing RUN_TMPDIR outside GROQBASH_TMPDIR; discarding: $RUN_TMPDIR"
+        log_warn "TMP" "existing RUN_TMPDIR outside BASH4LLM_TMPDIR; discarding: $RUN_TMPDIR"
         RUN_TMPDIR=""
         ;;
     esac
   fi
 
-  # Validate GROQBASH_TMPDIR
-  if [ -z "${GROQBASH_TMPDIR:-}" ]; then
-    log_error "TMP" "GROQBASH_TMPDIR not set"
-    return "$GROQBASHERRTMP"
+  # Validate BASH4LLM_TMPDIR
+  if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
+    log_error "TMP" "BASH4LLM_TMPDIR not set"
+    return "$BASH4LLMERRTMP"
   fi
-  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || {
-    log_error "TMP" "cannot create base tmpdir $GROQBASH_TMPDIR"
-    return "$GROQBASHERRTMP"
+  mkdir -p "$BASH4LLM_TMPDIR" 2>/dev/null || {
+    log_error "TMP" "cannot create base tmpdir $BASH4LLM_TMPDIR"
+    return "$BASH4LLMERRTMP"
   }
-  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
-  if [ -L "$GROQBASH_TMPDIR" ]; then
-    log_error "TMP" "GROQBASH_TMPDIR is a symlink: $GROQBASH_TMPDIR"
-    return "$GROQBASHERRTMP"
+  chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
+  if [ -L "$BASH4LLM_TMPDIR" ]; then
+    log_error "TMP" "BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR"
+    return "$BASH4LLMERRTMP"
   fi
 
   # Create RUN_TMPDIR exclusively via _tmpf (dir)
-  tmpdir="$(_tmpf dir "$GROQBASH_TMPDIR" run 2>/dev/null)" || {
+  tmpdir="$(_tmpf dir "$BASH4LLM_TMPDIR" run 2>/dev/null)" || {
     log_error "TMP" "ensure_run_tmpdir: _tmpf failed to create run tmpdir"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   }
 
   RUN_TMPDIR="$tmpdir"
@@ -841,12 +841,12 @@ ensure_run_tmpdir() {
 
     if [ -n "${RUN_TMPDIR:-}" ]; then
       case "$RUN_TMPDIR" in
-        "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+        "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
           rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
           [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
           ;;
         *)
-          [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "RUN_TMPDIR outside GROQBASH_TMPDIR; not removed: $RUN_TMPDIR"
+          [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "RUN_TMPDIR outside BASH4LLM_TMPDIR; not removed: $RUN_TMPDIR"
           ;;
       esac
     fi
@@ -873,7 +873,7 @@ ensure_run_tmpdir() {
 cleanup_tmp() {
   if [ -n "${RUN_TMPDIR:-}" ]; then
     case "$RUN_TMPDIR" in
-      "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+      "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
         rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
         ;;
       *)
@@ -892,7 +892,7 @@ b64_atomic_write() {
 
   [ -n "$dest" ] || {
     log_error "B64FAIL" "b64_atomic_write: dest required"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   }
 
   local destdir tmp lockfile
@@ -900,21 +900,21 @@ b64_atomic_write() {
 
   mkdir -p "$destdir" 2>/dev/null || {
     log_error "B64FAIL" "cannot create dir $destdir"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   }
 
-  lockfile="${destdir%/}/.groqbash.lock"
+  lockfile="${destdir%/}/.bash4llm.lock"
 
-  # Allocate tmp inside GROQBASH_TMPDIR (safe), not inside destdir
-  tmp="$(_tmpf file "$GROQBASH_TMPDIR" .groq-b64 2>/dev/null)" || {
+  # Allocate tmp inside BASH4LLM_TMPDIR (safe), not inside destdir
+  tmp="$(_tmpf file "$BASH4LLM_TMPDIR" .groq-b64 2>/dev/null)" || {
     log_error "B64FAIL" "failed to allocate tmp for b64_atomic_write"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   }
 
   if ! b64encode > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "B64FAIL" "base64 encoding failed"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
   chmod 600 "$tmp" 2>/dev/null || true
 
@@ -938,7 +938,7 @@ b64_atomic_read() {
 
 # ui_state_write: helper centralizzato per scrivere file JSON per la GUI (atomic)
 # Usage: ui_state_write <relpath> <json-string>
-# Writes to: $GROQBASH_CONFIG_DIR/ui_state/<relpath>
+# Writes to: $BASH4LLM_CONFIG_DIR/ui_state/<relpath>
 # Guarantees: atomic write, strict perms, non-fatal on error (logs warning).
 ui_state_write() {
   # Write UI state JSON atomically.
@@ -946,8 +946,8 @@ ui_state_write() {
   local name="$1"; local content="$2"
   local dir target
 
-  if [ -n "${GROQBASH_CONFIG_DIR:-}" ]; then
-    dir="${GROQBASH_CONFIG_DIR%/}/ui_state"
+  if [ -n "${BASH4LLM_CONFIG_DIR:-}" ]; then
+    dir="${BASH4LLM_CONFIG_DIR%/}/ui_state"
   else
     dir="${RUN_TMPDIR%/}/ui_state"
   fi
@@ -974,10 +974,10 @@ ui_state_write() {
 # Internal CLI helpers: print canonical config paths (safe, single-file)
 # These flags are handled early and exit immediately after printing.
 # Supported forms:
-#   ./groqbash --print-config-dir
-#   ./groqbash --print-provider-file
-#   ./groqbash --print-model-file <provider>
-#   ./groqbash --print-model-file=<provider>
+#   ./bash4llm --print-config-dir
+#   ./bash4llm --print-provider-file
+#   ./bash4llm --print-model-file <provider>
+#   ./bash4llm --print-model-file=<provider>
 # ---------------------------------------------------------------------------
 if [ "$#" -gt 0 ]; then
   # Iterate through args to support flags anywhere on the command line
@@ -1000,7 +1000,7 @@ if [ "$#" -gt 0 ]; then
           printf '%s\n' "$(canonical_model_file "$prov")"
           exit 0
         else
-          printf 'groqbash: ERROR: usage: --print-model-file <provider>\n' >&2
+          printf 'bash4llm: ERROR: usage: --print-model-file <provider>\n' >&2
           exit 2
         fi
         ;;        
@@ -1023,24 +1023,24 @@ if [ "$#" -gt 0 ]; then
 fi
 
 # Ensure essential directories exist with strict perms
-mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
-mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || true
-chmod 700 "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" 2>/dev/null || true
+mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
+mkdir -p "$BASH4LLM_TMPDIR" 2>/dev/null || true
+chmod 700 "$BASH4LLM_HISTORY_DIR" "$BASH4LLM_TMPDIR" 2>/dev/null || true
 # Ensure session dir exists and has strict perms
-SESSION_DIR="${GROQBASH_HISTORY_DIR%/}/sessions"
+SESSION_DIR="${BASH4LLM_HISTORY_DIR%/}/sessions"
 mkdir -p "$SESSION_DIR" 2>/dev/null || true
 chmod 700 "$SESSION_DIR" 2>/dev/null || true
 
 umask 077
-mkdir -p "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers" 2>/dev/null || true
+mkdir -p "$(canonical_config_dir)" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TEMPLATES_DIR" "$BASH4LLM_HISTORY_DIR" "$BASH4LLM_TMPDIR" "$BASH4LLM_EXTRAS_DIR" "$(canonical_config_dir)/providers" 2>/dev/null || true
 
 # Ensure directories are not symlinks and have strict perms
-for d in "$GROQBASH_DIR" "$(canonical_config_dir)" "$GROQBASH_MODELS_DIR" "$GROQBASH_TEMPLATES_DIR" "$GROQBASH_HISTORY_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
+for d in "$BASH4LLM_DIR" "$(canonical_config_dir)" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TEMPLATES_DIR" "$BASH4LLM_HISTORY_DIR" "$BASH4LLM_TMPDIR" "$BASH4LLM_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
   if [ -L "$d" ]; then
-    printf 'groqbash: ERROR: directory is a symlink: %s\n' "$d" >&2
-    exit "$GROQBASHERRTMP"
+    printf 'bash4llm: ERROR: directory is a symlink: %s\n' "$d" >&2
+    exit "$BASH4LLMERRTMP"
   fi
-  mkdir -p "$d" 2>/dev/null || { printf 'groqbash: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$GROQBASHERRTMP"; }
+  mkdir -p "$d" 2>/dev/null || { printf 'bash4llm: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$BASH4LLMERRTMP"; }
   chmod 700 "$d" 2>/dev/null || true
 done
 
@@ -1051,14 +1051,14 @@ done
 # ---------------------------------------------------------------------------
 # Centralized lock names (co-located with resources)
 # ---------------------------------------------------------------------------
-MODELS_LOCK="${MODELS_LOCK:-$GROQBASH_MODELS_DIR/models.lock}"
-HISTORY_LOCK="${HISTORY_LOCK:-$GROQBASH_HISTORY_DIR/history.lock}"
-TMP_LOCK="${TMP_LOCK:-$GROQBASH_TMPDIR/tmp.lock}"
+MODELS_LOCK="${MODELS_LOCK:-$BASH4LLM_MODELS_DIR/models.lock}"
+HISTORY_LOCK="${HISTORY_LOCK:-$BASH4LLM_HISTORY_DIR/history.lock}"
+TMP_LOCK="${TMP_LOCK:-$BASH4LLM_TMPDIR/tmp.lock}"
 
 # Lock timeouts (configurable via env)
-GROQBASH_LOCK_TIMEOUT_TMP="${GROQBASH_LOCK_TIMEOUT_TMP:-10}"
-GROQBASH_LOCK_TIMEOUT_MODELS="${GROQBASH_LOCK_TIMEOUT_MODELS:-10}"
-GROQBASH_LOCK_TIMEOUT_HISTORY="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
+BASH4LLM_LOCK_TIMEOUT_TMP="${BASH4LLM_LOCK_TIMEOUT_TMP:-10}"
+BASH4LLM_LOCK_TIMEOUT_MODELS="${BASH4LLM_LOCK_TIMEOUT_MODELS:-10}"
+BASH4LLM_LOCK_TIMEOUT_HISTORY="${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}"
 
 # Load and validate provider module for given provider name
 load_provider_module() {
@@ -1119,7 +1119,7 @@ load_provider_module() {
 
   # --- SAFE LOAD: isolate provider in subshell, export only functions defined by provider ---
   if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-    dump_file="$(_mktemp_in_dir "$GROQBASH_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
+    dump_file="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
     [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return 1; }
 
     # Subshell: capture functions added by sourcing the provider
@@ -1317,10 +1317,10 @@ jq_safe() {
 #--1<---[ SECTION: PRECORE_RUN_HISTORY ]--->1--
 # History rotation and compaction (portable)
 # ---------------------------------------------------------------------------
-GROQBASH_ROTATE_HISTORY="${GROQBASH_ROTATE_HISTORY:-0}"
-GROQBASH_HISTORY_MAX_FILES="${GROQBASH_HISTORY_MAX_FILES:-100}"
-GROQBASH_HISTORY_MAX_BYTES="${GROQBASH_HISTORY_MAX_BYTES:-104857600}" # 100MB
-GROQBASH_HISTORY_KEEP_DAYS="${GROQBASH_HISTORY_KEEP_DAYS:-90}"
+BASH4LLM_ROTATE_HISTORY="${BASH4LLM_ROTATE_HISTORY:-0}"
+BASH4LLM_HISTORY_MAX_FILES="${BASH4LLM_HISTORY_MAX_FILES:-100}"
+BASH4LLM_HISTORY_MAX_BYTES="${BASH4LLM_HISTORY_MAX_BYTES:-104857600}" # 100MB
+BASH4LLM_HISTORY_KEEP_DAYS="${BASH4LLM_HISTORY_KEEP_DAYS:-90}"
 
 # ---------------------------------------------------------------------------
 # rotate_history: all rotation logic executed atomically under HISTORY_LOCK
@@ -1328,11 +1328,11 @@ GROQBASH_HISTORY_KEEP_DAYS="${GROQBASH_HISTORY_KEEP_DAYS:-90}"
 # - Uses portable stat helper _file_mtime/_file_size where needed.
 # ---------------------------------------------------------------------------
 rotate_history() {
-  local timeout="${1:-$GROQBASH_LOCK_TIMEOUT_HISTORY}"
-  local dir="${GROQBASH_HISTORY_DIR:-$PWD/groqbash.d/history}"
-  local max_files="${GROQBASH_HISTORY_MAX_FILES:-100}"
-  local max_bytes="${GROQBASH_HISTORY_MAX_BYTES:-104857600}"
-  local keep_days="${GROQBASH_HISTORY_KEEP_DAYS:-90}"
+  local timeout="${1:-$BASH4LLM_LOCK_TIMEOUT_HISTORY}"
+  local dir="${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}"
+  local max_files="${BASH4LLM_HISTORY_MAX_FILES:-100}"
+  local max_bytes="${BASH4LLM_HISTORY_MAX_BYTES:-104857600}"
+  local keep_days="${BASH4LLM_HISTORY_KEEP_DAYS:-90}"
 
   # ------------------------------
   # 1. Rimozione file troppo vecchi
@@ -1392,26 +1392,26 @@ save_to_history() {
   local filename
   filename="$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
 
-  mkdir -p "$GROQBASH_HISTORY_DIR" 2>/dev/null || true
+  mkdir -p "$BASH4LLM_HISTORY_DIR" 2>/dev/null || true
 
   local tmpf dest lockfile
-  tmpf="$(_tmpf file "$GROQBASH_HISTORY_DIR" groq-out 2>/dev/null)"
+  tmpf="$(_tmpf file "$BASH4LLM_HISTORY_DIR" groq-out 2>/dev/null)"
   if [ -z "$tmpf" ]; then
-    log_error "HISTORYFAIL" "save_to_history: cannot allocate tmp file in $GROQBASH_HISTORY_DIR"
-    return "$GROQBASHERRTMP"
+    log_error "HISTORYFAIL" "save_to_history: cannot allocate tmp file in $BASH4LLM_HISTORY_DIR"
+    return "$BASH4LLMERRTMP"
   fi
 
   if ! printf '%s\n' "$content" > "$tmpf" 2>/dev/null; then
     rm -f -- "$tmpf" 2>/dev/null || true
     log_error "HISTORYFAIL" "save_to_history: cannot write tmp file $tmpf"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
-  dest="$GROQBASH_HISTORY_DIR/$filename"
+  dest="$BASH4LLM_HISTORY_DIR/$filename"
   lockfile="$HISTORY_LOCK"
 
   # --- atomic move only ---
-  if ! lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_HISTORY" -- sh -c '
+  if ! lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_HISTORY" -- sh -c '
       set -e
       mv -f -- "$1" "$2"
       chmod 600 "$2" 2>/dev/null || true
@@ -1445,8 +1445,8 @@ save_to_history() {
     ui_state_write "last_history.json" "$history_json" || true
   fi
 
-  if [ "${GROQBASH_ROTATE_HISTORY:-0}" -eq 1 ]; then
-    rotate_history "$GROQBASH_LOCK_TIMEOUT_HISTORY" || true
+  if [ "${BASH4LLM_ROTATE_HISTORY:-0}" -eq 1 ]; then
+    rotate_history "$BASH4LLM_LOCK_TIMEOUT_HISTORY" || true
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -1466,7 +1466,7 @@ save_to_history() {
 # ---------------------------------------------------------------------------
 manifest_create() {
   local manifest="$1"
-  local timeout="${2:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
+  local timeout="${2:-$BASH4LLM_LOCK_TIMEOUT_MODELS}"
   mkdir -p "$(dirname "$manifest")" 2>/dev/null || { log_error "MANIFESTFAIL" "manifest_create: cannot create dir"; return 1; }
   lock_exec "${manifest}.lock" "$timeout" -- sh -c '
    set -e
@@ -1487,7 +1487,7 @@ manifest_create() {
 }
 
 manifest_add_part() {
-  local manifest="$1" name="$2" file_path="$3" mime="$4" timeout="${5:-$GROQBASH_LOCK_TIMEOUT_MODELS}"
+  local manifest="$1" name="$2" file_path="$3" mime="$4" timeout="${5:-$BASH4LLM_LOCK_TIMEOUT_MODELS}"
   [ -f "$file_path" ] || { log_error "MANIFESTFAIL" "manifest_add_part: file not found: $file_path"; return 1; }
   mkdir -p "$(dirname "$manifest")" 2>/dev/null || true
 
@@ -1499,8 +1499,8 @@ manifest_add_part() {
   destdir="$(dirname "$manifest")"
   tmpstamp="$(date +%s)-$$"
   part_b64="$destdir/parts-$(basename "$file_path").${tmpstamp}.b64"
-  tmp_part="$(_tmpf file "$GROQBASH_TMPDIR" part 2>/dev/null)" || {
-    log_error "TMP" "manifest_add_part: _tmpf failed for GROQBASH_TMPDIR"
+  tmp_part="$(_tmpf file "$BASH4LLM_TMPDIR" part 2>/dev/null)" || {
+    log_error "TMP" "manifest_add_part: _tmpf failed for BASH4LLM_TMPDIR"
     return 1
   }
 
@@ -1605,7 +1605,7 @@ _get_file_signature() {
   [ -f "$path" ] || { printf ''; return 0; }
 
   # Decide whether to compute content hash (default 1)
-  local use_hash="${GROQBASH_SIG_HASH:-1}"
+  local use_hash="${BASH4LLM_SIG_HASH:-1}"
 
   # Compute SHA256 if requested and available
   if [ "${use_hash}" != "0" ] && command -v sha256sum >/dev/null 2>&1; then
@@ -1649,9 +1649,9 @@ getfile_signature() { _get_file_signature "$1"; }
 
 _is_world_writable() {
   local d="$1" perms others_write
-  [ -d "$d" ] || return "$GROQBASHERRTMP"
+  [ -d "$d" ] || return "$BASH4LLMERRTMP"
   perms="$(_get_perm_string "$d")"
-  [ -z "$perms" ] && return "$GROQBASHERRTMP"
+  [ -z "$perms" ] && return "$BASH4LLMERRTMP"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
   [ "$others_write" = "w" ]
 }
@@ -1664,21 +1664,21 @@ make_tmpdir() {
   lockfile="$TMP_LOCK"
 
   # Ensure base tmpdir exists before locking
-  mkdir -p "$GROQBASH_TMPDIR" 2>/dev/null || return "$GROQBASHERRTMP"
-  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
+  mkdir -p "$BASH4LLM_TMPDIR" 2>/dev/null || return "$BASH4LLMERRTMP"
+  chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
 
-  lock_exec "$lockfile" "$GROQBASH_LOCK_TIMEOUT_TMP" -- sh -c '
+  lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_TMP" -- sh -c '
     set -e
     base="$1"
 
     # Use _tmpf as the single source of truth for secure tmpdir creation
     tmpd="$(_tmpf dir "$base" groq 2>/dev/null)" || {
       log_error "TMP" "make_tmpdir: _tmpf failed for base=$base"
-      exit "$GROQBASHERRTMP"
+      exit "$BASH4LLMERRTMP"
     }
 
     printf "%s" "$tmpd"
-  ' _ "$GROQBASH_TMPDIR"
+  ' _ "$BASH4LLM_TMPDIR"
 
   return $?
 }
@@ -1688,44 +1688,44 @@ make_tmpdir() {
 #   _tmpf file <base_dir> <prefix>
 #   _tmpf dir  <base_dir> <prefix>
 # Returns path on stdout or non-zero on failure.
-# Guarantees: uses GROQBASH_TMPDIR as fallback, enforces umask/permissions, no predictable paths.
+# Guarantees: uses BASH4LLM_TMPDIR as fallback, enforces umask/permissions, no predictable paths.
 _tmpf() {
   local mode="$1" base="$2" prefix="${3:-groq}" tmp
 
   if [ -z "$mode" ]; then
     log_error "TMP" "_tmpf usage: _tmpf <file|dir> <base_dir> [prefix]"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
-  # Validate GROQBASH_TMPDIR as canonical tmp base
-  if [ -z "${GROQBASH_TMPDIR:-}" ]; then
-    log_error "TMP" "_tmpf: GROQBASH_TMPDIR not set"
-    return "$GROQBASHERRTMP"
+  # Validate BASH4LLM_TMPDIR as canonical tmp base
+  if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
+    log_error "TMP" "_tmpf: BASH4LLM_TMPDIR not set"
+    return "$BASH4LLMERRTMP"
   fi
-  if [ ! -d "$GROQBASH_TMPDIR" ]; then
-    log_error "TMP" "_tmpf: GROQBASH_TMPDIR does not exist: $GROQBASH_TMPDIR"
-    return "$GROQBASHERRTMP"
+  if [ ! -d "$BASH4LLM_TMPDIR" ]; then
+    log_error "TMP" "_tmpf: BASH4LLM_TMPDIR does not exist: $BASH4LLM_TMPDIR"
+    return "$BASH4LLMERRTMP"
   fi
-  # Reject symlinks for GROQBASH_TMPDIR
-  if [ -L "$GROQBASH_TMPDIR" ]; then
-    log_error "TMP" "_tmpf: GROQBASH_TMPDIR is a symlink: $GROQBASH_TMPDIR"
-    return "$GROQBASHERRTMP"
+  # Reject symlinks for BASH4LLM_TMPDIR
+  if [ -L "$BASH4LLM_TMPDIR" ]; then
+    log_error "TMP" "_tmpf: BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR"
+    return "$BASH4LLMERRTMP"
   fi
-  # Enforce strict perms (700) on GROQBASH_TMPDIR
-  chmod 700 "$GROQBASH_TMPDIR" 2>/dev/null || true
+  # Enforce strict perms (700) on BASH4LLM_TMPDIR
+  chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
 
-  # Prefer provided base if it is an existing directory; otherwise fall back to GROQBASH_TMPDIR
+  # Prefer provided base if it is an existing directory; otherwise fall back to BASH4LLM_TMPDIR
   if [ -z "$base" ] || [ ! -d "$base" ]; then
-    base="$GROQBASH_TMPDIR"
+    base="$BASH4LLM_TMPDIR"
   fi
 
-  # Ensure base is inside GROQBASH_TMPDIR perimeter
+  # Ensure base is inside BASH4LLM_TMPDIR perimeter
   case "$base" in
-    "$GROQBASH_TMPDIR"/*|"$GROQBASH_TMPDIR")
+    "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
       : # ok
       ;;
     *)
-      base="$GROQBASH_TMPDIR"
+      base="$BASH4LLM_TMPDIR"
       ;;
   esac
 
@@ -1734,7 +1734,7 @@ _tmpf() {
     tmp="$(mktemp "$base/${prefix}.XXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
       log_error "TMP" "_tmpf: mktemp failed for file in $base"
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     fi
     chmod 600 "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
@@ -1743,14 +1743,14 @@ _tmpf() {
     tmp="$(mktemp -d "$base/${prefix}.XXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
       log_error "TMP" "_tmpf: mktemp failed for dir in $base"
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     fi
     chmod 700 "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
     return 0
   else
     log_error "TMP" "_tmpf: unknown mode: $mode"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
@@ -1793,9 +1793,9 @@ session_sanitize_cmd() {
 session_read_window() {
   # Usage: session_read_window <session_id> <N> <out_file>
   local sid="$1" n="${2:-10}" out="$3"
-  local history_dir="${GROQBASH_HISTORY_DIR:-$PWD/groqbash.d/history}"
+  local history_dir="${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}"
   local session_file="$history_dir/sessions/${sid}.ndjson"
-  local tmpdir="${RUN_TMPDIR:-${GROQBASH_TMPDIR:-$PWD/groqbash.d/tmp}}"
+  local tmpdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-$PWD/bash4llm.d/tmp}}"
   local tmpf out_tmp line role content role_norm role_json content_json
 
   [ -n "$sid" ] || return 1
@@ -1807,16 +1807,16 @@ session_read_window() {
   if ! printf '%s' "$n" | grep -qE '^[0-9]+$'; then n=10; fi
   if [ "$n" -le 0 ]; then n=10; fi
 
-  # Ensure tmpdir exists and is writable (must be inside groqbash.d/)
+  # Ensure tmpdir exists and is writable (must be inside bash4llm.d/)
   mkdir -p "${tmpdir%/}" 2>/dev/null || true
   chmod 700 "${tmpdir%/}" 2>/dev/null || true
-  if ! : > "${tmpdir%/}/.groqbash_tmp_check" 2>/dev/null; then
+  if ! : > "${tmpdir%/}/.bash4llm_tmp_check" 2>/dev/null; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       printf 'DEBUG: session_read_window: tmpdir not writable: %s\n' "$tmpdir" >&2
     fi
     return 1
   else
-    rm -f "${tmpdir%/}/.groqbash_tmp_check" 2>/dev/null || true
+    rm -f "${tmpdir%/}/.bash4llm_tmp_check" 2>/dev/null || true
   fi
 
   # Create a tmpf inside tmpdir (no /tmp, no /dev/null)
@@ -1919,8 +1919,8 @@ session_read_window() {
 session_append() {
   # Usage: session_append <session_id> <role> <content> <meta_json>
   local sid="$1" role="$2" content="$3" meta_json="$4"
-  # Prefer SESSION_DIR (set during init), then GROQBASH_HISTORY_DIR, then local fallback
-  local base_sessions_dir="${SESSION_DIR:-${GROQBASH_HISTORY_DIR:-./groqbash.d}/sessions}"
+  # Prefer SESSION_DIR (set during init), then BASH4LLM_HISTORY_DIR, then local fallback
+  local base_sessions_dir="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-./bash4llm.d}/sessions}"
   local session_file="${base_sessions_dir%/}/${sid}.ndjson"
   local lockfile="${session_file}.lock"
   local invocation_ts message_id marker normalized rand tmpf found=0 role_norm line timeout
@@ -1955,7 +1955,7 @@ session_append() {
   chmod 700 "$sess_dir" 2>/dev/null || true
 
   if [ ! -f "$session_file" ]; then
-    tmp_init="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.init 2>/dev/null)" || true
+    tmp_init="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" session.init 2>/dev/null)" || true
     : > "${tmp_init:-/dev/null}" 2>/dev/null || true
     if ! mv -f "$tmp_init" "$session_file" 2>/dev/null; then
       cp -f "$tmp_init" "$session_file" 2>/dev/null || true
@@ -1965,7 +1965,7 @@ session_append() {
 
   # Marker: prefer message_id-based idempotency (cross-process). Fallback: run-unique marker to avoid duplicate append from same process.
   if [ -n "${message_id:-}" ]; then
-    marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/session-msg-${message_id}.lockdir"
+    marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/session-msg-${message_id}.lockdir"
     if mkdir "$marker_dir" 2>/dev/null; then
       printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
       printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
@@ -1978,7 +1978,7 @@ session_append() {
       return 0
     fi
   else
-    marker_dir="${RUN_TMPDIR:-$GROQBASH_TMPDIR}/run-$$-${RANDOM}.lockdir"
+    marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/run-$$-${RANDOM}.lockdir"
     mkdir -p "$marker_dir" 2>/dev/null || true
     printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
     printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
@@ -1987,10 +1987,10 @@ session_append() {
   fi
 
   # Prepare tmp file for any transient checks (kept minimal)
-  tmpf="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" session.append 2>/dev/null)" || true
+  tmpf="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" session.append 2>/dev/null)" || true
   : > "${tmpf:-/dev/null}" 2>/dev/null || true
 
-  timeout="${GROQBASH_LOCK_TIMEOUT_HISTORY:-10}"
+  timeout="${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}"
 
   # Acquire exclusive lock on session file
   exec 200>"$lockfile" 2>/dev/null || true
@@ -2094,13 +2094,13 @@ session_append() {
     # Write canonical ui_state session file
     ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to write session meta for $sid"
     # Update sessions index (best-effort): read existing index, add sid if missing
-    idx_file="${GROQBASH_CONFIG_DIR%/}/ui_state/sessions/index.json"
+    idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
     if [ -f "$idx_file" ]; then
       if jq -e --arg sid "$sid" '(.sessions // []) | index($sid) // empty' "$idx_file" >/dev/null 2>&1; then
         : # already present
       else
         # append sid
-        tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" uiidx 2>/dev/null)" || true
+        tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" uiidx 2>/dev/null)" || true
         if [ -n "$tmp_idx" ]; then
           jq --arg sid "$sid" '.sessions = ((.sessions // []) + [$sid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null && mv -f "${tmp_idx}.new" "$tmp_idx" && ui_state_write "sessions/index.json" "$(cat "$tmp_idx")" || true
           rm -f "$tmp_idx" 2>/dev/null || true
@@ -2129,9 +2129,9 @@ session_append() {
 # - session_cache_get <sid> <params_string> <out_file> -> returns 0 if cache hit and not expired
 # - session_cache_set <sid> <params_string> <ttl_sec> <infile> -> stores cache
 # - session_cache_invalidate <sid> [<params_string>] -> invalidates cache entries
-# Cache stored under $GROQBASH_MODELS_DIR/session_cache or $GROQBASH_TMPDIR/session_cache
+# Cache stored under $BASH4LLM_MODELS_DIR/session_cache or $BASH4LLM_TMPDIR/session_cache
 # ---------------------------------------------------------------------------
-SESSION_CACHE_DIR="${GROQBASH_CONFIG_DIR:-$GROQBASH_DIR/config}/session_cache"
+SESSION_CACHE_DIR="${BASH4LLM_CONFIG_DIR:-$BASH4LLM_DIR/config}/session_cache"
 mkdir -p "$SESSION_CACHE_DIR" 2>/dev/null || true
 chmod 700 "$SESSION_CACHE_DIR" 2>/dev/null || true
 
@@ -2263,7 +2263,7 @@ PROVIDER="${PROVIDER:-groq}"
 if type ensure_config_dir >/dev/null 2>&1; then
   ensure_config_dir >/dev/null 2>&1 || true
 else
-  mkdir -p "${GROQBASH_CONFIG_DIR%/}" 2>/dev/null || true
+  mkdir -p "${BASH4LLM_CONFIG_DIR%/}" 2>/dev/null || true
 fi
 
 # NOTE: Do NOT reassign RUN_TMPDIR, RESP, PAYLOAD, ERRF to empty values anywhere
@@ -2272,10 +2272,10 @@ fi
 CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
 
 # Ensure runtime tmpdir early so RESP/RUN_TMPDIR are available for later code
-if [ "${GROQBASH_SOURCE_ONLY:-0}" -eq 0 ]; then
+if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 0 ]; then
   if ! ensure_run_tmpdir >/dev/null 2>&1; then
-    log_error "TMP" "cannot create or access RUN_TMPDIR ($GROQBASH_TMPDIR). Aborting."
-    exit "$GROQBASHERRTMP"
+    log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
+    exit "$BASH4LLMERRTMP"
   fi
 fi
 
@@ -2327,7 +2327,7 @@ buildpayload_groq() {
   # Assumes: MODEL, TURE, MAX_TOKENS, MESSAGES_JSON, BUILD_MESSAGES_FILE, STREAM_MODE, JSON_INPUT, CONTENT may be set
   local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs msgs_from_file
 
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
 
   # always allocate a random tmp file; never use deterministic fallback
   tmp_payload="$(_mktemp_in_dir "$RUN_TMPDIR" payload.XXXXXX.json 2>/dev/null || _tmpf file "$RUN_TMPDIR" payload.json)"
@@ -2421,13 +2421,13 @@ buildpayload_groq() {
        '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload" 2>/dev/null; then
     log_error "PAYLOAD" "jq failed to build payload; tmp_payload not created"
     rm -f "$tmp_payload" 2>/dev/null || true
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
   if [ ! -s "$tmp_payload" ]; then
     log_error "PAYLOAD" "tmp_payload is empty after jq; aborting"
     rm -f "$tmp_payload" 2>/dev/null || true
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2456,10 +2456,10 @@ buildpayload_groq() {
   fi
 
   if [ -n "$staged_b64" ]; then
-    GROQBASH_TMP_PAYLOAD="$staged_b64"
+    BASH4LLM_TMP_PAYLOAD="$staged_b64"
     PAYLOAD="${PAYLOAD:-$staged_b64}"
   else
-    GROQBASH_TMP_PAYLOAD="$tmp_payload"
+    BASH4LLM_TMP_PAYLOAD="$tmp_payload"
     PAYLOAD="${PAYLOAD:-$tmp_payload}"
   fi
 
@@ -2471,15 +2471,15 @@ buildpayload_groq() {
 # ---------------------------------------------------------------------------
 call_api_groq() {
   # Robust non-streaming call to Groq API
-  # Expects: RUN_TMPDIR, RESP path variable, and payload file (GROQBASH_TMP_PAYLOAD or PAYLOAD)
+  # Expects: RUN_TMPDIR, RESP path variable, and payload file (BASH4LLM_TMP_PAYLOAD or PAYLOAD)
   local tmp_payload resp_tmp ERRF http_code rc resp_size errf_size now_ts stderr_head provider_url send_payload decoded_payload key_header CURL_CMD_ARR
 
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
 
   # Determine payload file to send
-  tmp_payload="${GROQBASH_TMP_PAYLOAD:-${PAYLOAD:-}}"
+  tmp_payload="${BASH4LLM_TMP_PAYLOAD:-${PAYLOAD:-}}"
   if [ -z "${tmp_payload:-}" ]; then
-    log_error "CALL" "no payload file specified (GROQBASH_TMP_PAYLOAD or PAYLOAD)"
+    log_error "CALL" "no payload file specified (BASH4LLM_TMP_PAYLOAD or PAYLOAD)"
     return 1
   fi
 
@@ -2493,25 +2493,25 @@ call_api_groq() {
       return 0
     fi
     log_error "NETWORK" "Network calls disabled; aborting non-streaming request."
-    return "$GROQBASHERRCURL_FAILED"
+    return "$BASH4LLMERRCURL_FAILED"
   fi
 
   # Ensure API key present (unless dry-run)
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
     GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
   fi
-  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${GROQBASH_API_KEY:-}" ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
-    log_error "APIKEY" "GROQ_API_KEY (or GROQBASH_API_KEY) is not set."
-    return "$GROQBASHERRNOAPIKEY"
+  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${BASH4LLM_API_KEY:-}" ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
+    log_error "APIKEY" "GROQ_API_KEY (or BASH4LLM_API_KEY) is not set."
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
   # Use canonical provider URL resolved earlier by resolve_provider_url.
-  if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
+  if [ -z "${BASH4LLM_PROVIDER_URL:-}" ]; then
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   fi
-  provider_url="${GROQBASH_PROVIDER_URL:-}"
+  provider_url="${BASH4LLM_PROVIDER_URL:-}"
   if [ -z "${provider_url:-}" ]; then
-    log_error "CALL" "no provider URL set (GROQBASH_PROVIDER_URL)"
+    log_error "CALL" "no provider URL set (BASH4LLM_PROVIDER_URL)"
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     return 1
@@ -2529,11 +2529,11 @@ call_api_groq() {
   send_payload="$tmp_payload"
   decoded_payload=""
   if printf '%s' "$tmp_payload" | grep -qE '\.b64$'; then
-    decoded_payload="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" payload.dec 2>/dev/null)" || {
+    decoded_payload="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" payload.dec 2>/dev/null)" || {
       log_error "B64DECODE" "failed to allocate decoded_payload tmp"
       now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       jq -c -n --arg ts "$now_ts" --arg note "tmp_alloc_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     }
 
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>/dev/null; then
@@ -2541,7 +2541,7 @@ call_api_groq() {
       rm -f "$decoded_payload" 2>/dev/null || true
       now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       jq -c -n --arg ts "$now_ts" --arg note "b64_decode_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     fi
 
     if [ ! -s "$decoded_payload" ]; then
@@ -2582,8 +2582,8 @@ call_api_groq() {
   CURL_CMD_ARR+=( -H "Content-Type: application/json" )
   if [ -n "${GROQ_API_KEY:-}" ]; then
     CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
-  elif [ -n "${GROQBASH_API_KEY:-}" ]; then
-    CURL_CMD_ARR+=( -H "Authorization: Bearer ${GROQBASH_API_KEY}" )
+  elif [ -n "${BASH4LLM_API_KEY:-}" ]; then
+    CURL_CMD_ARR+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
   fi
 
   # Execute curl
@@ -2695,10 +2695,10 @@ call_api_groq() {
 # ---------------------------------------------------------------------------
 call_api_streaming_groq() {
   # Streaming call for Groq provider with robust checks and diagnostics.
-  # Expects: RUN_TMPDIR, RESP variable, and payload file (GROQBASH_TMP_PAYLOAD or PAYLOAD).
+  # Expects: RUN_TMPDIR, RESP variable, and payload file (BASH4LLM_TMP_PAYLOAD or PAYLOAD).
   local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code
 
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
@@ -2709,20 +2709,20 @@ call_api_streaming_groq() {
       return 0
     fi
     log_error "NETWORK" "Network calls disabled; aborting streaming request."
-    return "$GROQBASHERRCURL_FAILED"
+    return "$BASH4LLMERRCURL_FAILED"
   fi
 
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
     GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
   fi
-  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${GROQBASH_API_KEY:-}" ]; then
-    log_error "APIKEY" "GROQ_API_KEY (or GROQBASH_API_KEY) is not set."
-    return "$GROQBASHERRNOAPIKEY"
+  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${BASH4LLM_API_KEY:-}" ]; then
+    log_error "APIKEY" "GROQ_API_KEY (or BASH4LLM_API_KEY) is not set."
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
-  tmp_payload="${GROQBASH_TMP_PAYLOAD:-${PAYLOAD:-}}"
+  tmp_payload="${BASH4LLM_TMP_PAYLOAD:-${PAYLOAD:-}}"
   if [ -z "${tmp_payload:-}" ]; then
-    log_error "CALL_STREAM" "no payload file specified (GROQBASH_TMP_PAYLOAD or PAYLOAD)"
+    log_error "CALL_STREAM" "no payload file specified (BASH4LLM_TMP_PAYLOAD or PAYLOAD)"
     return 1
   fi
   if [ ! -s "$tmp_payload" ]; then
@@ -2732,12 +2732,12 @@ call_api_streaming_groq() {
     return 1
   fi
 
-  if [ -z "${GROQBASH_PROVIDER_URL:-}" ]; then
+  if [ -z "${BASH4LLM_PROVIDER_URL:-}" ]; then
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   fi
-  provider_url="${GROQBASH_PROVIDER_URL:-}"
+  provider_url="${BASH4LLM_PROVIDER_URL:-}"
   if [ -z "${provider_url:-}" ]; then
-    log_error "CALL_STREAM" "no provider URL set (GROQBASH_PROVIDER_URL)"
+    log_error "CALL_STREAM" "no provider URL set (BASH4LLM_PROVIDER_URL)"
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     return 1
@@ -2761,7 +2761,7 @@ call_api_streaming_groq() {
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$ERRF"; then
       log_error "B64DECODE" "base64 decode failed for payload; see $ERRF"
       rm -f "$decoded_payload" 2>/dev/null || true
-      return "$GROQBASHERRTMP"
+      return "$BASH4LLMERRTMP"
     fi
     send_payload="$decoded_payload"
   else
@@ -2778,8 +2778,8 @@ call_api_streaming_groq() {
   CURL_CMD+=( -H "Content-Type: application/json" )
   if [ -n "${GROQ_API_KEY:-}" ]; then
     CURL_CMD+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
-  elif [ -n "${GROQBASH_API_KEY:-}" ]; then
-    CURL_CMD+=( -H "Authorization: Bearer ${GROQBASH_API_KEY}" )
+  elif [ -n "${BASH4LLM_API_KEY:-}" ]; then
+    CURL_CMD+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
   fi
 
   # CORRETTO: rimosso tee dalla pipeline per azzerare il buffering e abilitare lo streaming immediato
@@ -2907,7 +2907,7 @@ call_api_streaming_groq() {
     finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "${RESP}" 2>/dev/null || echo "")"
     req_id="$(jq -r '.x_groq?.id // .id // empty' "${RESP}" 2>/dev/null || echo "")"
     edgecase=0
-    if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
+    if [ "${BASH4LLM_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     api_json="$(jq -c -n --argjson http "$http_code" --arg fr "${finish_reason:-}" --argjson edge "$edgecase" --arg id "${req_id:-}" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
     ui_state_write "last_api.json" "$api_json" || { if [ "${DEBUG:-0}" -eq 1 ]; then log_warn "UI_STATE" "failed to write last_api.json (streaming)"; fi; }
@@ -2930,26 +2930,26 @@ refresh_models_groq() {
   fi
   if [ -z "${GROQ_API_KEY:-}" ]; then
     log_error "APIKEY" "GROQ_API_KEY is required to refresh models."
-    return "$GROQBASHERRNOAPIKEY"
+    return "$BASH4LLMERRNOAPIKEY"
   fi
 
-  ensure_run_tmpdir || return "$GROQBASHERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
   local workdir tmpd out errf api_url tmp_parsed tmp_trim tmpout rc
   workdir="${RUN_TMPDIR:-}"
-  [ -n "$workdir" ] || return "$GROQBASHERRTMP"
-  tmpd="$(mktemp -d "$workdir/groq-models.XXXX")" || return "$GROQBASHERRTMP"
+  [ -n "$workdir" ] || return "$BASH4LLMERRTMP"
+  tmpd="$(mktemp -d "$workdir/groq-models.XXXX")" || return "$BASH4LLMERRTMP"
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
 
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
-  if [ -n "${GROQBASH_PROVIDER_URL:-}" ]; then
-    origin="$(printf '%s' "$GROQBASH_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
+  if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
+    origin="$(printf '%s' "$BASH4LLM_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
     api_url="${origin%/}/openai/v1/models"
   else
     # CORRETTO: Eliminata logica condizionale non raggiungibile (il provider attivo qui è sempre groq)
     log_error "MODELREFRESH" "no provider URL available to refresh models"
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
@@ -2959,7 +2959,7 @@ refresh_models_groq() {
       head -n 200 "$errf" >&2 || true
     fi
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   if ! jq -e . "$out" >/dev/null 2>&1; then
@@ -2968,7 +2968,7 @@ refresh_models_groq() {
       head -n 200 "$errf" >&2 || true
     fi
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   tmp_parsed="$tmpd/parsed_models.txt"
@@ -2991,7 +2991,7 @@ refresh_models_groq() {
       head -n 200 "$errf" >&2 || true
     fi
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   tmp_trim="$tmpd/parsed_trimmed.txt"
@@ -3005,7 +3005,7 @@ refresh_models_groq() {
   if [ ! -s "$tmp_trim" ]; then
     log_error "MODELREFRESH" "no valid model names after normalization"
     rm -rf "$tmpd"
-    return "$GROQBASHERRAPI"
+    return "$BASH4LLMERRAPI"
   fi
 
   mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
@@ -3018,12 +3018,12 @@ refresh_models_groq() {
     log_error "MODELREFRESH" "failed to stage models file"
     rm -f "$tmpout" 2>/dev/null || true
     rm -rf "$tmpd"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
   lockfile="$MODELS_LOCK"
   lock_exec "$lockfile" 10 -- base64 "${B64_DECODE_OPT}" < "${MODELS_FILE}.b64" > "$MODELS_FILE" \
-    || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$GROQBASHERRTMP"; }
+    || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$BASH4LLMERRTMP"; }
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
 
@@ -3045,7 +3045,7 @@ validate_model_groq() {
   # Accepts either exact matches as stored in MODELS_FILE or normalized names
   # (stripping common prefixes like "models/" or "groq:"), and enforces textual support.
   local model="$1" norm_model file_match
-  [ -n "$model" ] || { printf 'groqbash: ERROR: validate_model_groq: model required\n' >&2; return 1; }
+  [ -n "$model" ] || { printf 'bash4llm: ERROR: validate_model_groq: model required\n' >&2; return 1; }
 
   # Normalize incoming model for comparison: strip leading "models/" and "groq:" and trim
   norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -3065,14 +3065,14 @@ validate_model_groq() {
     fi
 
     if [ "$file_match" -ne 1 ]; then
-      printf 'groqbash: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
+      printf 'bash4llm: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
       return 1
     fi
   fi
 
   # Ensure the (normalized) model is text-capable
   if ! is_supported_model "$norm_model"; then
-    printf 'groqbash: ERROR: The "%s" model is not supported by GroqBash (requires non-text input).\n' "$model" >&2
+    printf 'bash4llm: ERROR: The "%s" model is not supported by Bash4LLM (requires non-text input).\n' "$model" >&2
     return 1
   fi
 
@@ -3123,7 +3123,7 @@ call_provider() {
 
 # Provider dispatch wrappers (call provider-specific implementations if present)
 refresh_models_dispatch() {
-  local destfile="${1:-${MODELS_FILE:-$GROQBASH_MODELS_DIR/models.txt}}"
+  local destfile="${1:-${MODELS_FILE:-$BASH4LLM_MODELS_DIR/models.txt}}"
   local fn="refresh_models_${PROVIDER}"
   local rc=0
 
@@ -3267,8 +3267,8 @@ resolve_model() {
   fi
 
   # 5) config MODEL= in config file (legacy)
-  if [ -f "${GROQBASH_CONFIG_DIR%/}/config" ]; then
-    cfg_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "${GROQBASH_CONFIG_DIR%/}/config" 2>/dev/null || true)"
+  if [ -f "${BASH4LLM_CONFIG_DIR%/}/config" ]; then
+    cfg_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "${BASH4LLM_CONFIG_DIR%/}/config" 2>/dev/null || true)"
     cfg_model="$(printf '%s' "$cfg_model" | awk '{$1=$1;print}')"
 
     norm="$(printf '%s' "$cfg_model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
@@ -3318,7 +3318,7 @@ build_payload_from_vars() {
     rc=$?
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$GROQBASHERRAPI"
+      exit "$BASH4LLMERRAPI"
     else
       return "$rc"
     fi
@@ -3343,7 +3343,7 @@ call_api_once() {
     rc=$?
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$GROQBASHERRAPI"
+      exit "$BASH4LLMERRAPI"
     else
       return "$rc"
     fi
@@ -3365,7 +3365,7 @@ call_api_streaming() {
     rc=$?
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$GROQBASHERRAPI"
+      exit "$BASH4LLMERRAPI"
     else
       return "$rc"
     fi
@@ -3390,35 +3390,35 @@ extract_api_error() {
 
 # detect_empty_edge_case: rileva l'edge case "completion vuota"
 # NON stampa nulla. Se rilevato, imposta variabili globali diagnostiche:
-#   GROQBASH_EDGE_EMPTY=1
-#   GROQBASH_EDGE_REQ_ID, GROQBASH_EDGE_FINISH_REASON, GROQBASH_EDGE_COMPLETION_TOKENS
+#   BASH4LLM_EDGE_EMPTY=1
+#   BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON, BASH4LLM_EDGE_COMPLETION_TOKENS
 # Ritorna 0 se edge case rilevato, 1 altrimenti.
 detect_empty_edge_case() {
-  # Populate edge-case variables and set GROQBASH_EDGE_EMPTY=1 when response is an "empty completion" edge.
+  # Populate edge-case variables and set BASH4LLM_EDGE_EMPTY=1 when response is an "empty completion" edge.
   local resp="${RESP:-}"
-  GROQBASH_EDGE_EMPTY=0
-  GROQBASH_EDGE_REQ_ID=""
-  GROQBASH_EDGE_FINISH_REASON=""
-  GROQBASH_EDGE_COMPLETION_TOKENS=0
+  BASH4LLM_EDGE_EMPTY=0
+  BASH4LLM_EDGE_REQ_ID=""
+  BASH4LLM_EDGE_FINISH_REASON=""
+  BASH4LLM_EDGE_COMPLETION_TOKENS=0
 
   # FIX P9: leggere sempre da copia atomica
   local tmp_copy
-  tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" resp_copy 2>/dev/null)" || return 1
+  tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return 1
   cp -f "$resp" "$tmp_copy" 2>/dev/null || return 1
   resp="$tmp_copy"
 
   if [ -z "${resp:-}" ] || [ ! -s "$resp" ]; then
-    GROQBASH_EDGE_EMPTY=1
+    BASH4LLM_EDGE_EMPTY=1
     return 0
   fi
 
   if ! is_valid_json_file "$resp"; then
-    GROQBASH_EDGE_EMPTY=1
+    BASH4LLM_EDGE_EMPTY=1
     return 0
   fi
 
   if jq -e 'has("diagnostic") and .diagnostic==true' "$resp" >/dev/null 2>&1; then
-    GROQBASH_EDGE_EMPTY=1
+    BASH4LLM_EDGE_EMPTY=1
     return 0
   fi
 
@@ -3428,14 +3428,14 @@ detect_empty_edge_case() {
   completion_tokens="$(jq -r '.usage?.completion_tokens // 0' "$resp" 2>/dev/null || echo 0)"
   req_id="$(jq -r '.x_groq?.id // .id // empty' "$resp" 2>/dev/null || echo "")"
 
-  GROQBASH_EDGE_REQ_ID="${req_id:-}"
-  GROQBASH_EDGE_FINISH_REASON="${finish_reason:-}"
-  GROQBASH_EDGE_COMPLETION_TOKENS="${completion_tokens:-0}"
+  BASH4LLM_EDGE_REQ_ID="${req_id:-}"
+  BASH4LLM_EDGE_FINISH_REASON="${finish_reason:-}"
+  BASH4LLM_EDGE_COMPLETION_TOKENS="${completion_tokens:-0}"
 
   if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "${completion_tokens:-0}" -le 1 ]; then
-    GROQBASH_EDGE_EMPTY=1
+    BASH4LLM_EDGE_EMPTY=1
   else
-    GROQBASH_EDGE_EMPTY=0
+    BASH4LLM_EDGE_EMPTY=0
   fi
 
   return 0
@@ -3452,14 +3452,14 @@ finalize_and_output() {
   local resp_file tmp_copy
   resp_file="${RESP:-}"
   if [ -n "$resp_file" ]; then
-    tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$GROQBASH_TMPDIR}" resp_copy 2>/dev/null)" || return "$GROQBASHERRTMP"
-    cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return "$GROQBASHERRTMP"
+    tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return "$BASH4LLMERRTMP"
+    cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return "$BASH4LLMERRTMP"
     resp_file="$tmp_copy"
   fi
 
   if { [ "$mode" = "json" ] || [ "$mode" = "pretty" ]; } && [ ! -s "$resp_file" ]; then
     log_error "RESP" "response file missing or empty: ${RESP:-<unset>}"
-    return "$GROQBASHERRTMP"
+    return "$BASH4LLMERRTMP"
   fi
 
   case "$mode" in
@@ -3491,14 +3491,14 @@ finalize_and_output() {
           dest_dir="$(dirname "$dest_path")"
         fi
       else
-        dest_dir="$GROQBASH_HISTORY_DIR"
+        dest_dir="$BASH4LLM_HISTORY_DIR"
         dest_path="$dest_dir/$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt"
       fi
       mkdir -p "$dest_dir" 2>/dev/null || true
 
       if [ -z "${RUN_TMPDIR:-}" ] || [ ! -d "$RUN_TMPDIR" ]; then
         log_error "TMPFAIL" "RUN_TMPDIR not available for saving output."
-        return "$GROQBASHERRTMP"
+        return "$BASH4LLMERRTMP"
       fi
 
       save_to_history "$text" || log_warn "HISTORY" "Failed to save output to history."
@@ -3521,10 +3521,10 @@ perform_request_once() {
       fi
 
       # reset diagnostica all'inizio della gestione della risposta
-      GROQBASH_EDGE_EMPTY=0
-      GROQBASH_EDGE_REQ_ID=""
-      GROQBASH_EDGE_FINISH_REASON=""
-      GROQBASH_EDGE_COMPLETION_TOKENS=0
+      BASH4LLM_EDGE_EMPTY=0
+      BASH4LLM_EDGE_REQ_ID=""
+      BASH4LLM_EDGE_FINISH_REASON=""
+      BASH4LLM_EDGE_COMPLETION_TOKENS=0
 
       local text api_err
       text="$(extract_text_from_resp || true)"
@@ -3533,13 +3533,13 @@ perform_request_once() {
       detect_empty_edge_case || true
 
       # Ensure last_api.json exists (fallback if provider didn't write it)
-      ui_last="${GROQBASH_CONFIG_DIR%/}/ui_state/last_api.json"
+      ui_last="${BASH4LLM_CONFIG_DIR%/}/ui_state/last_api.json"
       if [ ! -f "$ui_last" ] || [ "$ui_last" -ot "${RESP:-/dev/null}" ]; then
         # Build fallback api_json from available globals
         finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
         req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
         edgecase=0
-        if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
+        if [ "${BASH4LLM_EDGE_EMPTY:-0}" -eq 1 ]; then edgecase=1; fi
         now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         http_code_fallback=0
         # try to infer http code from RESP presence
@@ -3552,18 +3552,18 @@ perform_request_once() {
         api_err="$(extract_api_error || true)"
         if [ -n "$api_err" ]; then
           log_error "API" "API error: $api_err"
-          return "$GROQBASHERRAPI"
+          return "$BASH4LLMERRAPI"
         else
           # Se l'edge case è stato rilevato, emetti il log strutturato una sola volta
-          if [ "${GROQBASH_EDGE_EMPTY:-0}" -eq 1 ]; then
+          if [ "${BASH4LLM_EDGE_EMPTY:-0}" -eq 1 ]; then
             printf '%s\n' \
               "API edge case detected: empty completion" \
-              "  req_id: ${GROQBASH_EDGE_REQ_ID:-<none>}" \
-              "  finish_reason: ${GROQBASH_EDGE_FINISH_REASON:-<none>}" \
-              "  completion_tokens: ${GROQBASH_EDGE_COMPLETION_TOKENS:-0}" >&2
+              "  req_id: ${BASH4LLM_EDGE_REQ_ID:-<none>}" \
+              "  finish_reason: ${BASH4LLM_EDGE_FINISH_REASON:-<none>}" \
+              "  completion_tokens: ${BASH4LLM_EDGE_COMPLETION_TOKENS:-0}" >&2
 
             log_error "API" "empty completion returned by provider (see previous diagnostic lines)."
-            return "$GROQBASHERRAPI"
+            return "$BASH4LLMERRAPI"
           fi
 
           # fallback generico: nessun testo e nessun errore esplicito
@@ -3571,7 +3571,7 @@ perform_request_once() {
           if [ "${DEBUG:-0}" -eq 1 ]; then
             head -n 50 "${RESP:-/dev/null}" >&2 || true
           fi
-          return "$GROQBASHERRAPI"
+          return "$BASH4LLMERRAPI"
         fi
       fi
       # Ensure separation between JSON and assistant text
@@ -3583,16 +3583,16 @@ perform_request_once() {
       return 0
     else
       rc=$?
-      if [ "$rc" -eq "$GROQBASHERRCURL_FAILED" ]; then
-        printf 'groqbash: WARN: Network error (curl). Retrying...\n' >&2
-      elif [ "$rc" -eq "$GROQBASHERRAPI" ]; then
-        printf 'groqbash: ERROR: HTTP/API error. Not retrying.\n' >&2
+      if [ "$rc" -eq "$BASH4LLMERRCURL_FAILED" ]; then
+        printf 'bash4llm: WARN: Network error (curl). Retrying...\n' >&2
+      elif [ "$rc" -eq "$BASH4LLMERRAPI" ]; then
+        printf 'bash4llm: ERROR: HTTP/API error. Not retrying.\n' >&2
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
-        return "$GROQBASHERRAPI"
+        return "$BASH4LLMERRAPI"
       else
-        printf 'groqbash: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
+        printf 'bash4llm: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
       fi
     fi
 
@@ -3600,7 +3600,7 @@ perform_request_once() {
   done
 
   log_error "REQUEST" "request failed after $MAX_RETRIES attempts."
-  return "$GROQBASHERRAPI"
+  return "$BASH4LLMERRAPI"
 }
 
 #--3<---[ SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
@@ -3611,7 +3611,7 @@ collect_input_from_files() {
     if file_readable "$f"; then
       [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${f} ---"$'\n\n'
       out="${out}$(cat "$f")"; first=0
-    else log_error "FILE" "file not readable: $f"; exit "$GROQBASHERRTMP"; fi
+    else log_error "FILE" "file not readable: $f"; exit "$BASH4LLMERRTMP"; fi
   done
   printf '%s' "$out"
 }
@@ -3680,7 +3680,7 @@ validate_model_core() {
   # Validate a model name against local MODELS_FILE (if present) and textual support.
   # Accepts exact matches or matches after stripping common provider prefixes like "models/".
   local model="$1" norm_model file_match
-  [ -n "$model" ] || { printf 'groqbash: ERROR: validate_model_core: model required\n' >&2; return 1; }
+  [ -n "$model" ] || { printf 'bash4llm: ERROR: validate_model_core: model required\n' >&2; return 1; }
 
   # Normalize incoming model for comparison: strip leading "models/" and surrounding whitespace
   norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -3705,14 +3705,14 @@ validate_model_core() {
     fi
 
     if [ "$file_match" -ne 1 ]; then
-      printf 'groqbash: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
+      printf 'bash4llm: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
       return 1
     fi
   fi
 
   # Check textual support (reject obvious multimodal/audio/image models by name patterns)
   if ! is_supported_model "$norm_model"; then
-    printf 'groqbash: ERROR: The "%s" model is not supported by GroqBash (requires non-text input).\n' "$model" >&2
+    printf 'bash4llm: ERROR: The "%s" model is not supported by Bash4LLM (requires non-text input).\n' "$model" >&2
     return 1
   fi
 
@@ -3752,7 +3752,7 @@ while [ $# -gt 0 ]; do
         shift 2
       else
         log_error "ARGS" "--session requires an argument"
-        exit "$GROQBASHERRTMP"
+        exit "$BASH4LLMERRTMP"
       fi
       ;;
     --session-window)
@@ -3804,7 +3804,7 @@ while [ $# -gt 0 ]; do
       ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
-      help_file="$GROQBASH_EXTRAS_DIR/docs/help.txt"
+      help_file="$BASH4LLM_EXTRAS_DIR/docs/help.txt"
       if [ -f "$help_file" ]; then cat "$help_file"; else printf 'Help file not found: %s\n' "$help_file" >&2; fi
       exit 0 ;;
     --bootstrap-only)
@@ -3812,7 +3812,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --) shift; break ;;
-    -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$GROQBASHERRTMP" ;;
+    -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$BASH4LLMERRTMP" ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -3823,9 +3823,9 @@ done
 # - If the module extras/session/session_engine.sh exists, we source it.
 # - We never execute the file as a script; we verify the presence of the required functions.
 # - SE_AVAILABLE indicates whether to use the engine; in case of errors, the legacy fallback is used.
-SE_ENGINE_PATH="${GROQBASH_EXTRAS_DIR%/}/session/session-engine.sh"
+SE_ENGINE_PATH="${BASH4LLM_EXTRAS_DIR%/}/session/session-engine.sh"
 SE_AVAILABLE=0
-if [ -f "$SE_ENGINE_PATH" ] && [ "${GROQBASH_SESSION_ENGINE:-on}" != "off" ]; then
+if [ -f "$SE_ENGINE_PATH" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
   # Source safely (no subshell) so functions become visible in current shell
   # If sourcing fails (syntax error), abort loading and keep SE_AVAILABLE=0
   if bash -n "$SE_ENGINE_PATH" 2>/dev/null; then
@@ -3870,14 +3870,14 @@ fi
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
-  exit "$GROQBASHERRTMP"
+  exit "$BASH4LLMERRTMP"
 fi
 
 # Rebuild supported providers array (machine-readable source of truth)
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
 # Resolve extras providers dir: prefer explicit PROVIDERS_DIR, then extras dir, then canonical config providers
-extras_prov_dir="${PROVIDERS_DIR:-${GROQBASH_EXTRAS_DIR%/}/providers}"
+extras_prov_dir="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR%/}/providers}"
 if [ -z "${extras_prov_dir:-}" ]; then
   extras_prov_dir="$(canonical_config_dir)/providers"
 fi
@@ -3951,15 +3951,15 @@ if [ "$LIST_PROVIDERS" -eq 1 ]; then
 fi
 
 if [ "$LIST_MODELS" -eq 1 ]; then
-  if list_models_cli; then exit 0; else exit "$GROQBASHERRTMP"; fi
+  if list_models_cli; then exit 0; else exit "$BASH4LLMERRTMP"; fi
 fi
 
 if [ -n "$SET_DEFAULT_MODEL" ]; then
   # Ensure canonical config dir exists and is safe
   if ! mkdir -p "$(canonical_config_dir)" 2>/dev/null; then
-    log_error "SEC" "cannot create config dir: $(canonical_config_dir)"; exit "$GROQBASHERRTMP"
+    log_error "SEC" "cannot create config dir: $(canonical_config_dir)"; exit "$BASH4LLMERRTMP"
   fi
-  if [ -L "$(canonical_config_dir)" ]; then log_error "SEC" "config dir is a symlink."; exit "$GROQBASHERRTMP"; fi
+  if [ -L "$(canonical_config_dir)" ]; then log_error "SEC" "config dir is a symlink."; exit "$BASH4LLMERRTMP"; fi
 
   # Determine the active provider robustly:
   # 1) explicit CLI override PROVIDER_CLI
@@ -3978,17 +3978,17 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
   # Persist default model for the explicit/active provider under canonical config dir
   target_model_file="$(canonical_model_file "${target_provider}")"
   printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$target_model_file" 10 \
-    || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$GROQBASHERRTMP"; }
+    || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$BASH4LLMERRTMP"; }
   chmod 600 "$target_model_file" 2>/dev/null || true
 
   # Log must reflect the actual provider used (target_provider)
-  printf 'groqbash: INFO: Default model for provider %s set to: %s\n' "$target_provider" "$SET_DEFAULT_MODEL" >&2
+  printf 'bash4llm: INFO: Default model for provider %s set to: %s\n' "$target_provider" "$SET_DEFAULT_MODEL" >&2
   exit 0
 fi
 
 if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE" = "pretty" ]; }; then
   log_error "ARGS" "--stream incompatible with --json/--pretty."
-  exit "$GROQBASHERRTMP"
+  exit "$BASH4LLMERRTMP"
 fi
 
 if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
@@ -4005,9 +4005,9 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   else
     SRC_BASE="${SRC_BASE%/}"
   fi
-  DEST_BASE="$(cd "${GROQBASH_EXTRAS_DIR%/}" >/dev/null 2>&1 && pwd || printf '%s' "${GROQBASH_EXTRAS_DIR%/}")"
+  DEST_BASE="$(cd "${BASH4LLM_EXTRAS_DIR%/}" >/dev/null 2>&1 && pwd || printf '%s' "${BASH4LLM_EXTRAS_DIR%/}")"
   # Destination for provider assets: prefer explicit PROVIDERS_DIR, otherwise use DEST_BASE/providers.
-  # Do not implicitly fall back to an empty GROQBASH_CONFIG_DIR; use canonical_config_dir only if DEST_BASE is unset.
+  # Do not implicitly fall back to an empty BASH4LLM_CONFIG_DIR; use canonical_config_dir only if DEST_BASE is unset.
   DEST_PROV="${PROVIDERS_DIR:-${DEST_BASE:-$(canonical_config_dir)}/providers}"
 
   # Legacy detection: only fatal if a legacy dir exists and is neither the canonical destination
@@ -4015,33 +4015,33 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   if [ -d "${LEGACY_EXTRAS_DIR}" ]; then
     LEGACY_REAL="$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' "${LEGACY_EXTRAS_DIR}")"
     if [ "${LEGACY_REAL}" != "${DEST_BASE}" ] && [ "${LEGACY_REAL}" != "${SRC_BASE}" ]; then
-      printf 'groqbash: ERROR: legacy extras directory found at %s\n' "${LEGACY_REAL}" >&2
-      printf 'groqbash: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${DEST_BASE}" >&2
-      exit "$GROQBASHERRTMP"
+      printf 'bash4llm: ERROR: legacy extras directory found at %s\n' "${LEGACY_REAL}" >&2
+      printf 'bash4llm: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${DEST_BASE}" >&2
+      exit "$BASH4LLMERRTMP"
     fi
   fi
 
   # Validate source existence and type
   if [ ! -d "${SRC_BASE}" ]; then
     log_error "EXTRAS" "missing extras source directory: ${SRC_BASE}"
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
   if [ -L "${SRC_BASE}" ]; then
     log_error "EXTRAS" "extras source is a symlink: ${SRC_BASE}"
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
 
   # Prevent copying when source equals destination or source is inside destination (avoid nested copies)
   if [ "${SRC_BASE}" = "${DEST_BASE}" ]; then
     log_error "EXTRAS" "extras source and destination are identical (${SRC_BASE}); nothing to do."
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
   case "${SRC_BASE}/" in
-    "${DEST_BASE}/"*) log_error "EXTRAS" "extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy."; exit "$GROQBASHERRTMP" ;;
+    "${DEST_BASE}/"*) log_error "EXTRAS" "extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy."; exit "$BASH4LLMERRTMP" ;;
   esac
 
   # Prepare destination directories with strict perms
-  mkdir -p "${DEST_BASE}" "${DEST_PROV}" 2>/dev/null || { log_error "EXTRAS" "cannot create extras dest: ${DEST_BASE}"; exit "$GROQBASHERRTMP"; }
+  mkdir -p "${DEST_BASE}" "${DEST_PROV}" 2>/dev/null || { log_error "EXTRAS" "cannot create extras dest: ${DEST_BASE}"; exit "$BASH4LLMERRTMP"; }
   chmod 700 "${DEST_BASE}" 2>/dev/null || true
 
   # Gather regular files from source
@@ -4056,10 +4056,10 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   # Validate ownership and file types before any writes
   current_user="$(id -un 2>/dev/null || printf '')"
   for src in "${files_to_copy[@]}"; do
-    [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$GROQBASHERRTMP"; }
-    [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$GROQBASHERRTMP"; }
+    [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$BASH4LLMERRTMP"; }
+    [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$BASH4LLMERRTMP"; }
     src_owner="$(_get_owner "$src")"
-    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$GROQBASHERRTMP"; }
+    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$BASH4LLMERRTMP"; }
   done
 
   # Copy files atomically preserving relative layout under DEST_BASE
@@ -4073,12 +4073,12 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     rel="${src#${SRC_BASE}/}"
     dest="${DEST_BASE}/${rel}"
     destdir="$(dirname "$dest")"
-    mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$GROQBASHERRTMP"; }
+    mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$BASH4LLMERRTMP"; }
 
     if type atomic_write >/dev/null 2>&1; then
-      cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$GROQBASHERRTMP"; }
+      cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERRTMP"; }
     else
-      cp -f "$src" "$dest" 2>/dev/null || { log_error "EXTRAS" "Error copying $src"; exit "$GROQBASHERRTMP"; }
+      cp -f "$src" "$dest" 2>/dev/null || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERRTMP"; }
       chmod 600 "$dest" 2>/dev/null || true
     fi
 
@@ -4093,7 +4093,7 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     esac
   done
 
-  printf 'groqbash: INFO: Extras installed under %s\n' "${DEST_BASE}" >&2
+  printf 'bash4llm: INFO: Extras installed under %s\n' "${DEST_BASE}" >&2
 
   if [ "${#installed_providers[@]}" -gt 0 ]; then
     printf 'Installed providers: %s\n' "$(printf '%s ' "${installed_providers[@]}")" >&2
@@ -4115,7 +4115,7 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   for p in "${installed_providers[@]}"; do
     PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
     if ! bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-      printf 'groqbash: WARN: provider %s has syntax errors; check %s\n' "$p" "$PROVIDER_MODULE_PATH" >&2
+      printf 'bash4llm: WARN: provider %s has syntax errors; check %s\n' "$p" "$PROVIDER_MODULE_PATH" >&2
     fi
   done
 
@@ -4132,7 +4132,7 @@ done
 # Load local config and whitelist
 # ---------------------------------------------------------------------------
 load_local_config() {
-  local cfg="${GROQBASH_CONFIG_DIR%/}/config" key val
+  local cfg="${BASH4LLM_CONFIG_DIR%/}/config" key val
   [ -f "$cfg" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
@@ -4203,13 +4203,13 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
       prev_provider="$PROVIDER"
       PROVIDER="$PROVIDER_CLI"
       ;;
-    *) log_error "PROVIDER" "unknown provider: $PROVIDER_CLI"; exit "$GROQBASHERRTMP" ;;
+    *) log_error "PROVIDER" "unknown provider: $PROVIDER_CLI"; exit "$BASH4LLMERRTMP" ;;
   esac
 
   # Ensure config dir is available and writable
   if ! ensure_config_dir; then
     log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
@@ -4222,7 +4222,7 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   target_provider="${PROVIDER_CLI}"
   target_provider_file="$(canonical_provider_file)"
   printf '%s\n' "$target_provider" | atomic_write "$target_provider_file" 10 \
-    || { log_error "PROVIDER" "cannot persist provider selection to ${target_provider_file}."; exit "$GROQBASHERRTMP"; }
+    || { log_error "PROVIDER" "cannot persist provider selection to ${target_provider_file}."; exit "$BASH4LLMERRTMP"; }
   chmod 600 "$target_provider_file" 2>/dev/null || true
   rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
@@ -4259,7 +4259,7 @@ EOF
   printf '> ' >&2
   if ! IFS= read -r sel; then
     printf 'No selection made.\n' >&2
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
   sel="$(trim "$sel")"
 
@@ -4283,20 +4283,20 @@ EOF
     fi
   fi
 
-  [ -n "$chosen" ] || { log_error "PROVIDER" "Selection out of range or unknown provider."; exit "$GROQBASHERRTMP"; }
+  [ -n "$chosen" ] || { log_error "PROVIDER" "Selection out of range or unknown provider."; exit "$BASH4LLMERRTMP"; }
 
   prev_provider="$PROVIDER"
 
   # Ensure config dir available
   if ! ensure_config_dir; then
     log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
 
   target_provider_file="$(canonical_provider_file)"
   if ! printf '%s\n' "$chosen" | atomic_write "$target_provider_file" 10; then
     log_error "PROVIDER" "cannot persist provider selection to $target_provider_file."
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
   chmod 600 "$target_provider_file" 2>/dev/null || true
   rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
@@ -4310,7 +4310,7 @@ EOF
 
   if ! load_provider_module "$PROVIDER"; then
     log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-    exit "$GROQBASHERRTMP"
+    exit "$BASH4LLMERRTMP"
   fi
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
@@ -4321,7 +4321,7 @@ EOF
 
   # If this invocation was only to change provider (no positional args), exit now.
   if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ]; then
-    printf 'groqbash: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
+    printf 'bash4llm: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
     exit 0
   fi
 fi
@@ -4346,12 +4346,12 @@ fi
 # if the interactive branch already loaded the module.
 if ! load_provider_module "$PROVIDER"; then
   log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-  exit "$GROQBASHERRTMP"
+  exit "$BASH4LLMERRTMP"
 fi
 
 # --- Minimal: resolve provider URL now (ENV > provider-url file > embedded default) ---
 resolve_provider_url "$PROVIDER" || true
-[ "${DEBUG:-0}" -eq 1 ] && printf 'DEBUG: provider=%s provider_url=%s\n' "$PROVIDER" "${GROQBASH_PROVIDER_URL:-<unset>}" >&2
+[ "${DEBUG:-0}" -eq 1 ] && printf 'DEBUG: provider=%s provider_url=%s\n' "$PROVIDER" "${BASH4LLM_PROVIDER_URL:-<unset>}" >&2
 
 # ---------------------------------------------------------------------------
 # Validate provider module and interface (must run after provider module load)
@@ -4385,11 +4385,11 @@ validate_provider_interface() {
 # Ensure provider module loaded and interface valid
 if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
   if ! validate_provider_interface "$PROVIDER"; then
-    exit "$GROQBASHERRAPI"
+    exit "$BASH4LLMERRAPI"
   fi
 else
   log_error "PROVIDER" "no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin."
-  exit "$GROQBASHERRAPI"
+  exit "$BASH4LLMERRAPI"
 fi
 
 # Handle explicit --refresh-models only after provider module is loaded and validated
@@ -4399,9 +4399,9 @@ if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
 
   if ! ensure_api_key_for_provider "$PROVIDER"; then
     log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-    exit "$GROQBASHERRNOAPIKEY"
+    exit "$BASH4LLMERRNOAPIKEY"
   fi
-  refresh_models_dispatch "$MODELS_FILE" || exit "$GROQBASHERRAPI"
+  refresh_models_dispatch "$MODELS_FILE" || exit "$BASH4LLMERRAPI"
   exit 0
 fi
 
@@ -4438,7 +4438,7 @@ fi
 # Show full configuration (existing behavior), but use canonical helpers for model file lookup
 if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf 'GroqBash configuration:\n'
+  printf 'Bash4LLM configuration:\n'
   printf '  Version: %s (%s)\n' "$SCRIPT_VERSION" "$SCRIPT_DATE"
   printf '  Provider: %s\n' "$PROVIDER"
   printf '  Model (active): %s\n' "$MODEL"
@@ -4461,9 +4461,9 @@ if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   fi
 
   printf '  Config dir: %s\n' "$(canonical_config_dir)"
-  printf '  Models dir: %s\n' "$GROQBASH_MODELS_DIR"
-  printf '  Tmp dir: %s\n' "$GROQBASH_TMPDIR"
-  printf '  History dir: %s\n' "$GROQBASH_HISTORY_DIR"
+  printf '  Models dir: %s\n' "$BASH4LLM_MODELS_DIR"
+  printf '  Tmp dir: %s\n' "$BASH4LLM_TMPDIR"
+  printf '  History dir: %s\n' "$BASH4LLM_HISTORY_DIR"
   printf '  Quiet: %s\n' "$QUIET"
   printf '  Debug: %s\n' "$DEBUG"
   printf '  Dry-run: %s\n' "$DRY_RUN"
@@ -4473,10 +4473,10 @@ fi
 
 if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf 'GroqBash diagnostics:\n'
+  printf 'Bash4LLM diagnostics:\n'
 
   printf '\n[Directories]\n'
-  for d in "$GROQBASH_CONFIG_DIR" "$GROQBASH_MODELS_DIR" "$GROQBASH_TMPDIR" "$GROQBASH_EXTRAS_DIR" "$GROQBASH_HISTORY_DIR"; do
+  for d in "$BASH4LLM_CONFIG_DIR" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TMPDIR" "$BASH4LLM_EXTRAS_DIR" "$BASH4LLM_HISTORY_DIR"; do
     if [ -d "$d" ]; then
       printf '  OK: %s\n' "$d"
     else
@@ -4514,7 +4514,7 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   fi
 
   printf '\n[Tmpdir]\n'
-  if [ -d "$GROQBASH_TMPDIR" ]; then
+  if [ -d "$BASH4LLM_TMPDIR" ]; then
     printf '  Tmpdir exists: OK\n'
   else
     printf '  ERROR: tmpdir missing\n'
@@ -4539,26 +4539,26 @@ load_whitelist
 
 # Ensure run tmpdir is available before proceeding with model selection and payload assembly
 if ! ensure_run_tmpdir; then
-  log_error "TMP" "cannot create or access RUN_TMPDIR ($GROQBASH_TMPDIR). Aborting."
-  exit "$GROQBASHERRTMP"
+  log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
+  exit "$BASH4LLMERRTMP"
 fi
 
 # Determine final model using centralized resolver
 if ! resolve_model; then
   log_error "MODEL" "no model could be selected."
-  exit "$GROQBASHERRBAD_MODEL"
+  exit "$BASH4LLMERRBAD_MODEL"
 fi
 
 # FINAL_MODEL set by resolve_model()
 # Validate core and provider-specific constraints
 if ! validate_model_core "$FINAL_MODEL"; then
   log_error "MODEL" "model failed core validation: $FINAL_MODEL"
-  exit "$GROQBASHERRBAD_MODEL"
+  exit "$BASH4LLMERRBAD_MODEL"
 fi
 
 if ! validate_model_dispatch "$FINAL_MODEL"; then
   log_error "MODEL" "invalid model for provider $PROVIDER: $FINAL_MODEL"
-  exit "$GROQBASHERRBAD_MODEL"
+  exit "$BASH4LLMERRBAD_MODEL"
 fi
 
 MODEL="$FINAL_MODEL"
@@ -4593,7 +4593,7 @@ assemble_content() {
       if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
     fi
 
-    tmpl="$(cat "$GROQBASH_TEMPLATES_DIR/$TEMPLATE" 2>/dev/null || true)"
+    tmpl="$(cat "$BASH4LLM_TEMPLATES_DIR/$TEMPLATE" 2>/dev/null || true)"
     ensure_run_tmpdir
     tmp_tmpl="$(_mktemp_in_dir "$RUN_TMPDIR" 2>/dev/null || true)"
 
@@ -4630,7 +4630,7 @@ assemble_content
 # If provider was selected interactively in this invocation and there are no
 # positional args / no content, treat this run as configuration-only and exit.
 if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ] && [ -z "${CONTENT:-}" ]; then
-  printf 'groqbash: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
+  printf 'bash4llm: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
   exit 0
 fi
 
@@ -4647,16 +4647,16 @@ elif [ "$#" -gt 0 ]; then
 else
   # No prompt/content available: emit clear error and exit with input error code.
   log_error "INPUT" "no prompt provided."
-  exit "$GROQBASHERRNO_PROMPT"
+  exit "$BASH4LLMERRNO_PROMPT"
 fi
 
 if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "$CHAT_MODE" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
   log_error "INPUT" "no prompt provided."
-  exit "$GROQBASHERRNO_PROMPT"
+  exit "$BASH4LLMERRNO_PROMPT"
 fi
 
-is_number "$TURE" || { log_error "ARGS" "--ture must be numeric"; exit "$GROQBASHERRTMP"; }
-is_number "$MAX_TOKENS" || { log_error "ARGS" "--max must be numeric"; exit "$GROQBASHERRTMP"; }
+is_number "$TURE" || { log_error "ARGS" "--ture must be numeric"; exit "$BASH4LLMERRTMP"; }
+is_number "$MAX_TOKENS" || { log_error "ARGS" "--max must be numeric"; exit "$BASH4LLMERRTMP"; }
 
 # Final guard: if ALLOWED_MODELS is present, compare normalized model names
 if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
@@ -4664,7 +4664,7 @@ if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
   if ! printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$norm_model"; then
     log_error "MODEL" "model '$MODEL' not supported or deprecated."
     printf '%s\n' "$ALLOWED_MODELS" >&2
-    exit "$GROQBASHERRBAD_MODEL"
+    exit "$BASH4LLMERRBAD_MODEL"
   fi
 fi
 
@@ -4680,11 +4680,11 @@ if [ -n "$BATCH_FILE" ]; then
     if [ -n "${SESSION_ID:-}" ]; then
       if ! session_validate_id "$SESSION_ID"; then
         log_error "SESSION" "invalid session id: $SESSION_ID"
-        exit "$GROQBASHERRTMP"
+        exit "$BASH4LLMERRTMP"
       fi
       # Ensure sessions dir exists with strict perms
-      mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
-      chmod 700 "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
+      mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
+      chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
 
       # Enforce recommended window limit and warn if exceeded
       if [ -n "${SESSION_WINDOW:-}" ]; then
@@ -4699,13 +4699,13 @@ if [ -n "$BATCH_FILE" ]; then
       fi
 
       # Prepare messages JSON file under RUN_TMPDIR and populate it (atomic)
-      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
+      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
       BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
       export BUILD_MESSAGES_FILE
 
       # Try Session Engine first (Option A semantics: engine will honor --session-window override)
       if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
           # Engine failed: fallback to legacy session_read_window
           log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
           session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "SESSION" "legacy session_read_window also failed"
@@ -4747,7 +4747,7 @@ fi
 
 # Interactive chat mode
 if [ "$CHAT_MODE" -eq 1 ]; then
-  if [ ! -t 0 ]; then log_error "CHAT" "interactive chat requires a TTY."; exit "$GROQBASHERRTMP"; fi
+  if [ ! -t 0 ]; then log_error "CHAT" "interactive chat requires a TTY."; exit "$BASH4LLMERRTMP"; fi
   [ -t 1 ] && [ "$QUIET" -ne 1 ] && printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2
   CONVERSATION=""
   while true; do
@@ -4761,10 +4761,10 @@ if [ "$CHAT_MODE" -eq 1 ]; then
     if [ -n "${SESSION_ID:-}" ]; then
       if ! session_validate_id "$SESSION_ID"; then
         log_error "SESSION" "invalid session id: $SESSION_ID"
-        exit "$GROQBASHERRTMP"
+        exit "$BASH4LLMERRTMP"
       fi
-      mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
-      chmod 700 "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
+      mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
+      chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
 
       if [ -n "${SESSION_WINDOW:-}" ]; then
         if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
@@ -4777,12 +4777,12 @@ if [ "$CHAT_MODE" -eq 1 ]; then
         log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
       fi
 
-      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
+      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
       BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
       # Try Session Engine first; fallback to legacy on any failure
       if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
           log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
           session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || log_warn "SESSION" "legacy session_read_window failed"
         fi
@@ -4808,10 +4808,10 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   if [ -n "${SESSION_ID:-}" ]; then
     if ! session_validate_id "$SESSION_ID"; then
       log_error "SESSION" "invalid session id: $SESSION_ID"
-      exit "$GROQBASHERRTMP"
+      exit "$BASH4LLMERRTMP"
     fi
-    mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
-    chmod 700 "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
+    mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
+    chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
 
     if [ -n "${SESSION_WINDOW:-}" ]; then
       if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
@@ -4824,12 +4824,12 @@ if [ "$STREAM_MODE" -eq 1 ]; then
       log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
     fi
 
-    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
+    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
     # Try Session Engine first; fallback to legacy on any failure
     if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
         log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
         session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
       fi
@@ -4850,7 +4850,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   else
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "missing API key; aborting."
-      exit "$GROQBASHERRTMP"
+      exit "$BASH4LLMERRTMP"
     fi
   fi
 
@@ -4904,7 +4904,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
     exit 0
   else
     log_error "STREAM" "streaming request failed."
-    exit "$GROQBASHERRCURL_FAILED"
+    exit "$BASH4LLMERRCURL_FAILED"
   fi
 
 else
@@ -4926,10 +4926,10 @@ else
   if [ -n "${SESSION_ID:-}" ]; then
     if ! session_validate_id "$SESSION_ID"; then
       log_error "SESSION" "invalid session id: $SESSION_ID"
-      exit "$GROQBASHERRTMP"
+      exit "$BASH4LLMERRTMP"
     fi
-    mkdir -p "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
-    chmod 700 "$GROQBASH_HISTORY_DIR/sessions" 2>/dev/null || true
+    mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
+    chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
 
     if [ -n "${SESSION_WINDOW:-}" ]; then
       if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
@@ -4942,12 +4942,12 @@ else
       log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
     fi
 
-    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$GROQBASHERRTMP"; }
+    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
     # Try Session Engine first; fallback to legacy on any failure
     if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${GROQBASH_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
         log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
         session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
       fi
@@ -4968,7 +4968,7 @@ else
   else
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "missing API key; aborting."
-      exit "$GROQBASHERRTMP"
+      exit "$BASH4LLMERRTMP"
     fi
   fi
 
@@ -5031,7 +5031,7 @@ else
         fi
       fi
     fi
-    exit "$GROQBASHERRAPI"
+    exit "$BASH4LLMERRAPI"
   fi
 fi
 #--3<---[ /SECTION: CORE_PROVIDER_MAIN ]--->3--
