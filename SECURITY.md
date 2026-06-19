@@ -1,10 +1,10 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 ## SECURITY POLICY  🇮🇹 [🇬🇧](SECURITY-en.md)
 
-## GroqBash⁺ — Politica di Sicurezza
+## Bash4LLM⁺ — Politica di Sicurezza
 
-GroqBash è uno script Bash singolo progettato con forte attenzione a **sicurezza**, **portabilità** e **trasparenza**.  
+Bash4LLM è uno script Bash singolo progettato con forte attenzione a **sicurezza**, **portabilità** e **trasparenza**.  
 Questo documento descrive il **modello di minaccia**, le **assunzioni di sicurezza**, le **limitazioni note**, le **raccomandazioni** e il processo di **responsible disclosure**.
 
 ---
@@ -17,7 +17,7 @@ Solo l’ultima release stabile riceve fix di sicurezza.
 
 ## 2. Modello di minaccia
 
-GroqBash è progettato per ambienti **single‑user**, come:
+Bash4LLM è progettato per ambienti **single‑user**, come:
 
 - PC/laptop personali  
 - server privati  
@@ -25,7 +25,7 @@ GroqBash è progettato per ambienti **single‑user**, come:
 - ambienti WSL  
 - shell locali di sviluppo  
 
-GroqBash **non** è progettato per:
+Bash4LLM **non** è progettato per:
 
 - server multi‑tenant o ostili  
 - ambienti dove utenti non fidati possono modificare il filesystem  
@@ -34,13 +34,13 @@ GroqBash **non** è progettato per:
 
 ### Assunzioni fondamentali
 
-GroqBash assume che:
+Bash4LLM assume che:
 
-- L’utente **possegga** e **controlli** le directory in cui risiedono GroqBash e gli extras.  
+- L’utente **possegga** e **controlli** le directory in cui risiedono Bash4LLM e gli extras.  
 - Nessun utente non fidato possa scrivere in:
-  - `$GROQBASHEXTRASDIR`
-  - `$GROQBASHTMPDIR`
-  - la directory contenente `groqbash`
+  - `$BASH4LLMEXTRASDIR`
+  - `$BASH4LLMTMPDIR`
+  - la directory contenente `bash4llm`
 - Le variabili d’ambiente siano **configurazione fidata**, non input non attendibile.
 - I provider siano **codice fidato**, non plugin provenienti da fonti sconosciute.
 
@@ -49,16 +49,16 @@ GroqBash assume che:
 ## 3. Principi di sicurezza
 
 ### ✔ Nessuna esecuzione dell’output del modello  
-GroqBash **non esegue mai** le risposte API come comandi shell.
+Bash4LLM **non esegue mai** le risposte API come comandi shell.
 
 ### ✔ Nessun `eval`  
 Lo script non utilizza `eval` o costrutti equivalenti.
 
 ### ✔ Nessun uso di `/tmp`  
 I file temporanei interni **non** vengono mai creati in `/tmp`.  
-GroqBash usa:
+Bash4LLM usa:
 
-- `$GROQBASHTMPDIR` (se impostato)  
+- `$BASH4LLMTMPDIR` (se impostato)  
 - un fallback sicuro nella home dell’utente  
 
 I temporanei sono creati con:
@@ -67,7 +67,7 @@ I temporanei sono creati con:
 - permessi `700`
 
 ### ✔ Nessun fallback nascosto  
-Se la lista modelli è vuota, GroqBash fallisce in modo sicuro.
+Se la lista modelli è vuota, Bash4LLM fallisce in modo sicuro.
 
 ### Sicurezza del provider:
 verifica che il provider definisca funzioni richieste
@@ -75,7 +75,7 @@ verifica che il provider definisca funzioni richieste
 
 ### Sicurezza API key
 Il codice verifica:
-presenza API key per refresh modelli, presenza API key per chiamate API, errori chiari: `GROQBASHERRNOAPIKEY`
+presenza API key per refresh modelli, presenza API key per chiamate API, errori chiari: `BASH4LLMERRNOAPIKEY`
 
 ### Sicurezza modello
 Il codice verifica:
@@ -91,13 +91,13 @@ crea directory sessioni con `mkdir -p|, imposta permessi 700, usa file JSON per 
 
 ### Sicurezza tmpdir
 Il codice:
-usa `GROQBASH_TMPDIR`, fallisce se non scrivibile, NON usa `/tmp` di sistema 
+usa `BASH4LLM_TMPDIR`, fallisce se non scrivibile, NON usa `/tmp` di sistema 
 
 ---
 
 ## 4. Limitazioni note
 
-GroqBash è uno script Bash, non un runtime sandboxato.
+Bash4LLM è uno script Bash, non un runtime sandboxato.
 
 ### ⚠ Rischi TOCTOU residui  
 Bash non può eliminare completamente i race condition.
@@ -113,19 +113,19 @@ Devono essere:
 ### ⚠ Le variabili d’ambiente sono considerate fidate  
 Esempi:
 
-- `GROQBASHEXTRASDIR`
-- `GROQBASHTMPDIR`
+- `BASH4LLMEXTRASDIR`
+- `BASH4LLMTMPDIR`
 - `GROQ_API_KEY`
 - `GROQ_MODEL`
 
 ### ⚠ Nessun isolamento multi‑utente  
-GroqBash non tenta di isolarsi da altri utenti sullo stesso sistema.
+Bash4LLM non tenta di isolarsi da altri utenti sullo stesso sistema.
 
 ---
 
 ## 5. Raccomandazioni per un uso sicuro
 
-### ✔ Conserva GroqBash in una directory di tua proprietà
+### ✔ Conserva Bash4LLM in una directory di tua proprietà
 
 `CODEON
 mkdir -p "$HOME/.local/bin"
@@ -134,15 +134,15 @@ CODEOFF`
 ### ✔ Mantieni sicure le directory degli extras
 
 `CODEON
-chmod 700 "$GROQBASHEXTRASDIR"
-chmod -R go-w "$GROQBASHEXTRASDIR"
+chmod 700 "$BASH4LLMEXTRASDIR"
+chmod -R go-w "$BASH4LLMEXTRASDIR"
 CODEOFF`
 
 ### ✔ Installa provider solo da fonti fidate  
 I provider sono script shell eseguiti direttamente.
 
 ### ✔ Evita ambienti condivisi o ostili  
-GroqBash non è progettato per server multi‑tenant.
+Bash4LLM non è progettato per server multi‑tenant.
 
 ### ✔ Usa `--debug` solo in ambienti sicuri  
 La modalità debug conserva file temporanei potenzialmente sensibili.
@@ -155,7 +155,7 @@ Se scopri un problema di sicurezza, segnalalo **privatamente**.
 
 #### Contatto (disclosure privata)
 - **Email:** opensource​@​cevangel.​anonaddy.​me  
-- **Oggetto:** `[GroqBash Security Report]`
+- **Oggetto:** `[Bash4LLM Security Report]`
 
 Includi:
 
@@ -179,7 +179,7 @@ Tempo di risposta tipico: **entro 72 ore**.
 
 ## 8. Extras di sicurezza
 
-GroqBash include strumenti opzionali in `extras/security/`:
+Bash4LLM include strumenti opzionali in `extras/security/`:
 
 - `verify.sh` — controlla integrità provider  
 - `validate-env.sh` — verifica sicurezza ambiente  
@@ -190,7 +190,7 @@ Non modificano il comportamento del core.
 
 ## 9. Note finali
 
-GroqBash è costruito con forte attenzione alla sicurezza, ma resta uno script Bash.  
+Bash4LLM è costruito con forte attenzione alla sicurezza, ma resta uno script Bash.  
 L’utente deve comprendere le sue assunzioni e limitazioni prima di usarlo in ambienti sensibili.
 
 Documentazione completa:
