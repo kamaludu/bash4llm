@@ -1,4 +1,4 @@
-[![GroqBash⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
+[![Bash4LLM⁺ GUI](https://img.shields.io/badge/Graphic_User_Interface-00aa55?style=for-the-badge)](README.md) 
 
 ### Placeholder CGI: elenco completo e specifiche.  🇮🇹 [🇬🇧](PHOLDER-en.md)
 
@@ -7,7 +7,7 @@
 ---
 
 ### Nota introduttiva architetturale
-**Sintesi:** GroqBash⁺ separa nettamente due classi di placeholder:
+**Sintesi:** Bash4LLM⁺ separa nettamente due classi di placeholder:
 
 - **Placeholder GUI (1–19)** — generati e popolati **interamente dalla GUI** (`gui-server.sh`, `gui-bootstrap.sh`). Sono valori di presentazione usati da `render_template()` e non fanno parte del contratto runtime tra backend e frontend.
 - **Placeholder CGI (20–23)** — generati **dal backend / core** (o da moduli engine opzionali). Sono valori runtime che la GUI **non può calcolare da sola** e costituiscono il **contratto CGI** tra backend e GUI.
@@ -20,7 +20,7 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 - **Placeholder GUI (1–19)**  
   `GUI (gui-server.sh / gui-bootstrap.sh)` → **sanitize/validate** (`sanitize_param`, `validate_name`, `sanitize_model_output`, `html_escape`) → `render_template()` → HTML.
 - **Placeholder CGI (20–23)**  
-  `groqbash` / engine → produce valori primitivi (file NDJSON, variabili locali, file di history) → GUI legge/normalizza (`session_read_window`, `detect_empty_edge_case`, `save_to_history`, test esistenza funzioni provider) → **sanitize** (`html_escape`, `sanitize_param`) → `render_template()` → HTML.
+  `bash4llm` / engine → produce valori primitivi (file NDJSON, variabili locali, file di history) → GUI legge/normalizza (`session_read_window`, `detect_empty_edge_case`, `save_to_history`, test esistenza funzioni provider) → **sanitize** (`html_escape`, `sanitize_param`) → `render_template()` → HTML.
 
 ---
 
@@ -112,7 +112,7 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 - **Funzioni coinvolte:** `build_provider_options`, `ensure_provider_cache_fresh`, `sanitize_param`, `html_escape`.
 - **File coinvolti:** `PROVIDER_CACHE_FILE` (`CFG_DIR/providers.txt`).
 - **Fallback:** vuoto se cache mancante.
-- **Note:** `ensure_provider_cache_fresh` può invocare `groqbash --list-providers-raw`.
+- **Note:** `ensure_provider_cache_fresh` può invocare `bash4llm --list-providers-raw`.
 
 #### 9. `{{MODEL_LIST_SCROLL}}`
 - **Pagine:** settings.
@@ -175,7 +175,7 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 #### 15. `{{GUI_CGI_BASE}}`
 - **Pagine:** tutte (usato per costruire URL base).
 - **Tipo:** stringa (URL base).
-- **Origine:** env `GUI_CGI_BASE` o default `"/groqbash-gui/cgi/"` (normalizzato).
+- **Origine:** env `GUI_CGI_BASE` o default `"/bash4llm-gui/cgi/"` (normalizzato).
 - **Sanitizzazione / Validazione:** `html_escape`.
 - **Obblig./Opz.:** opzionale.
 - **Funzioni coinvolte:** assegnazione diretta in `render_page_*`.
@@ -227,11 +227,11 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 #### 20.1 `{{SESSION_ACTIVE}}`
 - **Pagine:** settings, diagnostics.
 - **Tipo:** booleano (`true` | `false`).
-- **Origine:** **assenza/presenza** di file sessione `${GROQBASH_HISTORY_DIR%/}/sessions/${SESSION_ID}.ndjson` o stato fornito dal Session Engine opzionale (`extras/session/session-engine.sh`) se presente.
+- **Origine:** **assenza/presenza** di file sessione `${BASH4LLM_HISTORY_DIR%/}/sessions/${SESSION_ID}.ndjson` o stato fornito dal Session Engine opzionale (`extras/session/session-engine.sh`) se presente.
 - **Sanitizzazione / Validazione:** determinazione tramite `session_validate_id` per `SESSION_ID` e controllo esistenza file; GUI deve `html_escape` se visualizzato.
 - **Obblig./Opz.:** sempre presente nella sezione CGI (la GUI dovrebbe mostrare lo stato).
 - **Funzioni coinvolte:** `session_validate_id`, `session_read_window` (per ricavare messaggi), eventuali funzioni del Session Engine (`session_engine_enabled`).
-- **File coinvolti:** `${GROQBASH_HISTORY_DIR}/sessions/*.ndjson`.
+- **File coinvolti:** `${BASH4LLM_HISTORY_DIR}/sessions/*.ndjson`.
 - **Fallback:** `false` se `SESSION_ID` vuoto o file non esistente.
 - **Note operative:** la GUI può determinare lo stato leggendo il filesystem o interrogando il Session Engine se disponibile.
 
@@ -242,13 +242,13 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 - **Sanitizzazione / Validazione:** `session_validate_id` con regex `^[A-Za-z0-9._-]{1,128}$`.
 - **Obblig./Opz.:** opzionale (presente solo se sessione attiva o fornita).
 - **Funzioni coinvolte:** `session_validate_id`, `session_append`, `session_messages_tmp_path`.
-- **File coinvolti:** `${GROQBASH_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson`.
+- **File coinvolti:** `${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson`.
 - **Fallback:** vuoto se non impostato.
 
 #### 20.3 `{{SESSION_MSG_COUNT}}`
 - **Pagine:** settings, diagnostics.
 - **Tipo:** intero (numero di messaggi).
-- **Origine:** conteggio degli elementi dell’array `messages` prodotto da `session_read_window` o conteggio dei record NDJSON in `${GROQBASH_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson`.
+- **Origine:** conteggio degli elementi dell’array `messages` prodotto da `session_read_window` o conteggio dei record NDJSON in `${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson`.
 - **Sanitizzazione / Validazione:** `session_read_window` usa `jq` per validare JSON; GUI deve contare solo record validi.
 - **Obblig./Opz.:** opzionale.
 - **Funzioni coinvolte:** `session_read_window`, `session_append`.
@@ -269,11 +269,11 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 #### 20.5 `{{SESSION_LIST}}`
 - **Pagine:** settings, diagnostics.
 - **Tipo:** testo multilinea (elenco session id).
-- **Origine:** elenco dei file in `${GROQBASH_HISTORY_DIR%/}/sessions` (basenames senza `.ndjson`); GUI deve filtrare con `session_validate_id`.
+- **Origine:** elenco dei file in `${BASH4LLM_HISTORY_DIR%/}/sessions` (basenames senza `.ndjson`); GUI deve filtrare con `session_validate_id`.
 - **Sanitizzazione / Validazione:** includere solo basenames che passano `session_validate_id`.
 - **Obblig./Opz.:** opzionale.
 - **Funzioni coinvolte:** helper di listing (es. `list_files_sorted_by_mtime` se presente) o semplice `find`/`ls` nella GUI.
-- **File coinvolti:** `${GROQBASH_HISTORY_DIR}/sessions/*.ndjson`.
+- **File coinvolti:** `${BASH4LLM_HISTORY_DIR}/sessions/*.ndjson`.
 - **Fallback:** vuoto se directory assente o vuota.
 
 ---
@@ -320,7 +320,7 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 #### 22.2 `{{LAST_FINISH_REASON}}`
 - **Pagine:** diagnostics.
 - **Tipo:** stringa (es. `stop`, `length`).
-- **Origine:** estrazione da file di risposta `${RESP}` (campo JSON `.choices[0].finish_reason`) e memorizzazione in `GROQBASH_EDGE_FINISH_REASON` da `detect_empty_edge_case`.
+- **Origine:** estrazione da file di risposta `${RESP}` (campo JSON `.choices[0].finish_reason`) e memorizzazione in `BASH4LLM_EDGE_FINISH_REASON` da `detect_empty_edge_case`.
 - **Sanitizzazione / Validazione:** estrazione tramite `jq -r` (raw string); GUI `html_escape` se visualizzato.
 - **Obblig./Opz.:** opzionale.
 - **Funzioni coinvolte:** `detect_empty_edge_case`, parsing JSON con `jq`.
@@ -330,7 +330,7 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 #### 22.3 `{{LAST_EDGECASE_DETECTED}}`
 - **Pagine:** diagnostics.
 - **Tipo:** booleano (`true` | `false`).
-- **Origine:** flag interno `GROQBASH_EDGE_EMPTY` impostato da `detect_empty_edge_case` quando viene rilevata la condizione "empty completion".
+- **Origine:** flag interno `BASH4LLM_EDGE_EMPTY` impostato da `detect_empty_edge_case` quando viene rilevata la condizione "empty completion".
 - **Sanitizzazione / Validazione:** valore booleano interno; GUI `html_escape` se visualizzato.
 - **Obblig./Opz.:** sempre presente nella sezione CGI (flag diagnostico).
 - **Funzioni coinvolte:** `detect_empty_edge_case`.
@@ -344,11 +344,11 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 #### 23.1 `{{LAST_SAVED_TO_HISTORY}}`
 - **Pagine:** diagnostics.
 - **Tipo:** booleano (o stringa path, raccomandato stringa path).
-- **Origine:** esito della funzione `save_to_history` (core) che crea file in `${GROQBASH_HISTORY_DIR}` con pattern `$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt`.
+- **Origine:** esito della funzione `save_to_history` (core) che crea file in `${BASH4LLM_HISTORY_DIR}` con pattern `$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt`.
 - **Sanitizzazione / Validazione:** `save_to_history` ritorna 0 su successo; file creato con `chmod 600`.
 - **Obblig./Opz.:** opzionale.
 - **Funzioni coinvolte:** `save_to_history`, `rotate_history`.
-- **File coinvolti:** `${GROQBASH_HISTORY_DIR}/${YYYYMMDD-HHMMSS}-groq-output-$$.txt`.
+- **File coinvolti:** `${BASH4LLM_HISTORY_DIR}/${YYYYMMDD-HHMMSS}-groq-output-$$.txt`.
 - **Fallback:** `false` o vuoto se non salvato; raccomandazione: esporre il path del file salvato per maggiore utilità.
 - **Note di sicurezza:** file protetto con permessi `600`.
 
@@ -359,7 +359,7 @@ Questo documento esteso descrive **per ciascun placeholder** (1–23) solo infor
 - **Sanitizzazione / Validazione:** nome generato dal core (timestamp + pid) — safe-by-construction; GUI `html_escape` se visualizzato.
 - **Obblig./Opz.:** opzionale.
 - **Funzioni coinvolte:** `save_to_history`, `rotate_history`.
-- **File coinvolti:** file creato in `${GROQBASH_HISTORY_DIR}`.
+- **File coinvolti:** file creato in `${BASH4LLM_HISTORY_DIR}`.
 - **Fallback:** vuoto se nessun file creato.
 
 ---
