@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "software": "GroqBash",
+    "software": "Bash4LLM",
     "version": "2.0.0",
     "date": "2026-06-09"
   },
@@ -15,7 +15,7 @@
       "name": "PRECORE_BOOT_SOURCE_ONLY_CHECK",
       "category": "PRECORE_BOOT",
       "phase": "Avvio preliminare dell'ambiente.",
-      "action": "Controlla se la variabile globale $GROQBASH_SOURCE_ONLY è impostata su 1. In tal caso, interrompe immediatamente l'elaborazione del codice principale (uscendo con stato 0), consentendo esclusivamente l'importazione passiva e provvisoria di variabili e funzioni del software all'interno di un'altra sessione di shell o di uno script esterno."
+      "action": "Controlla se la variabile globale $BASH4LLM_SOURCE_ONLY è impostata su 1. In tal caso, interrompe immediatamente l'elaborazione del codice principale (uscendo con stato 0), consentendo esclusivamente l'importazione passiva e provvisoria di variabili e funzioni del software all'interno di un'altra sessione di shell o di uno script esterno."
     },
     {
       "name": "PRECORE_BOOT_VERIFY_CMDS",
@@ -27,25 +27,25 @@
       "name": "PRECORE_BOOT_DIR_RESOLUTION",
       "category": "PRECORE_BOOT",
       "phase": "Determinazione della directory di runtime.",
-      "action": "Risolve il percorso radice dell'installazione del software ($GROQBASH_DIR). Adotta in ordine di priorità la cartella definita in $GROQBASH_DIR, in alternativa compila il percorso tramite $GROQBASH_ROOT (derivandone la directory groqbash.d), o calcola la directory predefinita puntando a $SCRIPTDIR/groqbash.d."
+      "action": "Risolve il percorso radice dell'installazione del software ($BASH4LLM_DIR). Adotta in ordine di priorità la cartella definita in $BASH4LLM_DIR, in alternativa compila il percorso tramite $BASH4LLM_ROOT (derivandone la directory bash4llm.d), o calcola la directory predefinita puntando a $SCRIPTDIR/bash4llm.d."
     },
     {
       "name": "PRECORE_BOOT_FALLBACK_PROVIDERS",
       "category": "PRECORE_BOOT",
       "phase": "Configurazione delle estensioni di fallback.",
-      "action": "Imposta ed esporta globalmente il percorso della directory dei provider esterni ($PROVIDERS_DIR), facendolo coincidere con la sottocartella /providers all'interno della directory delle estensioni utente qualora non sia già definita in ambiente. Esporta $GROQBASH_EXTRAS_DIR e $PROVIDERS_DIR."
+      "action": "Imposta ed esporta globalmente il percorso della directory dei provider esterni ($PROVIDERS_DIR), facendolo coincidere con la sottocartella /providers all'interno della directory delle estensioni utente qualora non sia già definita in ambiente. Esporta $BASH4LLM_EXTRAS_DIR e $PROVIDERS_DIR."
     },
     {
       "name": "PRECORE_BOOT_DIR_INVARIANTS",
       "category": "PRECORE_BOOT",
       "phase": "Controlli di sicurezza e integrità strutturale del file-system.",
-      "action": "Esegue controlli di sicurezza rigorosi: impedisce l'avvio se $GROQBASH_DIR risulta vuota, convalida che $GROQBASH_TMPDIR non coincida direttamente con la directory di sistema /tmp o risieda sotto /tmp (per mitigare minacce di dirottamento di collegamenti simbolici o attacchi concorrenti in ambienti multi-utente) e forza il posizionamento della cartella temporanea all'interno del percorso radice $GROQBASH_DIR. Inizializza o convalida la directory canonica di configurazione $GROQBASH_CONFIG_DIR."
+      "action": "Esegue controlli di sicurezza rigorosi: impedisce l'avvio se $BASH4LLM_DIR risulta vuota, convalida che $BASH4LLM_TMPDIR non coincida direttamente con la directory di sistema /tmp o risieda sotto /tmp (per mitigare minacce di dirottamento di collegamenti simbolici o attacchi concorrenti in ambienti multi-utente) e forza il posizionamento della cartella temporanea all'interno del percorso radice $BASH4LLM_DIR. Inizializza o convalida la directory canonica di configurazione $BASH4LLM_CONFIG_DIR."
     },
     {
       "name": "PRECORE_BOOT_ENSURE_CONFIG_DIR",
       "category": "PRECORE_BOOT",
       "phase": "Verifica e allocazione cartelle di persistenza.",
-      "action": "Invoca la funzione ensure_config_dir. Se fallisce, emette log di errore ed interrompe l'esecuzione con codice GROQBASHERRTMP."
+      "action": "Invoca la funzione ensure_config_dir. Se fallisce, emette log di errore ed interrompe l'esecuzione con codice BASH4LLMERRTMP."
     },
     {
       "name": "PRECORE_BOOT_FAILFAST_CONFIG_DIR",
@@ -57,7 +57,7 @@
       "name": "PRECORE_BOOT_NORMALIZE_DEBUG",
       "category": "PRECORE_BOOT",
       "phase": "Allineamento della verbosità.",
-      "action": "Normalizza le configurazioni di debug ereditando eventuali valori da $GROQBASH_DEBUG se $DEBUG non è definita, e forzando il valore di default a 0 in caso di assenza totale."
+      "action": "Normalizza le configurazioni di debug ereditando eventuali valori da $BASH4LLM_DEBUG se $DEBUG non è definita, e forzando il valore di default a 0 in caso di assenza totale."
     },
     {
       "name": "PRECORE_BOOT_EARLY_PRINT_CONFIG",
@@ -80,7 +80,7 @@
     {
       "name": "block_mkdir_session_cache",
       "category": "PRECORE_RUN",
-      "phase": "Avvio del sistema di cache di GroqBash.",
+      "phase": "Avvio del sistema di cache di Bash4LLM.",
       "action": "Alloca e configura sul file-system la cartella dedicata a ospitare la cache temporanea delle sessioni ($SESSION_CACHE_DIR), blindandone i permessi d'accesso a 700."
     },
     {
@@ -93,7 +93,7 @@
       "name": "block_ensure_run_tmpdir",
       "category": "PRECORE_RUN",
       "phase": "Inizializzazione dell'ambiente provvisorio di istanza.",
-      "action": "Se non si è in modalità \"solo caricamento sorgenti\" ($GROQBASH_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di fallimento nella creazione dei percorsi temporanei, emette un log di errore fatale ed interrompe l'esecuzione con codice GROQBASHERRTMP."
+      "action": "Se non si è in modalità \"solo caricamento sorgenti\" ($BASH4LLM_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di fallimento nella creazione dei percorsi temporanei, emette un log di errore fatale ed interrompe l'esecuzione con codice BASH4LLMERRTMP."
     },
     {
       "name": "block_normalize_bool_env_call",
@@ -159,7 +159,7 @@
       "name": "CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH",
       "category": "CORE_PROVIDER",
       "phase": "Validazione del modulo provider ed allineamento modelli.",
-      "action": "Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida della conformità della sua interfaccia via validate_provider_interface; in caso di errori strutturali termina con codice GROQBASHERRAPI. Se è stato richiesto esplicitamente il refresh dei modelli, richiede la chiave API ed avvia l'allineamento dei modelli locali tramite refresh_models_dispatch, terminando con stato 0. In subordine, se il file dei modelli locali $MODELS_FILE è assente o vuoto, tenta di eseguire un allineamento automatico dei modelli in background senza bloccare lo script."
+      "action": "Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida della conformità della sua interfaccia via validate_provider_interface; in caso di errori strutturali termina con codice BASH4LLMERRAPI. Se è stato richiesto esplicitamente il refresh dei modelli, richiede la chiave API ed avvia l'allineamento dei modelli locali tramite refresh_models_dispatch, terminando con stato 0. In subordine, se il file dei modelli locali $MODELS_FILE è assente o vuoto, tenta di eseguire un allineamento automatico dei modelli in background senza bloccare lo script."
     },
     {
       "name": "CORE_PROVIDER_SHOW",
@@ -171,7 +171,7 @@
       "name": "CORE_PROVIDER_MAIN_RESOLVE",
       "category": "CORE_PROVIDER",
       "phase": "Risoluzione del modello e cattura standard input.",
-      "action": "Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY), esce immediatamente con stato 0. Altrimenti, carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via resolve_model ed esegue su di esso le convalide sintattiche e di interfaccia del provider (uscendo con codice GROQBASH_ERR_BAD_MODEL se falliscono). Infine, cattura e memorizza l'eventuale flusso di testo in arrivo dallo standard input (cat -) all'interno di $STDIN_CONTENT."
+      "action": "Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY), esce immediatamente con stato 0. Altrimenti, carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via resolve_model ed esegue su di esso le convalide sintattiche e di interfaccia del provider (uscendo con codice BASH4LLM_ERR_BAD_MODEL se falliscono). Infine, cattura e memorizza l'eventuale flusso di testo in arrivo dallo standard input (cat -) all'interno di $STDIN_CONTENT."
     },
     {
       "name": "CORE_PROVIDER_MAIN_EXECUTION",
