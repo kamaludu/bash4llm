@@ -1,98 +1,98 @@
-SPECIFICA DELL'ARCHITETTURA E DELLA LOGICA DI GROQBASH (v2.0.0)
+SPECIFICA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM (v2.0.0)
 
 Questo documento descrive in modo completo e senza perdita di informazioni la
-logica, le variabili, le funzioni e i blocchi strutturali del sistema GroqBash,
+logica, le variabili, le funzioni e i blocchi strutturali del sistema Bash4LLM,
 suddivisi secondo le cinque macro-sezioni originarie.
 
 1. PRECORE_BOOT
 
 VARIABILI
 
-  - SCRIPT_NAME: Nome identificativo del programma (impostato a "groqbash").
+  - SCRIPT_NAME: Nome identificativo del programma (impostato a "bash4llm").
   - SCRIPT_VERSION: Versione corrente del software (impostata a "2.0.0").
   - SCRIPT_DATE: Data di rilascio dello script (impostata a "2026-06-09").
-  - GROQBASH_ERR_NO_API_KEY: Costante numerica di errore (valore 10) associata
+  - BASH4LLM_ERR_NO_API_KEY: Costante numerica di errore (valore 10) associata
     alla mancanza di una chiave API.
-  - GROQBASH_ERR_BAD_MODEL: Costante numerica di errore (valore 11) associata
+  - BASH4LLM_ERR_BAD_MODEL: Costante numerica di errore (valore 11) associata
     alla richiesta di un modello non valido o non supportato.
-  - GROQBASH_ERR_CURL_FAILED: Costante numerica di errore (valore 12) associata
+  - BASH4LLM_ERR_CURL_FAILED: Costante numerica di errore (valore 12) associata
     al fallimento della chiamata di rete curl.
-  - GROQBASH_ERR_INVALID_JSON: Costante numerica di errore (valore 13) associata
+  - BASH4LLM_ERR_INVALID_JSON: Costante numerica di errore (valore 13) associata
     alla ricezione o generazione di un JSON non valido.
-  - GROQBASH_ERR_NO_PROMPT: Costante numerica di errore (valore 14) associata
+  - BASH4LLM_ERR_NO_PROMPT: Costante numerica di errore (valore 14) associata
     alla mancanza di un prompt di input.
-  - GROQBASH_ERR_TMP: Costante numerica di errore (valore 15) associata a
+  - BASH4LLM_ERR_TMP: Costante numerica di errore (valore 15) associata a
     problemi del file-system temporaneo o dei file di lock.
-  - GROQBASH_ERR_API: Costante numerica di errore (valore 16) associata a
+  - BASH4LLM_ERR_API: Costante numerica di errore (valore 16) associata a
     risposte d'errore o codici HTTP non validi restituiti dal provider API.
-  - GROQBASHERRNOAPIKEY: Mappatura alias diretta del valore di
-    GROQBASH_ERR_NO_API_KEY.
-  - GROQBASHERRBAD_MODEL: Mappatura alias diretta del valore di
-    GROQBASH_ERR_BAD_MODEL.
-  - GROQBASHERRCURL_FAILED: Mappatura alias diretta del valore di
-    GROQBASH_ERR_CURL_FAILED.
-  - GROQBASHERRINVALID_JSON: Mappatura alias diretta del valore di
-    GROQBASH_ERR_INVALID_JSON.
-  - GROQBASHERRNO_PROMPT: Mappatura alias diretta del valore di
-    GROQBASH_ERR_NO_PROMPT.
-  - GROQBASHERRTMP: Mappatura alias diretta del valore di GROQBASH_ERR_TMP.
-  - GROQBASHERRAPI: Mappatura alias diretta del valore di GROQBASH_ERR_API.
+  - BASH4LLMERRNOAPIKEY: Mappatura alias diretta del valore di
+    BASH4LLM_ERR_NO_API_KEY.
+  - BASH4LLMERRBAD_MODEL: Mappatura alias diretta del valore di
+    BASH4LLM_ERR_BAD_MODEL.
+  - BASH4LLMERRCURL_FAILED: Mappatura alias diretta del valore di
+    BASH4LLM_ERR_CURL_FAILED.
+  - BASH4LLMERRINVALID_JSON: Mappatura alias diretta del valore di
+    BASH4LLM_ERR_INVALID_JSON.
+  - BASH4LLMERRNO_PROMPT: Mappatura alias diretta del valore di
+    BASH4LLM_ERR_NO_PROMPT.
+  - BASH4LLMERRTMP: Mappatura alias diretta del valore di BASH4LLM_ERR_TMP.
+  - BASH4LLMERRAPI: Mappatura alias diretta del valore di BASH4LLM_ERR_API.
   - DEBUG: Flag di configurazione per l'output di tracciamento dello sviluppo.
     Eredita il valore di ambiente ${DEBUG} o viene impostato su 0 (disattivo).
-  - GROQBASH_LOG: Percorso assoluto o relativo del file in cui registrare i log
-    di tracciamento. Eredita ${GROQBASH_LOG} (vuoto se disattivato).
+  - BASH4LLM_LOG: Percorso assoluto o relativo del file in cui registrare i log
+    di tracciamento. Eredita ${BASH4LLM_LOG} (vuoto se disattivato).
   - SCRIPTDIR: Percorso assoluto della directory contenente lo script corrente,
     risolto dinamicamente tramite la funzione resolve_script_dir.
   - CANONICAL_EXTRAS_DIR: Percorso della directory canonica delle estensioni,
-    calcolato rimuovendo la barra finale da GROQBASH_DIR e annettendo /extras.
+    calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras.
   - LEGACY_EXTRAS_DIR: Percorso storico di fallback delle estensioni, relativo
     alla cartella dello script (SCRIPTDIR/extras).
-  - GROQBASH_EXTRAS_DIR: Directory attiva per l'accesso alle risorse aggiuntive
+  - BASH4LLM_EXTRAS_DIR: Directory attiva per l'accesso alle risorse aggiuntive
     dello script (assegnata a CANONICAL_EXTRAS_DIR).
   - PROVIDERS_DIR: Percorso assoluto o relativo dei moduli esterni dei provider
     (impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto
     la directory delle estensioni alla voce /providers).
-  - GROQBASH_CONFIG_DIR: Directory dei file di configurazione utente
-    persistenti. Impostata a GROQBASH_CONFIG_DIR di ambiente o posizionata sotto
-    $GROQBASH_DIR/config.
-  - GROQBASH_MODELS_DIR: Directory dei file relativi ai modelli supportati.
-    Impostata a GROQBASH_MODELS_DIR di ambiente o posizionata sotto
-    $GROQBASH_DIR/models.
-  - GROQBASH_TEMPLATES_DIR: Directory contenente i file dei modelli di template.
-    Impostata a GROQBASH_TEMPLATES_DIR di ambiente o posizionata sotto
-    $GROQBASH_DIR/templates.
-  - GROQBASH_HISTORY_DIR: Directory contenente lo storico e i log delle
-    interazioni dello script. Impostata a GROQBASH_HISTORY_DIR di ambiente o
-    posizionata sotto $GROQBASH_DIR/history.
-  - GROQBASH_TMPDIR: Directory radice per l'allocazione dei dati temporanei di
-    GroqBash. Impostata a GROQBASH_TMPDIR di ambiente o posizionata sotto
-    $GROQBASH_DIR/tmp.
+  - BASH4LLM_CONFIG_DIR: Directory dei file di configurazione utente
+    persistenti. Impostata a BASH4LLM_CONFIG_DIR di ambiente o posizionata sotto
+    $BASH4LLM_DIR/config.
+  - BASH4LLM_MODELS_DIR: Directory dei file relativi ai modelli supportati.
+    Impostata a BASH4LLM_MODELS_DIR di ambiente o posizionata sotto
+    $BASH4LLM_DIR/models.
+  - BASH4LLM_TEMPLATES_DIR: Directory contenente i file dei modelli di template.
+    Impostata a BASH4LLM_TEMPLATES_DIR di ambiente o posizionata sotto
+    $BASH4LLM_DIR/templates.
+  - BASH4LLM_HISTORY_DIR: Directory contenente lo storico e i log delle
+    interazioni dello script. Impostata a BASH4LLM_HISTORY_DIR di ambiente o
+    posizionata sotto $BASH4LLM_DIR/history.
+  - BASH4LLM_TMPDIR: Directory radice per l'allocazione dei dati temporanei di
+    Bash4LLM. Impostata a BASH4LLM_TMPDIR di ambiente o posizionata sotto
+    $BASH4LLM_DIR/tmp.
   - MODELS_FILE: File di testo locale in cui memorizzare la lista dei modelli
     recuperati. Impostato su MODELS_FILE di ambiente o posizionato sotto
-    $GROQBASH_MODELS_DIR/models.txt.
+    $BASH4LLM_MODELS_DIR/models.txt.
   - MAX_MODELS: Limite numerico massimo di modelli importabili o gestibili
     localmente. Eredita ${MAX_MODELS} o adotta il valore di default di 200.
   - PROVIDER_FILE: Percorso del file che persiste l'ultimo provider configurato
     dall'utente, determinato tramite canonical_provider_file.
   - SESSION_DIR: Directory dedicata alla registrazione dei log storici delle
-    chat multi-turno (posizionata in $GROQBASH_HISTORY_DIR/sessions).
+    chat multi-turno (posizionata in $BASH4LLM_HISTORY_DIR/sessions).
   - MODELS_LOCK: Percorso del file di lock di sincronizzazione per l'accesso ai
     modelli, impostato su MODELS_LOCK di ambiente o localizzato sotto
-    $GROQBASH_MODELS_DIR/models.lock.
+    $BASH4LLM_MODELS_DIR/models.lock.
   - HISTORY_LOCK: Percorso del file di lock per l'accesso concorrente ai log di
     storico e sessione, impostato su HISTORY_LOCK di ambiente o localizzato
-    sotto $GROQBASH_HISTORY_DIR/history.lock.
+    sotto $BASH4LLM_HISTORY_DIR/history.lock.
   - TMP_LOCK: Percorso del file di lock esclusivo per la gestione sicura della
     directory temporanea dello script, impostato su TMP_LOCK di ambiente o
-    localizzato sotto $GROQBASH_TMPDIR/tmp.lock.
-  - GROQBASH_LOCK_TIMEOUT_TMP: Timeout massimo di attesa espresso in secondi per
-    acquisire il lock temporaneo (eredita GROQBASH_LOCK_TIMEOUT_TMP o imposta
+    localizzato sotto $BASH4LLM_TMPDIR/tmp.lock.
+  - BASH4LLM_LOCK_TIMEOUT_TMP: Timeout massimo di attesa espresso in secondi per
+    acquisire il lock temporaneo (eredita BASH4LLM_LOCK_TIMEOUT_TMP o imposta
     10).
-  - GROQBASH_LOCK_TIMEOUT_MODELS: Timeout in secondi per acquisire il lock sui
-    modelli (eredita GROQBASH_LOCK_TIMEOUT_MODELS o imposta 10).
-  - GROQBASH_LOCK_TIMEOUT_HISTORY: Timeout in secondi per acquisire il lock
+  - BASH4LLM_LOCK_TIMEOUT_MODELS: Timeout in secondi per acquisire il lock sui
+    modelli (eredita BASH4LLM_LOCK_TIMEOUT_MODELS o imposta 10).
+  - BASH4LLM_LOCK_TIMEOUT_HISTORY: Timeout in secondi per acquisire il lock
     sullo storico dei messaggi e delle sessioni (eredita
-    GROQBASH_LOCK_TIMEOUT_HISTORY o imposta 10).
+    BASH4LLM_LOCK_TIMEOUT_HISTORY o imposta 10).
 
 FUNZIONI
 
@@ -108,7 +108,7 @@ FUNZIONI
   - canonical_config_dir
       - Scopo: Normalizza il percorso della directory di configurazione
         rimuovendo eventuali barre finali ridondanti.
-      - Input: Nessuno (analizza $GROQBASH_CONFIG_DIR).
+      - Input: Nessuno (analizza $BASH4LLM_CONFIG_DIR).
       - Output: Restituisce il percorso canonico su standard output.
       - Side-effects: Nessuno.
       - Dipendenze: printf.
@@ -149,7 +149,7 @@ FUNZIONI
       - Input: $1 (nome identificativo del provider).
       - Output: Ritorna stato 0 se la chiave è presente o acquisita
         correttamente, altrimenti restituisce il codice di errore
-        GROQBASHERRNOAPIKEY. Esporta la chiave API nella variabile d'ambiente
+        BASH4LLMERRNOAPIKEY. Esporta la chiave API nella variabile d'ambiente
         corretta (es. GROQ_API_KEY o variabile personalizzata indiretta).
       - Side-effects: Esporta variabili d'ambiente globali; effettua letture
         dallo standard input e scritture su stderr.
@@ -157,8 +157,8 @@ FUNZIONI
   - enforce_network_policy
       - Scopo: Valuta se lo stato corrente del runtime permette l'esecuzione di
         richieste di rete reali o se queste devono essere bloccate.
-      - Input: Nessuno (analizza i flag $DRY_RUN, $GROQBASH_SKIP_NETWORK,
-        $GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET, $QUIET).
+      - Input: Nessuno (analizza i flag $DRY_RUN, $BASH4LLM_SKIP_NETWORK,
+        $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, $QUIET).
       - Output: Ritorna lo stato 1 se le connessioni esterne sono bloccate (o se
         si è in simulazione dry-run), 0 se le chiamate di rete sono autorizzate.
       - Side-effects: Scrittura di log di debug se attiva la modalità di
@@ -168,7 +168,7 @@ FUNZIONI
       - Scopo: Restituisce il prefisso di intestazione unificato per i log dello
         script.
       - Input: Nessuno.
-      - Output: Restituisce su standard output la stringa formattata groqbash:
+      - Output: Restituisce su standard output la stringa formattata bash4llm:
         <SCRIPT_NAME>: .
       - Dipendenze: printf.
   - log_info
@@ -176,7 +176,7 @@ FUNZIONI
       - Input: $1 (codice categoria/modulo, default "INFO"), $2 (corpo del
         messaggio).
       - Output: Scrive il messaggio formattato su stderr se $DEBUG è attivo. Se
-        $GROQBASH_LOG è valorizzato, appende il record con timestamp UTC e
+        $BASH4LLM_LOG è valorizzato, appende il record con timestamp UTC e
         categoria nel file di destinazione.
       - Side-effects: Scrittura su console e file-system.
       - Dipendenze: log_prefix, date, printf.
@@ -185,14 +185,14 @@ FUNZIONI
         critici.
       - Input: $1 (codice modulo, default "WARN"), $2 (corpo del messaggio).
       - Output: Scrive il messaggio su stderr. Se abilitato il log, appende il
-        tracciamento nel file $GROQBASH_LOG.
+        tracciamento nel file $BASH4LLM_LOG.
       - Side-effects: Scrittura su stderr e file-system.
       - Dipendenze: log_prefix, date, printf.
   - log_error
       - Scopo: Registra ed evidenzia gli errori critici.
       - Input: $1 (codice modulo, default "ERROR"), $2 (corpo del messaggio).
       - Output: Scrive l'errore su stderr. Se abilitato il log, appende il
-        tracciamento nel file $GROQBASH_LOG.
+        tracciamento nel file $BASH4LLM_LOG.
       - Side-effects: Scrittura su stderr e file-system.
       - Dipendenze: log_prefix, date, printf.
   - dbg
@@ -228,14 +228,14 @@ FUNZIONI
   - resolve_provider_url
       - Scopo: Identifica ed esporta l'URL di connessione per le API. Controlla
         prioritariamente se l'utente ha impostato variabili d'ambiente esplicite
-        (GROQBASH_API_URL o GROQBASH_PROVIDER_URL). In assenza di esse, legge la
+        (BASH4LLM_API_URL o BASH4LLM_PROVIDER_URL). In assenza di esse, legge la
         prima riga del file canonico dell'URL del provider. Se il file non
         esiste e il provider attivo è "groq", esporta l'endpoint nativo di
         default di Groq.
       - Input: $1 (nome provider, default $PROVIDER).
       - Output: Ritorna stato 0 se l'URL viene risolto ed esportato nella
-        variabile globale $GROQBASH_PROVIDER_URL, 1 in caso di fallimento.
-      - Side-effects: Esporta la variabile d'ambiente $GROQBASH_PROVIDER_URL.
+        variabile globale $BASH4LLM_PROVIDER_URL, 1 in caso di fallimento.
+      - Side-effects: Esporta la variabile d'ambiente $BASH4LLM_PROVIDER_URL.
       - Dipendenze: canonical_provider_url_file, sed, awk, export.
   - provider_api_env_var_name
       - Scopo: Calcola il nome standardizzato della variabile d'ambiente
@@ -324,7 +324,7 @@ FUNZIONI
       - Input: $1 (cartella radice), $2 (opzionale: prefisso del nome, default
         "groq").
       - Output: Restituisce su standard output il percorso completo del file
-        temporaneo creato, altrimenti restituisce il codice GROQBASHERRTMP se
+        temporaneo creato, altrimenti restituisce il codice BASH4LLMERRTMP se
         fallisce.
       - Dipendenze: _tmpf, log_error.
   - show_payload_head
@@ -377,7 +377,7 @@ FUNZIONI
       - Scopo: Prepara, isola ed esporta l'ambiente operativo temporaneo
         ($RUN_TMPDIR) dedicato in modo esclusivo alla singola istanza o
         sotto-shell dello script in esecuzione, posizionandolo all'interno della
-        directory temporanea principale sicura $GROQBASH_TMPDIR. Inizializza i
+        directory temporanea principale sicura $BASH4LLM_TMPDIR. Inizializza i
         file di payload, risposta e log di errore associati a questa istanza
         ($PAYLOAD, $RESP, $ERRF) forzando permessi di massima sicurezza (700 per
         la directory, 600 per i file). Registra una trap di uscita (EXIT, INT,
@@ -387,7 +387,7 @@ FUNZIONI
       - Input: $1 (opzionale: --print per stampare esclusivamente il percorso su
         stdout ed uscire).
       - Output: Ritorna stato 0 ed esporta le variabili $RUN_TMPDIR, $PAYLOAD,
-        $RESP e $ERRF. Ritorna il codice GROQBASHERRTMP se fallisce.
+        $RESP e $ERRF. Ritorna il codice BASH4LLMERRTMP se fallisce.
       - Side-effects: Creazione fisica di cartelle e file di testo vuoti,
         modifica permessi di accesso, impostazione di trap di sistema.
       - Dipendenze: mkdir, chmod, _tmpf, rm, trap, log_warn, log_error, printf.
@@ -403,7 +403,7 @@ FUNZIONI
         input e lo scrive nel file di destinazione in modo transazionale e
         atomico protetto da lock, applicandovi permessi 600.
       - Input: $1 (file di destinazione), $2 (timeout del lock, default 10).
-      - Output: Ritorna stato 0 o il codice di errore GROQBASHERRTMP.
+      - Output: Ritorna stato 0 o il codice di errore BASH4LLMERRTMP.
       - Side-effects: Creazione directory, allocazione file temporaneo,
         scrittura e spostamento atomico.
       - Dipendenze: dirname, mkdir, _tmpf, b64encode, chmod, lock_exec, mv, rm,
@@ -418,7 +418,7 @@ FUNZIONI
       - Scopo: Scrive in modo atomico lo stato corrente dell'interfaccia utente
         (frammenti di informazioni e metadati di runtime) in un file JSON
         dedicato all'interno della cartella degli stati dell'interfaccia
-        (posizionata sotto $GROQBASH_CONFIG_DIR/ui_state o sotto $RUN_TMPDIR),
+        (posizionata sotto $BASH4LLM_CONFIG_DIR/ui_state o sotto $RUN_TMPDIR),
         blindando i permessi a 600.
       - Input: $1 (nome del file di stato), $2 (stringa del contenuto JSON).
       - Output: File di stato creato o aggiornato. Ritorna stato 0 se
@@ -506,7 +506,7 @@ BLOCCHI DI CODICE
         errori di esecuzione all'interno di pipeline.
   - PRECORE_BOOT_SOURCE_ONLY_CHECK
       - Fase: Avvio preliminare dell'ambiente.
-      - Azione: Controlla se la variabile globale $GROQBASH_SOURCE_ONLY è
+      - Azione: Controlla se la variabile globale $BASH4LLM_SOURCE_ONLY è
         impostata su 1. In tal caso, interrompe immediatamente l'elaborazione
         del codice principale (uscendo con stato 0), consentendo esclusivamente
         l'importazione passiva e provvisoria di variabili e funzioni del
@@ -523,31 +523,31 @@ BLOCCHI DI CODICE
   - PRECORE_BOOT_DIR_RESOLUTION
       - Fase: Determinazione della directory di runtime.
       - Azione: Risolve il percorso radice dell'installazione del software
-        ($GROQBASH_DIR). Adotta in ordine di priorità la cartella definita in
-        $GROQBASH_DIR, in alternativa compila il percorso tramite $GROQBASH_ROOT
-        (derivandone la directory groqbash.d), o calcola la directory
-        predefinita puntando a $SCRIPTDIR/groqbash.d.
+        ($BASH4LLM_DIR). Adotta in ordine di priorità la cartella definita in
+        $BASH4LLM_DIR, in alternativa compila il percorso tramite $BASH4LLM_ROOT
+        (derivandone la directory bash4llm.d), o calcola la directory
+        predefinita puntando a $SCRIPTDIR/bash4llm.d.
   - PRECORE_BOOT_FALLBACK_PROVIDERS
       - Fase: Configurazione delle estensioni di fallback.
       - Azione: Imposta ed esporta globalmente il percorso della directory dei
         provider esterni ($PROVIDERS_DIR), facendolo coincidere con la
         sottocartella /providers all'interno della directory delle estensioni
         utente qualora non sia già definita in ambiente. Esporta
-        $GROQBASH_EXTRAS_DIR e $PROVIDERS_DIR.
+        $BASH4LLM_EXTRAS_DIR e $PROVIDERS_DIR.
   - PRECORE_BOOT_DIR_INVARIANTS
       - Fase: Controlli di sicurezza e integrità strutturale del file-system.
       - Azione: Esegue controlli di sicurezza rigorosi: impedisce l'avvio se
-        $GROQBASH_DIR risulta vuota, convalida che $GROQBASH_TMPDIR non coincida
+        $BASH4LLM_DIR risulta vuota, convalida che $BASH4LLM_TMPDIR non coincida
         direttamente con la directory di sistema /tmp o risieda sotto /tmp (per
         mitigare minacce di dirottamento di collegamenti simbolici o attacchi
         concorrenti in ambienti multi-utente) e forza il posizionamento della
-        cartella temporanea all'interno del percorso radice $GROQBASH_DIR.
+        cartella temporanea all'interno del percorso radice $BASH4LLM_DIR.
         Inizializza o convalida la directory canonica di configurazione
-        $GROQBASH_CONFIG_DIR.
+        $BASH4LLM_CONFIG_DIR.
   - PRECORE_BOOT_ENSURE_CONFIG_DIR
       - Fase: Verifica e allocazione cartelle di persistenza.
       - Azione: Invoca la funzione ensure_config_dir. Se fallisce, emette log di
-        errore ed interrompe l'esecuzione con codice GROQBASHERRTMP.
+        errore ed interrompe l'esecuzione con codice BASH4LLMERRTMP.
   - PRECORE_BOOT_FAILFAST_CONFIG_DIR
       - Fase: Controllo di sicurezza post-configurazione.
       - Azione: Impedisce l'avvio se il percorso canonico della directory di
@@ -556,7 +556,7 @@ BLOCCHI DI CODICE
   - PRECORE_BOOT_NORMALIZE_DEBUG
       - Fase: Allineamento della verbosità.
       - Azione: Normalizza le configurazioni di debug ereditando eventuali
-        valori da $GROQBASH_DEBUG se $DEBUG non è definita, e forzando il valore
+        valori da $BASH4LLM_DEBUG se $DEBUG non è definita, e forzando il valore
         di default a 0 in caso di assenza totale.
   - PRECORE_BOOT_EARLY_PRINT_CONFIG
       - Fase: Intercettazione opzioni diagnostiche a riga di comando.
@@ -587,16 +587,16 @@ BLOCCHI DI CODICE
 
 VARIABILI
 
-  - GROQBASH_ROTATE_HISTORY: Flag di configurazione (valore 1 o 0, default 0)
+  - BASH4LLM_ROTATE_HISTORY: Flag di configurazione (valore 1 o 0, default 0)
     per attivare la rotazione automatica periodica dello storico delle
     interazioni.
-  - GROQBASH_HISTORY_MAX_FILES: Soglia numerica massima di file memorizzabili
+  - BASH4LLM_HISTORY_MAX_FILES: Soglia numerica massima di file memorizzabili
     nello storico delle risposte (default 100). Superata la soglia, i file più
     vecchi vengono rimossi.
-  - GROQBASH_HISTORY_MAX_BYTES: Soglia massima espressa in byte del peso
+  - BASH4LLM_HISTORY_MAX_BYTES: Soglia massima espressa in byte del peso
     cumulativo di tutti i file storici archiviati (default 104857600,
     equivalente a 100MB).
-  - GROQBASH_HISTORY_KEEP_DAYS: Limite di tempo espresso in giorni per la
+  - BASH4LLM_HISTORY_KEEP_DAYS: Limite di tempo espresso in giorni per la
     conservazione dei log e dello storico (default 90). I file più vecchi della
     soglia vengono eliminati.
   - SESSION_CACHE_DIR: Directory destinata a contenere la cache temporanea dei
@@ -663,14 +663,14 @@ FUNZIONI
   - rotate_history
       - Scopo: Gestisce la manutenzione della directory dello storico delle
         risposte per evitare saturazioni del disco. Identifica ed elimina i file
-        più vecchi del limite stabilito in giorni ($GROQBASH_HISTORY_KEEP_DAYS),
+        più vecchi del limite stabilito in giorni ($BASH4LLM_HISTORY_KEEP_DAYS),
         ed esegue riduzioni progressive eliminando i file storici più datati
         qualora si eccedano le soglie di peso complessivo
-        ($GROQBASH_HISTORY_MAX_BYTES) o il numero massimo di file consentiti
-        ($GROQBASH_HISTORY_MAX_FILES). Le operazioni avvengono in modo protetto
+        ($BASH4LLM_HISTORY_MAX_BYTES) o il numero massimo di file consentiti
+        ($BASH4LLM_HISTORY_MAX_FILES). Le operazioni avvengono in modo protetto
         acquisendo un lock esclusivo a livello di file.
       - Input: $1 (opzionale: timeout per acquisire il lock di storico, default
-        $GROQBASH_LOCK_TIMEOUT_HISTORY).
+        $BASH4LLM_LOCK_TIMEOUT_HISTORY).
       - Output: Purgatura fisica dal file-system dei log e file storici in
         esubero. Ritorna stato 0.
       - Side-effects: Acquisizione temporanea di lock esclusivo su
@@ -679,7 +679,7 @@ FUNZIONI
   - save_to_history
       - Scopo: Archivia in modo sicuro il testo generato dal modello LLM in un
         file cronologico unico contrassegnato da timestamp e PID del processo
-        chiamante all'interno della directory storica $GROQBASH_HISTORY_DIR.
+        chiamante all'interno della directory storica $BASH4LLM_HISTORY_DIR.
         Esegue la scrittura transazionale tramite file temporanei e lock
         esclusivo, forzando permessi restrittivi a 600. Aggiorna in modo atomico
         il file di stato UI last_history.json registrandone i metadati
@@ -699,7 +699,7 @@ FUNZIONI
         contemporaneamente una copia speculare codificata in Base64
         (${manifest}.b64) per usi di trasporto veloci.
       - Input: $1 (percorso del file manifesto di destinazione), $2 (opzionale:
-        timeout lock, default $GROQBASH_LOCK_TIMEOUT_MODELS).
+        timeout lock, default $BASH4LLM_LOCK_TIMEOUT_MODELS).
       - Output: File manifesto JSON e controparte Base64 inizializzati sul
         file-system con permessi 600. Ritorna stato 0 o 1 in caso di errore.
       - Side-effects: Creazione directory genitrice, scrittura file, generazione
@@ -716,7 +716,7 @@ FUNZIONI
         complessiva del manifesto sotto lock esclusivo di sicurezza.
       - Input: $1 (percorso file manifesto), $2 (nome della parte), $3 (percorso
         del file payload di input), $4 (MIME type della risorsa), $5 (opzionale:
-        timeout lock, default $GROQBASH_LOCK_TIMEOUT_MODELS).
+        timeout lock, default $BASH4LLM_LOCK_TIMEOUT_MODELS).
       - Output: Record inserito nel manifesto JSON, copia Base64 complessiva
         rigenerata, file di staging Base64 salvato. Ritorna stato 0 o 1.
       - Side-effects: Creazione directory, codifica Base64, generazione e
@@ -748,7 +748,7 @@ FUNZIONI
       - Dipendenze: uname, stat, ls, awk, printf.
   - _get_file_signature
       - Scopo: Calcola l'impronta di stato e integrità di un file. Se abilitato
-        l'uso degli hash ($GROQBASH_SIG_HASH attivo ed eseguibile sha256sum
+        l'uso degli hash ($BASH4LLM_SIG_HASH attivo ed eseguibile sha256sum
         presente), calcola l'hash SHA-256 del contenuto; in caso contrario o in
         aggiunta, interroga stat estraendo metadati fisici (ID dispositivo,
         inode, dimensione, ctime, mtime, ID proprietario, ID gruppo e permessi
@@ -774,17 +774,17 @@ FUNZIONI
       - Dipendenze: _get_perm_string, awk, printf.
   - make_tmpdir
       - Scopo: Crea una directory temporanea univoca e protetta all'interno di
-        $GROQBASH_TMPDIR sotto lock esclusivo, impostando permessi blindati a
+        $BASH4LLM_TMPDIR sotto lock esclusivo, impostando permessi blindati a
         700.
       - Input: Nessuno.
       - Output: Stampa su standard output il percorso della cartella generata.
-        Ritorna stato 0 o il codice di errore GROQBASHERRTMP.
+        Ritorna stato 0 o il codice di errore BASH4LLMERRTMP.
       - Side-effects: Creazione directory, modifica permessi, lock esclusivo su
         $TMP_LOCK.
       - Dipendenze: mkdir, chmod, lock_exec, _tmpf, printf.
   - _tmpf
       - Scopo: Generatore di oggetti temporanei sicuro. Convalida che la
-        directory temporanea principale $GROQBASH_TMPDIR non sia un collegamento
+        directory temporanea principale $BASH4LLM_TMPDIR non sia un collegamento
         simbolico, verifica che la cartella di base fornita risieda strettamente
         all'interno della directory temporanea autorizzata (impedendo attacchi
         di tipo Directory Traversal), imposta la maschera di processo umask 077
@@ -942,7 +942,7 @@ FUNZIONI
 BLOCCHI DI CODICE
 
   - block_mkdir_session_cache
-      - Fase: Avvio del sistema di cache di GroqBash.
+      - Fase: Avvio del sistema di cache di Bash4LLM.
       - Azione: Alloca e configura sul file-system la cartella dedicata a
         ospitare la cache temporanea delle sessioni ($SESSION_CACHE_DIR),
         blindandone i permessi d'accesso a 700.
@@ -954,9 +954,9 @@ BLOCCHI DI CODICE
   - block_ensure_run_tmpdir
       - Fase: Inizializzazione dell'ambiente provvisorio di istanza.
       - Azione: Se non si è in modalità "solo caricamento sorgenti"
-        ($GROQBASH_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di
+        ($BASH4LLM_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di
         fallimento nella creazione dei percorsi temporanei, emette un log di
-        errore fatale ed interrompe l'esecuzione con codice GROQBASHERRTMP.
+        errore fatale ed interrompe l'esecuzione con codice BASH4LLMERRTMP.
   - block_normalize_bool_env_call
       - Fase: Normalizzazione delle configurazioni d'ambiente.
       - Azione: Esegue _normalize_bool_env per uniformare i flag booleani prima
@@ -1001,7 +1001,7 @@ FUNZIONI
         runtime.
       - Input: Parametri opzionali di configurazione.
       - Output: Assegna il percorso del file di payload finale generato a
-        $GROQBASH_TMP_PAYLOAD e $PAYLOAD. Ritorna stato 0, o GROQBASHERRTMP se
+        $BASH4LLM_TMP_PAYLOAD e $PAYLOAD. Ritorna stato 0, o BASH4LLMERRTMP se
         si verificano errori fisici di scrittura o di directory temporanea.
       - Side-effects: Scrittura e cancellazione file temporanei, codifica
         Base64, emissione di log di avvertimento su stderr.
@@ -1111,7 +1111,7 @@ FUNZIONI
   - auto_select_model_groq
       - Scopo: Scansiona in ordine sequenziale il file dei modelli locali
         $MODELS_FILE ed estrae in modo automatico il primo modello conforme che
-        risulti supportato dal motore interno di GroqBash (escludendo modelli
+        risulti supportato dal motore interno di Bash4LLM (escludendo modelli
         multimodali o non testuali).
       - Input: Nessuno.
       - Output: Stampa su stdout il nome del modello normalizzato se
@@ -1187,7 +1187,7 @@ VARIABILI
     script immediatamente dopo la fase di bootstrap e importazione dei moduli
     (senza elaborare input o effettuare chiamate API).
   - SE_ENGINE_PATH: Percorso assoluto del file dello script del Session Engine
-    esterno ($GROQBASH_EXTRAS_DIR/session/session-engine.sh).
+    esterno ($BASH4LLM_EXTRAS_DIR/session/session-engine.sh).
   - SE_AVAILABLE: Flag booleano (valore 1 o 0, default 0) che attesta
     l'effettiva disponibilità operativa del modulo Session Engine.
   - _supported_providers_arr: Array interno che elenca e indicizza tutti i
@@ -1299,10 +1299,10 @@ FUNZIONI
         ed estrae metadati come l'ID richiesta, il finish reason e il conteggio
         dei token generati per classificare l'evento.
       - Input: Nessuno.
-      - Output: Assegna il verdetto booleano a $GROQBASH_EDGE_EMPTY (1 se
+      - Output: Assegna il verdetto booleano a $BASH4LLM_EDGE_EMPTY (1 se
         rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in
-        variabili globali ($GROQBASH_EDGE_REQ_ID, $GROQBASH_EDGE_FINISH_REASON,
-        $GROQBASH_EDGE_COMPLETION_TOKENS).
+        variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON,
+        $BASH4LLM_EDGE_COMPLETION_TOKENS).
       - Side-effects: Duplicazione temporanea del file per l'analisi sicura.
       - Dipendenze: _tmpf, cp, is_valid_json_file, jq, rm.
   - finalize_and_output
@@ -1312,7 +1312,7 @@ FUNZIONI
         l'output testuale supera la soglia di caratteri autorizzata o se è
         forzato dall'utente, si occupa di salvare i risultati nel file-system
         (all'interno di $OUT_PATH o nella directory storica standard
-        $GROQBASH_HISTORY_DIR), richiamando save_to_history in modo atomico.
+        $BASH4LLM_HISTORY_DIR), richiamando save_to_history in modo atomico.
       - Input: $1 (formato: json, pretty, raw, text), $2 (stringa di testo del
         risultato).
       - Output: Output stampato a schermo secondo la formattazione richiesta.
@@ -1333,7 +1333,7 @@ FUNZIONI
         restituisce lo stato d'uscita.
       - Input: Nessuno.
       - Output: Output generato stampato su console e file di log aggiornati.
-        Ritorna stato 0 se completata, codice d'errore GROQBASHERRAPI se
+        Ritorna stato 0 se completata, codice d'errore BASH4LLMERRAPI se
         fallisce.
       - Side-effects: Tentativi multipli di rete, sospensione temporanea del
         processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su
@@ -1377,7 +1377,7 @@ FUNZIONI
       - Dipendenze: awk, printf.
   - is_supported_model
       - Scopo: Analizza il nome del modello e ne convalida la compatibilità con
-        GroqBash. Filtra e scarta (ritornando stato 1) modelli che richiedono
+        Bash4LLM. Filtra e scarta (ritornando stato 1) modelli che richiedono
         formati non-testuali esclusivi (immagini, visione/VQA,
         audio/speech/whisper, tts, embedding o vettori, modelli multimodali
         non-standard), garantendo che siano inviati solo modelli di testo
@@ -1406,7 +1406,7 @@ FUNZIONI
   - load_local_config
       - Scopo: Carica in memoria i parametri di configurazione definiti
         dall'utente nel file di configurazione locale (config all'interno della
-        cartella $GROQBASH_CONFIG_DIR), interpretando le righe chiave/valore e
+        cartella $BASH4LLM_CONFIG_DIR), interpretando le righe chiave/valore e
         impostando le variabili globali corrispondenti (MODEL, TEMPERATURE/TURE,
         MAX_TOKENS, OUTPUT_MODE/FORMAT, THRESHOLD). Ignora commenti e righe
         vuote.
@@ -1504,7 +1504,7 @@ FUNZIONI
 
   - validate_provider_interface
       - Scopo: Convalida che il modulo del provider caricato implementi
-        correttamente le specifiche dell'interfaccia di GroqBash. Verifica la
+        correttamente le specifiche dell'interfaccia di Bash4LLM. Verifica la
         presenza fisica in memoria delle funzioni obbligatorie
         (buildpayload_<provider> e call_api_<provider>), e traccia a scopo
         informativo la presenza o assenza di metodi opzionali (streaming,
@@ -1575,7 +1575,7 @@ BLOCCHI DI CODICE
       - Azione: Verifica che il modulo del provider sia stato correttamente
         importato ed esegue la convalida della conformità della sua interfaccia
         via validate_provider_interface; in caso di errori strutturali termina
-        con codice GROQBASHERRAPI. Se è stato richiesto esplicitamente il
+        con codice BASH4LLMERRAPI. Se è stato richiesto esplicitamente il
         refresh dei modelli ($REFRESH_MODELS attivo), richiede la chiave API ed
         avvia l'allineamento dei modelli locali tramite refresh_models_dispatch,
         terminando con stato 0. In subordine, se il file dei modelli locali
@@ -1598,7 +1598,7 @@ BLOCCHI DI CODICE
           - SHOW_CONFIG: Visualizza un riepilogo tabulare dettagliato dei
             parametri correnti dell'installazione (versione, date, provider
             attivo, modello attivo, modello di default, percorsi di tutte le
-            directory di lavoro di GroqBash, stato di debug e simulazione,
+            directory di lavoro di Bash4LLM, stato di debug e simulazione,
             conteggio dei modelli in whitelist).
           - DIAGNOSTICS: Esegue un'analisi di integrità diagnostica completa
             dello stato del sistema. Scansiona e verifica l'esistenza e
@@ -1615,7 +1615,7 @@ BLOCCHI DI CODICE
         whitelist dei modelli, garantisce la stabilità della directory
         temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via
         resolve_model ed esegue su di esso le convalide sintattiche e di
-        interfaccia del provider (terminando con codice GROQBASH_ERR_BAD_MODEL
+        interfaccia del provider (terminando con codice BASH4LLM_ERR_BAD_MODEL
         se il modello selezionato fallisce le verifiche). Infine, cattura e
         memorizza l'eventuale flusso di testo in arrivo da una redirezione o
         pipeline nello standard input (cat -) all'interno di $STDIN_CONTENT.
@@ -1625,7 +1625,7 @@ BLOCCHI DI CODICE
         script è stato richiamato in modalità interattiva e non contiene prompt,
         visualizza la notifica del provider attivo ed esce. Esegue controlli di
         sicurezza sull'input bloccando l'esecuzione con codice
-        GROQBASHERRNO_PROMPT in assenza di prompt testuale o JSON d'input
+        BASH4LLMERRNO_PROMPT in assenza di prompt testuale o JSON d'input
         (tranne se in chat interattiva o elaborazione batch). Valida la
         correttezza numerica dei parametri di temperatura e token massimi.
         Controlla che il modello sia regolarmente supportato o non deprecato
@@ -1697,4 +1697,4 @@ BLOCCHI DI CODICE
                   - Esce con stato 0. In caso di fallimento della chiamata,
                     accoda comunque il messaggio utente alla sessione
                     contrassegnandolo come interazione fallita ed interrompe
-                    l'esecuzione con codice GROQBASHERRAPI.
+                    l'esecuzione con codice BASH4LLMERRAPI.
