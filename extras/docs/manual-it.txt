@@ -1,19 +1,19 @@
 ================================================================================
-GROQBASH(1)                      GroqBash Manual .it                 GROQBASH(1)
+BASH4LLM(1)                      Bash4LLM Manual .it                 BASH4LLM(1)
 ================================================================================
 
 NOME
-    groqbash - Wrapper Bash-first resiliente e sicuro per l'interrogazione di 
+    bash4llm - Wrapper Bash-first resiliente e sicuro per l'interrogazione di 
     provider LLM esterni (v2.0.0)
 
 SINTASSI
-    groqbash [OPZIONI] [PROMPT]
-    groqbash -f FILE [OPZIONI]
-    echo "prompt" | groqbash [OPZIONI]
-    groqbash --batch FILE_BATCH [OPZIONI]
+    bash4llm [OPZIONI] [PROMPT]
+    bash4llm -f FILE [OPZIONI]
+    echo "prompt" | bash4llm [OPZIONI]
+    bash4llm --batch FILE_BATCH [OPZIONI]
 
 DESCRIZIONE
-    groqbash è un'utilità di riga di comando nativa in ambiente shell progettata 
+    bash4llm è un'utilità di riga di comando nativa in ambiente shell progettata 
     per l'integrazione, l'automazione e l'orchestrazione flessibile delle 
     interazioni con modelli linguistici di grandi dimensioni (LLM) forniti da 
     servizi esterni quali Groq, Gemini e HuggingFace.
@@ -249,7 +249,7 @@ OPZIONI
         prompt di input, escludendo l'elaborazione di flag successivi.
 
 VARIABILI D'AMBIENTE
-    Il comportamento del runtime di groqbash è governato e può essere 
+    Il comportamento del runtime di bash4llm è governato e può essere 
     condizionato dalle seguenti variabili d'ambiente.
 
   Sezione 1: Credenziali di Autenticazione API
@@ -265,52 +265,52 @@ VARIABILI D'AMBIENTE
         all'interno della variabile CUSTOM_KEY).
 
   Sezione 2: Percorsi e Struttura del File System
-    GROQBASH_DIR
-        Directory radice persistente per le risorse e i dati di groqbash. Se 
+    BASH4LLM_DIR
+        Directory radice persistente per le risorse e i dati di bash4llm. Se 
         omessa, viene risolta dinamicamente puntando alla directory 
-        "groqbash.d" posizionata sotto la cartella d'origine dello script.
+        "bash4llm.d" posizionata sotto la cartella d'origine dello script.
 
-    GROQBASH_ROOT
+    BASH4LLM_ROOT
         Percorso alternativo utilizzato per derivare la directory radice qualora 
-        GROQBASH_DIR non sia esplicitamente dichiarata in ambiente.
+        BASH4LLM_DIR non sia esplicitamente dichiarata in ambiente.
 
-    GROQBASH_CONFIG_DIR
+    BASH4LLM_CONFIG_DIR
         Directory destinata ad archiviare le impostazioni persistenti dell'utente 
-        (default: $GROQBASH_DIR/config).
+        (default: $BASH4LLM_DIR/config).
 
-    GROQBASH_MODELS_DIR
+    BASH4LLM_MODELS_DIR
         Directory contenente la lista dei modelli configurati e scaricati 
-        (default: $GROQBASH_DIR/models).
+        (default: $BASH4LLM_DIR/models).
 
-    GROQBASH_TEMPLATES_DIR
+    BASH4LLM_TEMPLATES_DIR
         Directory contenente i file dei modelli di template utente 
-        (default: $GROQBASH_DIR/templates).
+        (default: $BASH4LLM_DIR/templates).
 
-    GROQBASH_HISTORY_DIR
+    BASH4LLM_HISTORY_DIR
         Directory destinata ad accumulare lo storico delle risposte e i log di 
-        interazione (default: $GROQBASH_DIR/history).
+        interazione (default: $BASH4LLM_DIR/history).
 
-    GROQBASH_TMPDIR
+    BASH4LLM_TMPDIR
         Directory radice protetta per l'allocazione dei dati temporanei dello 
-        script (default: $GROQBASH_DIR/tmp).
+        script (default: $BASH4LLM_DIR/tmp).
 
-    GROQBASH_EXTRAS_DIR
+    BASH4LLM_EXTRAS_DIR
         Directory attiva per l'accesso e l'importazione delle estensioni utente 
-        (default: $GROQBASH_DIR/extras).
+        (default: $BASH4LLM_DIR/extras).
 
     PROVIDERS_DIR
         Directory contenente i moduli dei provider esterni installati nel 
-        sistema (default: $GROQBASH_EXTRAS_DIR/providers).
+        sistema (default: $BASH4LLM_EXTRAS_DIR/providers).
 
     SESSION_CACHE_DIR
         Directory destinata ad ospitare la cache temporanea cruda dei messaggi 
-        e contesti di sessione (posizionata in $GROQBASH_CONFIG_DIR/session_cache).
+        e contesti di sessione (posizionata in $BASH4LLM_CONFIG_DIR/session_cache).
 
   Sezione 3: Configurazione Risorse e Sincronizzazione
     MODELS_FILE
         Percorso assoluto o relativo del file locale in cui memorizzare 
         l'elenco dei modelli recuperati dalle API (default: 
-        $GROQBASH_MODELS_DIR/models.txt).
+        $BASH4LLM_MODELS_DIR/models.txt).
 
     MAX_MODELS
         Limite numerico di modelli gestibili localmente nel file dei modelli. Se 
@@ -323,45 +323,45 @@ VARIABILI D'AMBIENTE
 
     MODELS_LOCK
         File di sincronizzazione (lock) esclusivo per regolare l'accesso e l'aggiornamento 
-        del file locale dei modelli (default: $GROQBASH_MODELS_DIR/models.lock).
+        del file locale dei modelli (default: $BASH4LLM_MODELS_DIR/models.lock).
 
     HISTORY_LOCK
         File di lock esclusivo per prevenire corruzioni fisiche dovute ad accessi 
         paralleli o concorrenti alla directory storica e alle sessioni (default: 
-        $GROQBASH_HISTORY_DIR/history.lock).
+        $BASH4LLM_HISTORY_DIR/history.lock).
 
     TMP_LOCK
         File di lock esclusivo associato alla directory temporanea per regolare 
         la creazione di sottocartelle di istanza (default: 
-        $GROQBASH_TMPDIR/tmp.lock).
+        $BASH4LLM_TMPDIR/tmp.lock).
 
-    GROQBASH_LOCK_TIMEOUT_TMP
+    BASH4LLM_LOCK_TIMEOUT_TMP
         Timeout massimo di attesa espresso in secondi per acquisire il lock sui 
         file temporanei (default: 10 secondi).
 
-    GROQBASH_LOCK_TIMEOUT_MODELS
+    BASH4LLM_LOCK_TIMEOUT_MODELS
         Timeout massimo espresso in secondi per acquisire il lock sul file dei 
         modelli (default: 10 secondi).
 
-    GROQBASH_LOCK_TIMEOUT_HISTORY
+    BASH4LLM_LOCK_TIMEOUT_HISTORY
         Timeout massimo espresso in secondi per acquisire il lock di accesso allo 
         storico e sessioni (default: 10 secondi).
 
   Sezione 4: Manutenzione dello Storico (Rotazione)
-    GROQBASH_ROTATE_HISTORY
+    BASH4LLM_ROTATE_HISTORY
         Flag booleano (1 o 0) per abilitare la purga e la manutenzione periodica 
         automatica dei log dello storico al termine delle interrogazioni (default: 0).
 
-    GROQBASH_HISTORY_MAX_FILES
+    BASH4LLM_HISTORY_MAX_FILES
         Soglia numerica massima di file memorizzabili nella directory dello 
         storico delle risposte (default: 100). Superata la soglia, i file più 
         vecchi vengono rimossi.
 
-    GROQBASH_HISTORY_MAX_BYTES
+    BASH4LLM_HISTORY_MAX_BYTES
         Soglia limite cumulativa espressa in byte dello spazio occupato in totale 
         dai file dello storico (default: 104857600 byte, equivalente a 100MB).
 
-    GROQBASH_HISTORY_KEEP_DAYS
+    BASH4LLM_HISTORY_KEEP_DAYS
         Limite di conservazione temporale espresso in giorni per i file di log 
         e storici (default: 90 giorni). I file più vecchi del limite vengono eliminati.
 
@@ -372,12 +372,12 @@ VARIABILI D'AMBIENTE
         dry-run, la presenza di una chiave API valida genera un errore fatale, 
         bloccando la trasmissione di rete a scopo precauzionale.
 
-    GROQBASH_SKIP_NETWORK
+    BASH4LLM_SKIP_NETWORK
         Inibisce ed esclude qualsiasi chiamata di rete. Se impostato a 1, forza 
         la chiamata API a produrre una risposta diagnostica fittizia simulando il 
         dry-run.
 
-    GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET
+    BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET
         Se impostato a 1, combinato con l'abilitazione della modalità quiet 
         (QUIET=1), impone il blocco immediato di tutte le connessioni esterne 
         a scopo di automazione sicura in assenza di TTY.
@@ -394,60 +394,60 @@ VARIABILI D'AMBIENTE
 
     DEBUG
         Variabile di allineamento diagnostico. Se valorizzata a 1, attiva le 
-        funzionalità di debug interno (eredita le configurazioni da GROQBASH_DEBUG).
+        funzionalità di debug interno (eredita le configurazioni da BASH4LLM_DEBUG).
 
-    GROQBASH_LOG
+    BASH4LLM_LOG
         Percorso opzionale di un file all'interno del quale appendere in modo 
         strutturato e cronologico i log operativi unificati dello script con 
         timestamp UTC.
 
-    GROQBASH_SOURCE_ONLY
+    BASH4LLM_SOURCE_ONLY
         Variabile di esclusione del nucleo operativo (guard di sviluppo). Se 
         impostata a 1 prima di importare lo script, interrompe l'esecuzione 
         principale subito dopo il bootstrap. Consente di caricare e testare 
         isolatamente le sole variabili d'ambiente, definizioni e funzioni di 
-        groqbash all'interno di una shell attiva o di test unitari esterni.
+        bash4llm all'interno di una shell attiva o di test unitari esterni.
 
 CODICI DI USCITA
     Il runtime adotta un insieme di codici di errore numerici fissi per isolare 
     le cause di fallimento a livello di processo:
 
-    10 (GROQBASH_ERR_NO_API_KEY)
+    10 (BASH4LLM_ERR_NO_API_KEY)
         La chiave API richiesta dal provider attivo è assente nell'ambiente e 
         lo script è in esecuzione in una sessione non interattiva (assenza di 
         TTY), impedendo l'inserimento manuale.
 
-    11 (GROQBASH_ERR_BAD_MODEL)
+    11 (BASH4LLM_ERR_BAD_MODEL)
         Il modello selezionato non è valido, non è supportato dal provider 
         attivo o è stato escluso a causa dei filtri di convalida del nucleo 
         (modelli multimodali non-testuali).
 
-    12 (GROQBASH_ERR_CURL_FAILED)
+    12 (BASH4LLM_ERR_CURL_FAILED)
         La chiamata di rete effettuata tramite l'utilità curl è fallita a causa 
         di problemi di connessione, DNS, instabilità del server o scadenza del 
         tempo massimo di attesa (timeout).
 
-    13 (GROQBASH_ERR_INVALID_JSON)
+    13 (BASH4LLM_ERR_INVALID_JSON)
         Il file JSON di configurazione, il file dei modelli o il payload di 
         risposta restituito dalle API del provider è corrotto o privo di una 
         struttura sintattica valida.
 
-    14 (GROQBASH_ERR_NO_PROMPT)
+    14 (BASH4LLM_ERR_NO_PROMPT)
         Nessun prompt testuale o file JSON è stato fornito in ingresso per 
         l'elaborazione (fatta eccezione per la modalità chat interattiva o 
         l'esecuzione in serie batch).
 
-    15 (GROQBASH_ERR_TMP)
+    15 (BASH4LLM_ERR_TMP)
         Impossibile allocare o configurare la directory temporanea di istanza 
         o anomalie irreversibili nell'acquisizione dei file di lock esclusivi.
 
-    16 (GROQBASH_ERR_API)
+    16 (BASH4LLM_ERR_API)
         Il server API del provider ha rifiutato la richiesta o ha restituito un 
         codice di stato HTTP non valido (es. errore 400, 401, 429, 500), oppure 
         si è verificato un caso di generazione vuota anomala (empty completion).
 
 MODALITÀ OPERATIVE
-    groqbash implementa cinque modalità operative principali, selezionabili via 
+    bash4llm implementa cinque modalità operative principali, selezionabili via 
     flag CLI o determinate automaticamente dallo stato dei flussi di input.
 
   1. Richiesta Singola (Default)
@@ -493,7 +493,7 @@ MODALITÀ OPERATIVE
 
 DETTAGLI DI IMPLEMENTAZIONE INTERNA
     Questa sezione descrive i meccanismi, gli algoritmi e le logiche che 
-    governano il nucleo funzionale di groqbash.
+    governano il nucleo funzionale di bash4llm.
 
   1. Algoritmo di Assemblaggio del Prompt (Priority Chain)
     La determinazione del prompt definitivo ($CONTENT) da trasmettere al 
@@ -541,11 +541,11 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
     richiedono formati non testuali (come input di immagini per visione artificiale, 
     audio per trascrizione, o modelli di pura generazione di vettori di embedding) 
     vengono bloccati preventivamente per impedire trasmissioni destinate a 
-    fallire a causa dell'incompatibilità dei payload testuali di groqbash.
+    fallire a causa dell'incompatibilità dei payload testuali di bash4llm.
 
   4. Cache di Sessione (Session Cache)
     Per evitare ridondanti chiamate di rete o calcoli concorrenti sul file system, 
-    groqbash implementa un meccanismo di cache locale per le risposte delle 
+    bash4llm implementa un meccanismo di cache locale per le risposte delle 
     sessioni. Le risposte vengono archiviate nella directory dedicata con permessi 600. 
     La prima riga del file di cache memorizza il timestamp Unix assoluto di scadenza 
     (TTL, impostabile in secondi, default 300). Ad ogni interrogazione, la funzione 
@@ -579,9 +579,9 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
     Questa funzione agisce da barriera di sicurezza autorizzativa e nega l'accesso 
     alla rete (ritornando stato di blocco) se:
       - È attivo il simulatore dry-run ($DRY_RUN = 1).
-      - È impostata la variabile di esclusione rete ($GROQBASH_SKIP_NETWORK = 1).
+      - È impostata la variabile di esclusione rete ($BASH4LLM_SKIP_NETWORK = 1).
       - È attiva la modalità silenziosa combinata con la restrizione di rete 
-        ($QUIET = 1 e $GROQBASH_ENFORCE_NO_NETWORK_IF_QUIET = 1).
+        ($QUIET = 1 e $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET = 1).
     Qualsiasi punto di chiamata API all'interno dei moduli provider deve interrogare 
     enforce_network_policy prima di invocare curl; se l'accesso è bloccato, il 
     provider è obbligato ad astenersi dal generare traffico di rete, producendo 
@@ -599,7 +599,7 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
 
 ALIAS WRAPPER DI COMPATIBILITÀ (LEGACY)
     Per garantire l'integrazione con script storici o flussi di terze parti 
-    sviluppati per le versioni precedenti di groqbash, il runtime espone e 
+    sviluppati per le versioni precedenti di bash4llm, il runtime espone e 
     mantiene attivi i seguenti wrapper legacy di interfaccia diretti:
 
     buildpayloadgroq
@@ -626,7 +626,7 @@ RISOLUZIONE DEI PROBLEMI E DIAGNOSTICA
     di stato HTTP di successo (200 OK) ma interrompano la generazione senza 
     produrre alcun testo utilizzabile, inviando un motivo di arresto (finish_reason) 
     pari a "stop" o un numero di token generati prossimo a zero.
-    groqbash rileva automaticamente questa anomalia tramite la funzione 
+    bash4llm rileva automaticamente questa anomalia tramite la funzione 
     detect_empty_edge_case, la quale ispeziona la risposta strutturata ed estrae:
       - L'identificativo univoco della richiesta (Request ID) se presente.
       - Il motivo formale dell'arresto della generazione (Finish Reason).
@@ -636,9 +636,9 @@ RISOLUZIONE DEI PROBLEMI E DIAGNOSTICA
     sviluppatore e termina l'esecuzione con l'errore di chiamata API (codice 16).
 
   Mancata Connessione o Timeout dei Lock
-    Se lo script restituisce il codice di errore 15 (GROQBASH_ERR_TMP) accompagnato 
-    da messaggi di timeout, verificare che non vi siano altre istanze di groqbash 
+    Se lo script restituisce il codice di errore 15 (BASH4LLM_ERR_TMP) accompagnato 
+    da messaggi di timeout, verificare che non vi siano altre istanze di bash4llm 
     in esecuzione in background che bloccano le risorse del file system. In caso di 
     necessità, è possibile estendere i tempi massimi di attesa impostando in ambiente 
-    le variabili GROQBASH_LOCK_TIMEOUT_TMP, GROQBASH_LOCK_TIMEOUT_MODELS o 
-    GROQBASH_LOCK_TIMEOUT_HISTORY su valori numerici superiori (es. 30 secondi).
+    le variabili BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS o 
+    BASH4LLM_LOCK_TIMEOUT_HISTORY su valori numerici superiori (es. 30 secondi).
