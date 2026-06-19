@@ -1,21 +1,21 @@
 --------------------------------------
-GroqBash 2.x — Bash-first wrapper for the Groq API
+Bash4LLM 2.x — Bash-first wrapper for the Groq API
 --------------------------------------
-  --version            GroqBash version
+  --version            Bash4LLM version
   -h, --help           This Help
 
 Usage:
-  groqbash "prompt"
-  echo "text" | groqbash
-  groqbash -f file.txt
-  groqbash --batch batch.txt
+  bash4llm "prompt"
+  echo "text" | bash4llm
+  bash4llm -f file.txt
+  bash4llm --batch batch.txt
 
 Options:
 
 Input:
   -f <file>            Add file to FILE_INPUTS (repeatable)
   --json-input <json>  Direct JSON input (literal JSON, not a file)
-  --template <name>    Template from groqbash.d/templates
+  --template <name>    Template from bash4llm.d/templates
   --batch <file>       One prompt per non-empty line
 
 Output:
@@ -64,12 +64,12 @@ Extras installation:
   --install-extras           Install extras (all components)
   --install-extras <dir>     Install extras from directory
   --install-extras=<dir>     Inline form
-  # (Selective install supported: groqbash --install-extras provider1 templateA)
+  # (Selective install supported: bash4llm --install-extras provider1 templateA)
 
 Examples:
-  groqbash "Summarize this text"
-  echo "hello" | groqbash --model mixtral-8x7b
-  groqbash -f prompt.txt --json
-  groqbash --stream "Generate streaming text"
-  groqbash --session chat1 "Continue conversation"
+  bash4llm "Summarize this text"
+  echo "hello" | bash4llm --model mixtral-8x7b
+  bash4llm -f prompt.txt --json
+  bash4llm --stream "Generate streaming text"
+  bash4llm --session chat1 "Continue conversation"
 --------------------------------------
