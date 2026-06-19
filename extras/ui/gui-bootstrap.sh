@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Portable environment bootstrap for GroqBash GUI CGI
+# Portable environment bootstrap for Bash4LLM GUI CGI
 # File: gui-bootstrap.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 set -euo pipefail
 umask 077
@@ -51,8 +51,8 @@ for _c in "${_required_cmds[@]}"; do
 done
 
 if [[ ${#_missing[@]} -ne 0 ]]; then
-  printf 'groqbash: ERROR: missing required tools: %s\n' "$(printf '%s ' "${_missing[@]}")" >&2
-  printf 'groqbash: ERROR: required toolset not available; aborting bootstrap\n' >&2
+  printf 'bash4llm: ERROR: missing required tools: %s\n' "$(printf '%s ' "${_missing[@]}")" >&2
+  printf 'bash4llm: ERROR: required toolset not available; aborting bootstrap\n' >&2
   exit 1
 fi
 unset _required_cmds _missing _c
@@ -69,7 +69,7 @@ elif [[ -f "${SCRIPT_DIR%/}/gui-env.sh" ]]; then
   source "${SCRIPT_DIR%/}/gui-env.sh"
   gui_env_init cli
 else
-  printf 'groqbash: ERROR: required file gui-env.sh missing in UI_ROOT (%s); aborting\n' "${UI_ROOT:-<unset>}" >&2
+  printf 'bash4llm: ERROR: required file gui-env.sh missing in UI_ROOT (%s); aborting\n' "${UI_ROOT:-<unset>}" >&2
   exit 1
 fi
 
@@ -128,8 +128,8 @@ export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR
 # ---------------------------------------------------------------------------
 # Files and defaults (do not override values set by gui-env)
 # ---------------------------------------------------------------------------
-: "${GROQBASH_CMD:=${GROQBASH_CMD:-groqbash}}"
-: "${GROQBASHGUILOCKTIMEOUT:=10}"
+: "${BASH4LLM_CMD:=${BASH4LLM_CMD:-bash4llm}}"
+: "${BASH4LLMGUILOCKTIMEOUT:=10}"
 
 LOCK_FILE="${LOCK_FILE:-${TMP_DIR%/}/gui.lock}"            # CGI lock (conversations)
 BOOTSTRAP_LOCK="${BOOTSTRAP_LOCK:-${TMP_DIR%/}/bootstrap.lock}" # bootstrap lock (wrapper/shadow)
@@ -160,8 +160,8 @@ ensure_flock_available() {
 acquire_lock() {
   mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
   exec 9>"$LOCK_FILE"
-  if ! flock -x -w "$GROQBASHGUILOCKTIMEOUT" 9; then
-    log_error "LOCKTIMEOUT" "could not acquire GUI lock on $LOCK_FILE within ${GROQBASHGUILOCKTIMEOUT}s"
+  if ! flock -x -w "$BASH4LLMGUILOCKTIMEOUT" 9; then
+    log_error "LOCKTIMEOUT" "could not acquire GUI lock on $LOCK_FILE within ${BASH4LLMGUILOCKTIMEOUT}s"
     exec 9>&- || true
     LOCK_HELD=0
     return 1
@@ -349,7 +349,7 @@ find_lang_conf() {
     "${UI_ROOT:-}/extras/ui/gui-lang.conf"
     "${UI_ROOT:-}/static/gui-lang.conf"
     "${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}/gui-lang.conf"
-    "$HOME/.config/groqbash/gui-lang.conf"
+    "$HOME/.config/bash4llm/gui-lang.conf"
     "$UI_ROOT/../gui-lang.conf"
   )
   local c
@@ -624,68 +624,68 @@ ensure_config_defaults() {
 }
 
 # ---------------------------------------------------------------------------
-# Ensure groqbash available (DETERMINISTIC: discovery-only)
+# Ensure bash4llm available (DETERMINISTIC: discovery-only)
 # ---------------------------------------------------------------------------
-ensure_groqbash_available() {
+ensure_bash4llm_available() {
   if [[ -n "${UI_ROOT:-}" && -n "${CFG_DIR:-}" ]]; then
-    local cfg="${CFG_DIR%/}/groqbash-path"
+    local cfg="${CFG_DIR%/}/bash4llm-path"
     if [[ -f "$cfg" ]]; then
       local p
       p="$(sed -n '1p' "$cfg" 2>/dev/null || true)"
       if [[ -n "$p" && -x "$p" ]]; then
         case "$p" in
-          "${UI_ROOT%/}/bin/"*|*/groqbash.d/extras/ui/bin/*|"$PWD/"* )
-            GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
-            export GROQBASH_CMD
+          "${UI_ROOT%/}/bin/"*|*/bash4llm.d/extras/ui/bin/*|"$PWD/"* )
+            BASH4LLM_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
+            export BASH4LLM_CMD
             return 0
             ;;
           *)
-            log_warn "GUIIO" "Persisted groqbash-path '$p' is not a UI wrapper/repo path; ignoring"
+            log_warn "GUIIO" "Persisted bash4llm-path '$p' is not a UI wrapper/repo path; ignoring"
             ;;
         esac
       else
-        log_warn "GUIIO" "Configured groqbash path '$p' not executable; will attempt discovery"
+        log_warn "GUIIO" "Configured bash4llm path '$p' not executable; will attempt discovery"
       fi
     fi
   fi
 
   if [[ -n "${UI_ROOT:-}" ]]; then
-    local wrapper_path="${UI_ROOT%/}/bin/groqbash-wrapper"
+    local wrapper_path="${UI_ROOT%/}/bin/bash4llm-wrapper"
     if [[ -x "$wrapper_path" ]]; then
-      GROQBASH_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
-      export GROQBASH_CMD
+      BASH4LLM_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
+      export BASH4LLM_CMD
       return 0
     fi
   fi
 
-  if [[ -n "${GROQBASH_CMD:-}" && "${GROQBASH_CMD}" = /* && -x "${GROQBASH_CMD}" ]]; then
-    GROQBASH_CMD="$(readlink -f "$GROQBASH_CMD" 2>/dev/null || printf '%s' "$GROQBASH_CMD")"
-    export GROQBASH_CMD
+  if [[ -n "${BASH4LLM_CMD:-}" && "${BASH4LLM_CMD}" = /* && -x "${BASH4LLM_CMD}" ]]; then
+    BASH4LLM_CMD="$(readlink -f "$BASH4LLM_CMD" 2>/dev/null || printf '%s' "$BASH4LLM_CMD")"
+    export BASH4LLM_CMD
     return 0
   fi
 
   local candidates=(
-    "${PREFIX:-/data/data/com.termux/files/usr}/bin/groqbash"
-    "/data/data/com.termux/files/usr/bin/groqbash"
-    "/usr/local/bin/groqbash"
-    "/usr/bin/groqbash"
-    "$UI_ROOT/../groqbash/groqbash"
-    "$HOME/groqbash/groqbash"
-    "$HOME/repo-groqbash/bin/groqbash"
-    "$PWD/groqbash"
+    "${PREFIX:-/data/data/com.termux/files/usr}/bin/bash4llm"
+    "/data/data/com.termux/files/usr/bin/bash4llm"
+    "/usr/local/bin/bash4llm"
+    "/usr/bin/bash4llm"
+    "$UI_ROOT/../bash4llm/bash4llm"
+    "$HOME/bash4llm/bash4llm"
+    "$HOME/repo-bash4llm/bin/bash4llm"
+    "$PWD/bash4llm"
   )
   local p
   for p in "${candidates[@]}"; do
     [[ -z "$p" ]] && continue
     if [[ -x "$p" ]]; then
-      GROQBASH_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
-      export GROQBASH_CMD
-      log_info "GUIIO" "Discovered groqbash at $GROQBASH_CMD (discovery-only; not persisting)"
+      BASH4LLM_CMD="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
+      export BASH4LLM_CMD
+      log_info "GUIIO" "Discovered bash4llm at $BASH4LLM_CMD (discovery-only; not persisting)"
       return 0
     fi
   done
 
-  log_error "GUIIO" "groqbash not found: set GROQBASH_CMD to an absolute executable path or create UI_ROOT/bin/groqbash-wrapper."
+  log_error "GUIIO" "bash4llm not found: set BASH4LLM_CMD to an absolute executable path or create UI_ROOT/bin/bash4llm-wrapper."
   return 1
 }
 
@@ -726,16 +726,16 @@ ensure_provider_cache_fresh() {
     return 0
   fi
 
-  if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
+  if [[ -z "${BASH4LLM_CMD:-}" || ! -x "${BASH4LLM_CMD}" ]]; then
     flock -u "$lockfd" 2>/dev/null || true
     exec {lockfd}>&- 2>/dev/null || true
-    log_warn "PROV" "ensure_provider_cache_fresh: groqbash not available"
+    log_warn "PROV" "ensure_provider_cache_fresh: bash4llm not available"
     return 0
   fi
 
   tmpf="$(portable_mktemp "$TMP_DIR" "providers.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
-    "${GROQBASH_CMD}" --list-providers-raw 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
+    "${BASH4LLM_CMD}" --list-providers-raw 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
     if [[ -s "$tmpf" ]]; then
       atomic_write "$providers_file" "$(cat "$tmpf")" || true
       chmod 644 "$providers_file" 2>/dev/null || true
@@ -776,16 +776,16 @@ ensure_model_cache_fresh() {
     return 0
   fi
 
-  if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
+  if [[ -z "${BASH4LLM_CMD:-}" || ! -x "${BASH4LLM_CMD}" ]]; then
     flock -u "$lockfd" 2>/dev/null || true
     exec {lockfd}>&- 2>/dev/null || true
-    log_warn "MODEL" "ensure_model_cache_fresh: groqbash not available"
+    log_warn "MODEL" "ensure_model_cache_fresh: bash4llm not available"
     return 0
   fi
 
   tmpf="$(portable_mktemp "$TMP_DIR" "models.${provider}.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
-    "${GROQBASH_CMD}" --list-models-raw --provider "$provider" 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
+    "${BASH4LLM_CMD}" --list-models-raw --provider "$provider" 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
     if [[ -s "$tmpf" ]]; then
       atomic_write "$models_file" "$(cat "$tmpf")" || true
       chmod 644 "$models_file" 2>/dev/null || true
@@ -814,17 +814,17 @@ ensure_config_defaults || true
 fix_termux_perms || true
 env_prepare_runtime || log_warn "ENV" "env_prepare_runtime returned non-zero"
 
-if ! ensure_groqbash_available; then
-  log_error "GROQ" "groqbash binary not found in allowed locations; aborting"
-  printf 'groqbash: ERROR: groqbash binary not found; aborting\n' >&2
+if ! ensure_bash4llm_available; then
+  log_error "GROQ" "bash4llm binary not found in allowed locations; aborting"
+  printf 'bash4llm: ERROR: bash4llm binary not found; aborting\n' >&2
   exit 1
 fi
 
-env_after_groqbash_resolved || log_warn "ENV" "env_after_groqbash_resolved returned non-zero"
+env_after_bash4llm_resolved || log_warn "ENV" "env_after_bash4llm_resolved returned non-zero"
 
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
-       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE GROQBASH_CMD
+       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE BASH4LLM_CMD
 
 return 0 2>/dev/null || true
 # End of bootstrap
