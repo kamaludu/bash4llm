@@ -1,4 +1,4 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
   
 # [Providers](../../PROVIDERS.md)
 
@@ -8,7 +8,7 @@
 
 ## Provider Hugging Face (`huggingface.sh`)
 
-Questo provider integra Hugging Face in GroqBash **solo** tramite **Inference Endpoint dedicati** configurati localmente.  
+Questo provider integra Hugging Face in Bash4LLM **solo** tramite **Inference Endpoint dedicati** configurati localmente.  
 Nessuna discovery remota, nessun uso di `/api/models` o `/models/<id>`.
 
 ---
@@ -26,11 +26,11 @@ Nessuna discovery remota, nessun uso di `/api/models` o `/models/<id>`.
 ### 2. File e path usati
 
 - Script provider:  
-  `groqbash.d/extras/providers/huggingface.sh`
+  `bash4llm.d/extras/providers/huggingface.sh`
 - Configurazione endpoint:  
-  `groqbash.d/config/providers/hf_endpoints`
+  `bash4llm.d/config/providers/hf_endpoints`
 - Tmp runtime confinata:  
-  `groqbash.d/tmp` (via `RUN_TMPDIR` / `GROQBASH_TMPDIR`)
+  `bash4llm.d/tmp` (via `RUN_TMPDIR` / `BASH4LLM_TMPDIR`)
 
 ---
 
@@ -38,7 +38,7 @@ Nessuna discovery remota, nessun uso di `/api/models` o `/models/<id>`.
 
 #### 3.1 Formato `hf_endpoints`
 
-File: `groqbash.d/config/providers/hf_endpoints`
+File: `bash4llm.d/config/providers/hf_endpoints`
 
 ```text
 # Format: <model_name>|<endpoint_url>
@@ -54,7 +54,7 @@ Regole:
 
 #### 3.2 Helper interni
 
-Quando `huggingface.sh` è sorgente-ato manualmente (fuori da GroqBash core) sono disponibili helper:
+Quando `huggingface.sh` è sorgente-ato manualmente (fuori da Bash4LLM core) sono disponibili helper:
 
 - **`hf_list_endpoints`**  
   Stampa l’elenco degli endpoint configurati.
@@ -68,7 +68,7 @@ Quando `huggingface.sh` è sorgente-ato manualmente (fuori da GroqBash core) son
 Esempio:
 
 ```sh
-. ./groqbash.d/extras/providers/huggingface.sh
+. ./bash4llm.d/extras/providers/huggingface.sh
 
 hf_add_endpoint "llama-3.1-8b-instruct" "https://abc1234.eu-west-1.aws.endpoints.huggingface.cloud"
 hf_list_endpoints
@@ -99,14 +99,14 @@ export HUGGINGFACE_API_KEY="hf_..."
 Quando usi:
 
 ```sh
-./groqbash --provider huggingface --model <nome-modello> "prompt"
+./bash4llm --provider huggingface --model <nome-modello> "prompt"
 ```
 
 il provider:
 
 1. Cerca `<nome-modello>` in `hf_endpoints`.
 2. Recupera l’`endpoint_url` associato.
-3. Esegue una `POST` JSON verso quell’URL con il payload costruito da GroqBash.
+3. Esegue una `POST` JSON verso quell’URL con il payload costruito da Bash4LLM.
 
 Se il modello non è presente in `hf_endpoints`, la validazione fallisce (o il core può rifiutare il modello).
 
@@ -116,11 +116,11 @@ Se il modello non è presente in `hf_endpoints`, la validazione fallisce (o il c
 - **Non** viene più usato `/pipeline/text-generation`.
 - Nessun tentativo di discovery o correzione automatica del model id.
 
-Se l’endpoint restituisce `404` o altro errore, GroqBash:
+Se l’endpoint restituisce `404` o altro errore, Bash4LLM:
 
 - logga header, corpo (troncato) e stderr di `curl` in debug,
 - scrive un JSON di errore in `RESP`,
-- ritorna un codice di errore coerente (`GROQBASHERRAPI`).
+- ritorna un codice di errore coerente (`BASH4LLMERRAPI`).
 
 ---
 
@@ -160,9 +160,9 @@ Qualsiasi logica precedente che chiamava `https://huggingface.co/api/models` va 
 #### 8.1 Configurazione minima
 
 ```sh
-mkdir -p groqbash.d/config/providers
+mkdir -p bash4llm.d/config/providers
 
-cat > groqbash.d/config/providers/hf_endpoints <<'EOF'
+cat > bash4llm.d/config/providers/hf_endpoints <<'EOF'
 llama-3.1-8b-instruct|https://abc1234.eu-west-1.aws.endpoints.huggingface.cloud
 EOF
 
@@ -172,7 +172,7 @@ export HUGGINGFACE_API_KEY="hf_..."
 #### 8.2 Chiamata semplice
 
 ```sh
-./groqbash --provider huggingface --model llama-3.1-8b-instruct "Ciao, spiegami GroqBash in poche righe."
+./bash4llm --provider huggingface --model llama-3.1-8b-instruct "Ciao, spiegami Bash4LLM in poche righe."
 ```
 
 Se l’endpoint è corretto e il token ha permessi di inference sull’endpoint, otterrai una risposta JSON valida.
