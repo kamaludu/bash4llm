@@ -4,16 +4,16 @@
 # File: extras/lib/debug.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
-# Purpose: Optional debug and diagnostics helpers for groqbash.
+# Purpose: Optional debug and diagnostics helpers for bash4llm.
 # Source this file to enable richer diagnostics. The core does not require it.
 # Usage (optional):
-#   . /path/to/groqbash.d/extras/lib/debug.sh
+#   . /path/to/bash4llm.d/extras/lib/debug.sh
 # This file intentionally avoids side effects on load.
 
-[ -n "${GROQBASH_DEBUG_SH_LOADED:-}" ] && return 0
-GROQBASH_DEBUG_SH_LOADED=1
+[ -n "${BASH4LLM_DEBUG_SH_LOADED:-}" ] && return 0
+BASH4LLM_DEBUG_SH_LOADED=1
 
 # verbose_log: controlled verbose logging
 # Usage: verbose_log "LEVEL" "some message"
@@ -38,9 +38,9 @@ dump_state() {
     else
       printf 'GROQ_API_KEY set? no\n'
     fi
-    printf 'GROQBASH_CONFIG_DIR=%s\n' "${GROQBASH_CONFIG_DIR:-}"
-    printf 'GROQBASH_MODELS_DIR=%s\n' "${GROQBASH_MODELS_DIR:-}"
-    printf 'GROQBASH_TMPDIR=%s\n' "${GROQBASH_TMPDIR:-}"
+    printf 'BASH4LLM_CONFIG_DIR=%s\n' "${BASH4LLM_CONFIG_DIR:-}"
+    printf 'BASH4LLM_MODELS_DIR=%s\n' "${BASH4LLM_MODELS_DIR:-}"
+    printf 'BASH4LLM_TMPDIR=%s\n' "${BASH4LLM_TMPDIR:-}"
     if [ -n "${ALLOWED_MODELS:-}" ]; then
       printf 'ALLOWED_MODELS present? yes\n'
     else
