@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/lib/debug.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
@@ -28,7 +28,7 @@ verbose_log() {
 # Usage: dump_state
 dump_state() {
   {
-    printf '=== groqbash state dump ===\n'
+    printf '=== bash4llm state dump ===\n'
     printf 'PROVIDER=%s\n' "${PROVIDER:-}"
     printf 'MODEL=%s\n' "${MODEL:-}"
     printf 'STREAM_MODE=%s\n' "${STREAM_MODE:-}"
