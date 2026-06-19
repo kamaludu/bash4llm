@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "software": "GroqBash",
+    "software": "Bash4LLM",
     "version": "2.0.0",
     "date": "2026-06-09"
   },
@@ -75,14 +75,14 @@
       "category": "CORE_SETUP",
       "purpose": "Algoritmo diagnostico per rilevare ed intercettare \"risposte vuote\" anomale dei provider (situazioni in cui l'API restituisce stato HTTP 200 e termina la generazione con motivo \"stop\" o assenza di token, ma senza produrre alcun testo utile). Analizza il file di risposta $RESP ed estrae metadati come l'ID richiesta, il finish reason e il conteggio dei token generati per classificare l'evento.",
       "input": "Nessuno.",
-      "output": "Assegna il verdetto booleano a $GROQBASH_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in variabili globali ($GROQBASH_EDGE_REQ_ID, $GROQBASH_EDGE_FINISH_REASON, $GROQBASH_EDGE_COMPLETION_TOKENS).",
+      "output": "Assegna il verdetto booleano a $BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).",
       "side_effects": "Duplicazione temporanea del file per l'analisi sicura.",
       "dependencies": ["_tmpf", "cp", "is_valid_json_file", "jq", "rm"]
     },
     {
       "name": "finalize_and_output",
       "category": "CORE_SETUP",
-      "purpose": "Formatta e visualizza i risultati finali generati in base alla modalità selezionata in $OUTPUT_MODE. Gestisce la stampa di testo crudo, formati JSON e visualizzazioni strutturate (pretty). Inoltre, se l'output testuale supera la soglia di caratteri autorizzata o se è forzato dall'utente, si occupa di salvare i risultati nel file-system (all'interno di $OUT_PATH o nella directory storica standard $GROQBASH_HISTORY_DIR), richiamando save_to_history in modo atomico.",
+      "purpose": "Formatta e visualizza i risultati finali generati in base alla modalità selezionata in $OUTPUT_MODE. Gestisce la stampa di testo crudo, formati JSON e visualizzazioni strutturate (pretty). Inoltre, se l'output testuale supera la soglia di caratteri autorizzata o se è forzato dall'utente, si occupa di salvare i risultati nel file-system (all'interno di $OUT_PATH o nella directory storica standard $BASH4LLM_HISTORY_DIR), richiamando save_to_history in modo atomico.",
       "input": "$1 (formato: json, pretty, raw, text), $2 (stringa di testo del risultato).",
       "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato fisicamente su disco se abilitato. Ritorna stato 0 o codice d'errore.",
       "side_effects": "Scrittura a schermo, invocazione di funzioni storiche d'archivio, creazione directory.",
@@ -93,7 +93,7 @@
       "category": "CORE_SETUP",
       "purpose": "Orchestra l'esecuzione complessiva di una chiamata API sincrona, implementando una logica di retry automatico in caso di errori di rete temporanei (fino a $MAX_RETRIES tentativi, applicando un backoff lineare per l'attesa tra i tentativi). Gestisce l'estrazione dei testi, la diagnostica dei casi vuoti anomali (detect_empty_edge_case), la notifica degli errori formali inviati dalle API e la scrittura dello stato dell'ultima transazione in last_api.json. Formatta i risultati e restituisce lo stato d'uscita.",
       "input": "Nessuno.",
-      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata, codice d'errore GROQBASHERRAPI se fallisce.",
+      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata, codice d'errore BASH4LLMERRAPI se fallisce.",
       "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su stderr.",
       "dependencies": ["call_api_once", "extract_text_from_resp", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
     },
@@ -139,7 +139,7 @@
     {
       "name": "is_supported_model",
       "category": "CORE_SETUP",
-      "purpose": "Analizza il nome del modello e ne convalida la compatibilità con GroqBash. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
+      "purpose": "Analizza il nome del modello e ne convalida la compatibilità con Bash4LLM. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
       "input": "$1 (nome del modello).",
       "output": "Ritorna stato 0 se supportato, 1 se escluso.",
       "dependencies": ["tr"]
@@ -163,7 +163,7 @@
     {
       "name": "load_local_config",
       "category": "CORE_SETUP",
-      "purpose": "Carica in memoria i parametri di configurazione definiti dall'utente nel file di configurazione locale (config all'interno della cartella $GROQBASH_CONFIG_DIR), interpretando le righe chiave/valore e impostando le variabili globali corrispondenti (MODEL, TEMPERATURE/TURE, MAX_TOKENS, OUTPUT_MODE/FORMAT, THRESHOLD). Ignora commenti e righe vuote.",
+      "purpose": "Carica in memoria i parametri di configurazione definiti dall'utente nel file di configurazione locale (config all'interno della cartella $BASH4LLM_CONFIG_DIR), interpretando le righe chiave/valore e impostando le variabili globali corrispondenti (MODEL, TEMPERATURE/TURE, MAX_TOKENS, OUTPUT_MODE/FORMAT, THRESHOLD). Ignora commenti e righe vuote.",
       "input": "Nessuno.",
       "output": "Assegnazione di variabili globali di ambiente."
     },
@@ -185,7 +185,7 @@
     {
       "name": "validate_provider_interface",
       "category": "CORE_PROVIDER",
-      "purpose": "Convalida che il modulo del provider caricato implementi correttamente le specifiche dell'interfaccia di GroqBash. Verifica la presenza fisica in memoria delle funzioni obbligatorie (buildpayload_<provider> e call_api_<provider>), e traccia a scopo informativo la presenza o assenza di metodi opzionali (streaming, validazione modelli, auto-selezione, refresh modelli).",
+      "purpose": "Convalida che il modulo del provider caricato implementi correttamente le specifiche dell'interfaccia di Bash4LLM. Verifica la presenza fisica in memoria delle funzioni obbligatorie (buildpayload_<provider> e call_api_<provider>), e traccia a scopo informativo la presenza o assenza di metodi opzionali (streaming, validazione modelli, auto-selezione, refresh modelli).",
       "input": "$1 (nome identificativo del provider da analizzare).",
       "output": "Ritorna stato 0 se l'interfaccia obbligatoria è pienamente implementata, 1 in caso contrario (emettendo errori critici loggati).",
       "dependencies": ["type", "log_error", "log_info"]
