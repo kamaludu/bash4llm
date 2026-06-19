@@ -1,23 +1,23 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 # CONTRIBUTING.md
 
-## 🇮🇹 Sezione Italiana — Come contribuire a GroqBash
+## 🇮🇹 Sezione Italiana — Come contribuire a Bash4LLM
 
-GroqBash è un progetto personale, sviluppato e mantenuto nel tempo libero.  
+Bash4LLM è un progetto personale, sviluppato e mantenuto nel tempo libero.  
 Per questo motivo:
 
 - **le pull request pubbliche non sono accettate**
 - **le issue sono benvenute**
 - **il supporto non può essere garantito in modo continuativo**
 
-Grazie per il tuo interesse verso GroqBash.
+Grazie per il tuo interesse verso Bash4LLM.
 
 ---
 
 ## 🎯 Obiettivi del progetto
 
-GroqBash è progettato come:
+Bash4LLM è progettato come:
 
 - uno script Bash singolo  
 - sicuro e facilmente verificabile  
@@ -56,7 +56,7 @@ Le issue vengono lette con attenzione e valutate quando possibile.
 Segnala eventuali problemi **in modo privato**:
 
 - Email: **opensource​@​cevangel.​anonaddy.​me**  
-- Oggetto: **[GroqBash Security Report]**
+- Oggetto: **[Bash4LLM Security Report]**
 
 Includi:
 
@@ -112,26 +112,26 @@ Tutto il codice viene comunque rivisto manualmente per garantire:
 
 Qualsiasi idea o suggerimento condiviso tramite issue potrà essere integrato nel progetto sotto [licenza **GPLv3**](LICENSE).
 
-Grazie per la comprensione e per l’interesse verso GroqBash.
+Grazie per la comprensione e per l’interesse verso Bash4LLM.
 
 ---
 
-## 🇬🇧 English Section — Contributing to GroqBash
+## 🇬🇧 English Section — Contributing to Bash4LLM
 
-GroqBash is a personal project, developed and maintained in free time.  
+Bash4LLM is a personal project, developed and maintained in free time.  
 For this reason:
 
 - **public pull requests are not accepted**
 - **issues are welcome**
 - **continuous support cannot be guaranteed**
 
-Thank you for your interest in GroqBash.
+Thank you for your interest in Bash4LLM.
 
 ---
 
 ## 🎯 Project Scope
 
-GroqBash is designed as:
+Bash4LLM is designed as:
 
 - a single Bash script  
 - secure and easy to audit  
@@ -170,7 +170,7 @@ Issues are reviewed carefully when possible.
 Report security issues **privately**:
 
 - Email: **opensource​@​cevangel.​anonaddy.​me**  
-- Subject: **[GroqBash Security Report]**
+- Subject: **[Bash4LLM Security Report]**
 
 Please include:
 
@@ -226,4 +226,4 @@ All code is manually reviewed to ensure:
 
 Any idea or suggestion shared through issues may be integrated into the project under the [**GPLv3** license](LICENSE).
 
-Thank you for your understanding and interest in GroqBash.
+Thank you for your understanding and interest in Bash4LLM.
