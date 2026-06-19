@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/providers/mistral.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 
 # When sourced, avoid enabling strict mode globally.
@@ -30,8 +30,8 @@ _get_work_tmpdir_mistral() {
     printf '%s' "$RUN_TMPDIR"
     return 0
   fi
-  if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -d "${GROQBASH_TMPDIR:-}" ]; then
-    printf '%s' "$GROQBASH_TMPDIR"
+  if [ -n "${BASH4LLM_TMPDIR:-}" ] && [ -d "${BASH4LLM_TMPDIR:-}" ]; then
+    printf '%s' "$BASH4LLM_TMPDIR"
     return 0
   fi
   if type make_tmpdir >/dev/null 2>&1; then
@@ -178,7 +178,7 @@ call_api_mistral() {
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "mistral"; then
       log_error "APIKEY" "MISTRAL API key required to call Mistral."
-      return $GROQBASHERRNOAPIKEY
+      return $BASH4LLMERRNOAPIKEY
     fi
   fi
   if type provider_api_env_var_name >/dev/null 2>&1; then
@@ -263,7 +263,7 @@ call_api_streaming_mistral() {
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "mistral"; then
       log_error "APIKEY" "MISTRAL API key required to call Mistral."
-      return $GROQBASHERRNOAPIKEY
+      return $BASH4LLMERRNOAPIKEY
     fi
   fi
   if type provider_api_env_var_name >/dev/null 2>&1; then
@@ -336,12 +336,12 @@ call_api_streaming_mistral() {
     jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
     jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
     if type atomic_write >/dev/null 2>&1; then
-      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${GROQBASH_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     else
       cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     fi
 
-    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${GROQBASH_TMPDIR:-}"/*) true;; "${GROQBASH_TMPDIR:-}") true;; *) false;; esac; then
+    if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${BASH4LLM_TMPDIR:-}"/*) true;; "${BASH4LLM_TMPDIR:-}") true;; *) false;; esac; then
       rm -f "$RUN_TMPDIR/resp.lines" "$RUN_TMPDIR/resp.valid.jsons" 2>/dev/null || true
     fi
   else
