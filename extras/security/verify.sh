@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/security/verify.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 # Purpose:
-#   Performs read‑only security checks on groqbash provider modules and the
+#   Performs read‑only security checks on bash4llm provider modules and the
 #   extras directory. Validates file integrity, absence of symlinks, safe
 #   permissions (no group/other write), ownership, and prints checksums when
 #   available.
 #
 # Usage:
 #   Export the required environment variables before running:
-#     export GROQBASH_EXTRAS_DIR="/absolute/path/to/groqbash.d/extras"
-#     export GROQBASH_DIR="/absolute/path/to/groqbash"
-#     export GROQBASH_TMPDIR="... (optional)"
-#     export PROVIDERS_DIR="$GROQBASH_EXTRAS_DIR/providers"
+#     export BASH4LLM_EXTRAS_DIR="/absolute/path/to/bash4llm.d/extras"
+#     export BASH4LLM_DIR="/absolute/path/to/bash4llm"
+#     export BASH4LLM_TMPDIR="... (optional)"
+#     export PROVIDERS_DIR="$BASH4LLM_EXTRAS_DIR/providers"
 #   Then run:
 #     ./verify.sh
 #
@@ -34,9 +34,9 @@ _warn() { printf 'WARN: %s\n' "$*"; }
 _err()  { printf 'ERROR: %s\n' "$*"; }
 
 # Accept canonical and legacy env names
-GROQBASH_EXTRAS_DIR="${GROQBASH_EXTRAS_DIR:-${GROQBASHEXTRASDIR:-}}"
-GROQBASH_DIR="${GROQBASH_DIR:-${GROQBASH_HOME:-}}"
-GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-${GROQBASHTMPDIR:-}}"
+BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-${BASH4LLMEXTRASDIR:-}}"
+BASH4LLM_DIR="${BASH4LLM_DIR:-${BASH4LLM_HOME:-}}"
+BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-${BASH4LLMTMPDIR:-}}"
 
 # Portable owner getter: returns username or empty string
 _get_owner() {
@@ -72,36 +72,36 @@ _is_world_writable() {
 }
 
 # Ensure extras dir provided
-if [ -z "${GROQBASH_EXTRAS_DIR:-}" ]; then
-  _err "GROQBASH_EXTRAS_DIR is not set. Export it to point to your groqbash extras directory."
+if [ -z "${BASH4LLM_EXTRAS_DIR:-}" ]; then
+  _err "BASH4LLM_EXTRAS_DIR is not set. Export it to point to your bash4llm extras directory."
   exit 2
 fi
 
 # Ensure absolute path
-case "$GROQBASH_EXTRAS_DIR" in
+case "$BASH4LLM_EXTRAS_DIR" in
   /*) : ;;
   *)
-    _err "GROQBASH_EXTRAS_DIR must be an absolute path: $GROQBASH_EXTRAS_DIR"
+    _err "BASH4LLM_EXTRAS_DIR must be an absolute path: $BASH4LLM_EXTRAS_DIR"
     exit 2
     ;;
 esac
 
 # Ensure exists (do not create)
-if [ ! -d "$GROQBASH_EXTRAS_DIR" ]; then
-  _err "Extras directory does not exist: $GROQBASH_EXTRAS_DIR"
+if [ ! -d "$BASH4LLM_EXTRAS_DIR" ]; then
+  _err "Extras directory does not exist: $BASH4LLM_EXTRAS_DIR"
   exit 2
 fi
 
 # Check extras dir perms
-if _is_world_writable "$GROQBASH_EXTRAS_DIR"; then
-  _err "Extras directory is world-writable: $GROQBASH_EXTRAS_DIR"
+if _is_world_writable "$BASH4LLM_EXTRAS_DIR"; then
+  _err "Extras directory is world-writable: $BASH4LLM_EXTRAS_DIR"
   exit 2
 else
-  _ok "Extras directory permissions look sane: $GROQBASH_EXTRAS_DIR"
+  _ok "Extras directory permissions look sane: $BASH4LLM_EXTRAS_DIR"
 fi
 
 # Providers directory (default under extras)
-PROV_DIR="${PROVIDERS_DIR:-$GROQBASH_EXTRAS_DIR/providers}"
+PROV_DIR="${PROVIDERS_DIR:-$BASH4LLM_EXTRAS_DIR/providers}"
 
 if [ ! -d "$PROV_DIR" ]; then
   _warn "Providers directory not found: $PROV_DIR"
@@ -128,11 +128,11 @@ else
 fi
 
 # Optional tmp policy check (warn only)
-if [ -n "${GROQBASH_TMPDIR:-}" ] && [ -n "${GROQBASH_DIR:-}" ]; then
-  case "$GROQBASH_TMPDIR" in
-    "$GROQBASH_DIR"/*) _ok "GROQBASH_TMPDIR is inside GROQBASH_DIR";;
+if [ -n "${BASH4LLM_TMPDIR:-}" ] && [ -n "${BASH4LLM_DIR:-}" ]; then
+  case "$BASH4LLM_TMPDIR" in
+    "$BASH4LLM_DIR"/*) _ok "BASH4LLM_TMPDIR is inside BASH4LLM_DIR";;
     *)
-      _warn "GROQBASH_TMPDIR is not inside GROQBASH_DIR: $GROQBASH_TMPDIR"
+      _warn "BASH4LLM_TMPDIR is not inside BASH4LLM_DIR: $BASH4LLM_TMPDIR"
       ;;
   esac
 fi
