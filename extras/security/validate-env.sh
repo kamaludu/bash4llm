@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/security/validate-env.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 # Purpose:
-#   Verify the minimum environment required to run groqbash safely.
+#   Verify the minimum environment required to run bash4llm safely.
 #   Checks presence of critical commands (bash, curl, jq, gawk, find, stat,
 #   mktemp, flock, etc.), correctness of runtime directories and the tmp
-#   policy (GROQBASH_TMPDIR must be absolute, not world-writable and, when
-#   possible, located inside GROQBASH_DIR). Emits WARN for non-critical
+#   policy (BASH4LLM_TMPDIR must be absolute, not world-writable and, when
+#   possible, located inside BASH4LLM_DIR). Emits WARN for non-critical
 #   absences and ERROR for conditions that prevent safe execution.
 #
 # Usage:
 #   Export the required environment variables (example):
-#     export GROQBASH_DIR="$PWD"
-#     export GROQBASH_EXTRAS_DIR="$GROQBASH_DIR/groqbash.d/extras"
-#     export GROQBASH_TMPDIR="$GROQBASH_DIR/groqbash.d/tmp"
-#     export PROVIDERS_DIR="$GROQBASH_EXTRAS_DIR/providers"
+#     export BASH4LLM_DIR="$PWD"
+#     export BASH4LLM_EXTRAS_DIR="$BASH4LLM_DIR/bash4llm.d/extras"
+#     export BASH4LLM_TMPDIR="$BASH4LLM_DIR/bash4llm.d/tmp"
+#     export PROVIDERS_DIR="$BASH4LLM_EXTRAS_DIR/providers"
 #     ./validate-env.sh
 #
 #   Alternative usage (only to test a restricted PATH):
@@ -33,9 +33,9 @@
 #
 # How to fix common ERRORs:
 #   - Missing tool: install the missing command or restore PATH.
-#   - GROQBASH_TMPDIR not absolute or outside GROQBASH_DIR: set an
-#     absolute path under GROQBASH_DIR with restrictive permissions.
-#   - GROQBASH_EXTRAS_DIR missing: create the directory or set the variable.
+#   - BASH4LLM_TMPDIR not absolute or outside BASH4LLM_DIR: set an
+#     absolute path under BASH4LLM_DIR with restrictive permissions.
+#   - BASH4LLM_EXTRAS_DIR missing: create the directory or set the variable.
 #
 # Security notes:
 #   - The script creates directories with umask 077 when necessary.
@@ -72,9 +72,9 @@ _is_world_writable() {
 }
 
 # Accept some legacy env var names but prefer canonical ones
-GROQBASH_TMPDIR="${GROQBASH_TMPDIR:-${GROQBASHTMPDIR:-}}"
-GROQBASH_EXTRAS_DIR="${GROQBASH_EXTRAS_DIR:-${GROQBASHEXTRASDIR:-}}"
-GROQBASH_DIR="${GROQBASH_DIR:-${GROQBASH_HOME:-}}"
+BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-${BASH4LLMTMPDIR:-}}"
+BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-${BASH4LLMEXTRASDIR:-}}"
+BASH4LLM_DIR="${BASH4LLM_DIR:-${BASH4LLM_HOME:-}}"
 
 critical_fail=0
 
@@ -108,102 +108,102 @@ if command -v jq >/dev/null 2>&1; then
   _ok "jq version $jq_ver"
 fi
 
-# Derive GROQBASH_DIR only if not set
-if [ -z "${GROQBASH_DIR:-}" ]; then
+# Derive BASH4LLM_DIR only if not set
+if [ -z "${BASH4LLM_DIR:-}" ]; then
   _script_path="${BASH_SOURCE[0]:-$0}"
   if [ -n "$_script_path" ]; then
     _script_dir="$(cd "$(dirname "$_script_path")" >/dev/null 2>&1 && pwd -P || true)"
     # assume repo root is two levels up from extras/security by default
-    GROQBASH_DIR_CANDIDATE="$(cd "$_script_dir/../.." >/dev/null 2>&1 && pwd -P || true || echo "$_script_dir")"
-    GROQBASH_DIR="$GROQBASH_DIR_CANDIDATE"
-    _warn "GROQBASH_DIR not set; derived candidate: $GROQBASH_DIR"
+    BASH4LLM_DIR_CANDIDATE="$(cd "$_script_dir/../.." >/dev/null 2>&1 && pwd -P || true || echo "$_script_dir")"
+    BASH4LLM_DIR="$BASH4LLM_DIR_CANDIDATE"
+    _warn "BASH4LLM_DIR not set; derived candidate: $BASH4LLM_DIR"
   fi
 else
-  _ok "GROQBASH_DIR set: $GROQBASH_DIR"
+  _ok "BASH4LLM_DIR set: $BASH4LLM_DIR"
 fi
 
-# If PROVIDERS_DIR not set and GROQBASH_DIR known, set sensible default
-if [ -z "${PROVIDERS_DIR:-}" ] && [ -n "${GROQBASH_DIR:-}" ]; then
-  PROVIDERS_DIR="${GROQBASH_DIR%/}/groqbash.d/extras/providers"
+# If PROVIDERS_DIR not set and BASH4LLM_DIR known, set sensible default
+if [ -z "${PROVIDERS_DIR:-}" ] && [ -n "${BASH4LLM_DIR:-}" ]; then
+  PROVIDERS_DIR="${BASH4LLM_DIR%/}/bash4llm.d/extras/providers"
 fi
 
-printf '\nValidating GROQBASH_TMPDIR...\n'
-if [ -z "${GROQBASH_TMPDIR:-}" ]; then
-  _warn "GROQBASH_TMPDIR is not set. GroqBash will use its default internal tmpdir."
+printf '\nValidating BASH4LLM_TMPDIR...\n'
+if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
+  _warn "BASH4LLM_TMPDIR is not set. Bash4LLM will use its default internal tmpdir."
 else
-  case "$GROQBASH_TMPDIR" in
+  case "$BASH4LLM_TMPDIR" in
     /*) : ;;
     *)
-      _err "GROQBASH_TMPDIR must be an absolute path: $GROQBASH_TMPDIR"
+      _err "BASH4LLM_TMPDIR must be an absolute path: $BASH4LLM_TMPDIR"
       critical_fail=1
       ;;
   esac
 
-  if [ -n "${GROQBASH_DIR:-}" ] && [ -n "${GROQBASH_TMPDIR:-}" ]; then
-    case "$GROQBASH_TMPDIR" in
-      "$GROQBASH_DIR"/*) : ;;
+  if [ -n "${BASH4LLM_DIR:-}" ] && [ -n "${BASH4LLM_TMPDIR:-}" ]; then
+    case "$BASH4LLM_TMPDIR" in
+      "$BASH4LLM_DIR"/*) : ;;
       *)
-        _err "GROQBASH_TMPDIR must be inside GROQBASH_DIR ($GROQBASH_DIR): $GROQBASH_TMPDIR"
+        _err "BASH4LLM_TMPDIR must be inside BASH4LLM_DIR ($BASH4LLM_DIR): $BASH4LLM_TMPDIR"
         critical_fail=1
         ;;
     esac
   fi
 
-  if [ -n "$GROQBASH_TMPDIR" ]; then
-    if [ -d "$GROQBASH_TMPDIR" ]; then
-      if _is_world_writable "$GROQBASH_TMPDIR"; then
-        _err "GROQBASH_TMPDIR is world-writable: $GROQBASH_TMPDIR"
+  if [ -n "$BASH4LLM_TMPDIR" ]; then
+    if [ -d "$BASH4LLM_TMPDIR" ]; then
+      if _is_world_writable "$BASH4LLM_TMPDIR"; then
+        _err "BASH4LLM_TMPDIR is world-writable: $BASH4LLM_TMPDIR"
         critical_fail=1
       else
-        _ok "GROQBASH_TMPDIR exists and is not world-writable: $GROQBASH_TMPDIR"
+        _ok "BASH4LLM_TMPDIR exists and is not world-writable: $BASH4LLM_TMPDIR"
       fi
     else
       old_umask="$(umask)"
       umask 077
-      if mkdir -p -- "$GROQBASH_TMPDIR" 2>/dev/null; then
+      if mkdir -p -- "$BASH4LLM_TMPDIR" 2>/dev/null; then
         umask "$old_umask"
-        _ok "GROQBASH_TMPDIR created with restrictive permissions: $GROQBASH_TMPDIR"
-        owner_uid="$(_stat_uid "$GROQBASH_TMPDIR" || true)"
+        _ok "BASH4LLM_TMPDIR created with restrictive permissions: $BASH4LLM_TMPDIR"
+        owner_uid="$(_stat_uid "$BASH4LLM_TMPDIR" || true)"
         if [ -n "$owner_uid" ] && [ "$owner_uid" != "$(id -u)" ]; then
-          _warn "GROQBASH_TMPDIR owner differs from current user (uid $owner_uid)"
+          _warn "BASH4LLM_TMPDIR owner differs from current user (uid $owner_uid)"
         fi
       else
         umask "$old_umask"
-        _err "GROQBASH_TMPDIR does not exist and cannot be created: $GROQBASH_TMPDIR"
+        _err "BASH4LLM_TMPDIR does not exist and cannot be created: $BASH4LLM_TMPDIR"
         critical_fail=1
       fi
     fi
   fi
 fi
 
-printf '\nValidating GROQBASH_EXTRAS_DIR...\n'
-if [ -z "${GROQBASH_EXTRAS_DIR:-}" ]; then
-  _err "GROQBASH_EXTRAS_DIR is not set. Set it to your groqbash extras directory."
+printf '\nValidating BASH4LLM_EXTRAS_DIR...\n'
+if [ -z "${BASH4LLM_EXTRAS_DIR:-}" ]; then
+  _err "BASH4LLM_EXTRAS_DIR is not set. Set it to your bash4llm extras directory."
   critical_fail=1
 else
-  case "$GROQBASH_EXTRAS_DIR" in
+  case "$BASH4LLM_EXTRAS_DIR" in
     /*) : ;;
     *)
-      _err "GROQBASH_EXTRAS_DIR must be an absolute path: $GROQBASH_EXTRAS_DIR"
+      _err "BASH4LLM_EXTRAS_DIR must be an absolute path: $BASH4LLM_EXTRAS_DIR"
       critical_fail=1
       ;;
   esac
-  if [ -d "$GROQBASH_EXTRAS_DIR" ]; then
-    if _is_world_writable "$GROQBASH_EXTRAS_DIR"; then
-      _err "GROQBASH_EXTRAS_DIR is world-writable: $GROQBASH_EXTRAS_DIR"
+  if [ -d "$BASH4LLM_EXTRAS_DIR" ]; then
+    if _is_world_writable "$BASH4LLM_EXTRAS_DIR"; then
+      _err "BASH4LLM_EXTRAS_DIR is world-writable: $BASH4LLM_EXTRAS_DIR"
       critical_fail=1
     else
-      _ok "GROQBASH_EXTRAS_DIR exists and is not world-writable: $GROQBASH_EXTRAS_DIR"
+      _ok "BASH4LLM_EXTRAS_DIR exists and is not world-writable: $BASH4LLM_EXTRAS_DIR"
     fi
   else
     old_umask="$(umask)"
     umask 077
-    if mkdir -p -- "$GROQBASH_EXTRAS_DIR" 2>/dev/null; then
+    if mkdir -p -- "$BASH4LLM_EXTRAS_DIR" 2>/dev/null; then
       umask "$old_umask"
-      _ok "GROQBASH_EXTRAS_DIR created with restrictive permissions: $GROQBASH_EXTRAS_DIR"
+      _ok "BASH4LLM_EXTRAS_DIR created with restrictive permissions: $BASH4LLM_EXTRAS_DIR"
     else
       umask "$old_umask"
-      _err "GROQBASH_EXTRAS_DIR does not exist and cannot be created: $GROQBASH_EXTRAS_DIR"
+      _err "BASH4LLM_EXTRAS_DIR does not exist and cannot be created: $BASH4LLM_EXTRAS_DIR"
       critical_fail=1
     fi
   fi
@@ -225,7 +225,7 @@ fi
 
 printf '\nSummary:\n'
 if [ "$critical_fail" -ne 0 ]; then
-  _err "One or more critical checks failed. Fix the issues above before running groqbash in untrusted environments."
+  _err "One or more critical checks failed. Fix the issues above before running bash4llm in untrusted environments."
   exit 2
 else
   _ok "All critical environment checks passed (subject to warnings above)."
