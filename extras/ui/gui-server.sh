@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Mini server Bash per GUI HTML di GroqBash (router, logica applicativa)
+# Mini server Bash per GUI HTML di Bash4LLM (router, logica applicativa)
 # File: gui-server.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 set -euo pipefail
 umask 077
@@ -160,10 +160,10 @@ atomic_append_conv_safe() {
 # -------------------------
 # Environment normalization and wrapper enforcement (non-duplicative)
 # -------------------------
-: "${GROQBASH_CONFIG_DIR:=${GROQBASH_CONFIG_DIR:-}}"
+: "${BASH4LLM_CONFIG_DIR:=${BASH4LLM_CONFIG_DIR:-}}"
 if [[ -z "${CFG_DIR:-}" ]]; then
-  if [[ -n "${GROQBASH_CONFIG_DIR:-}" ]]; then
-    CFG_DIR="$GROQBASH_CONFIG_DIR"
+  if [[ -n "${BASH4LLM_CONFIG_DIR:-}" ]]; then
+    CFG_DIR="$BASH4LLM_CONFIG_DIR"
   elif [[ -n "${UI_ROOT:-}" ]]; then
     CFG_DIR="${UI_ROOT%/}/config"
   else
@@ -176,61 +176,61 @@ export CFG_DIR
 : "${PROVIDER_MODELS_DIR:=${CFG_DIR%/}/models}"
 export PROVIDER_CACHE_FILE PROVIDER_MODELS_DIR
 
-# Prefer persisted groqbash-path if present and valid
-if [[ -f "${CFG_DIR%/}/groqbash-path" ]]; then
-  read -r _p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || _p=''
+# Prefer persisted bash4llm-path if present and valid
+if [[ -f "${CFG_DIR%/}/bash4llm-path" ]]; then
+  read -r _p <"${CFG_DIR%/}/bash4llm-path" 2>/dev/null || _p=''
   if [[ -n "$_p" ]]; then
     if command -v readlink >/dev/null 2>&1; then
       _p="$(readlink -f -- "$_p" 2>/dev/null || printf '%s' "$_p")"
     fi
     if [[ -x "$_p" ]]; then
-      GROQBASH_CMD="$_p"
-      export GROQBASH_CMD
+      BASH4LLM_CMD="$_p"
+      export BASH4LLM_CMD
       if [[ -n "${UI_ROOT:-}" ]]; then
         case ":${PATH:-}:" in *":${UI_ROOT%/}/bin:"*) ;; *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;; esac
       fi
-      log_info "GUI" "Using persisted GROQBASH_CMD from groqbash-path: $GROQBASH_CMD"
+      log_info "GUI" "Using persisted BASH4LLM_CMD from bash4llm-path: $BASH4LLM_CMD"
     else
-      log_warn "GUI" "Persisted groqbash-path not executable: ${_p:-<empty>}"
+      log_warn "GUI" "Persisted bash4llm-path not executable: ${_p:-<empty>}"
     fi
   fi
 fi
 
-if [[ -z "${GROQBASH_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
-  GROQBASH_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
-  if [[ "${GROQBASH_ROOT##*/}" == "groqbash.d" ]]; then
-    GROQBASH_ROOT="$(cd "$GROQBASH_ROOT/.." 2>/dev/null && pwd -P || true)"
+if [[ -z "${BASH4LLM_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
+  BASH4LLM_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
+  if [[ "${BASH4LLM_ROOT##*/}" == "bash4llm.d" ]]; then
+    BASH4LLM_ROOT="$(cd "$BASH4LLM_ROOT/.." 2>/dev/null && pwd -P || true)"
   fi
 fi
-: "${GROQBASH_ROOT:=${GROQBASH_ROOT:-}}"
-: "${GROQBASH_DIR:=${GROQBASH_DIR:-${GROQBASH_ROOT%/}/groqbash.d}}"
-export GROQBASH_ROOT GROQBASH_DIR
+: "${BASH4LLM_ROOT:=${BASH4LLM_ROOT:-}}"
+: "${BASH4LLM_DIR:=${BASH4LLM_DIR:-${BASH4LLM_ROOT%/}/bash4llm.d}}"
+export BASH4LLM_ROOT BASH4LLM_DIR
 
-: "${PROVIDERS_DIR:=${PROVIDERS_DIR:-${GROQBASH_DIR%/}/extras/providers}}"
+: "${PROVIDERS_DIR:=${PROVIDERS_DIR:-${BASH4LLM_DIR%/}/extras/providers}}"
 export PROVIDERS_DIR
 
-# Force use of UI_ROOT/bin/groqbash-wrapper when present and executable.
-if [[ -n "${UI_ROOT:-}" && -x "${UI_ROOT%/}/bin/groqbash-wrapper" ]]; then
-  GROQBASH_CMD="${UI_ROOT%/}/bin/groqbash-wrapper"
-  export GROQBASH_CMD
+# Force use of UI_ROOT/bin/bash4llm-wrapper when present and executable.
+if [[ -n "${UI_ROOT:-}" && -x "${UI_ROOT%/}/bin/bash4llm-wrapper" ]]; then
+  BASH4LLM_CMD="${UI_ROOT%/}/bin/bash4llm-wrapper"
+  export BASH4LLM_CMD
   case ":${PATH:-}:" in
     *":${UI_ROOT%/}/bin:"*) ;;
     *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
   esac
-  log_info "GUI" "Forcing GROQBASH_CMD -> wrapper: $GROQBASH_CMD"
+  log_info "GUI" "Forcing BASH4LLM_CMD -> wrapper: $BASH4LLM_CMD"
 else
-  if [[ -z "${GROQBASH_CMD:-}" && -f "${CFG_DIR%/}/groqbash-path" ]]; then
-    read -r p <"${CFG_DIR%/}/groqbash-path" 2>/dev/null || p=''
+  if [[ -z "${BASH4LLM_CMD:-}" && -f "${CFG_DIR%/}/bash4llm-path" ]]; then
+    read -r p <"${CFG_DIR%/}/bash4llm-path" 2>/dev/null || p=''
     if [[ -n "$p" && -x "$p" ]]; then
-      GROQBASH_CMD="$p"
-      export GROQBASH_CMD
+      BASH4LLM_CMD="$p"
+      export BASH4LLM_CMD
       case ":${PATH:-}:" in
         *":${UI_ROOT%/}/bin:"*) ;;
         *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
       esac
-      log_info "GUI" "Using persisted GROQBASH_CMD: $GROQBASH_CMD"
+      log_info "GUI" "Using persisted BASH4LLM_CMD: $BASH4LLM_CMD"
     else
-      log_info "GUI" "Persisted groqbash-path missing or not executable: ${p:-<empty>}"
+      log_info "GUI" "Persisted bash4llm-path missing or not executable: ${p:-<empty>}"
     fi
   fi
 fi
@@ -262,15 +262,15 @@ is_configured() {
 }
 
 # ---------------------------------------------------------------------
-# call_groqbash_with_args: wrapper sicuro per invocare il core
+# call_bash4llm_with_args: wrapper sicuro per invocare il core
 # - obbliga argomenti nominati
 # - valida provider/model con validate_name
 # - preferisce passare prompt/testo tramite stdin (--prompt-from-stdin)
 # - evita posizionali e costruzioni dinamiche
 # ---------------------------------------------------------------------
-call_groqbash_with_args() {
-  if [[ -z "${GROQBASH_CMD:-}" || ! -x "${GROQBASH_CMD}" ]]; then
-    log_error "GUIIO" "GROQBASH_CMD not set or not executable: ${GROQBASH_CMD:-<unset>}"
+call_bash4llm_with_args() {
+  if [[ -z "${BASH4LLM_CMD:-}" || ! -x "${BASH4LLM_CMD}" ]]; then
+    log_error "GUIIO" "BASH4LLM_CMD not set or not executable: ${BASH4LLM_CMD:-<unset>}"
     return 1
   fi
 
@@ -303,7 +303,7 @@ call_groqbash_with_args() {
         argv+=( "$key" "$val" )
         ;;
       *)
-        log_error "GUIIO" "call_groqbash_with_args: unexpected positional arg: $key"
+        log_error "GUIIO" "call_bash4llm_with_args: unexpected positional arg: $key"
         return 1
         ;;
     esac
@@ -311,10 +311,10 @@ call_groqbash_with_args() {
 
   local out rc
   if [[ -n "$stdin_payload" ]]; then
-    out="$(printf '%s' "$stdin_payload" | "${GROQBASH_CMD}" "${argv[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"
+    out="$(printf '%s' "$stdin_payload" | "${BASH4LLM_CMD}" "${argv[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"
     rc=$?
   else
-    out="$("${GROQBASH_CMD}" "${argv[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"
+    out="$("${BASH4LLM_CMD}" "${argv[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"
     rc=$?
   fi
   printf '%s' "$out"
@@ -323,9 +323,9 @@ call_groqbash_with_args() {
 
 get_models_file() {
   local candidate groq_dir provider models_candidate
-  if [[ -n "${GROQBASH_CMD:-}" && "${GROQBASH_CMD}" = /* ]]; then
-    groq_dir="$(cd "$(dirname -- "$GROQBASH_CMD")" 2>/dev/null && pwd -P || printf '%s' ".")"
-    candidate="$groq_dir/groqbash.d/models/models.txt"
+  if [[ -n "${BASH4LLM_CMD:-}" && "${BASH4LLM_CMD}" = /* ]]; then
+    groq_dir="$(cd "$(dirname -- "$BASH4LLM_CMD")" 2>/dev/null && pwd -P || printf '%s' ".")"
+    candidate="$groq_dir/bash4llm.d/models/models.txt"
     [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
   fi
   provider="$(get_default_provider 2>/dev/null || true)"
@@ -334,22 +334,22 @@ get_models_file() {
     [[ -f "$models_candidate" ]] && { printf '%s' "$models_candidate"; return 0; }
   fi
   if [[ -n "${UI_ROOT:-}" ]]; then
-    candidate="$UI_ROOT/../groqbash.d/models/models.txt"
+    candidate="$UI_ROOT/../bash4llm.d/models/models.txt"
     [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
     candidate="$UI_ROOT/models/models.txt"
     [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
   fi
-  candidate="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)/groqbash.d/models/models.txt"
+  candidate="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)/bash4llm.d/models/models.txt"
   printf '%s' "${candidate:-models/models.txt}"
   return 0
 }
 
-refresh_models_via_groqbash() {
+refresh_models_via_bash4llm() {
   local prov models_file out
   prov="$1"
   models_file="$(get_models_file)"
-  if ! (declare -f ensure_groqbash_available >/dev/null 2>&1 && ensure_groqbash_available); then
-    log_error "GUIIO" "groqbash not available for refresh"
+  if ! (declare -f ensure_bash4llm_available >/dev/null 2>&1 && ensure_bash4llm_available); then
+    log_error "GUIIO" "bash4llm not available for refresh"
     return 1
   fi
 
@@ -362,7 +362,7 @@ refresh_models_via_groqbash() {
 
   export_api_key_for_provider "$prov" || true
 
-  out="$(call_groqbash_with_args --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
+  out="$(call_bash4llm_with_args --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
   out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
   if [[ -n "$out" ]]; then
     atomic_write_safe "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
@@ -394,7 +394,7 @@ find_lang_conf() {
   [[ -n "${CFG_DIR:-}" ]] && candidates+=("$CFG_DIR/gui-lang.conf")
   [[ -n "${UI_ROOT:-}" ]] && candidates+=("$UI_ROOT/gui-lang.conf" "$UI_ROOT/static/gui-lang.conf" "$UI_ROOT/extras/ui/gui-lang.conf")
   [[ -n "${SCRIPT_DIR:-}" ]] && candidates+=("$SCRIPT_DIR/gui-lang.conf")
-  [[ -n "${HOME:-}" ]] && candidates+=("$HOME/.config/groqbash/gui-lang.conf")
+  [[ -n "${HOME:-}" ]] && candidates+=("$HOME/.config/bash4llm/gui-lang.conf")
   [[ -n "${UI_ROOT:-}" ]] && candidates+=("$UI_ROOT/../gui-lang.conf")
   local c
   for c in "${candidates[@]}"; do
@@ -568,7 +568,7 @@ handle_post_settings() {
       log_warn "GUIIO" "Refresh requested but provider empty"
     else
       if validate_name "$provider"; then
-        refresh_models_via_groqbash "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
+        refresh_models_via_bash4llm "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
       else
         log_warn "GUIIO" "Invalid provider attempted for refresh: $provider"
       fi
@@ -675,7 +675,7 @@ handle_post_main() {
   atomic_append_conv_safe "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
 
   if ! is_configured; then
-    log_error "GUIIO" "Attempt to call groqbash while GUI not configured"
+    log_error "GUIIO" "Attempt to call bash4llm while GUI not configured"
     atomic_append_conv_safe "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
     return 0
   fi
@@ -710,9 +710,9 @@ handle_post_main() {
   if [[ -n "$model" ]]; then safe_args+=( --model "$model" ); fi
 
   # Call core safely, passing prompt via stdin
-  if ! output="$(printf '%s' "$prompt" | call_groqbash_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
-    log_error "GUIIO" "groqbash invocation failed"
-    atomic_append_conv_safe "$conv_file" "AI: ERROR: groqbash invocation failed. Check server logs." || true
+  if ! output="$(printf '%s' "$prompt" | call_bash4llm_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
+    log_error "GUIIO" "bash4llm invocation failed"
+    atomic_append_conv_safe "$conv_file" "AI: ERROR: bash4llm invocation failed. Check server logs." || true
     return 0
   fi
 
@@ -793,7 +793,7 @@ render_page_main() {
     MODEL_WHITELIST_PRESENT="false"
   fi
   CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
-  : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
+  : "${GUI_CGI_BASE:=/bash4llm-gui/cgi/}"
   GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
   export MODEL_OPTIONS CONV_LIST CURRENT_CONV
   export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
@@ -841,7 +841,7 @@ render_page_settings() {
     MODEL_WHITELIST_PRESENT="false"
   fi
   CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
-  : "${GUI_CGI_BASE:=/groqbash-gui/cgi/}"
+  : "${GUI_CGI_BASE:=/bash4llm-gui/cgi/}"
   GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
   build_provider_options "$prov_cur"
   build_model_list_and_select "$model_cur" "$prov_cur"
@@ -876,9 +876,9 @@ main() {
     log_error "GUILOCK" "flock missing"
     cgi_fatal 1 "Server misconfiguration: flock not available"
   fi
-  if ! (declare -f ensure_groqbash_available >/dev/null 2>&1 && ensure_groqbash_available); then
-    log_error "GUIIO" "groqbash not found: ${GROQBASH_CMD:-<unset>}"
-    cgi_fatal 1 "groqbash not found on server. Contact administrator."
+  if ! (declare -f ensure_bash4llm_available >/dev/null 2>&1 && ensure_bash4llm_available); then
+    log_error "GUIIO" "bash4llm not found: ${BASH4LLM_CMD:-<unset>}"
+    cgi_fatal 1 "bash4llm not found on server. Contact administrator."
   fi
   if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
     log_error "GUILOCK" "Failed to acquire lock"
@@ -925,7 +925,7 @@ main() {
     *page=settings*|*page=settings\&*|*page=settings\?*)
       if [[ "$method" == "POST" ]]; then
         if handle_post_settings; then
-          print_http_redirect "${GUI_CGI_BASE:-/groqbash-gui/cgi/}?page=settings"
+          print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=settings"
         else
           cgi_fatal 1 "settings handler failed"
         fi
@@ -938,7 +938,7 @@ main() {
     *page=main*|*page=main\&*|*page=main\?*|*page=*)
       if [[ "$method" == "POST" ]]; then
         if handle_post_main; then
-          print_http_redirect "${GUI_CGI_BASE:-/groqbash-gui/cgi/}?page=main"
+          print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=main"
         else
           cgi_fatal 1 "main handler failed"
         fi
