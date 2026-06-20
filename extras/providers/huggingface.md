@@ -78,7 +78,8 @@ hf_remove_endpoint "google/gemma-2-2b-it"
 > Ecco una selezione di modelli di testo e conversazionali attivi sul serverless Hugging Face, suddivisi tra modelli ad accesso libero e modelli gated (che richiedono l'accettazione preliminare delle condizioni d'uso sul portale Hugging Face). 
 > 
 > Crea o sostituisci il contenuto del file:
-> `bash4llm.d/config/providers/hf_endpoints` 
+> `bash4llm.d/config/providers/hf_endpoints`
+> 
 > con le seguenti righe:
 > 
 > ```text
