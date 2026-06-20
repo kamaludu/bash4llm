@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # =============================================================================
 # Bash4LLM — Bash-first wrapper for the Groq API
 # File: extras/providers/mistral.sh
@@ -12,11 +11,6 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
 fi
 
-MISTRAL_API_KEY="${MISTRAL_API_KEY:-}"
-
-API_URL_MISTRAL="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
-MODELS_ENDPOINT_MISTRAL="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
-
 # Provide no-op dbg() if not defined by core
 if ! type dbg >/dev/null 2>&1; then
   dbg() { :; }
@@ -25,6 +19,27 @@ fi
 # -------------------------
 # Helpers
 # -------------------------
+_get_api_key_mistral() {
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
+  local prov_env key=""
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "mistral")"
+    if [ -n "$prov_env" ]; then
+      key="${!prov_env:-}"
+    fi
+  fi
+  if [ -z "$key" ]; then
+    key="${MISTRAL_API_KEY:-}"
+  fi
+
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+  printf '%s' "$key"
+}
+
 _get_work_tmpdir_mistral() {
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     printf '%s' "$RUN_TMPDIR"
@@ -49,7 +64,7 @@ _mktemp_in_dir_mistral() {
   local dir="$1" tmpf
   [ -n "$dir" ] || return 1
   [ -d "$dir" ] || return 1
-  tmpf="$(mktemp -p "$dir" mistral-XXXX 2>/dev/null || true)"
+  tmpf="$(mktemp "${dir%/}/mistral-XXXXXX" 2>/dev/null || true)"
   [ -n "$tmpf" ] || return 1
   printf '%s' "$tmpf"
   return 0
@@ -172,57 +187,61 @@ buildpayload_mistral() {
 # call_api_mistral (non-streaming)
 # -------------------------
 call_api_mistral() {
-  local prov_env key
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
 
-  # Resolve API key via core helper if available
-  if type ensure_api_key_for_provider >/dev/null 2>&1; then
-    if ! ensure_api_key_for_provider "mistral"; then
-      log_error "APIKEY" "MISTRAL API key required to call Mistral."
-      return $BASH4LLMERRNOAPIKEY
-    fi
-  fi
-  if type provider_api_env_var_name >/dev/null 2>&1; then
-    prov_env="$(provider_api_env_var_name "mistral")"
-    key="${!prov_env:-${MISTRAL_API_KEY:-}}"
-  else
-    key="${MISTRAL_API_KEY:-}"
-  fi
+  local key
+  key="$(_get_api_key_mistral)"
 
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 2
   fi
   if [ ! -s "${PAYLOAD:-}" ]; then
     echo "Error: payload file missing or empty: ${PAYLOAD:-<unset>}" >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 3
   fi
   if is_truthy "${DRY_RUN:-0}"; then
     printf 'DRY-RUN: skipping HTTP call (exit 0)\n' >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return 4
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
   fi
 
   local workdir tmpout tmpresp api_url http_code time_total
-  workdir="$(_get_work_tmpdir_mistral)" || return 4
-  tmpout="$(_mktemp_in_dir_mistral "$workdir")" || return 4
-  tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || return 4
+  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+  tmpout="$(_mktemp_in_dir_mistral "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+  tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
-  api_url="${API_URL_MISTRAL}"
+  
+  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
+  api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
 
-  # Use array-safe expansion of CURL_BASE_OPTS
-  curl "${CURL_BASE_OPTS[@]:-}" \
-       -H "Authorization: Bearer $key" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       -o "$tmpresp" \
-       -w '%{http_code} %{time_total}' \
-       "$api_url" \
-       2>"$ERRF" >"$tmpout" || true
+  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  local -a curl_cmd=(curl)
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    -H "Authorization: Bearer $key"
+    -H "Content-Type: application/json"
+    --data-binary @"$PAYLOAD"
+    -o "$tmpresp"
+    -w '%{http_code} %{time_total}'
+    "$api_url"
+  )
+
+  # Esegue la chiamata tramite l'array di comandi
+  "${curl_cmd[@]}" 2>"$ERRF" >"$tmpout" || true
 
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
@@ -230,6 +249,17 @@ call_api_mistral() {
   }
 
   if [ -s "$tmpresp" ]; then
+    # Assicura la presenza di un a capo finale per evitare sovrapposizioni del prompt della shell
+    local last_char=""
+    if command -v tail >/dev/null 2>&1; then
+      last_char="$(tail -c 1 "$tmpresp" 2>/dev/null || printf '')"
+    else
+      last_char="$(awk 'END{printf "%s", substr($0,length($0),1)}' "$tmpresp" 2>/dev/null || printf '')"
+    fi
+    if [ "$last_char" != $'\n' ]; then
+      printf '\n' >> "$tmpresp" 2>/dev/null || true
+    fi
+
     if type atomic_write >/dev/null 2>&1; then
       cat "$tmpresp" | atomic_write "${RESP:-$workdir/resp.json}"
     else
@@ -241,6 +271,8 @@ call_api_mistral() {
   fi
 
   rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
+
+  [ "$_set_u_was_on" -eq 1 ] && set -u
 
   case "$http_code" in
     2*) return 0 ;;
@@ -257,52 +289,55 @@ call_api_mistral() {
 # call_api_streaming_mistral (SSE)
 # -------------------------
 call_api_streaming_mistral() {
-  local prov_env key
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
 
-  # Resolve API key via core helper if available
-  if type ensure_api_key_for_provider >/dev/null 2>&1; then
-    if ! ensure_api_key_for_provider "mistral"; then
-      log_error "APIKEY" "MISTRAL API key required to call Mistral."
-      return $BASH4LLMERRNOAPIKEY
-    fi
-  fi
-  if type provider_api_env_var_name >/dev/null 2>&1; then
-    prov_env="$(provider_api_env_var_name "mistral")"
-    key="${!prov_env:-${MISTRAL_API_KEY:-}}"
-  else
-    key="${MISTRAL_API_KEY:-}"
-  fi
+  local key
+  key="$(_get_api_key_mistral)"
 
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 2
   fi
   if is_truthy "${DRY_RUN:-0}"; then
     printf 'DRY-RUN: skipping streaming HTTP call (exit 0)\n' >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return 4
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
   fi
 
   local api_url rc RESP_RAW workdir
-  api_url="${API_URL_MISTRAL}"
-  workdir="$(_get_work_tmpdir_mistral)" || return 4
+  
+  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
+  api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
+  
+  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
   RESP_RAW="${RUN_TMPDIR:-$workdir}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
 
-  # Use array-safe expansion of CURL_BASE_OPTS
-  curl "${CURL_BASE_OPTS[@]:-}" \
-       -H "Authorization: Bearer $key" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       "$api_url" \
-       2>"$ERRF" | tee -a "$RESP_RAW" | \
+  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  local -a curl_cmd=(curl)
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    -H "Authorization: Bearer $key"
+    -H "Content-Type: application/json"
+    --data-binary @"$PAYLOAD"
+    "$api_url"
+  )
+
+  "${curl_cmd[@]}" 2>"$ERRF" | tee -a "$RESP_RAW" | \
   while IFS= read -r line; do
     case "$line" in
       'data: [DONE]'|'data:[DONE]') break ;;
@@ -318,6 +353,7 @@ call_api_streaming_mistral() {
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
     dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 6
   }
 
@@ -350,6 +386,8 @@ call_api_streaming_mistral() {
     fi
   fi
 
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+
   return 0
 }
 
@@ -357,52 +395,83 @@ call_api_streaming_mistral() {
 # refresh_models_mistral
 # -------------------------
 refresh_models_mistral() {
-  local outpath="${1:-${MODELS_FILE:-}}"
-  local prov_env key
+  # Temporaneamente disattiva set -u (nounset) per sicurezza durante la lettura delle variabili
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
 
-  # Resolve API key via core helper if available
-  if type provider_api_env_var_name >/dev/null 2>&1; then
-    prov_env="$(provider_api_env_var_name "mistral")"
-    key="${!prov_env:-${MISTRAL_API_KEY:-}}"
-  else
-    key="${MISTRAL_API_KEY:-}"
-  fi
+  local outpath="${1:-${MODELS_FILE:-}}"
+  local key=""
+  key="$(_get_api_key_mistral)"
 
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is required to refresh models." >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 2
   fi
   if [ -z "$outpath" ]; then
     echo "Error: MODELS file path not provided." >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 7
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return 4
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
   fi
 
-  local workdir tmpd out errf api_url parsed
-  workdir="$(_get_work_tmpdir_mistral)" || return 4
-  tmpd="$(mktemp -d -p "$workdir" mistral-models.XXXX 2>/dev/null || true)"
-  [ -n "$tmpd" ] || return 4
+  local workdir tmpd out errf api_url parsed http_code
+  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+  tmpd="$(mktemp -d "${workdir}/mistral-models.XXXXXX" 2>/dev/null || true)"
+
+  if [ -z "$tmpd" ] || [ ! -d "$tmpd" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return 4
+  fi
 
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
-  api_url="${MODELS_ENDPOINT_MISTRAL}"
+  
+  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
+  api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # Use array-safe expansion of CURL_BASE_OPTS
-  if ! curl "${CURL_BASE_OPTS[@]:-}" \
-            -H "Authorization: Bearer $key" \
-            -H "Content-Type: application/json" \
-            "$api_url" -o "$out" 2>"$errf"; then
+  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  local -a curl_cmd=(curl -s -w "%{http_code}")
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    -H "Authorization: Bearer $key"
+    -H "Content-Type: application/json"
+    "$api_url" -o "$out"
+  )
+
+  http_code=$("${curl_cmd[@]}" 2>"$errf" || echo "CURL_FAILED")
+
+  if [ "$http_code" = "CURL_FAILED" ] || [ ! -f "$out" ]; then
     dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
     rm -rf "$tmpd" 2>/dev/null || true
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return 8
+  fi
+
+  if [ "$http_code" != "200" ]; then
+    rm -rf "$tmpd" 2>/dev/null || true
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 8
   fi
 
   parsed="$tmpd/parsed_models.txt"
-  jq -r '.data[]?.id // empty' "$out" | sort -u > "$parsed" 2>/dev/null || true
+  jq -r '
+    if type == "array" then
+      .[]? | (.id // .name // empty)
+    elif (has("data") and (.data|type) == "array") then
+      .data[]? | (.id // .name // empty)
+    else
+      empty
+    end
+  ' "$out" | sort -u > "$parsed" 2>/dev/null || true
 
   if [ -s "$parsed" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
@@ -414,11 +483,13 @@ refresh_models_mistral() {
     fi
     chmod 600 "$outpath" 2>/dev/null || true
     rm -rf "$tmpd" 2>/dev/null || true
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
   dbg "Raw response (head):"; head -n 50 "$out" >&2 || true
   rm -rf "$tmpd" 2>/dev/null || true
+  [ "$_set_u_was_on" -eq 1 ] && set -u
   return 9
 }
 
