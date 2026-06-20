@@ -82,18 +82,18 @@ hf_remove_endpoint "llama-3.1-8b-instruct"
 > 
 ```text
 # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-gemma-2-2b-it|https://router.huggingface.co/hf-inference/models/google/gemma-2-2b-it
-mistral-7b-instruct-v0.3|https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.3
-qwen-2.5-7b-instruct|https://router.huggingface.co/hf-inference/models/Qwen/Qwen2.5-7B-Instruct
-qwen-2.5-coder-7b-instruct|https://router.huggingface.co/hf-inference/models/Qwen/Qwen2.5-Coder-7B-Instruct
-phi-3-mini-4k-instruct|https://router.huggingface.co/hf-inference/models/microsoft/Phi-3-mini-4k-instruct
-phi-3.5-mini-instruct|https://router.huggingface.co/hf-inference/models/microsoft/Phi-3.5-mini-instruct
-smollm2-1.7b-instruct|https://router.huggingface.co/hf-inference/models/HuggingFaceTB/smollm2-1.7b-instruct
-deepseek-r1-distill-qwen-1.5b|https://router.huggingface.co/hf-inference/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
+mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
+Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
+Qwen/Qwen2.5-Coder-7B-Instruct|https://router.huggingface.co/v1/chat/completions
+microsoft/Phi-3-mini-4k-instruct|https://router.huggingface.co/v1/chat/completions
+microsoft/Phi-3.5-mini-instruct|https://router.huggingface.co/v1/chat/completions
+HuggingFaceTB/smollm2-1.7b-instruct|https://router.huggingface.co/v1/chat/completions
+deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
 
 # Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
-llama-3.2-1b-instruct|https://router.huggingface.co/hf-inference/models/meta-llama/Llama-3.2-1B-Instruct
-llama-3.2-3b-instruct|https://router.huggingface.co/hf-inference/models/meta-llama/Llama-3.2-3B-Instruct
+meta-llama/Llama-3.2-1B-Instruct|https://router.huggingface.co/v1/chat/completions
+meta-llama/Llama-3.2-3B-Instruct|https://router.huggingface.co/v1/chat/completions
 ```
 
 ---
