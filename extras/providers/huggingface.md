@@ -80,20 +80,20 @@ hf_remove_endpoint "llama-3.1-8b-instruct"
 > 
 > Crea o sostituisci il contenuto del file > bash4llm.d/config/providers/hf_endpoints > con le seguenti righe:
 > 
-```sh
+```text
 # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-gemma-2-2b-it|https://api-inference.huggingface.co/models/google/gemma-2-2b-it
-mistral-7b-instruct-v0.3|https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3
-qwen-2.5-7b-instruct|https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct
-qwen-2.5-coder-7b-instruct|https://api-inference.huggingface.co/models/Qwen/Qwen2.5-Coder-7B-Instruct
-phi-3-mini-4k-instruct|https://api-inference.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct
-phi-3.5-mini-instruct|https://api-inference.huggingface.co/models/microsoft/Phi-3.5-mini-instruct
-smollm2-1.7b-instruct|https://api-inference.huggingface.co/models/HuggingFaceTB/smollm2-1.7b-instruct
-deepseek-r1-distill-qwen-1.5b|https://api-inference.huggingface.co/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+gemma-2-2b-it|https://router.huggingface.co/hf-inference/models/google/gemma-2-2b-it
+mistral-7b-instruct-v0.3|https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.3
+qwen-2.5-7b-instruct|https://router.huggingface.co/hf-inference/models/Qwen/Qwen2.5-7B-Instruct
+qwen-2.5-coder-7b-instruct|https://router.huggingface.co/hf-inference/models/Qwen/Qwen2.5-Coder-7B-Instruct
+phi-3-mini-4k-instruct|https://router.huggingface.co/hf-inference/models/microsoft/Phi-3-mini-4k-instruct
+phi-3.5-mini-instruct|https://router.huggingface.co/hf-inference/models/microsoft/Phi-3.5-mini-instruct
+smollm2-1.7b-instruct|https://router.huggingface.co/hf-inference/models/HuggingFaceTB/smollm2-1.7b-instruct
+deepseek-r1-distill-qwen-1.5b|https://router.huggingface.co/hf-inference/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 
 # Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
-llama-3.2-1b-instruct|https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B-Instruct
-llama-3.2-3b-instruct|https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct
+llama-3.2-1b-instruct|https://router.huggingface.co/hf-inference/models/meta-llama/Llama-3.2-1B-Instruct
+llama-3.2-3b-instruct|https://router.huggingface.co/hf-inference/models/meta-llama/Llama-3.2-3B-Instruct
 ```
 
 ---
