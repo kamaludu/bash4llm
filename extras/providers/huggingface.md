@@ -71,11 +71,15 @@ hf_list_endpoints
 hf_remove_endpoint "llama-3.1-8b-instruct"
 ```
 
-**File hf_endpoints pregenerato**
-Ecco una selezione di modelli di testo e conversazionali attivi sul serverless Hugging Face, suddivisi tra modelli ad accesso libero e modelli gated (che richiedono l'accettazione preliminare delle condizioni d'uso sul portale Hugging Face). 
+---
 
-Crea o sostituisci il contenuto del file bash4llm.d/config/providers/hf_endpoints con le seguenti righe:
-
+> [!TIP]
+> **File hf_endpoints pregenerato**
+> 
+> Ecco una selezione di modelli di testo e > conversazionali attivi sul serverless Hugging Face, suddivisi tra modelli ad accesso libero e modelli gated (che richiedono l'accettazione preliminare delle condizioni d'uso sul portale Hugging Face). 
+> 
+> Crea o sostituisci il contenuto del file > bash4llm.d/config/providers/hf_endpoints > con le seguenti righe:
+> 
 ```sh
 # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
 gemma-2-2b-it|https://api-inference.huggingface.co/models/google/gemma-2-2b-it
