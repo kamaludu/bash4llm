@@ -4636,8 +4636,8 @@ fi
 
 # Defensive check: ensure we actually have something to send as prompt/content.
 # CONTENT may be set by assemble_content (from ARGS, files, stdin, template, JSON).
-if [ -n "${JSON_INPUT:-}" ]; then
-  : # JSON input present, proceed
+if [ -n "${JSON_INPUT:-}" ] || [ "${CHAT_MODE:-0}" -eq 1 ] || [ -n "${BATCH_FILE:-}" ]; then
+  : # Proceed: chat, batch, or JSON inputs handle their own prompt logic
 elif [ -n "${CONTENT:-}" ]; then
   : # content assembled, proceed
 elif [ "$#" -gt 0 ]; then
