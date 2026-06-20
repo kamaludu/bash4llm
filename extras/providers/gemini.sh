@@ -10,12 +10,13 @@
 # Purpose: Bash4LLM provider adapter for Gemini-style APIs (compat shim)
 # =============================================================================
 
-# Configura il file dei modelli specifico per questo provider
-MODELS_FILE="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/gemini.txt}"
-
 # -------------------------
 # Helpers
 # -------------------------
+_get_models_file_gemini() {
+  printf '%s' "${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/gemini.txt}"
+}
+
 _get_work_tmpdir_gemini() {
   # RUN_TMPDIR è sempre definita ed esportata dal core prima dell'esecuzione
   printf '%s' "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}"
@@ -31,7 +32,7 @@ _mktemp_in_dir_gemini() {
   printf '%s' "$tmpf"
 }
 
-_write_atomic() {
+_gemini_write_atomic() {
   local src="${1:-}" dst="${2:-}"
   if [ -z "${src:-}" ] || [ -z "${dst:-}" ] || [ ! -s "$src" ]; then
     return 1
@@ -40,7 +41,7 @@ _write_atomic() {
   cat "$src" | atomic_write "$dst"
 }
 
-_substitute_model_in_template() {
+_gemini_substitute_model_in_template() {
   local template="$1" model="$2"
   printf '%s' "${template//\$\{MODEL\}/$model}"
 }
@@ -143,14 +144,14 @@ buildpayload_gemini() {
       rm -f "$tmpf" 2>/dev/null || true
       return 0
     else
-      _write_atomic "$tmpf" "${PAYLOAD}" || cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
+      _gemini_write_atomic "$tmpf" "${PAYLOAD}" || cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
       rm -f "$tmpf" 2>/dev/null || true
       return 0
     fi
   fi
 
   umask 077
-  if _write_atomic "$tmpf" "${PAYLOAD}"; then
+  if _gemini_write_atomic "$tmpf" "${PAYLOAD}"; then
     rm -f "$tmpf" 2>/dev/null || true
     chmod 600 "${PAYLOAD}" 2>/dev/null || true
     return 0
@@ -161,7 +162,6 @@ buildpayload_gemini() {
     return 0
   fi
 }
-
 # -------------------------
 # gemini_report_error
 # -------------------------
@@ -253,7 +253,7 @@ call_api_gemini() {
     return 0
   fi
 
-  local workdir tmpout tmpresp errf api_url model_subst key_trim http_code time_total
+  local workdir tmpout tmpresp errf api_url model_subst key_trim http_code time_total active_model
   workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
   [ -n "$workdir" ] || return 4
 
@@ -261,7 +261,8 @@ call_api_gemini() {
   tmpresp="$(_mktemp_in_dir_gemini "$workdir")" || return 4
   errf="$(_mktemp_in_dir_gemini "$workdir")" || errf="${workdir%/}/curl.err"
 
-  model_subst="${MODEL#models/}"
+  active_model="${MODEL:-}"
+  model_subst="${active_model#models/}"
   if [ -z "$model_subst" ]; then
     printf '%s\n' "Error: MODEL not set. Set MODEL to a Gemini model name (e.g., gemini-2.5-flash)." >&2
     local resp_path="${RESP:-${workdir%/}/resp.json}"
@@ -298,7 +299,7 @@ call_api_gemini() {
   local resp_path="${RESP:-$workdir/resp.json}"
 
   if [ -s "$tmpresp" ]; then
-    _write_atomic "$tmpresp" "${resp_path}"
+    _gemini_write_atomic "$tmpresp" "${resp_path}"
   else
     umask 077
     jq -n --arg code "${http_code:-000}" --arg msg "empty response body" '{error:{code:$code,message:$msg}}' > "${resp_path}" 2>/dev/null || true
@@ -315,7 +316,7 @@ call_api_gemini() {
       fi
       umask 077
       jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
-      _write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
+      _gemini_write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
       rm -f "$tmpconv" 2>/dev/null || true
     fi
   fi
@@ -383,7 +384,7 @@ call_api_streaming_gemini() {
     return 0
   fi
 
-  local workdir RESP_RAW errf api_url model_subst key_trim rc
+  local workdir RESP_RAW errf api_url model_subst key_trim rc active_model
   workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
   [ -n "$workdir" ] || return 4
 
@@ -392,7 +393,8 @@ call_api_streaming_gemini() {
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
 
-  model_subst="${MODEL#models/}"
+  active_model="${MODEL:-}"
+  model_subst="${active_model#models/}"
   if [ -z "$model_subst" ]; then
     printf '%s\n' "Error: MODEL not set. Set MODEL to a Gemini model name (e.g., gemini-2.5-flash)." >&2
     local resp_path="${RESP:-${workdir%/}/resp.json}"
@@ -435,7 +437,7 @@ call_api_streaming_gemini() {
       gemini_report_error "$RESP_RAW" "$errf"
       if ! jq -e . "${resp_path}" >/dev/null 2>&1; then
         umask 077
-        _write_atomic "$RESP_RAW" "${resp_path}" 2>/dev/null || cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
+        _gemini_write_atomic "$RESP_RAW" "${resp_path}" 2>/dev/null || cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
         chmod 600 "${resp_path}" 2>/dev/null || true
       fi
     else
@@ -451,7 +453,7 @@ call_api_streaming_gemini() {
   local resp_path="${RESP:-$workdir/resp.json}"
 
   if [ -n "${resp_path:-}" ]; then
-    _write_atomic "$RESP_RAW" "${resp_path}"
+    _gemini_write_atomic "$RESP_RAW" "${resp_path}"
   fi
 
   if [ -n "${resp_path:-}" ] && [ -s "${resp_path}" ] && jq -e . "${resp_path}" >/dev/null 2>&1; then
@@ -464,19 +466,18 @@ call_api_streaming_gemini() {
       fi
       umask 077
       jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
-      _write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
+      _gemini_write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
       rm -f "$tmpconv" 2>/dev/null || true
     fi
   fi
 
   return 0
 }
-
 # -------------------------
 # refresh_models_gemini
 # -------------------------
 refresh_models_gemini() {
-  local outpath="${1:-${MODELS_FILE:-${MODELSFILE:-}}}"
+  local outpath="${1:-$(_get_models_file_gemini)}"
   local prov_env
   prov_env="$(provider_api_env_var_name "gemini")"
 
@@ -496,7 +497,8 @@ refresh_models_gemini() {
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
     local tmp_models
     tmp_models="$(_mktemp_in_dir_gemini "$(dirname "$outpath")" 2>/dev/null || true)" || tmp_models="${outpath}.tmp"
-    printf '%s\n' "" > "$tmp_models" 2>/dev/null || true
+    printf '%s\n' "gemini-2.5-flash" "gemini-3.5-flash" "gemini-3.5-pro" > "$tmp_models" 2>/dev/null || true
+
     if type b64_atomic_write >/dev/null 2>&1; then
       if ! b64_atomic_write "${outpath}.b64" 10 < "$tmp_models"; then
         rm -f "$tmp_models" 2>/dev/null || true
@@ -655,7 +657,7 @@ refresh_models_gemini() {
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
   tmpout="$(_mktemp_in_dir_gemini "$(dirname "$outpath")" 2>/dev/null || true)"
   [ -n "$tmpout" ] || tmpout="${outpath}.tmp"
-  
+
   if [ -n "${tmpfinal:-}" ] && [ -s "$tmpfinal" ]; then
     cat "$tmpfinal" > "$tmpout"
   else
@@ -727,7 +729,7 @@ validate_model_gemini() {
 # auto_select_model_gemini
 # -------------------------
 auto_select_model_gemini() {
-  local file="${MODELS_FILE:-${MODELSFILE:-}}"
+  local file="$(_get_models_file_gemini)"
   local cnt=0 model
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
     while IFS= read -r model || [ -n "$model" ]; do
