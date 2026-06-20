@@ -4,18 +4,16 @@
 
 ## Provider Hugging Face (`huggingface.sh`)
 
-Questo provider integra Hugging Face in Bash4LLM **solo** tramite **Inference Endpoint dedicati** configurati localmente.  
-Nessuna discovery remota, nessun uso di `/api/models` o `/models/<id>`.
+Questo provider integra Hugging Face in Bash4LLM offrendo un'architettura ibrida e sicura: supporta sia gli **Inference Endpoint dedicati** sia il **Serverless Router unificato** ufficiale (`router.huggingface.co`), escludendo qualsiasi meccanismo di discovery remota legacy o chiamate obsolete al vecchio Hub.
 
 ---
 
 ### 1. Principi chiave
 
-- **Modelli disponibili**: solo quelli mappati localmente in un file di configurazione.
-- **Endpoint supportati**: esclusivamente URL di **Inference Endpoint dedicati**  
-  (tipicamente `https://<id>.<region>.endpoints.huggingface.cloud`).
+- **Modelli disponibili**: solo quelli mappati localmente in un file di configurazione o esplicitamente autorizzati.
+- **Endpoint supportati**: URL di **Inference Endpoint dedicati** (es. `https://<id>.<region>.endpoints.huggingface.cloud`) oppure, come fallback automatico e gratuito, il **Serverless Router unificato** compatibile con lo standard OpenAI Chat Completions.
 - **API key**: letta da variabile d’ambiente, **mai salvata su disco**.
-- **Nessuna chiamata al Hub** per elenchi modelli o validazione.
+- **Nessuna chiamata legacy al Hub** (come `/api/models` o `/models/<id>`) per elenchi modelli o validazione.
 
 ---
 
@@ -38,15 +36,16 @@ File: `bash4llm.d/config/providers/hf_endpoints`
 
 ```text
 # Format: <model_name>|<endpoint_url>
+google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
 llama-3.1-8b-instruct|https://abc1234.eu-west-1.aws.endpoints.huggingface.cloud
-mistral-7b|https://xyz9876.us-east-1.aws.endpoints.huggingface.cloud
 ```
 
 Regole:
 
 - Una riga per modello.
 - Separatore: `|` (pipe).
-- `endpoint_url` **deve** essere un Inference Endpoint dedicato, non `api-inference.huggingface.co/models/...`.
+- L'identificativo a sinistra del pipe deve essere il Model ID canonico dell'Hub di Hugging Face (es. `google/gemma-2-2b-it`).
+- `endpoint_url` può essere un Inference Endpoint dedicato o l'indirizzo del Serverless Router unificato.
 
 #### 3.2 Helper interni
 
@@ -66,9 +65,9 @@ Esempio:
 ```sh
 . ./bash4llm.d/extras/providers/huggingface.sh
 
-hf_add_endpoint "llama-3.1-8b-instruct" "https://abc1234.eu-west-1.aws.endpoints.huggingface.cloud"
+hf_add_endpoint "google/gemma-2-2b-it" "https://router.huggingface.co/v1/chat/completions"
 hf_list_endpoints
-hf_remove_endpoint "llama-3.1-8b-instruct"
+hf_remove_endpoint "google/gemma-2-2b-it"
 ```
 
 ---
@@ -76,25 +75,27 @@ hf_remove_endpoint "llama-3.1-8b-instruct"
 > [!TIP]
 > **File hf_endpoints pregenerato**
 > 
-> Ecco una selezione di modelli di testo e > conversazionali attivi sul serverless Hugging Face, suddivisi tra modelli ad accesso libero e modelli gated (che richiedono l'accettazione preliminare delle condizioni d'uso sul portale Hugging Face). 
+> Ecco una selezione di modelli di testo e conversazionali attivi sul serverless Hugging Face, suddivisi tra modelli ad accesso libero e modelli gated (che richiedono l'accettazione preliminare delle condizioni d'uso sul portale Hugging Face). 
 > 
-> Crea o sostituisci il contenuto del file > bash4llm.d/config/providers/hf_endpoints > con le seguenti righe:
+> Crea o sostituisci il contenuto del file:
+> `bash4llm.d/config/providers/hf_endpoints` 
+> con le seguenti righe:
 > 
-```text
-# Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
-mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
-Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
-Qwen/Qwen2.5-Coder-7B-Instruct|https://router.huggingface.co/v1/chat/completions
-microsoft/Phi-3-mini-4k-instruct|https://router.huggingface.co/v1/chat/completions
-microsoft/Phi-3.5-mini-instruct|https://router.huggingface.co/v1/chat/completions
-HuggingFaceTB/smollm2-1.7b-instruct|https://router.huggingface.co/v1/chat/completions
-deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
-
-# Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
-meta-llama/Llama-3.2-1B-Instruct|https://router.huggingface.co/v1/chat/completions
-meta-llama/Llama-3.2-3B-Instruct|https://router.huggingface.co/v1/chat/completions
-```
+> ```text
+> # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
+> google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
+> mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-Coder-7B-Instruct|https://router.huggingface.co/v1/chat/completions
+> microsoft/Phi-3-mini-4k-instruct|https://router.huggingface.co/v1/chat/completions
+> microsoft/Phi-3.5-mini-instruct|https://router.huggingface.co/v1/chat/completions
+> HuggingFaceTB/smollm2-1.7b-instruct|https://router.huggingface.co/v1/chat/completions
+> deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
+> 
+> # Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
+> meta-llama/Llama-3.2-1B-Instruct|https://router.huggingface.co/v1/chat/completions
+> meta-llama/Llama-3.2-3B-Instruct|https://router.huggingface.co/v1/chat/completions
+> ```
 
 ---
 
@@ -115,7 +116,7 @@ export HUGGINGFACE_API_KEY="hf_..."
 
 ### 5. Comportamento runtime
 
-#### 5.1 Selezione modello
+#### 5.1 Selezione modello e Fallback automatico
 
 Quando usi:
 
@@ -126,21 +127,20 @@ Quando usi:
 il provider:
 
 1. Cerca `<nome-modello>` in `hf_endpoints`.
-2. Recupera l’`endpoint_url` associato.
-3. Esegue una `POST` JSON verso quell’URL con il payload costruito da Bash4LLM.
+2. Se lo trova, recupera l’`endpoint_url` associato (es. un endpoint dedicato o il router).
+3. Se **non** lo trova (ma la validazione del core lo consente), esegue un **fallback automatico** verso il Serverless Router unificato all'indirizzo `https://router.huggingface.co/v1/chat/completions`.
+4. Compila il payload JSON (in formato standard OpenAI Chat Completions o legacy in base all'endpoint) ed esegue una chiamata `POST` tramite `curl`.
 
-Se il modello non è presente in `hf_endpoints`, la validazione fallisce (o il core può rifiutare il modello).
+#### 5.2 Nessun fallback legacy “magico”
 
-#### 5.2 Nessun fallback “magico”
+- **Non** viene usato in alcun caso il vecchio dominio deprecato `https://api-inference.huggingface.co/models/<id>`.
+- **Non** viene usato il vecchio endpoint `/pipeline/text-generation`.
+- Nessun tentativo di correzione automatica o parsing empirico del model id.
 
-- **Non** viene più usato `https://api-inference.huggingface.co/models/<id>`.
-- **Non** viene più usato `/pipeline/text-generation`.
-- Nessun tentativo di discovery o correzione automatica del model id.
+Se l’endpoint restituisce un errore HTTP, Bash4LLM:
 
-Se l’endpoint restituisce `404` o altro errore, Bash4LLM:
-
-- logga header, corpo (troncato) e stderr di `curl` in debug,
-- scrive un JSON di errore in `RESP`,
+- logga i dettagli utili all'ispezione (come intestazioni ed eventuali errori HTML troncati) in modalità debug,
+- scrive un JSON strutturato di errore in `RESP`,
 - ritorna un codice di errore coerente (`BASH4LLMERRAPI`).
 
 ---
@@ -150,29 +150,25 @@ Se l’endpoint restituisce `404` o altro errore, Bash4LLM:
 Per Hugging Face, in linea con l’architettura:
 
 - **`--list-models`**  
-  Deve mostrare solo i modelli presenti in `hf_endpoints`.
+  Mostra i modelli locali registrati in `hf_endpoints`.
 
-  Esempio output atteso:
+  Esempio output:
 
   ```text
-  huggingface:
-    - llama-3.1-8b-instruct
-    - mistral-7b
+  google/gemma-2-2b-it
+  Qwen/Qwen2.5-7B-Instruct
   ```
 
 - **`--refresh-models`**  
-  Non interroga il Hub.  
-  Per Hugging Face può essere implementato come semplice rilettura di `hf_endpoints` o no-op controllato.
-
-Qualsiasi logica precedente che chiamava `https://huggingface.co/api/models` va considerata **deprecata** e rimossa per questo provider.
+  Non interroga il Hub esterno di Hugging Face per evitare latenze o dipendenze non necessarie. Esegue una rilettura pulita e una sincronizzazione locale delle chiavi di `hf_endpoints` aggiornando la whitelist locale dei modelli.
 
 ---
 
 ### 7. Limitazioni note
 
-- Gli URL tipo `https://api-inference.huggingface.co/models/gpt2` **non sono supportati** in questa architettura e possono restituire `404` anche con token valido.
-- È responsabilità dell’utente creare e configurare gli Inference Endpoint dedicati sul sito Hugging Face e incollarne l’URL in `hf_endpoints`.
-- Lo streaming (`call_api_streaming_huggingface`) funziona solo se l’endpoint dedicato restituisce eventi compatibili (chunk `data:` stile SSE/JSON). In caso contrario, l’output potrebbe non essere streamabile.
+- Gli URL associati all'host deprecato `api-inference.huggingface.co` **non sono supportati** e restituiscono errori DNS (`Could not resolve host`) o codici di errore HTTP.
+- Lo streaming progressivo (`--stream`) è nativamente supportato per tutte le chiamate effettuate tramite il Serverless Router unificato (`router.huggingface.co`). Per gli endpoint dedicati privati, lo streaming in tempo reale è subordinato alla presenza di un container compatibile con la generazione di eventi standard SSE (Server-Sent Events).
+- Alcuni modelli contrassegnati come *Gated* (es. Llama 3.2) richiedono di autenticarsi su Hugging Face e accettare esplicitamente le condizioni d'uso prima di poter essere interrogati con successo tramite il Token API.
 
 ---
 
@@ -184,7 +180,7 @@ Qualsiasi logica precedente che chiamava `https://huggingface.co/api/models` va 
 mkdir -p bash4llm.d/config/providers
 
 cat > bash4llm.d/config/providers/hf_endpoints <<'EOF'
-llama-3.1-8b-instruct|https://abc1234.eu-west-1.aws.endpoints.huggingface.cloud
+google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
 EOF
 
 export HUGGINGFACE_API_KEY="hf_..."
@@ -193,11 +189,12 @@ export HUGGINGFACE_API_KEY="hf_..."
 #### 8.2 Chiamata semplice
 
 ```sh
-./bash4llm --provider huggingface --model llama-3.1-8b-instruct "Ciao, spiegami Bash4LLM in poche righe."
+./bash4llm --provider huggingface --model google/gemma-2-2b-it "Ciao, spiegami Bash4LLM in poche righe."
 ```
 
-Se l’endpoint è corretto e il token ha permessi di inference sull’endpoint, otterrai una risposta JSON valida.
+#### 8.3 Chiamata con sessione (Mantenimento della memoria)
 
----
-
-In sintesi: il provider `huggingface.sh` è progettato per essere **deterministico, auditabile e sicuro**, basato solo su **endpoint dedicati configurati localmente** e su una **API key in ambiente**, senza alcuna dipendenza da discovery remota o API “magiche” del Hub.
+```sh
+./bash4llm --session test-conver "Mi chiamo Cristian."
+./bash4llm --session test-conver "Come mi chiamo?"
+```
