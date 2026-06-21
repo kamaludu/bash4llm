@@ -737,6 +737,8 @@ main() {
   else
     lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
+  
+  run_if_func load_translations "$lang_code"
 
   local theme_code
   theme_code="$(get_query_param "theme" 2>/dev/null || printf '')"
