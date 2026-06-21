@@ -1470,15 +1470,13 @@ render_template() {
   local file="$1"
   if [[ ! -f "$file" ]]; then return 1; fi
   
-  # POSIX AWK pure interpolation loop:
-  # Detects ${VAR} placeholders and performs safe substitution without using eval.
   awk '
   {
-    while (match($0, /\$\{[A-Za-z0-9_]+\}/)) {
+    while (match($0, /[$][{][A-Za-z0-9_]+[}]/)) {
       target = substr($0, RSTART, RLENGTH)
       varname = substr(target, 3, length(target) - 3)
       val = ENVIRON[varname]
-      sub(/\$\{[A-Za-z0-9_]+\}/, val)
+      $0 = substr($0, 1, RSTART - 1) val substr($0, RSTART + RLENGTH)
     }
     print
   }' "$file"
