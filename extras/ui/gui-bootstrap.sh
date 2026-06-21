@@ -1,620 +1,979 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Portable environment bootstrap for Bash4LLM GUI CGI
-# File: gui-bootstrap.sh
+# Adapt Bash4LLM GUI for the current environment (Termux-specific shebang fixes)
+# File: bash4llm-gui-adapt.sh
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
+# Constraints: only depends on bash, coreutils, findutils, util-linux, gawk, curl, jq.
+# No use of system /tmp; no eval; idempotent; confined writes under UI_ROOT.
 set -euo pipefail
-umask 077
+umask 007 # Conforme al modello di condivisione Unix Group Access (770/660)
 
-# ---------------------------------------------------------------------------
-# Resolve this script's directory reliably and UI_ROOT (minimal derivation)
-# ---------------------------------------------------------------------------
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-_bootstrap_source="${BASH_SOURCE[0]:-}"
+# -------- Configuration --------
+UI_ROOT_DEFAULT="${HOME:-$PWD}/bash4llm/bash4llm.d/extras/ui"
+UI_ROOT="${UI_ROOT:-$UI_ROOT_DEFAULT}"
+: "${INSTALL_MODE:=0}"
 
-if command -v readlink >/dev/null 2>&1 && [ -L "$_bootstrap_source" ]; then
-  _rl="$(readlink "$_bootstrap_source" 2>/dev/null || true)"
-  if [ -n "$_rl" ]; then
-    case "$_rl" in
-      /*) _bootstrap_source="$_rl" ;;
-      *) _bootstrap_source="$(dirname "$_bootstrap_source")/$_rl" ;;
+TARGET_FILES_REL=(
+  "gui-server.sh"
+  "gui-bootstrap.sh"
+)
+CGI_DIR_REL="cgi-bin"
+
+DEFAULT_PORT=19970
+
+TS() { date +%s; }
+
+# -------- Logging helpers (stderr) --------
+log()  { printf '%s\n' "$*" >&2; }
+info() { printf 'INFO: %s\n' "$*" >&2; }
+warn() { printf 'WARN: %s\n' "$*" >&2; }
+err()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# -------- Canonicalize UI_ROOT and confinement --------
+canonicalize_ui_root() {
+  if [ -z "${UI_ROOT:-}" ]; then err "UI_ROOT is empty"; fi
+  if [ ! -e "$UI_ROOT" ]; then err "UI_ROOT does not exist: $UI_ROOT"; fi
+  if [ ! -d "$UI_ROOT" ]; then err "UI_ROOT is not a directory: $UI_ROOT"; fi
+  if [ -L "$UI_ROOT" ]; then err "UI_ROOT must not be a symlink: $UI_ROOT"; fi
+
+  local oldpwd
+  oldpwd="$(pwd -P)"
+  if ! cd -- "$UI_ROOT" 2>/dev/null; then err "Failed to cd into UI_ROOT: $UI_ROOT"; fi
+  UI_ROOT="$(pwd -P)"
+  cd -- "$oldpwd" || true
+
+  # Restringe UI_ROOT a HOME solo su ambienti Termux
+  if [ "$(detect_env)" = "termux" ]; then
+    case "$UI_ROOT" in
+      "$HOME"/*|"$HOME") ;;
+      *) err "UI_ROOT must be inside HOME: $HOME; got: $UI_ROOT";;
     esac
   fi
-fi
 
-BOOTSTRAP_DIR="$(cd "$(dirname -- "$_bootstrap_source")" >/dev/null 2>&1 && pwd -P || printf '%s' "$(dirname "$_bootstrap_source")")"
-
-: "${UI_ROOT:=${UI_ROOT:-}}"
-if [[ -z "${UI_ROOT:-}" ]]; then
-  if [[ "$(basename "$BOOTSTRAP_DIR")" == "cgi-bin" ]]; then
-    UI_ROOT="$(cd "$BOOTSTRAP_DIR/.." 2>/dev/null && pwd -P || printf '%s' "$BOOTSTRAP_DIR")"
-  else
-    UI_ROOT="$BOOTSTRAP_DIR"
-  fi
-fi
-export UI_ROOT
-
-# ---------------------------------------------------------------------------
-# Strict dependency check (rigid, only declared requirements)
-# If any required tool is missing, abort immediately with a clear error.
-# (Use direct stderr prints here because logging layer may not be initialized yet)
-# ---------------------------------------------------------------------------
-_required_cmds=(bash mv cp chmod rm find flock awk curl jq)
-_missing=()
-for _c in "${_required_cmds[@]}"; do
-  if ! command -v "$_c" >/dev/null 2>&1; then
-    _missing+=("$_c")
-  fi
-done
-
-if [[ ${#_missing[@]} -ne 0 ]]; then
-  printf 'bash4llm: ERROR: missing required tools: %s\n' "$(printf '%s ' "${_missing[@]}")" >&2
-  printf 'bash4llm: ERROR: required toolset not available; aborting bootstrap\n' >&2
-  exit 1
-fi
-unset _required_cmds _missing _c
-
-# ---------------------------------------------------------------------------
-# Source centralized environment layer and initialize (centralized logging/traps)
-# ---------------------------------------------------------------------------
-if [[ -f "${UI_ROOT%/}/gui-env.sh" ]]; then
-  # shellcheck source=/dev/null
-  source "${UI_ROOT%/}/gui-env.sh"
-  gui_env_init cli
-elif [[ -f "${SCRIPT_DIR%/}/gui-env.sh" ]]; then
-  # shellcheck source=/dev/null
-  source "${SCRIPT_DIR%/}/gui-env.sh"
-  gui_env_init cli
-else
-  printf 'bash4llm: ERROR: required file gui-env.sh missing in UI_ROOT (%s); aborting\n' "${UI_ROOT:-<unset>}" >&2
-  exit 1
-fi
-
-# Prevent double sourcing
-if [[ "${__GUI_BOOTSTRAP_LOADED:-}" == "1" ]]; then
-  return 0 2>/dev/null || exit 0
-fi
-__GUI_BOOTSTRAP_LOADED=1
-
-# ---------------------------------------------------------------------------
-# Ensure HOME is defined in non-interactive/CGI environments
-# ---------------------------------------------------------------------------
-: "${HOME:=${UI_ROOT:-$PWD}}"
-export HOME
-
-# ---------------------------------------------------------------------------
-# Directories (single source of truth)
-# These defaults are permissive only if not already set by gui-env or caller.
-# ---------------------------------------------------------------------------
-: "${TMP_DIR:=${TMP_DIR:-${UI_ROOT%/}/tmp}}"
-: "${LOG_DIR:=${LOG_DIR:-${UI_ROOT%/}/logs}}"
-: "${CFG_DIR:=${CFG_DIR:-${UI_ROOT%/}/config}}"
-: "${CONV_DIR:=${CONV_DIR:-${UI_ROOT%/}/conversations}}"
-: "${FILES_DIR:=${FILES_DIR:-${UI_ROOT%/}/files}}"
-: "${TEMPLATES_DIR:=${TEMPLATES_DIR:-${UI_ROOT%/}/templates}}"
-
-# Ensure TMP_DIR is the single source of truth; export TMPDIR for compatibility
-mkdir -p "$TMP_DIR" 2>/dev/null || true
-chmod 700 "$TMP_DIR" 2>/dev/null || true
-export TMPDIR="$TMP_DIR"
-
-# Ensure log dir exists (gui-env may have already created it)
-mkdir -p "$LOG_DIR" 2>/dev/null || true
-chmod 700 "$LOG_DIR" 2>/dev/null || true
-
-export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR
-
-# --- Template variables defaults (avoid unbound variable under set -u) ---
-: "${PROVIDER_OPTIONS:=''}"
-: "${MODEL_LIST_SCROLL:=''}"
-: "${MODEL_SELECT_OPTIONS:=''}"
-: "${MODEL_OPTIONS:=''}"
-: "${CONV_LIST:=''}"
-: "${LANG_OPTIONS:=''}"
-: "${API_KEY_FIELD:=''}"
-: "${PROVIDER_CURRENT:=''}"
-: "${MODEL_CURRENT:=''}"
-: "${LANG_CODE:=''}"
-: "${THEME:=''}"
-: "${THEME_IS_light:=''}"
-: "${THEME_IS_dark:=''}"
-: "${MODEL_WHITELIST_PRESENT:=''}"
-: "${CURRENT_CONV_FILE:=''}"
-: "${CONFIGURED:=''}"
-
-# ---------------------------------------------------------------------------
-# Files and defaults (do not override values set by gui-env)
-# ---------------------------------------------------------------------------
-: "${BASH4LLM_CMD:=${BASH4LLM_CMD:-bash4llm}}"
-: "${BASH4LLMGUILOCKTIMEOUT:=10}"
-
-LOCK_FILE="${LOCK_FILE:-${TMP_DIR%/}/gui.lock}"            # CGI lock (conversations)
-BOOTSTRAP_LOCK="${BOOTSTRAP_LOCK:-${TMP_DIR%/}/bootstrap.lock}" # bootstrap lock (wrapper/shadow)
-SERVER_LOG="${SERVER_LOG:-${LOG_DIR%/}/server.log}"
-ERROR_LOG="${ERROR_LOG:-${LOG_DIR%/}/errors.log}"
-BOOTSTRAP_LOG="${BOOTSTRAP_LOG:-${LOG_DIR%/}/bootstrap.log}"
-
-CURRENT_CONV_FILE="${CURRENT_CONV_FILE:-${CFG_DIR%/}/current-conversation}"
-LANG_CURRENT_FILE="${LANG_CURRENT_FILE:-${CFG_DIR%/}/lang-current}"
-THEME_CURRENT_FILE="${THEME_CURRENT_FILE:-${CFG_DIR%/}/gui-theme}"
-DEFAULT_MODEL_FILE="${DEFAULT_MODEL_FILE:-${CFG_DIR%/}/default-model}"
-DEFAULT_PROVIDER_FILE="${DEFAULT_PROVIDER_FILE:-${CFG_DIR%/}/default-provider}"
-API_KEY_FILE="${API_KEY_FILE:-${CFG_DIR%/}/api-key}"
-
-LOCK_HELD=0
-
-# ---------------------------------------------------------------------------
-# flock availability and CGI lock management (fd 9)
-# ---------------------------------------------------------------------------
-ensure_flock_available() {
-  if ! command -v flock >/dev/null 2>&1; then
-    log_error "GUILLOCK" "flock not available on this system; cannot guarantee safe concurrency"
-    return 1
-  fi
-  return 0
+  CGI_DIR="$UI_ROOT/$CGI_DIR_REL"
 }
 
-acquire_lock() {
-  mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
-  exec 9>"$LOCK_FILE"
-  if ! flock -x -w "$BASH4LLMGUILOCKTIMEOUT" 9; then
-    log_error "LOCKTIMEOUT" "could not acquire GUI lock on $LOCK_FILE within ${BASH4LLMGUILOCKTIMEOUT}s"
-    exec 9>&- || true
-    LOCK_HELD=0
-    return 1
-  fi
-  LOCK_HELD=1
-  # Do not install global traps here; gui-env.sh manages traps centrally.
-  return 0
-}
+# -------- Prevent writes outside UI_ROOT --------
+enforce_ui_root_only_writes() {
+  local home_bin ui_bin moved=0
+  home_bin="${HOME:-/data/data/com.termux/files/home}/bin"
+  ui_bin="${UI_ROOT}/bin"
 
-release_lock() {
-  if [[ "$LOCK_HELD" -eq 1 ]]; then
-    exec 9>&- || true
-    LOCK_HELD=0
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# HTML escaping/unescaping and helpers (kept local)
-# ---------------------------------------------------------------------------
-html_escape() {
-  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
-}
-html_escape_stream() {
-  sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
-}
-
-html_unescape_fallback() {
-  printf '%s' "$1" | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
-}
-
-html_unescape() {
-  printf '%s' "$1" \
-    | sed -E 's/&#x([0-9A-Fa-f]+);/\\x\1/g' \
-    | awk '{
-        gsub(/\\x([0-9A-Fa-f]{2})/,"\\x\\1");
-        printf "%s", $0
-      }' \
-    | sed -e 's/&amp;#([0-9]+);/\\\x\1/g' 2>/dev/null || true
-  printf '%s' "$1" \
-    | sed -e 's/&amp;#39;/\x27/g' -e "s/&#39;/\x27/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/&/g'
-}
-
-# ---------------------------------------------------------------------------
-# Validation and sanitization
-# ---------------------------------------------------------------------------
-# validate_name <name> [maxlen]
-# Accepts letters, digits, dot, underscore, hyphen; no slashes, no control chars; max 255 chars.
-validate_name() {
-  local name="$1"
-  [[ -n "$name" ]] || return 1
-  [[ "$name" == "." || "$name" == ".." ]] && return 1
-  [[ "$name" == *"/"* || "$name" == *"\\"* ]] && return 1
-  if printf '%s' "$name" | awk '/[[:cntrl:]]/ { exit 0 } END { exit 1 }'; then return 1; fi
-  if [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    (( ${#name} <= 255 )) || return 1
-    return 0
-  fi
-  return 1
-}
-
-# sanitize_param <value> [maxlen]
-# - rimuove NUL e control chars, normalizza whitespace, trim, collapse spazi, applica maxlen
-sanitize_param() {
-  local v="${1:-}"
-  local maxlen="${2:-256}"
-  # remove NUL and control chars except tab/newline/space
-  v="$(printf '%s' "$v" | tr -d '\000' | tr -d '\013\014' | sed -E 's/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/ /g')"
-  # normalize tabs to space, collapse multiple spaces
-  v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
-  # trim leading/trailing whitespace
-  v="$(printf '%s' "$v" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-  # enforce max length
-  if (( ${#v} > maxlen )); then
-    v="${v:0:maxlen}"
-  fi
-  printf '%s' "$v"
-}
-
-sanitize_model_output() {
-  local v="${1:-}"
-  local max="${2:-10000}"
-  # remove ANSI escape sequences
-  v="$(printf '%s' "$v" | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g')"
-  # remove control chars except newline and tab/space, normalize CRLF
-  v="$(printf '%s' "$v" | tr -d '\000-\010\013\014\016-\037' | sed -e 's/\r$//' -e 's/\r\n/\n/g')"
-  # normalize tabs and collapse spaces
-  v="$(printf '%s' "$v" | tr '\t' ' ' | sed -E 's/  +/ /g')"
-  # trim
-  v="$(printf '%s' "$v" | sed -E 's/^[ \t]+//; s/[ \t]+$//')"
-  if [ "${#v}" -gt "$max" ]; then
-    v="${v:0:max}"
-    v="$v\n\n[TRUNCATED]"
-  fi
-  printf '%s' "$v"
-}
-
-# ---------------------------------------------------------------------------
-# Build CURRENT_CONV block
-# ---------------------------------------------------------------------------
-build_current_conv_block() {
-  local convfile line out htmlbuf token
-  convfile="${1:-$(get_current_conversation_file || true)}"
-  if [[ -z "$convfile" || ! -f "$convfile" ]]; then
-    CURRENT_CONV=""
-    return 0
-  fi
-  token='{{CURRENT_CONV}}'
-  htmlbuf=""
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    line="${line//${token}/ }"
-    if type html_unescape >/dev/null 2>&1; then
-      line="$(html_unescape "$line")"
-    fi
-    out="$(sanitize_model_output "$line")"
-    out="$(html_escape "$out")"
-    htmlbuf+="${out}"$'\n'
-  done < "$convfile"
-  CURRENT_CONV="<pre>$(printf '%s' "$htmlbuf")</pre>"
-  return 0
-}
-
-# ---------------------------------------------------------------------------
-# URL / form helpers
-# ---------------------------------------------------------------------------
-url_decode() {
-  local data="${1//+/ }"
-  printf '%b' "${data//%/\\x}"
-}
-
-get_query_param() {
-  local name="$1"
-  local qs="${QUERY_STRING:-}"
-  local IFS='&' pair key value
-  for pair in $qs; do
-    key="${pair%%=*}"
-    value="${pair#*=}"
-    if [[ "$key" == "$name" ]]; then
-      url_decode "$value"
-      return 0
-    fi
-  done
-  return 1
-}
-
-read_post_body() {
-  local len="${CONTENT_LENGTH:-}"
-  if [[ -n "$len" && "$len" =~ ^[0-9]+$ && "$len" -gt 0 ]]; then
-    if command -v head >/dev/null 2>&1; then
-      head -c "$len"
-    else
-      dd bs=1 count="$len" 2>/dev/null || true
-    fi
-    return 0
-  fi
-
-  # CONTENT_LENGTH missing or zero: log via centralized logger and fallback to read-all
-  log_warn "GUIIO" "CONTENT_LENGTH missing or zero for POST; falling back to read-all"
-  cat
-  return 0
-}
-
-parse_form_field() {
-  local name="$1"
-  local body
-  body="$(cat)"
-  local IFS='&' pair key value
-  for pair in $body; do
-    key="${pair%%=*}"
-    value="${pair#*=}"
-    if [[ "$key" == "$name" ]]; then
-      url_decode "$value"
-      return 0
-    fi
-  done
-  return 1
-}
-
-# ---------------------------------------------------------------------------
-# Language file helpers (kept)
-# ---------------------------------------------------------------------------
-find_lang_conf() {
-  local candidates=(
-    "${CFG_DIR:-$UI_ROOT/config}/gui-lang.conf"
-    "${UI_ROOT:-}/gui-lang.conf"
-    "${UI_ROOT:-}/extras/ui/gui-lang.conf"
-    "${UI_ROOT:-}/static/gui-lang.conf"
-    "${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}/gui-lang.conf"
-    "$HOME/.config/bash4llm/gui-lang.conf"
-    "$UI_ROOT/../gui-lang.conf"
-  )
-  local c
-  for c in "${candidates[@]}"; do
-    if [[ -n "$c" && -r "$c" ]]; then
-      printf '%s' "$c"
-      return 0
-    fi
-  done
-  return 1
-}
-
-read_txt_key() {
-  local key="$1" lang="$2" lang_conf val default_lang
-  lang_conf="$(find_lang_conf || true)"
-  if [[ -z "$lang_conf" ]]; then
-    printf ''
-    return 0
-  fi
-  val="$(awk -F= -v k="${key}.${lang}" '
-    $1 == k {
-      sub(/^[^=]*=/, "", $0)
-      print $0
-      exit
-    }
-  ' "$lang_conf" 2>/dev/null || true)"
-  if [[ -n "$val" ]]; then
-    printf '%s' "$val"
-    return 0
-  fi
-  default_lang="$(awk -F= '$1=="DEFAULT_LANG" {print $2; exit}' "$lang_conf" 2>/dev/null || true)"
-  if [[ -n "$default_lang" ]]; then
-    val="$(awk -F= -v k="${key}.${default_lang}" '
-      $1 == k {
-        sub(/^[^=]*=/, "", $0)
-        print $0
-        exit
-      }
-    ' "$lang_conf" 2>/dev/null || true)"
-    printf '%s' "$val"
-    return 0
-  fi
-  printf ''
-}
-
-# ---------------------------------------------------------------------------
-# Template rendering helper (kept)
-# ---------------------------------------------------------------------------
-render_template() {
-  local file="$1"
-  shift || true
-  if [[ ! -f "$file" ]]; then return 1; fi
-  local lang_arg="${1:-}"
-  local content
-  content="$(cat "$file")" || content=""
-
-  content="${content//\{\{PROVIDER_OPTIONS\}\}/${PROVIDER_OPTIONS:-}}"
-  content="${content//\{\{MODEL_LIST_SCROLL\}\}/${MODEL_LIST_SCROLL:-}}"
-  content="${content//\{\{MODEL_SELECT_OPTIONS\}\}/${MODEL_SELECT_OPTIONS:-}}"
-  content="${content//\{\{MODEL_OPTIONS\}\}/${MODEL_OPTIONS:-}}"
-  content="${content//\{\{CONV_LIST\}\}/${CONV_LIST:-}}"
-  content="${content//\{\{LANG_OPTIONS\}\}/${LANG_OPTIONS:-}}"
-
-  local esc_LANG_CODE esc_THEME esc_PROVIDER_CURRENT esc_MODEL_CURRENT esc_API_KEY_FIELD
-  local esc_THEME_IS_light esc_THEME_IS_dark esc_MODEL_WHITELIST_PRESENT esc_CURRENT_CONV_FILE esc_CONFIGURED
-  esc_LANG_CODE="$(html_escape "${LANG_CODE:-}")"
-  esc_THEME="$(html_escape "${THEME:-}")"
-  esc_PROVIDER_CURRENT="$(html_escape "${PROVIDER_CURRENT:-}")"
-  esc_MODEL_CURRENT="$(html_escape "${MODEL_CURRENT:-}")"
-  esc_API_KEY_FIELD="$(html_escape "${API_KEY_FIELD:-}")"
-  esc_THEME_IS_light="$(html_escape "${THEME_IS_light:-}")"
-  esc_THEME_IS_dark="$(html_escape "${THEME_IS_dark:-}")"
-  esc_MODEL_WHITELIST_PRESENT="$(html_escape "${MODEL_WHITELIST_PRESENT:-}")"
-  esc_CURRENT_CONV_FILE="$(html_escape "${CURRENT_CONV_FILE:-}")"
-  esc_CONFIGURED="$(html_escape "${CONFIGURED:-}")"
-
-  content="${content//\{\{LANG_CODE\}\}/$esc_LANG_CODE}"
-  content="${content//\{\{THEME\}\}/$esc_THEME}"
-  content="${content//\{\{PROVIDER_CURRENT\}\}/$esc_PROVIDER_CURRENT}"
-  content="${content//\{\{MODEL_CURRENT\}\}/$esc_MODEL_CURRENT}"
-  content="${content//\{\{API_KEY_FIELD\}\}/$esc_API_KEY_FIELD}"
-  content="${content//\{\{THEME_IS_light\}\}/$esc_THEME_IS_light}"
-  content="${content//\{\{THEME_IS_dark\}\}/$esc_THEME_IS_dark}"
-  content="${content//\{\{MODEL_WHITELIST_PRESENT\}\}/$esc_MODEL_WHITELIST_PRESENT}"
-  content="${content//\{\{CURRENT_CONV_FILE\}\}/$esc_CURRENT_CONV_FILE}"
-  content="${content//\{\{CONFIGURED\}\}/$esc_CONFIGURED}"
-
-  local txt_keys
-  txt_keys="$(awk '{
-    while (match($0,/\{\{TXT_[A-Za-z0-9_]+\}\}/)) {
-      k=substr($0,RSTART+2,RLENGTH-4);
-      print k;
-      $0=substr($0,RSTART+RLENGTH);
-    }
-  }' "$file" | sort -u || true)"
-  if [[ -n "$txt_keys" ]]; then
-    local k val
-    for k in $txt_keys; do
-      val=''
-      if [[ -n "${!k:-}" ]]; then
-        val="${!k}"
-      else
-        local lang_clean
-        lang_clean="$(sanitize_param "$lang_arg")"
-        if [[ -z "$lang_clean" ]]; then lang_clean="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"; fi
-        val="$(read_txt_key "$k" "$lang_clean" || true)"
-      fi
-      val="$(html_escape "$val")"
-      content="${content//\{\{$k\}\}/$val}"
-    done
-  fi
-
-  local i=1 arg esc
-  for arg in "$@"; do
-    esc="$(html_escape "$arg")"
-    content="${content//\{\{$i\}\}/$esc}"
-    i=$((i+1))
-  done
-
-  local token prefix suffix
-  token='{{CURRENT_CONV}}'
-  if [[ "$content" == *"$token"* ]]; then
-    prefix="${content%%$token*}"
-    suffix="${content#*$token}"
-    content="${prefix}${CURRENT_CONV}${suffix}"
-    unset prefix suffix token
-  fi
-
-  printf '%s' "$content"
-  return 0
-}
-
-# ---------------------------------------------------------------------------
-# Config helpers
-# ---------------------------------------------------------------------------
-read_config_or_default() {
-  local file="$1" default="$2"
-  if [[ -r "$file" ]]; then
-    local v
-    v="$(sed -n '1p' "$file" 2>/dev/null || echo "")"
-    if [[ -n "$v" ]]; then
-      printf '%s' "$v"
-      return 0
-    fi
-  fi
-  printf '%s' "$default"
-  return 0
-}
-
-get_current_conversation_file() {
-  local conv
-  conv="$(read_config_or_default "$CURRENT_CONV_FILE" "conv-001.txt")"
-  conv="$(sanitize_param "$conv")"
-  if ! validate_name "$conv"; then
-    log_error "GUIIO" "Invalid current conversation name: '$conv' - falling back to conv-001.txt"
-    conv="conv-001.txt"
-    atomic_write "$CURRENT_CONV_FILE" "$conv" || true
-  fi
-  printf '%s/%s\n' "$CONV_DIR" "$conv"
-}
-
-get_default_model() { read_config_or_default "$DEFAULT_MODEL_FILE" ""; }
-get_default_provider() { read_config_or_default "$DEFAULT_PROVIDER_FILE" ""; }
-
-provider_api_env_var_name() {
-  local prov="$1"
-  if [[ -z "$prov" ]]; then
-    printf '%s' "GROQ_API_KEY"
-    return 0
-  fi
-  printf '%s' "$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]')_API_KEY"
-}
-
-save_api_key_file() {
-  local key="$1"
-  if [[ -z "$key" ]]; then
-    rm -f "$API_KEY_FILE" 2>/dev/null || true
-    return 0
-  fi
-  mkdir -p "$(dirname "$API_KEY_FILE")" 2>/dev/null || true
-  atomic_write "$API_KEY_FILE" "$key" || return 1
-  chmod 600 "$API_KEY_FILE" || true
-  return 0
-}
-
-read_api_key_file() {
-  if [[ -r "$API_KEY_FILE" ]]; then
-    sed -n '1p' "$API_KEY_FILE" 2>/dev/null || printf ''
-  else
-    printf ''
-  fi
-}
-
-export_api_key_for_provider() {
-  local prov="$1"
-  local key
-  key="$(read_api_key_file)"
-  if [[ -z "$key" ]]; then
-    return 1
-  fi
-  local envname
-  envname="$(provider_api_env_var_name "$prov")"
-  export "$envname"="$key"
-  return 0
-}
-
-# ---------------------------------------------------------------------------
-# Ensure runtime dirs and defaults
-# ---------------------------------------------------------------------------
-ensure_dirs() {
-  mkdir -p "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR"/input "$FILES_DIR"/output "$TEMPLATES_DIR" 2>/dev/null || true
-  chmod 700 "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR" "$FILES_DIR"/input "$FILES_DIR"/output 2>/dev/null || true
-  ensure_tmpdir || return 1
-  return 0
-}
-
-remove_unnecessary_symlinks() {
-  local ui="$1" target link rc
-  [[ -d "$ui" ]] || return 0
-  while IFS= read -r -d '' link; do
-    target="$(readlink -f "$link" 2>/dev/null || readlink "$link" 2>/dev/null || true)"
-    if [[ -z "$target" ]]; then
-      rm -f -- "$link" 2>/dev/null || true
-      continue
-    fi
-    case "$target" in
-      "$ui"/*)
-        if [[ -f "$target" ]]; then
-          cp -a -- "$target" "${link}.tmp" || { rm -f -- "${link}.tmp" 2>/dev/null || true; return 1; }
-          mv -f -- "${link}.tmp" "$link" || { rm -f -- "${link}.tmp" 2>/dev/null || true; return 1; }
+  if [ -d "$home_bin" ] && ! path_within_ui_root "$home_bin"; then
+    mkdir -p -- "$ui_bin" 2>/dev/null || true
+    # Sposta solo file specifici di bash4llm per evitare di toccare file utente non correlati
+    local f
+    for f in "$home_bin"/bash4llm "$home_bin"/bash4llm-wrapper; do
+      if [ -f "$f" ]; then
+        if [ ! -e "$ui_bin/$(basename -- "$f")" ]; then
+          mv -n -- "$f" "$ui_bin/" 2>/dev/null || cp -n -- "$f" "$ui_bin/" 2>/dev/null || true
+          moved=1
         fi
-        ;;
-      *)
-        ;;
-    esac
-  done < <(find "$ui" -maxdepth 3 -type l -print0 2>/dev/null)
-  return 0
+      fi
+    done
+    if [ -d "$home_bin" ] && [ -z "$(ls -A "$home_bin" 2>/dev/null)" ]; then
+      rmdir --ignore-fail-on-non-empty "$home_bin" 2>/dev/null || true
+    fi
+  fi
+
+  export BIN_DIR="$ui_bin"
+  mkdir -p -- "$BIN_DIR" 2>/dev/null || true
+  chmod 750 -- "$BIN_DIR" 2>/dev/null || true
+
+  if [ "$moved" -eq 1 ]; then
+    info "Moved bash4llm artifacts from $home_bin to $BIN_DIR to confine artifacts in UI_ROOT"
+  fi
 }
 
-ensure_sh_executables() {
-  local ui="${1:-$UI_ROOT}"
-  if [[ -z "$ui" || ! -d "$ui" ]]; then
-    log_warn "PERMS" "ensure_sh_executables: UI_ROOT missing or invalid: $ui"
+# -------- Path safety check --------
+path_within_ui_root() {
+  local p="$1"
+  [ -n "$p" ] || return 1
+  # Require absolute path
+  if [ "${p#/}" = "$p" ]; then return 1; fi
+  local cand_dir real_dir
+  cand_dir="$(dirname -- "$p")"
+  if ! real_dir="$(cd -- "$cand_dir" 2>/dev/null && pwd -P)"; then return 1; fi
+  case "$real_dir" in "$UI_ROOT"/*|"$UI_ROOT") return 0;; *) return 1;; esac
+}
+
+# -------- Escape replacement for sed --------
+sed_escape_replacement() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//|/\\|}"
+  s="${s//\//\\/}"
+  s="${s//&/\\&}"
+  printf '%s' "$s"
+}
+
+# -------- Dynamic Web Server Group Discovery --------
+detect_apache_group() {
+  local grp
+  for grp in www-data apache http nobody nogroup; do
+    if getent group "$grp" >/dev/null 2>&1; then
+      printf '%s' "$grp"
+      return 0
+    fi
+  done
+  id -gn 2>/dev/null || true
+}
+
+safe_chgrp() {
+  local grp="$1"; shift
+  local target
+  [[ -n "$grp" ]] || return 0
+  for target in "$@"; do
+    if [[ -e "$target" ]]; then
+      chgrp -R "$grp" "$target" 2>/dev/null || true
+    fi
+  done
+}
+
+# -------- Atomic write confined to UI_ROOT --------
+atomic_write_in_uiroot() {
+  local dest="$1"
+  [ -n "$dest" ] || err "atomic_write_in_uiroot: dest empty"
+  if ! path_within_ui_root "$dest"; then err "Refusing to write outside UI_ROOT: $dest"; fi
+  local destdir tmp
+  destdir="$(dirname -- "$dest")"
+  mkdir -p -- "$destdir"
+  chmod 770 -- "$destdir" || true
+  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  chmod 660 -- "$tmp" || true
+  cat >"$tmp"
+  mv -f -- "$tmp" "$dest"
+  chmod 660 -- "$dest" 2>/dev/null || true
+  if ! path_within_ui_root "$dest"; then err "Post-write check failed: $dest is outside UI_ROOT"; fi
+}
+
+# -------- Atomic append confined to UI_ROOT --------
+atomic_append_conv_in_uiroot() {
+  local dest="$1"
+  if ! path_within_ui_root "$dest"; then err "Refusing to append outside UI_ROOT: $dest"; fi
+  local destdir tmp
+  destdir="$(dirname -- "$dest")"
+  mkdir -p -- "$destdir"
+  chmod 770 -- "$destdir" || true
+  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  chmod 660 -- "$tmp" || true
+  if [ -e "$dest" ]; then cat -- "$dest" >"$tmp"; fi
+  cat >>"$tmp"
+  mv -f -- "$tmp" "$dest"
+  if ! path_within_ui_root "$dest"; then err "Post-append check failed: $dest is outside UI_ROOT"; fi
+}
+
+# -------- Dependency check (strict) --------
+check_deps() {
+  local deps=(bash sed awk grep uname mktemp mv cp chmod date printf head tail find curl jq readlink flock)
+  local miss=()
+  for d in "${deps[@]}"; do
+    if ! command -v "$d" >/dev/null 2>&1; then miss+=("$d"); fi
+  done
+  if [ "${#miss[@]}" -ne 0 ]; then err "Missing required commands: ${miss[*]}"; fi
+}
+
+# -------- Environment detection --------
+detect_env() {
+  if [ -d "/data/data/com.termux/files/usr" ]; then printf 'termux'; return 0; fi
+  if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then printf 'macos'; return 0; fi
+  if [ -r /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then printf 'wsl'; return 0; fi
+  if uname -o 2>/dev/null | grep -qi cygwin 2>/dev/null; then printf 'cygwin'; return 0; fi
+  if [ "$(uname -s 2>/dev/null)" = "Linux" ]; then printf 'linux'; return 0; fi
+  printf 'unknown'; return 0
+}
+
+# -------- Termux bash discovery --------
+find_termux_bash() {
+  local candidates=(
+    "/data/data/com.termux/files/usr/bin/bash"
+    "/system/bin/bash"
+    "/bin/bash"
+  )
+  for p in "${candidates[@]}"; do
+    if [ -x "$p" ]; then printf '%s' "$p"; return 0; fi
+  done
+  return 1
+}
+
+# -------- Safety helpers --------
+is_regular_file() { [ -f "$1" ] && [ ! -L "$1" ]; }
+
+backup_file_in_uiroot() {
+  local f="$1" ts bdir b
+  ts="$(TS)"
+  if ! path_within_ui_root "$f"; then err "Refusing to backup outside UI_ROOT: $f"; fi
+  bdir="$(dirname -- "$f")"
+  mkdir -p -- "$bdir"
+  chmod 770 -- "$bdir" || true
+  b="${f}.bak.${ts}"
+  cp -- "$f" "$b"
+  chmod 660 -- "$b" 2>/dev/null || true
+  printf '%s' "$b"
+}
+
+atomic_replace_first_line_in_uiroot() {
+  local file="$1" new_shebang="$2"
+  if ! path_within_ui_root "$file"; then err "Refusing to modify outside UI_ROOT: $file"; fi
+  local tmp
+  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  {
+    printf '%s\n' "$new_shebang"
+    tail -n +2 -- "$file" | sed -e 's/\r$//'
+  } >"$tmp"
+  mv -f -- "$tmp" "$file"
+  chmod 750 -- "$file" 2>/dev/null || true
+  if ! path_within_ui_root "$file"; then err "Post-replace check failed: $file is outside UI_ROOT"; fi
+}
+
+# -------- Process a single file (idempotent) --------
+process_target() {
+  local file="$1" bash_path="$2"
+  [ -e "$file" ] || { info "Skipping missing file: $file"; return 0; }
+  if ! path_within_ui_root "$file"; then info "Skipping file outside UI_ROOT: $file"; return 0; fi
+  if ! is_regular_file "$file"; then info "Skipping non-regular file: $file"; return 0; fi
+
+  local tmpnorm
+  tmpnorm="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  sed -e 's/\r$//' "$file" >"$tmpnorm"
+  mv -f -- "$tmpnorm" "$file"
+  if ! path_within_ui_root "$file"; then err "Post-normalize check failed: $file is outside UI_ROOT"; fi
+
+  local current_first ext target_shebang
+  current_first="$(head -n1 -- "$file" || true)"
+  ext="${file##*.}"
+  target_shebang="#!${bash_path}"
+
+  if [[ "$current_first" != "#!"* && "$ext" != "sh" ]]; then
+    info "Not a shell script; ensuring readable perms: $file"
+    chmod 660 -- "$file" 2>/dev/null || true
     return 0
   fi
-  if [[ -d "$ui/cgi-bin" ]]; then
-    find "$ui/cgi-bin" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
+
+  if [ "$current_first" = "$target_shebang" ]; then
+    info "Shebang already correct: $file"
+    chmod 750 -- "$file" || true
+    return 0
   fi
-  find "$ui" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
-  if [[ -d "$ui/static" ]]; then
-    find "$ui/static" -type f -exec chmod 644 {} \; 2>/dev/null || true
-    chmod 755 "$ui/static" 2>/dev/null || true
+
+  local backup
+  backup="$(backup_file_in_uiroot "$file")" || err "Failed to backup $file"
+  info "Backup created: $backup"
+
+  atomic_replace_first_line_in_uiroot "$file" "$target_shebang" || {
+    err "Failed to write new shebang to $file; attempting rollback"
+    mv -f -- "$backup" "$file" || err "Rollback failed for $file"
+    err "Rolled back $file to backup"
+  }
+
+  chmod 750 -- "$file" || err "Failed to chmod $file"
+  info "Patched shebang: $file -> $target_shebang"
+}
+
+# Acquire a global adapt lock to serialize multi-step operations.
+# Uses a dynamic FD (ADAPT_LOCK_FD) and exports ADAPT_LOCK_FILE for other code to inspect.
+_global_adapt_lock_init() {
+  : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
+
+  # canonicalize TMP_DIR and lock path
+  local tmpdir_real
+  tmpdir_real="$(cd "${TMP_DIR%/}" 2>/dev/null && pwd -P || printf '%s' "${TMP_DIR%/}")"
+  ADAPT_LOCK_FILE="${tmpdir_real%/}/adapt.lock"
+
+  mkdir -p -- "$tmpdir_real" 2>/dev/null || {
+    err "Cannot create TMP_DIR $tmpdir_real"
+  }
+
+  # open lockfile on a dynamic FD and keep it open
+  exec {ADAPT_LOCK_FD}>"$ADAPT_LOCK_FILE" 2>/dev/null || {
+    err "Cannot open global lockfile $ADAPT_LOCK_FILE"
+  }
+
+  # try to acquire exclusive lock (wait up to 10s)
+  if ! flock -x -w 10 "$ADAPT_LOCK_FD"; then
+    # close the dynamic FD to avoid leaking it
+    exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
+    unset ADAPT_LOCK_FD ADAPT_LOCK_FILE
+    err "Could not acquire global adapt lock ($ADAPT_LOCK_FILE)"
   fi
-  mkdir -p "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
-  chmod 700 "$ui/logs" "$ui/var/run/apache2" 2>/dev/null || true
+
+  # log acquisition
+  info "LOCK: Acquired global adapt lock -> $ADAPT_LOCK_FILE (pid=$$ fd=$ADAPT_LOCK_FD)"
+
+  # ensure release on exit/interrupt; keep FD open until release
+  _release_global_adapt_lock() {
+    info "LOCK: Releasing global adapt lock -> $ADAPT_LOCK_FILE (pid=$$ fd=${ADAPT_LOCK_FD:-<unset>})"
+    if [ -n "${ADAPT_LOCK_FD:-}" ]; then
+      flock -u "$ADAPT_LOCK_FD" 2>/dev/null || true
+      exec {ADAPT_LOCK_FD}>&- 2>/dev/null || true
+    fi
+    unset ADAPT_LOCK_FD ADAPT_LOCK_FILE
+  }
+  # NOTE: do NOT trap RETURN here — that would release the lock when this function returns.
+  trap '_release_global_adapt_lock' EXIT INT TERM
+}
+
+# -------- Generate Termux Apache config (confined) --------
+generate_termux_apache_config() {
+  local conf="$UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
+  local logs_dir="$UI_ROOT/logs" www_dir="$UI_ROOT/www" cgi_dir="$UI_ROOT/cgi-bin" static_dir="$UI_ROOT/static"
+
+  mkdir -p -- "$logs_dir" "$www_dir" "$cgi_dir" "$UI_ROOT/var/run/apache2" "$static_dir"
+  chmod 770 -- "$logs_dir" || true
+  chmod 750 -- "$www_dir" "$cgi_dir" "$static_dir" || true
+  chmod 770 -- "$UI_ROOT/var/run/apache2" || true
+
+  modules_to_try=(
+    "mpm_prefork_module:/data/data/com.termux/files/usr/libexec/apache2/mod_mpm_prefork.so"
+    "authz_core_module:/data/data/com.termux/files/usr/libexec/apache2/mod_authz_core.so"
+    "authz_host_module:/data/data/com.termux/files/usr/libexec/apache2/mod_authz_host.so"
+    "alias_module:/data/data/com.termux/files/usr/libexec/apache2/mod_alias.so"
+    "cgi_module:/data/data/com.termux/files/usr/libexec/apache2/mod_cgi.so"
+    "log_config_module:/data/data/com.termux/files/usr/libexec/apache2/mod_log_config.so"
+    "logio_module:/data/data/com.termux/files/usr/libexec/apache2/mod_logio.so"
+    "unixd_module:/data/data/com.termux/files/usr/libexec/apache2/mod_unixd.so"
+    "dir_module:/data/data/com.termux/files/usr/libexec/apache2/mod_dir.so"
+  )
+
+  local tmpheader loaded_mods name path
+  tmpheader="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for header"
+  loaded_mods=""
+  for m in "${modules_to_try[@]}"; do
+    name="${m%%:*}"; path="${m#*:}"
+    if [ -f "$path" ]; then
+      printf 'LoadModule %s "%s"\n' "$name" "$path" >>"$tmpheader"
+      loaded_mods="${loaded_mods} ${name}"
+    fi
+  done
+  printf '\nServerName localhost\nDirectoryIndex index.html\n\n' >>"$tmpheader"
+  info "Will include LoadModule for:${loaded_mods}"
+
+  local tmpconf finaltmp
+  tmpconf="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for apache conf"
+  
+  # Replacing Option +FollowSymLinks with +SymLinksIfOwnerMatch for Apache Hardening
+  cat >"$tmpconf" <<'EOF'
+# Bash4LLM GUI Termux Apache config (standalone, confined to UI_ROOT)
+# Generated by bash4llm-gui-adapt.sh
+
+Listen 127.0.0.1:__PORT__
+
+PidFile "__UI_ROOT__/var/run/apache2/httpd.pid"
+ScoreBoardFile "__LOG_DIR__/apache_runtime_status"
+
+DocumentRoot "__WWW_DIR__"
+<Directory "__WWW_DIR__">
+    Options -Indexes +SymLinksIfOwnerMatch
+    Require local
+</Directory>
+
+ScriptAlias /bash4llm-gui/cgi/ "__UI_ROOT__/gui-server.sh"
+
+Alias /bash4llm-gui/static/ "__UI_ROOT__/static/"
+
+<Directory "__UI_ROOT__/static/">
+    Options -Indexes +SymLinksIfOwnerMatch
+    Require local
+</Directory>
+
+RedirectMatch 301 ^/bash4llm-gui/cgi$ /bash4llm-gui/cgi/
+
+<Directory "__UI_ROOT__/">
+    Options +ExecCGI -Indexes
+    AllowOverride None
+    Require local
+</Directory>
+
+ErrorLog "__LOG_DIR__/error.log"
+CustomLog "__LOG_DIR__/access.log" common
+EOF
+
+  local esc_www esc_cgi esc_log esc_uiroot
+  esc_www="$(sed_escape_replacement "$www_dir")"
+  esc_cgi="$(sed_escape_replacement "$cgi_dir")"
+  esc_log="$(sed_escape_replacement "$logs_dir")"
+  esc_uiroot="$(sed_escape_replacement "$UI_ROOT")"
+
+  finaltmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for final HTML"
+  cat "$tmpheader" "$tmpconf" | sed -e "s|__WWW_DIR__|${esc_www}|g" -e "s|__CGI_DIR__|${esc_cgi}|g" -e "s|__LOG_DIR__|${esc_log}|g" -e "s|__UI_ROOT__|${esc_uiroot}|g" -e "s|__PORT__|${DEFAULT_PORT}|g" >"$finaltmp"
+
+  atomic_write_in_uiroot "$conf" <"$finaltmp"
+  rm -f -- "$tmpheader" "$tmpconf" "$finaltmp" || true
+
+  chmod 660 -- "$conf" || true
+  touch "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
+  chmod 660 -- "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
+
+  chmod 750 -- "$www_dir" "$cgi_dir" "$static_dir" || true
+  chmod 770 -- "$logs_dir" || true
+
+  if [ -d "$static_dir" ]; then find "$static_dir" -type f -exec chmod 640 {} \; 2>/dev/null || true; fi
+  find "$www_dir" -type f -exec chmod 640 {} \; 2>/dev/null || true
+  find "$cgi_dir" -type f -name '*.sh' -exec chmod 750 {} \; 2>/dev/null || true
+  find "$cgi_dir" -type f ! -name '*.sh' -exec chmod 640 {} \; 2>/dev/null || true
+
+  : >"$logs_dir/apache_runtime_status" 2>/dev/null || true
+  chmod 660 "$logs_dir/apache_runtime_status" 2>/dev/null || true
+
+  info "Generated Apache config: $conf"
+}
+
+# -------- Generate Termux launcher (confined) --------
+generate_termux_launcher() {
+  local launcher="$UI_ROOT/bash4llm-gui-termux.sh"
+  local conf="$UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
+  local logs_dir="$UI_ROOT/logs" status_dir="$UI_ROOT/.status" static_dir="$UI_ROOT/static"
+  mkdir -p -- "$status_dir" 2>/dev/null || true
+  chmod 770 -- "$status_dir" 2>/dev/null || true
+
+  local termux_bash
+  termux_bash="$(find_termux_bash || true)"
+  if [ -z "$termux_bash" ]; then err "No Termux bash found; cannot generate launcher"; fi
+
+  local httpd_path
+  httpd_path="$(command -v httpd 2>/dev/null || true)"
+  if [ -z "$httpd_path" ]; then httpd_path="$(command -v apachectl 2>/dev/null || true)"; fi
+  if [ -z "$httpd_path" ]; then err "No httpd or apachectl found in PATH"; fi
+
+  local tmplaunch
+  tmplaunch="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for launcher"
+
+  cat >"$tmplaunch" <<'EOF'
+#!__TERMUX_BASH__
+set -euo pipefail
+umask 007
+
+UI_ROOT="__UI_ROOT__"
+CONF="$UI_ROOT/apache-termux-gui-__PORT__.conf"
+LOGS="$UI_ROOT/logs"
+STATUS_DIR="$UI_ROOT/.status"
+URL="http://127.0.0.1:__PORT__/"
+
+TS() { date +%s; }
+log() { printf '%s\n' "INFO: $*" >&2; }
+err() { printf '%s\n' "ERROR: $*" >&2; exit 1; }
+
+if [ ! -d "$UI_ROOT" ]; then err "UI_ROOT missing: $UI_ROOT"; fi
+if [ ! -f "$CONF" ]; then err "Apache config not found: $CONF"; fi
+
+is_listening() {
+  if command -v ss >/dev/null 2>&1; then
+    ss_out="$(ss -ltn 2>&1 || true)"
+    if printf '%s' "$ss_out" | grep -q -E "127\.0\.0\.1:__PORT__"; then return 0; fi
+  fi
+  if command -v netstat >/dev/null 2>&1; then
+    if netstat -ltn 2>/dev/null | awk '{print $4}' | grep -q "127.0.0.1:__PORT__"; then return 0; fi
+  fi
+  if ( exec 3<>/dev/tcp/127.0.0.1/"__PORT__" ) 2>/dev/null; then exec 3>&- 3<&- || true; return 0; fi
+  return 1
+}
+
+find_httpd() {
+  if command -v httpd >/dev/null 2>&1; then printf '%s' "httpd"; return 0; fi
+  if command -v apachectl >/dev/null 2>&1; then printf '%s' "apachectl"; return 0; fi
+  return 1
+}
+
+ensure_no_stale_pid() {
+  PIDFILE="$UI_ROOT/var/run/apache2/httpd.pid"
+  if [ -f "$PIDFILE" ]; then
+    pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+    if [ -n "$pid" ] && ! ps -p "$pid" >/dev/null 2>&1; then
+      log "Removing stale pidfile: $PIDFILE (pid $pid not running)"
+      rm -f -- "$PIDFILE" || true
+    else
+      log "Pidfile present; attempting controlled stop"
+      httpd_bin="$(find_httpd || true)"
+      if [ -n "$httpd_bin" ]; then
+        "$httpd_bin" -k stop -f "$CONF" 2>>"$LOGS/error.log" || true
+        sleep 1
+        if [ -f "$PIDFILE" ]; then
+          pid2="$(cat "$PIDFILE" 2>/dev/null || true)"
+          if [ -n "$pid2" ] && ! ps -p "$pid2" >/dev/null 2>&1; then rm -f -- "$PIDFILE" || true; fi
+        fi
+      fi
+    fi
+  fi
+}
+
+wait_for_listen() {
+  local i max=10
+  for i in $(seq 1 $max); do
+    if is_listening; then return 0; fi
+    sleep 0.3
+  done
+  return 1
+}
+
+is_running_with_conf() {
+  if command -v pgrep >/dev/null 2>&1; then pgrep -f -- "$CONF" >/dev/null 2>&1; return $?; fi
+  ps aux 2>/dev/null | grep -F -- "$CONF" | grep -v grep >/dev/null 2>&1; return $?
+}
+
+if is_listening || is_running_with_conf; then
+  log "127.0.0.1:__PORT__ already listening or httpd started with $CONF; opening browser"
+else
+  httpd_bin="$(find_httpd || true)"
+  if [ -z "$httpd_bin" ]; then err "No httpd/apachectl binary found in PATH; cannot start server"; fi
+
+  mkdir -p -- "$UI_ROOT/var/run/apache2" "$LOGS" "$UI_ROOT/static"
+  chmod 770 -- "$UI_ROOT/var/run/apache2" "$LOGS" 2>/dev/null || true
+  chmod 750 -- "$UI_ROOT/static" 2>/dev/null || true
+  if [ -d "$UI_ROOT/static" ]; then find "$UI_ROOT/static" -type f -exec chmod 640 {} \; 2>/dev/null || true; fi
+
+  if "$httpd_bin" -t -f "$CONF" >/dev/null 2>&1; then
+    if "$httpd_bin" -h 2>/dev/null | grep -q -- '-k'; then
+      "$httpd_bin" -f "$CONF" -k start >/dev/null 2>>"$LOGS/error.log" &
+    else
+      "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
+    fi
+  else
+    log "Diagnostic: '$httpd_bin -t -f $CONF' failed; attempting direct start"
+    "$httpd_bin" -f "$CONF" >/dev/null 2>>"$LOGS/error.log" &
+  fi
+
+  if ! wait_for_listen; then
+    log "Server did not start listening on 127.0.0.1:__PORT__; dumping httpd -t output"
+    "$httpd_bin" -t -f "$CONF" 2>>"$LOGS/error.log" || true
+    err "Server did not start or is not listening on 127.0.0.1:__PORT__ (see $LOGS/error.log)"
+  fi
+  log "Started httpd using $httpd_bin (logs: $LOGS)"
+fi
+
+if command -v termux-open-url >/dev/null 2>&1; then
+  termux-open-url "$URL" || log "termux-open-url failed; open manually: $URL"
+elif command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$URL" >/dev/null 2>&1 || log "xdg-open failed; open manually: $URL"
+else
+  log "Open your browser at: $URL"
+fi
+
+TSV=$(TS)
+echo "launched_at=$TSV" >"$STATUS_DIR/last-launch.$TSV"
+EOF
+
+  sed -e "s|__TERMUX_BASH__|$(sed_escape_replacement "$termux_bash")|g" \
+      -e "s|__UI_ROOT__|$(sed_escape_replacement "$UI_ROOT")|g" \
+      -e "s|__PORT__|$(sed_escape_replacement "$DEFAULT_PORT")|g" \
+      "$tmplaunch" | atomic_write_in_uiroot "$launcher"
+  rm -f -- "$tmplaunch" || true
+  chmod 750 -- "$launcher" || true
+  info "Generated Termux launcher: $launcher"
+}
+
+# -------- Helper: cleanup stale global pid --------
+cleanup_global_stale_pid() {
+  local global_pidfile="/data/data/com.termux/files/usr/var/run/apache2/httpd.pid"
+  if [ -f "$global_pidfile" ]; then
+    local pid
+    pid="$(cat "$global_pidfile" 2>/dev/null || true)"
+    if [ -n "$pid" ] && ! ps -p "$pid" >/dev/null 2>&1; then
+      warn "Removing stale global pid file: $global_pidfile (pid $pid not running)"
+      rm -f -- "$global_pidfile" 2>/dev/null || true
+    fi
+  fi
+}
+
+# -------- Install/update shadow + wrapper (idempotent) --------
+install_termux_shadow_wrapper() {
+  if [ "${INSTALL_MODE:-0}" -ne 1 ]; then info "INSTALL_MODE != 1; skipping Termux shadow/wrapper installation"; return 0; fi
+
+  local candidates=(
+    "${UI_ROOT%/}/../bash4llm/bash4llm"
+    "${UI_ROOT%/}/../../bash4llm/bash4llm"
+    "${PWD%/}/bash4llm"
+    "${HOME%/}/bash4llm/bash4llm"
+    "/data/data/com.termux/files/home/bash4llm/bash4llm"
+  )
+  local bash4llm_real=""
+  for cand in "${candidates[@]}"; do [ -x "$cand" ] && { bash4llm_real="$cand"; break; }; done
+  if [ -z "$bash4llm_real" ]; then info "No local bash4llm binary found among candidates; cannot install Termux shadow/wrapper"; return 0; fi
+
+  local bash4llm_shadow="/data/data/com.termux/files/usr/bin/bash4llm"
+  local tmpdir="$UI_ROOT/tmp"
+  mkdir -p -- "$tmpdir" 2>/dev/null || true
+  chmod 770 -- "$tmpdir" 2>/dev/null || true
+
+  portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
+  # Acquire global adapt lock to serialize multi-step operations
+  _global_adapt_lock_init
+  local lockfile="$tmpdir/bootstrap.lock"
+
+  # Open bootstrap lock on a dynamic FD to avoid collisions with fixed FDs
+  exec {BOOTSTRAP_LOCK_FD}>"$lockfile" 2>/dev/null || {
+    _release_lock_and_restore 2>/dev/null || true
+    err "Cannot open lockfile $lockfile"
+  }
+
+  # Save existing traps and install local cleanup trap
+  _old_trap_return="$(trap -p RETURN 2>/dev/null || true)"
+  _old_trap_exit="$(trap -p EXIT 2>/dev/null || true)"
+  _old_trap_int="$(trap -p INT 2>/dev/null || true)"
+  _old_trap_term="$(trap -p TERM 2>/dev/null || true)"
+
+  _release_lock_and_restore() {
+    # Release bootstrap lock and close dynamic FD
+    flock -u "$BOOTSTRAP_LOCK_FD" 2>/dev/null || true
+    exec {BOOTSTRAP_LOCK_FD}>&- 2>/dev/null || true
+
+    # Safe restore of previously saved traps without using eval.
+    _restore_trap_from_trapp() {
+      local tr="$1"
+      [ -z "${tr:-}" ] && return 0
+
+      # Extract command between the first and last single quote
+      local cmd
+      cmd="$(printf '%s' "$tr" | sed -n "s/^trap -- '\(.*\)' \([^ ]*\)$/\1/p")"
+      local sig
+      sig="$(printf '%s' "$tr" | awk '{print $NF}')"
+      if [[ -n "${cmd:-}" ]]; then
+        trap -- "$cmd" "$sig" 2>/dev/null || true
+      fi
+    }
+
+    # restore previous traps if any
+    if [ -n "${_old_trap_return:-}" ]; then _restore_trap_from_trapp "$_old_trap_return"; fi
+    if [ -n "${_old_trap_exit:-}" ]; then _restore_trap_from_trapp "$_old_trap_exit"; fi
+    if [ -n "${_old_trap_int:-}" ]; then _restore_trap_from_trapp "$_old_trap_int"; fi
+    if [ -n "${_old_trap_term:-}" ]; then _restore_trap_from_trapp "$_old_trap_term"; fi
+
+    unset _old_trap_return _old_trap_exit _old_trap_int _old_trap_term
+  }
+
+  trap '_release_lock_and_restore' RETURN EXIT INT TERM
+
+  if ! flock -x -w 5 "$BOOTSTRAP_LOCK_FD"; then
+    _release_lock_and_restore
+    err "Could not acquire lock"
+  fi
+
+  local tmp_shadow
+  tmp_shadow="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_shadow=""
+  [ -n "$tmp_shadow" ] || { _release_lock_and_restore; err "Failed to create tmp shadow"; }
+
+  if ! cp -f -- "$bash4llm_real" "$tmp_shadow"; then
+    rm -f -- "$tmp_shadow" 2>/dev/null || true
+    _release_lock_and_restore
+    err "Failed to copy bash4llm_real to tmp shadow"
+  fi
+
+  local termux_bash
+  termux_bash="$(find_termux_bash || true)"
+  if [ -n "$termux_bash" ] && [ -x "$termux_bash" ]; then
+    if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
+      sed -i '1s|^#!.*|#!'"$termux_bash"'|' "$tmp_shadow" 2>/dev/null || true
+    fi
+  fi
+
+  if ! mv -f -- "$tmp_shadow" "$bash4llm_shadow"; then
+    rm -f -- "$tmp_shadow" 2>/dev/null || true
+    _release_lock_and_restore
+    err "Failed to move tmp shadow into place"
+  fi
+  chmod 750 -- "$bash4llm_shadow" 2>/dev/null || true
+  info "Installed Termux shadow: $bash4llm_shadow"
+
+  local BIN_DIR="$UI_ROOT/bin"
+  mkdir -p -- "$BIN_DIR" 2>/dev/null || true
+  chmod 750 -- "$BIN_DIR" 2>/dev/null || true
+  local wrapper="$BIN_DIR/bash4llm-wrapper"
+  local tmp_wrapper
+  tmp_wrapper="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
+  [ -n "$tmp_wrapper" ] || { _release_lock_and_restore; err "Failed to create tmp wrapper"; }
+
+  # Write robust, autosufficient wrapper template
+  cat >"$tmp_wrapper" <<'EOF'
+#!__TERMUX_BASH__
+set -euo pipefail
+umask 007
+
+# Resolve wrapper path robustly
+_wrpsrc="${BASH_SOURCE[0]:-$0}"
+if command -v readlink >/dev/null 2>&1; then
+  _wrpsrc="$(readlink -f -- "$_wrpsrc" 2>/dev/null || printf '%s' "$_wrpsrc")"
+fi
+_wrppath="$(cd "$(dirname -- "$_wrpsrc")" 2>/dev/null && pwd -P || true)"
+
+# Derive UI_ROOT from wrapper location if not provided
+if [ -z "${UI_ROOT:-}" ]; then
+  if [ -n "$_wrppath" ]; then
+    UI_ROOT="$(cd "$_wrppath/.." 2>/dev/null && pwd -P || true)"
+  fi
+fi
+: "${UI_ROOT:=__UI_ROOT__}"
+
+# BASH4LLM_ROOT fallback
+if [ -z "${BASH4LLM_ROOT:-}" ]; then
+  if [ -n "$_wrppath" ]; then
+    BASH4LLM_ROOT="$(cd "$_wrppath/../../../.." 2>/dev/null && pwd -P || true)"
+  fi
+fi
+
+if [ -n "${BASH4LLM_ROOT:-}" ]; then
+  case "${BASH4LLM_ROOT##*/}" in
+    bash4llm.d)
+      BASH4LLM_ROOT="$(cd "$BASH4LLM_ROOT/.." 2>/dev/null && pwd -P || true)"
+      ;;
+  esac
+fi
+
+: "${BASH4LLM_ROOT:=__BASH4LLM_ROOT__}"
+
+# BASH4LLM_DIR and extras/providers
+: "${BASH4LLM_DIR:=${BASH4LLM_ROOT%/}/bash4llm.d}"
+: "${BASH4LLM_EXTRAS_DIR:=${BASH4LLM_DIR%/}/extras}"
+: "${PROVIDERS_DIR:=${BASH4LLM_EXTRAS_DIR%/}/providers}"
+
+# BIN_DIR fallback
+: "${BIN_DIR:=__BIN_DIR__}"
+if [ -z "${BIN_DIR:-}" ]; then BIN_DIR="${UI_ROOT%/}/bin"; fi
+mkdir -p -- "${UI_ROOT%/}/bin" 2>/dev/null || true
+[ -d "$BIN_DIR" ] || mkdir -p -- "$BIN_DIR" 2>/dev/null || true
+
+export UI_ROOT BASH4LLM_ROOT BASH4LLM_DIR BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BIN_DIR
+
+# Build PATH deterministically
+_newpath="${UI_ROOT%/}/bin"
+case ":$PATH:" in *":${_newpath}:"*) :;; *) _newpath="${_newpath}:$PATH";; esac
+if [ -n "$BIN_DIR" ] && [ "$BIN_DIR" != "${UI_ROOT%/}/bin" ]; then
+  case ":$_newpath:" in *":${BIN_DIR}:"*) :;; *) _newpath="${BIN_DIR}:$_newpath";; esac
+fi
+
+case ":$_newpath:" in *":/data/data/com.termux/files/usr/bin:"*) :;; *) _newpath="${_newpath}:/data/data/com.termux/files/usr/bin";; esac
+case ":$_newpath:" in *":/bin:"*) :;; *) _newpath="${_newpath}:/bin";; esac
+
+_newpath="${_newpath#:}"
+_newpath="${_newpath%:}"
+
+export PATH="$_newpath"
+
+: "${BASH4LLM_TMPDIR:="${BASH4LLM_DIR%/}/tmp"}"
+: "${BASH4LLM_HISTORY_DIR:="${BASH4LLM_DIR%/}/history"}"
+: "${BASH4LLM_CONFIG_DIR:="${BASH4LLM_DIR%/}/config"}"
+: "${BASH4LLM_MODELS_DIR:="${BASH4LLM_DIR%/}/models"}"
+export BASH4LLM_TMPDIR BASH4LLM_HISTORY_DIR BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR
+
+if [ "${BASH4LLM_DEBUG:-0}" = "1" ]; then
+  printf '%s\n' "INFO: UI_ROOT=$UI_ROOT" >&2
+  printf '%s\n' "INFO: BASH4LLM_ROOT=$BASH4LLM_ROOT" >&2
+  printf '%s\n' "INFO: BASH4LLM_DIR=$BASH4LLM_DIR" >&2
+  printf '%s\n' "INFO: PROVIDERS_DIR=$PROVIDERS_DIR" >&2
+  printf '%s\n' "INFO: PATH=$PATH" >&2
+fi
+
+if [ -n "${BASH4LLM_DIR:-}" ] && [ ! -d "${BASH4LLM_DIR}" ]; then
+  printf '%s\n' "ERROR: BASH4LLM_DIR does not exist: $BASH4LLM_DIR" >&2
+  exit 1
+fi
+
+if [ -n "${PROVIDERS_DIR:-}" ] && [ ! -d "${PROVIDERS_DIR}" ]; then
+  [ "${BASH4LLM_DEBUG:-0}" = "1" ] && printf '%s\n' "DEBUG: PROVIDERS_DIR not found: $PROVIDERS_DIR" >&2
+fi
+
+BASH4LLM_SHADOW="__BASH4LLM_SHADOW__"
+TERMUX_BASH="__TERMUX_BASH__"
+
+if [ -z "$TERMUX_BASH" ] || [ ! -x "$TERMUX_BASH" ]; then
+  TERMUX_BASH="/bin/bash"
+fi
+
+if [ ! -x "$BASH4LLM_SHADOW" ]; then
+  printf '%s\n' "ERROR: bash4llm shadow not executable or missing: $BASH4LLM_SHADOW" >&2
+  exit 1
+fi
+
+exec "$TERMUX_BASH" "$BASH4LLM_SHADOW" "$@"
+EOF
+
+  sed -e "s|__TERMUX_BASH__|$(sed_escape_replacement "$termux_bash")|g" \
+      -e "s|__BASH4LLM_SHADOW__|$(sed_escape_replacement "$bash4llm_shadow")|g" \
+      -e "s|__BASH4LLM_ROOT__|$(sed_escape_replacement "${BASH4LLM_ROOT:-}")|g" \
+      -e "s|__BASH4LLM_DIR__|$(sed_escape_replacement "${BASH4LLM_DIR:-}")|g" \
+      -e "s|__BASH4LLM_EXTRAS_DIR__|$(sed_escape_replacement "${BASH4LLM_EXTRAS_DIR:-}")|g" \
+      -e "s|__PROVIDERS_DIR__|$(sed_escape_replacement "${PROVIDERS_DIR:-}")|g" \
+      -e "s|__BIN_DIR__|$(sed_escape_replacement "${BIN_DIR:-}")|g" \
+      -e "s|__UI_ROOT__|$(sed_escape_replacement "${UI_ROOT:-}")|g" \
+      "$tmp_wrapper" > "${tmp_wrapper}.out" && mv -f -- "${tmp_wrapper}.out" "$tmp_wrapper"
+
+  sed -i -e 's/\r$//' "$tmp_wrapper" 2>/dev/null || true
+
+  if [ -f "$wrapper" ]; then
+    if ! cmp -s "$tmp_wrapper" "$wrapper"; then
+      mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move new wrapper into place"; }
+    else
+      rm -f -- "$tmp_wrapper" 2>/dev/null || true
+    fi
+  else
+    mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move wrapper into place"; }
+  fi
+  chmod 750 -- "$wrapper" 2>/dev/null || true
+  info "Installed Termux wrapper: $wrapper"
+
+  local cfg_dir="$UI_ROOT/config"
+  mkdir -p -- "$cfg_dir" 2>/dev/null || true
+  chmod 770 -- "$cfg_dir" 2>/dev/null || true
+  local tmp_path
+  tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${cfg_dir}/bash4llm-path.tmp"
+  if printf '%s\n' "$wrapper" >"$tmp_path"; then
+    local line_count
+    line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
+    if [ "$line_count" -eq 1 ]; then
+      mv -f -- "$tmp_path" "${cfg_dir%/}/bash4llm-path"
+      chmod 660 -- "${cfg_dir%/}/bash4llm-path" 2>/dev/null || true
+      info "Persisted bash4llm-path -> ${cfg_dir%/}/bash4llm-path -> $wrapper"
+    else
+      rm -f -- "$tmp_path" 2>/dev/null || true
+      info "Refusing to persist bash4llm-path: temp file contains ${line_count} non-empty lines"
+    fi
+  else
+    rm -f -- "$tmp_path" 2>/dev/null || true
+    info "Failed to write temporary bash4llm-path; skipping persist"
+  fi
+
+  # release lock and restore traps
+  _release_lock_and_restore
+
   return 0
 }
 
-ensure_config_defaults() {
-  local conv_default="conv-001.txt"
-  local lang_default="en"
-  if [[ ! -f "$CURRENT_CONV_FILE" ]]; then atomic_write "$CURRENT_CONV_FILE" "$conv_default" || true; fi
-  if [[ ! -f "$LANG_CURRENT_FILE" ]]; then atomic_write "$LANG_CURRENT_FILE" "$lang_default" || true; fi
-  if [[ ! -f "$THEME_CURRENT_FILE" ]]; then atomic_write "$THEME_CURRENT_FILE" "light" || true; fi
-  if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then mkdir -p "$(dirname "$DEFAULT_MODEL_FILE")" 2>/dev/null || true; : >"$DEFAULT_MODEL_FILE"; chmod 600 "$DEFAULT_MODEL_FILE" || true; fi
+# -------- Main --------
+main() {
+  check_deps
+  canonicalize_ui_root
+  
+  if [ ! -w "$UI_ROOT" ]; then
+    err "UI_ROOT not writable: $UI_ROOT"
+  fi
+
+  BOOTSTRAP="$UI_ROOT/gui-bootstrap.sh"
+  if [[ -f "$BOOTSTRAP" ]]; then
+    set +u
+    BOOTSTRAP_SKIP_INIT=1
+    if ! . "$BOOTSTRAP"; then
+      info "Warning: failed to source bootstrap at $BOOTSTRAP"
+    fi
+    unset BOOTSTRAP_SKIP_INIT
+    set -u
+  else
+    info "Warning: bootstrap not found at $BOOTSTRAP; continuing"
+  fi
+
+  if ! declare -f portable_mktemp >/dev/null 2>&1; then
+    err "portable_mktemp not defined after sourcing bootstrap; aborting adapt."
+  fi
+
+  : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
+  mkdir -p -- "$TMP_DIR" 2>/dev/null || err "Cannot create TMP_DIR: $TMP_DIR"
+  chmod 770 -- "$TMP_DIR" 2>/dev/null || true
+  if [ ! -w "$TMP_DIR" ]; then
+    err "TMP_DIR not writable: $TMP_DIR"
+  fi
+
+  _global_adapt_lock_init
+
+  enforce_ui_root_only_writes
+
+  if [ -n "${UI_ROOT:-}" ]; then
+    if repo_root="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P)"; then
+      export BASH4LLM_ROOT="$repo_root"
+      export BASH4LLM_DIR="${BASH4LLM_DIR:-$BASH4LLM_ROOT/bash4llm.d}"
+      export BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-$BASH4LLM_DIR/extras}"
+      export PROVIDERS_DIR="${PROVIDERS_DIR:-$BASH4LLM_EXTRAS_DIR/providers}"
+      export BIN_DIR="${BIN_DIR:-$UI_ROOT/bin}"
+      export BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-$BASH4LLM_DIR/tmp}"
+      export BASH4LLM_HISTORY_DIR="${BASH4LLM_HISTORY_DIR:-$BASH4LLM_DIR/history}"
+      export BASH4LLM_CONFIG_DIR="${BASH4LLM_CONFIG_DIR:-$BASH4LLM_DIR/config}"
+      export BASH4LLM_MODELS_DIR="${BASH4LLM_MODELS_DIR:-$BASH4LLM_DIR/models}"
+      info "Exported BASH4LLM_ROOT=$BASH4LLM_ROOT"
+    else
+      info "Warning: could not derive BASH4LLM_ROOT from UI_ROOT; skipping export"
+    fi
+  fi
+
+  cleanup_tmp() {
+    if [ -d "$UI_ROOT" ]; then find "$UI_ROOT" -maxdepth 3 -type f -name '.tmp.*' -exec rm -f -- {} + 2>/dev/null || true; fi
+  }
+  trap 'cleanup_tmp' EXIT INT TERM
+
+  mkdir -p -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2"
+  chmod 770 -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" || true
+  chmod 750 -- "$UI_ROOT/www" "$UI_ROOT/cgi-bin" || true
+
+  TARGET_FILES=()
+  for rel in "${TARGET_FILES_REL[@]}"; do TARGET_FILES+=("$UI_ROOT/$rel"); done
+  CGI_DIR="$UI_ROOT/$CGI_DIR_REL"
+
+  env_type="$(detect_env)"
+  info "Detected environment: $env_type"
+
+  local web_grp
+  web_grp="$(detect_apache_group)"
+
+  case "$env_type" in
+    termux)
+      bash_path="$(find_termux_bash || true)"
+      if [ -z "$bash_path" ]; then err "No valid bash found on Termux"; fi
+      info "Using bash: $bash_path"
+
+      files_to_process=()
+      for f in "${TARGET_FILES[@]}"; do files_to_process+=("$f"); done
+      if [ -d "$CGI_DIR" ]; then
+        while IFS= read -r -d '' shf; do files_to_process+=("$shf"); done < <(find "$CGI_DIR" -maxdepth 1 -type f -name '*.sh' -print0)
+      fi
+
+      declare -A seen=()
+      for f in "${files_to_process[@]}"; do
+        [ -z "$f" ] && continue
+        if [ ! -e "$f" ]; then info "Target not present, skipping: $f"; continue; fi
+        if ! path_within_ui_root "$f"; then info "Skipping file outside UI_ROOT: $f"; continue; fi
+        if [ "${seen[$f]+_}" ]; then continue; fi
+        seen["$f"]=1
+        process_target "$f" "$bash_path"
+      done
+
+      if type ensure_sh_executables >/dev/null 2>&1; then ensure_sh_executables "$UI_ROOT" || info "Warning: ensure_sh_executables failed"; else info "Warning: ensure_sh_executables not available"; fi
+
+      generate_termux_apache_config
+      generate_termux_launcher
+      install_termux_shadow_wrapper
+      ;;
+    linux|macos|wsl|cygwin|unknown)
+      info "No adaptation required for environment: $env_type"
+      local sysbash
+      sysbash="$(command -v bash || true)"
+      if [ -n "$sysbash" ]; then
+        declare -A seen2=()
+        for f in "${TARGET_FILES[@]}"; do
+          [ -z "$f" ] && continue
+          if [ ! -e "$f" ]; then info "Target not present, skipping: $f"; continue; fi
+          if ! path_within_ui_root "$f"; then info "Skipping file outside UI_ROOT: $f"; continue; fi
+          if [ "${seen2[$f]+_}" ]; then continue; fi
+          seen2["$f"]=1
+          process_target "$f" "$sysbash"
+        done
+      fi
+      ;;
+    *)
+      err "Unhandled environment: $env_type"
+      ;;
+  esac
+
+  if [[ -n "$web_grp" ]]; then
+    safe_chgrp "$web_grp" "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" "$UI_ROOT/config"
+    info "Assigned Group Ownership to: $web_grp"
+  fi
+
+  info "bash4llm-gui-adapt.sh completed"
+  info "Artifacts are confined to: $UI_ROOT"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
+if [[ ! -f "$DEFAULT_MODEL_FILE" ]]; then mkdir -p "$(dirname "$DEFAULT_MODEL_FILE")" 2>/dev/null || true; : >"$DEFAULT_MODEL_FILE"; chmod 600 "$DEFAULT_MODEL_FILE" || true; fi
   if [[ ! -f "$DEFAULT_PROVIDER_FILE" ]]; then mkdir -p "$(dirname "$DEFAULT_PROVIDER_FILE")" 2>/dev/null || true; : >"$DEFAULT_PROVIDER_FILE"; chmod 600 "$DEFAULT_PROVIDER_FILE" || true; fi
   local conv
   conv="$(read_config_or_default "$CURRENT_CONV_FILE" "$conv_default")"
@@ -627,6 +986,17 @@ ensure_config_defaults() {
 # Ensure bash4llm available (DETERMINISTIC: discovery-only)
 # ---------------------------------------------------------------------------
 ensure_bash4llm_available() {
+  # 1. Absolute priority: check if the local wrapper is present and executable
+  if [[ -n "${UI_ROOT:-}" ]]; then
+    local wrapper_path="${UI_ROOT%/}/bin/bash4llm-wrapper"
+    if [[ -x "$wrapper_path" ]]; then
+      BASH4LLM_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
+      export BASH4LLM_CMD
+      return 0
+    fi
+  fi
+
+  # 2. Check the persisted path config
   if [[ -n "${UI_ROOT:-}" && -n "${CFG_DIR:-}" ]]; then
     local cfg="${CFG_DIR%/}/bash4llm-path"
     if [[ -f "$cfg" ]]; then
@@ -649,30 +1019,23 @@ ensure_bash4llm_available() {
     fi
   fi
 
-  if [[ -n "${UI_ROOT:-}" ]]; then
-    local wrapper_path="${UI_ROOT%/}/bin/bash4llm-wrapper"
-    if [[ -x "$wrapper_path" ]]; then
-      BASH4LLM_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
-      export BASH4LLM_CMD
-      return 0
-    fi
-  fi
-
+  # 3. Check BASH4LLM_CMD if set by environment and is absolute
   if [[ -n "${BASH4LLM_CMD:-}" && "${BASH4LLM_CMD}" = /* && -x "${BASH4LLM_CMD}" ]]; then
     BASH4LLM_CMD="$(readlink -f "$BASH4LLM_CMD" 2>/dev/null || printf '%s' "$BASH4LLM_CMD")"
     export BASH4LLM_CMD
     return 0
   fi
 
+  # 4. Discovery candidates list
   local candidates=(
+    "$UI_ROOT/../../../bash4llm"
     "${PREFIX:-/data/data/com.termux/files/usr}/bin/bash4llm"
     "/data/data/com.termux/files/usr/bin/bash4llm"
     "/usr/local/bin/bash4llm"
     "/usr/bin/bash4llm"
-    "$UI_ROOT/../bash4llm/bash4llm"
-    "$HOME/bash4llm/bash4llm"
-    "$HOME/repo-bash4llm/bin/bash4llm"
     "$PWD/bash4llm"
+    "${HOME:-}/bash4llm/bash4llm"
+    "${HOME:-}/repo-bash4llm/bin/bash4llm"
   )
   local p
   for p in "${candidates[@]}"; do
@@ -806,25 +1169,26 @@ ensure_model_cache_fresh() {
 # ---------------------------------------------------------------------------
 # Final initialization sequence (strict order)
 # ---------------------------------------------------------------------------
-env_detect || log_warn "ENV" "env_detect returned non-zero"
-ensure_dirs || { log_error "INIT" "ensure_dirs failed"; exit 1; }
-ensure_sh_executables "$UI_ROOT" || true
-remove_unnecessary_symlinks "$UI_ROOT" || true
-ensure_config_defaults || true
-fix_termux_perms || true
-env_prepare_runtime || log_warn "ENV" "env_prepare_runtime returned non-zero"
+if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
+  env_detect || log_warn "ENV" "env_detect returned non-zero"
+  ensure_dirs || { log_error "INIT" "ensure_dirs failed"; return 1 2>/dev/null || exit 1; }
+  ensure_sh_executables "$UI_ROOT" || true
+  remove_unnecessary_symlinks "$UI_ROOT" || true
+  ensure_config_defaults || true
+  fix_termux_perms || true
+  env_prepare_runtime || log_warn "ENV" "env_prepare_runtime returned non-zero"
 
-if ! ensure_bash4llm_available; then
-  log_error "GROQ" "bash4llm binary not found in allowed locations; aborting"
-  printf 'bash4llm: ERROR: bash4llm binary not found; aborting\n' >&2
-  exit 1
+  if ! ensure_bash4llm_available; then
+    log_error "GROQ" "bash4llm binary not found in allowed locations; aborting"
+    printf 'bash4llm: ERROR: bash4llm binary not found; aborting\n' >&2
+    return 1 2>/dev/null || exit 1
+  fi
+
+  env_after_bash4llm_resolved || log_warn "ENV" "env_after_bash4llm_resolved returned non-zero"
 fi
-
-env_after_bash4llm_resolved || log_warn "ENV" "env_after_bash4llm_resolved returned non-zero"
-
+    
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
        DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE BASH4LLM_CMD
 
 return 0 2>/dev/null || true
-# End of bootstrap
