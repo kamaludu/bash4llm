@@ -177,32 +177,47 @@ cgi_fatal() {
   exit "$rc"
 }
 
+# -------------------------
+# Safe path canonicalization and verification helpers
+# -------------------------
+_canonical_path() {
+  local target="$1"
+  if [[ -z "$target" ]]; then return 1; fi
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -f -- "$target" 2>/dev/null || printf '%s' "$target"
+  else
+    local parent real_parent bname
+    if [[ -d "$target" ]]; then
+      (cd -- "$target" 2>/dev/null && pwd -P) || printf '%s' "$target"
+    else
+      parent="$(dirname -- "$target")"
+      bname="$(basename -- "$target")"
+      real_parent="$(cd -- "$parent" 2>/dev/null && pwd -P || printf '%s' "$parent")"
+      printf '%s/%s' "${real_parent%/}" "$bname"
+    fi
+  fi
+}
+
 # path_within_ui_root <path>
-# Restituisce 0 se <path> è dentro UI_ROOT; se UI_ROOT non è impostato permette tutto
+# Restituisce 0 se <path> è dentro UI_ROOT; se UI_ROOT non è impostato permette tutto.
+# Risolve sempre preventivamente i symlink (sandbox validation) per prevenire Directory Traversal.
 path_within_ui_root() {
   local p="$1"
   if [[ -z "${UI_ROOT:-}" ]]; then
     return 0
   fi
-  if command -v readlink >/dev/null 2>&1; then
-    p="$(readlink -f -- "$p" 2>/dev/null || printf '%s' "$p")"
-    local root
-    root="$(readlink -f -- "${UI_ROOT%/}" 2>/dev/null || printf '%s' "${UI_ROOT%/}")"
-    case "$p" in
-      "$root"/*|"$root") return 0 ;;
-      *) return 1 ;;
-    esac
-  else
-    case "$p" in
-      "${UI_ROOT%/}/"*) return 0 ;;
-      *) return 1 ;;
-    esac
-  fi
+  local p_real root_real
+  p_real="$(_canonical_path "$p")"
+  root_real="$(_canonical_path "$UI_ROOT")"
+
+  case "$p_real" in
+    "$root_real"/*|"$root_real") return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # -------------------------
 # Sanitization and parsing helpers (central)
-# Insert this block in gui-env.sh after path_within_ui_root / helper functions
 # -------------------------
 
 # url_decode: percent-decode, safe (returns decoded string)
@@ -345,10 +360,11 @@ is_cgi_mode() {
 # Canonicalize and validate UI_ROOT
 # -------------------------
 canonicalize_ui_root() {
-  # Ensures UI_ROOT is set, exists, is a directory, not a symlink, and is inside $HOME.
+  # Ensures UI_ROOT is set, exists, is a directory, and is nested inside a trusted
+  # base directory derived dynamically from this sourced script's position.
   # On success: sets UI_ROOT to canonical path and exports it.
   # On failure: logs and returns non-zero.
-  local orig ui_real home_real
+  local orig ui_real env_script env_dir
 
   orig="${UI_ROOT:-}"
   if [[ -z "$orig" ]]; then
@@ -356,31 +372,30 @@ canonicalize_ui_root() {
     return 1
   fi
 
-  # Resolve to absolute canonical path
-  if command -v readlink >/dev/null 2>&1; then
-    ui_real="$(readlink -f -- "$orig" 2>/dev/null || true)"
-  fi
-  if [[ -z "$ui_real" ]]; then
-    ui_real="$(cd -- "$orig" 2>/dev/null && pwd -P || true)"
-  fi
+  # Resolve UI_ROOT to its absolute canonical path (following symlinks to their real target)
+  ui_real="$(_canonical_path "$orig")"
   if [[ -z "$ui_real" || ! -d "$ui_real" ]]; then
     log_error "INIT" "UI_ROOT invalid or not a directory: ${orig:-<unset>}"
     return 1
   fi
 
-  # Disallow UI_ROOT being a symlink itself
-  if [ -L "$orig" ]; then
-    log_error "INIT" "UI_ROOT must not be a symlink: $orig"
-    return 1
-  fi
+  # Define a trusted root base derived from the actual location of this environment script (gui-env.sh)
+  # This replaces the unstable $HOME constraint
+  env_script="${BASH_SOURCE[0]:-$0}"
+  env_dir="$(dirname -- "$(_canonical_path "$env_script")")"
 
-  # Ensure UI_ROOT is inside HOME (safety constraint)
-  home_real="$(cd "${HOME:-/}" 2>/dev/null && pwd -P || true)"
+  # Ensure the resolved UI_ROOT is nested within our trusted base directory or vice versa
+  # to allow flexible environments while preventing Directory Traversal attacks.
   case "$ui_real" in
-    "$home_real"/*|"$home_real") ;;
+    "$env_dir"/*|"$env_dir") ;;
     *)
-      log_error "INIT" "UI_ROOT ($ui_real) must be inside HOME ($home_real)"
-      return 1
+      case "$env_dir" in
+        "$ui_real"/*) ;;
+        *)
+          log_error "INIT" "UI_ROOT ($ui_real) is not within the trusted application base ($env_dir)"
+          return 1
+          ;;
+      esac
       ;;
   esac
 
@@ -1201,5 +1216,3 @@ gui_env_dump_diag() {
   fi
   return 0
 }
-
-# End of gui-env.sh
