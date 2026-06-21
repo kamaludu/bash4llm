@@ -9,7 +9,7 @@
 # Constraints: only depends on bash, coreutils, findutils, util-linux, gawk, curl, jq.
 # No use of system /tmp; no eval; idempotent; confined writes under UI_ROOT.
 set -euo pipefail
-umask 077
+umask 007 # Conforme al modello di condivisione Unix Group Access (770/660)
 
 # -------- Configuration --------
 UI_ROOT_DEFAULT="${HOME:-$PWD}/bash4llm/bash4llm.d/extras/ui"
@@ -45,10 +45,13 @@ canonicalize_ui_root() {
   UI_ROOT="$(pwd -P)"
   cd -- "$oldpwd" || true
 
-  case "$UI_ROOT" in
-    "$HOME"/*|"$HOME") ;;
-    *) err "UI_ROOT must be inside HOME: $HOME; got: $UI_ROOT";;
-  esac
+  # Restringe UI_ROOT a HOME solo su ambienti Termux
+  if [ "$(detect_env)" = "termux" ]; then
+    case "$UI_ROOT" in
+      "$HOME"/*|"$HOME") ;;
+      *) err "UI_ROOT must be inside HOME: $HOME; got: $UI_ROOT";;
+    esac
+  fi
 
   CGI_DIR="$UI_ROOT/$CGI_DIR_REL"
 }
@@ -61,14 +64,16 @@ enforce_ui_root_only_writes() {
 
   if [ -d "$home_bin" ] && ! path_within_ui_root "$home_bin"; then
     mkdir -p -- "$ui_bin" 2>/dev/null || true
-    if find "$home_bin" -maxdepth 1 -type f -print0 | grep -q .; then
-      while IFS= read -r -d '' f; do
+    # Sposta solo file specifici di bash4llm per evitare di toccare file utente non correlati
+    local f
+    for f in "$home_bin"/bash4llm "$home_bin"/bash4llm-wrapper; do
+      if [ -f "$f" ]; then
         if [ ! -e "$ui_bin/$(basename -- "$f")" ]; then
           mv -n -- "$f" "$ui_bin/" 2>/dev/null || cp -n -- "$f" "$ui_bin/" 2>/dev/null || true
           moved=1
         fi
-      done < <(find "$home_bin" -maxdepth 1 -type f -print0 2>/dev/null)
-    fi
+      fi
+    done
     if [ -d "$home_bin" ] && [ -z "$(ls -A "$home_bin" 2>/dev/null)" ]; then
       rmdir --ignore-fail-on-non-empty "$home_bin" 2>/dev/null || true
     fi
@@ -76,10 +81,10 @@ enforce_ui_root_only_writes() {
 
   export BIN_DIR="$ui_bin"
   mkdir -p -- "$BIN_DIR" 2>/dev/null || true
-  chmod 700 -- "$BIN_DIR" 2>/dev/null || true
+  chmod 750 -- "$BIN_DIR" 2>/dev/null || true
 
   if [ "$moved" -eq 1 ]; then
-    info "Moved files from $home_bin to $BIN_DIR to confine artifacts in UI_ROOT"
+    info "Moved bash4llm artifacts from $home_bin to $BIN_DIR to confine artifacts in UI_ROOT"
   fi
 }
 
@@ -105,6 +110,29 @@ sed_escape_replacement() {
   printf '%s' "$s"
 }
 
+# -------- Dynamic Web Server Group Discovery --------
+detect_apache_group() {
+  local grp
+  for grp in www-data apache http nobody nogroup; do
+    if getent group "$grp" >/dev/null 2>&1; then
+      printf '%s' "$grp"
+      return 0
+    fi
+  done
+  id -gn 2>/dev/null || true
+}
+
+safe_chgrp() {
+  local grp="$1"; shift
+  local target
+  [[ -n "$grp" ]] || return 0
+  for target in "$@"; do
+    if [[ -e "$target" ]]; then
+      chgrp -R "$grp" "$target" 2>/dev/null || true
+    fi
+  done
+}
+
 # -------- Atomic write confined to UI_ROOT --------
 atomic_write_in_uiroot() {
   local dest="$1"
@@ -113,12 +141,12 @@ atomic_write_in_uiroot() {
   local destdir tmp
   destdir="$(dirname -- "$dest")"
   mkdir -p -- "$destdir"
-  chmod 700 -- "$destdir" || true
+  chmod 770 -- "$destdir" || true
   tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
-  chmod 600 -- "$tmp" || true
+  chmod 660 -- "$tmp" || true
   cat >"$tmp"
   mv -f -- "$tmp" "$dest"
-  chmod 600 -- "$dest" 2>/dev/null || true
+  chmod 660 -- "$dest" 2>/dev/null || true
   if ! path_within_ui_root "$dest"; then err "Post-write check failed: $dest is outside UI_ROOT"; fi
 }
 
@@ -129,9 +157,9 @@ atomic_append_conv_in_uiroot() {
   local destdir tmp
   destdir="$(dirname -- "$dest")"
   mkdir -p -- "$destdir"
-  chmod 700 -- "$destdir" || true
+  chmod 770 -- "$destdir" || true
   tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
-  chmod 600 -- "$tmp" || true
+  chmod 660 -- "$tmp" || true
   if [ -e "$dest" ]; then cat -- "$dest" >"$tmp"; fi
   cat >>"$tmp"
   mv -f -- "$tmp" "$dest"
@@ -180,10 +208,10 @@ backup_file_in_uiroot() {
   if ! path_within_ui_root "$f"; then err "Refusing to backup outside UI_ROOT: $f"; fi
   bdir="$(dirname -- "$f")"
   mkdir -p -- "$bdir"
-  chmod 700 -- "$bdir" || true
+  chmod 770 -- "$bdir" || true
   b="${f}.bak.${ts}"
   cp -- "$f" "$b"
-  chmod 600 -- "$b" 2>/dev/null || true
+  chmod 660 -- "$b" 2>/dev/null || true
   printf '%s' "$b"
 }
 
@@ -197,7 +225,7 @@ atomic_replace_first_line_in_uiroot() {
     tail -n +2 -- "$file" | sed -e 's/\r$//'
   } >"$tmp"
   mv -f -- "$tmp" "$file"
-  chmod 755 -- "$file" 2>/dev/null || true
+  chmod 750 -- "$file" 2>/dev/null || true
   if ! path_within_ui_root "$file"; then err "Post-replace check failed: $file is outside UI_ROOT"; fi
 }
 
@@ -221,13 +249,13 @@ process_target() {
 
   if [[ "$current_first" != "#!"* && "$ext" != "sh" ]]; then
     info "Not a shell script; ensuring readable perms: $file"
-    chmod 644 -- "$file" 2>/dev/null || true
+    chmod 660 -- "$file" 2>/dev/null || true
     return 0
   fi
 
   if [ "$current_first" = "$target_shebang" ]; then
     info "Shebang already correct: $file"
-    chmod 755 -- "$file" || true
+    chmod 750 -- "$file" || true
     return 0
   fi
 
@@ -241,11 +269,11 @@ process_target() {
     err "Rolled back $file to backup"
   }
 
-  chmod 755 -- "$file" || err "Failed to chmod $file"
+  chmod 750 -- "$file" || err "Failed to chmod $file"
   info "Patched shebang: $file -> $target_shebang"
 }
 
-# Acquire a global adapt/install lock to serialize multi-step operations.
+# Acquire a global adapt lock to serialize multi-step operations.
 # Uses a dynamic FD (ADAPT_LOCK_FD) and exports ADAPT_LOCK_FILE for other code to inspect.
 _global_adapt_lock_init() {
   : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
@@ -294,9 +322,9 @@ generate_termux_apache_config() {
   local logs_dir="$UI_ROOT/logs" www_dir="$UI_ROOT/www" cgi_dir="$UI_ROOT/cgi-bin" static_dir="$UI_ROOT/static"
 
   mkdir -p -- "$logs_dir" "$www_dir" "$cgi_dir" "$UI_ROOT/var/run/apache2" "$static_dir"
-  chmod 700 -- "$logs_dir" || true
-  chmod 755 -- "$www_dir" "$cgi_dir" "$static_dir" || true
-  chmod 700 -- "$UI_ROOT/var/run/apache2" || true
+  chmod 770 -- "$logs_dir" || true
+  chmod 750 -- "$www_dir" "$cgi_dir" "$static_dir" || true
+  chmod 770 -- "$UI_ROOT/var/run/apache2" || true
 
   modules_to_try=(
     "mpm_prefork_module:/data/data/com.termux/files/usr/libexec/apache2/mod_mpm_prefork.so"
@@ -325,6 +353,8 @@ generate_termux_apache_config() {
 
   local tmpconf finaltmp
   tmpconf="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for apache conf"
+  
+  # Replacing Option +FollowSymLinks with +SymLinksIfOwnerMatch for Apache Hardening
   cat >"$tmpconf" <<'EOF'
 # Bash4LLM GUI Termux Apache config (standalone, confined to UI_ROOT)
 # Generated by bash4llm-gui-adapt.sh
@@ -336,7 +366,7 @@ ScoreBoardFile "__LOG_DIR__/apache_runtime_status"
 
 DocumentRoot "__WWW_DIR__"
 <Directory "__WWW_DIR__">
-    Options -Indexes +FollowSymLinks
+    Options -Indexes +SymLinksIfOwnerMatch
     Require local
 </Directory>
 
@@ -345,7 +375,7 @@ ScriptAlias /bash4llm-gui/cgi/ "__UI_ROOT__/gui-server.sh"
 Alias /bash4llm-gui/static/ "__UI_ROOT__/static/"
 
 <Directory "__UI_ROOT__/static/">
-    Options -Indexes +FollowSymLinks
+    Options -Indexes +SymLinksIfOwnerMatch
     Require local
 </Directory>
 
@@ -367,26 +397,26 @@ EOF
   esc_log="$(sed_escape_replacement "$logs_dir")"
   esc_uiroot="$(sed_escape_replacement "$UI_ROOT")"
 
-  finaltmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for final conf"
+  finaltmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for final HTML"
   cat "$tmpheader" "$tmpconf" | sed -e "s|__WWW_DIR__|${esc_www}|g" -e "s|__CGI_DIR__|${esc_cgi}|g" -e "s|__LOG_DIR__|${esc_log}|g" -e "s|__UI_ROOT__|${esc_uiroot}|g" -e "s|__PORT__|${DEFAULT_PORT}|g" >"$finaltmp"
 
   atomic_write_in_uiroot "$conf" <"$finaltmp"
   rm -f -- "$tmpheader" "$tmpconf" "$finaltmp" || true
 
-  chmod 600 -- "$conf" || true
+  chmod 660 -- "$conf" || true
   touch "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
-  chmod 600 -- "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
+  chmod 660 -- "$logs_dir/error.log" "$logs_dir/access.log" 2>/dev/null || true
 
-  chmod 755 -- "$www_dir" "$cgi_dir" "$static_dir" || true
-  chmod 700 -- "$logs_dir" || true
+  chmod 750 -- "$www_dir" "$cgi_dir" "$static_dir" || true
+  chmod 770 -- "$logs_dir" || true
 
-  if [ -d "$static_dir" ]; then find "$static_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true; fi
-  find "$www_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
-  find "$cgi_dir" -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
-  find "$cgi_dir" -type f ! -name '*.sh' -exec chmod 644 {} \; 2>/dev/null || true
+  if [ -d "$static_dir" ]; then find "$static_dir" -type f -exec chmod 640 {} \; 2>/dev/null || true; fi
+  find "$www_dir" -type f -exec chmod 640 {} \; 2>/dev/null || true
+  find "$cgi_dir" -type f -name '*.sh' -exec chmod 750 {} \; 2>/dev/null || true
+  find "$cgi_dir" -type f ! -name '*.sh' -exec chmod 640 {} \; 2>/dev/null || true
 
   : >"$logs_dir/apache_runtime_status" 2>/dev/null || true
-  chmod 600 "$logs_dir/apache_runtime_status" 2>/dev/null || true
+  chmod 660 "$logs_dir/apache_runtime_status" 2>/dev/null || true
 
   info "Generated Apache config: $conf"
 }
@@ -397,7 +427,7 @@ generate_termux_launcher() {
   local conf="$UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
   local logs_dir="$UI_ROOT/logs" status_dir="$UI_ROOT/.status" static_dir="$UI_ROOT/static"
   mkdir -p -- "$status_dir" 2>/dev/null || true
-  chmod 700 -- "$status_dir" 2>/dev/null || true
+  chmod 770 -- "$status_dir" 2>/dev/null || true
 
   local termux_bash
   termux_bash="$(find_termux_bash || true)"
@@ -414,7 +444,7 @@ generate_termux_launcher() {
   cat >"$tmplaunch" <<'EOF'
 #!__TERMUX_BASH__
 set -euo pipefail
-umask 077
+umask 007
 
 UI_ROOT="__UI_ROOT__"
 CONF="$UI_ROOT/apache-termux-gui-__PORT__.conf"
@@ -490,9 +520,9 @@ else
   if [ -z "$httpd_bin" ]; then err "No httpd/apachectl binary found in PATH; cannot start server"; fi
 
   mkdir -p -- "$UI_ROOT/var/run/apache2" "$LOGS" "$UI_ROOT/static"
-  chmod 700 -- "$UI_ROOT/var/run/apache2" "$LOGS" 2>/dev/null || true
-  chmod 755 -- "$UI_ROOT/static" 2>/dev/null || true
-  if [ -d "$UI_ROOT/static" ]; then find "$UI_ROOT/static" -type f -exec chmod 644 {} \; 2>/dev/null || true; fi
+  chmod 770 -- "$UI_ROOT/var/run/apache2" "$LOGS" 2>/dev/null || true
+  chmod 750 -- "$UI_ROOT/static" 2>/dev/null || true
+  if [ -d "$UI_ROOT/static" ]; then find "$UI_ROOT/static" -type f -exec chmod 640 {} \; 2>/dev/null || true; fi
 
   if "$httpd_bin" -t -f "$CONF" >/dev/null 2>&1; then
     if "$httpd_bin" -h 2>/dev/null | grep -q -- '-k'; then
@@ -565,7 +595,7 @@ install_termux_shadow_wrapper() {
   local bash4llm_shadow="/data/data/com.termux/files/usr/bin/bash4llm"
   local tmpdir="$UI_ROOT/tmp"
   mkdir -p -- "$tmpdir" 2>/dev/null || true
-  chmod 700 -- "$tmpdir" 2>/dev/null || true
+  chmod 770 -- "$tmpdir" 2>/dev/null || true
 
   portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
   # Acquire global adapt lock to serialize multi-step operations
@@ -590,7 +620,6 @@ install_termux_shadow_wrapper() {
     exec {BOOTSTRAP_LOCK_FD}>&- 2>/dev/null || true
 
     # Safe restore of previously saved traps without using eval.
-    # Accepts a single line from `trap -p` (e.g. "trap -- 'cmd' RETURN")
     _restore_trap_from_trapp() {
       local tr="$1"
       [ -z "${tr:-}" ] && return 0
@@ -605,19 +634,11 @@ install_termux_shadow_wrapper() {
       fi
     }
 
-    # restore previous traps if any (use safe parser)
-    if [ -n "${_old_trap_return:-}" ]; then
-      _restore_trap_from_trapp "$_old_trap_return"
-    fi
-    if [ -n "${_old_trap_exit:-}" ]; then
-      _restore_trap_from_trapp "$_old_trap_exit"
-    fi
-    if [ -n "${_old_trap_int:-}" ]; then
-      _restore_trap_from_trapp "$_old_trap_int"
-    fi
-    if [ -n "${_old_trap_term:-}" ]; then
-      _restore_trap_from_trapp "$_old_trap_term"
-    fi
+    # restore previous traps if any
+    if [ -n "${_old_trap_return:-}" ]; then _restore_trap_from_trapp "$_old_trap_return"; fi
+    if [ -n "${_old_trap_exit:-}" ]; then _restore_trap_from_trapp "$_old_trap_exit"; fi
+    if [ -n "${_old_trap_int:-}" ]; then _restore_trap_from_trapp "$_old_trap_int"; fi
+    if [ -n "${_old_trap_term:-}" ]; then _restore_trap_from_trapp "$_old_trap_term"; fi
 
     unset _old_trap_return _old_trap_exit _old_trap_int _old_trap_term
   }
@@ -657,19 +678,19 @@ install_termux_shadow_wrapper() {
 
   local BIN_DIR="$UI_ROOT/bin"
   mkdir -p -- "$BIN_DIR" 2>/dev/null || true
-  chmod 700 -- "$BIN_DIR" 2>/dev/null || true
+  chmod 750 -- "$BIN_DIR" 2>/dev/null || true
   local wrapper="$BIN_DIR/bash4llm-wrapper"
   local tmp_wrapper
   tmp_wrapper="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
   [ -n "$tmp_wrapper" ] || { _release_lock_and_restore; err "Failed to create tmp wrapper"; }
 
-  # Write robust, autosufficient wrapper template (fixed BASH4LLM_ROOT derivation)
+  # Write robust, autosufficient wrapper template
   cat >"$tmp_wrapper" <<'EOF'
 #!__TERMUX_BASH__
 set -euo pipefail
-umask 077
+umask 007
 
-# Resolve wrapper path robustly: prefer BASH_SOURCE, resolve symlink if possible
+# Resolve wrapper path robustly
 _wrpsrc="${BASH_SOURCE[0]:-$0}"
 if command -v readlink >/dev/null 2>&1; then
   _wrpsrc="$(readlink -f -- "$_wrpsrc" 2>/dev/null || printf '%s' "$_wrpsrc")"
@@ -684,15 +705,13 @@ if [ -z "${UI_ROOT:-}" ]; then
 fi
 : "${UI_ROOT:=__UI_ROOT__}"
 
-# BASH4LLM_ROOT fallback: robust derivation from wrapper location (reach repo root)
-# Start from bin -> ui -> extras -> bash4llm.d -> bash4llm (repo root)
+# BASH4LLM_ROOT fallback
 if [ -z "${BASH4LLM_ROOT:-}" ]; then
   if [ -n "$_wrppath" ]; then
     BASH4LLM_ROOT="$(cd "$_wrppath/../../../.." 2>/dev/null && pwd -P || true)"
   fi
 fi
 
-# If derivation landed on bash4llm.d, move up one level to repo root
 if [ -n "${BASH4LLM_ROOT:-}" ]; then
   case "${BASH4LLM_ROOT##*/}" in
     bash4llm.d)
@@ -708,7 +727,7 @@ fi
 : "${BASH4LLM_EXTRAS_DIR:=${BASH4LLM_DIR%/}/extras}"
 : "${PROVIDERS_DIR:=${BASH4LLM_EXTRAS_DIR%/}/providers}"
 
-# BIN_DIR fallback and ensure existence
+# BIN_DIR fallback
 : "${BIN_DIR:=__BIN_DIR__}"
 if [ -z "${BIN_DIR:-}" ]; then BIN_DIR="${UI_ROOT%/}/bin"; fi
 mkdir -p -- "${UI_ROOT%/}/bin" 2>/dev/null || true
@@ -716,31 +735,27 @@ mkdir -p -- "${UI_ROOT%/}/bin" 2>/dev/null || true
 
 export UI_ROOT BASH4LLM_ROOT BASH4LLM_DIR BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BIN_DIR
 
-# Build PATH deterministically: UI_ROOT/bin then BIN_DIR then existing PATH, avoid duplicates
+# Build PATH deterministically
 _newpath="${UI_ROOT%/}/bin"
 case ":$PATH:" in *":${_newpath}:"*) :;; *) _newpath="${_newpath}:$PATH";; esac
 if [ -n "$BIN_DIR" ] && [ "$BIN_DIR" != "${UI_ROOT%/}/bin" ]; then
   case ":$_newpath:" in *":${BIN_DIR}:"*) :;; *) _newpath="${BIN_DIR}:$_newpath";; esac
 fi
 
-# Ensure minimal system bins are always present (handles env -i / minimal CGI env)
 case ":$_newpath:" in *":/data/data/com.termux/files/usr/bin:"*) :;; *) _newpath="${_newpath}:/data/data/com.termux/files/usr/bin";; esac
 case ":$_newpath:" in *":/bin:"*) :;; *) _newpath="${_newpath}:/bin";; esac
 
-# Trim possible leading/trailing colons
 _newpath="${_newpath#:}"
 _newpath="${_newpath%:}"
 
 export PATH="$_newpath"
 
-# Export additional runtime dirs used by core
 : "${BASH4LLM_TMPDIR:="${BASH4LLM_DIR%/}/tmp"}"
 : "${BASH4LLM_HISTORY_DIR:="${BASH4LLM_DIR%/}/history"}"
 : "${BASH4LLM_CONFIG_DIR:="${BASH4LLM_DIR%/}/config"}"
 : "${BASH4LLM_MODELS_DIR:="${BASH4LLM_DIR%/}/models"}"
 export BASH4LLM_TMPDIR BASH4LLM_HISTORY_DIR BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR
 
-# Diagnostics only when enabled
 if [ "${BASH4LLM_DEBUG:-0}" = "1" ]; then
   printf '%s\n' "INFO: UI_ROOT=$UI_ROOT" >&2
   printf '%s\n' "INFO: BASH4LLM_ROOT=$BASH4LLM_ROOT" >&2
@@ -749,7 +764,6 @@ if [ "${BASH4LLM_DEBUG:-0}" = "1" ]; then
   printf '%s\n' "INFO: PATH=$PATH" >&2
 fi
 
-# Validate critical paths early
 if [ -n "${BASH4LLM_DIR:-}" ] && [ ! -d "${BASH4LLM_DIR}" ]; then
   printf '%s\n' "ERROR: BASH4LLM_DIR does not exist: $BASH4LLM_DIR" >&2
   exit 1
@@ -800,7 +814,7 @@ EOF
 
   local cfg_dir="$UI_ROOT/config"
   mkdir -p -- "$cfg_dir" 2>/dev/null || true
-  chmod 700 -- "$cfg_dir" 2>/dev/null || true
+  chmod 770 -- "$cfg_dir" 2>/dev/null || true
   local tmp_path
   tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${cfg_dir}/bash4llm-path.tmp"
   if printf '%s\n' "$wrapper" >"$tmp_path"; then
@@ -808,7 +822,7 @@ EOF
     line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
     if [ "$line_count" -eq 1 ]; then
       mv -f -- "$tmp_path" "${cfg_dir%/}/bash4llm-path"
-      chmod 600 -- "${cfg_dir%/}/bash4llm-path" 2>/dev/null || true
+      chmod 660 -- "${cfg_dir%/}/bash4llm-path" 2>/dev/null || true
       info "Persisted bash4llm-path -> ${cfg_dir%/}/bash4llm-path -> $wrapper"
     else
       rm -f -- "$tmp_path" 2>/dev/null || true
@@ -830,39 +844,34 @@ main() {
   check_deps
   canonicalize_ui_root
   
-  # Ensure UI_ROOT is writable (portable_mktemp will fail otherwise)
   if [ ! -w "$UI_ROOT" ]; then
     err "UI_ROOT not writable: $UI_ROOT"
   fi
 
   BOOTSTRAP="$UI_ROOT/gui-bootstrap.sh"
   if [[ -f "$BOOTSTRAP" ]]; then
-    # Temporarily disable nounset to avoid unbound-variable failures while sourcing bootstrap/env
     set +u
+    BOOTSTRAP_SKIP_INIT=1
     if ! . "$BOOTSTRAP"; then
       info "Warning: failed to source bootstrap at $BOOTSTRAP"
     fi
+    unset BOOTSTRAP_SKIP_INIT
     set -u
   else
     info "Warning: bootstrap not found at $BOOTSTRAP; continuing"
   fi
 
-  # Fail-fast: ensure portable_mktemp is defined by the sourced bootstrap/env
   if ! declare -f portable_mktemp >/dev/null 2>&1; then
-    err "portable_mktemp not defined after sourcing bootstrap; aborting adapt. Check gui-env.sh sourcing and TMP_DIR"
+    err "portable_mktemp not defined after sourcing bootstrap; aborting adapt."
   fi
 
-  # Ensure TMP_DIR exists, is confined under UI_ROOT and writable
   : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
-  # Create and secure TMP_DIR
   mkdir -p -- "$TMP_DIR" 2>/dev/null || err "Cannot create TMP_DIR: $TMP_DIR"
-  chmod 700 -- "$TMP_DIR" 2>/dev/null || true
-  # Verify writability
+  chmod 770 -- "$TMP_DIR" 2>/dev/null || true
   if [ ! -w "$TMP_DIR" ]; then
     err "TMP_DIR not writable: $TMP_DIR"
   fi
 
-  # Acquire global adapt lock to serialize multi-step operations
   _global_adapt_lock_init
 
   enforce_ui_root_only_writes
@@ -890,7 +899,8 @@ main() {
   trap 'cleanup_tmp' EXIT INT TERM
 
   mkdir -p -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2"
-  chmod 700 -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" || true
+  chmod 770 -- "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" || true
+  chmod 750 -- "$UI_ROOT/www" "$UI_ROOT/cgi-bin" || true
 
   TARGET_FILES=()
   for rel in "${TARGET_FILES_REL[@]}"; do TARGET_FILES+=("$UI_ROOT/$rel"); done
@@ -898,6 +908,9 @@ main() {
 
   env_type="$(detect_env)"
   info "Detected environment: $env_type"
+
+  local web_grp
+  web_grp="$(detect_apache_group)"
 
   case "$env_type" in
     termux)
@@ -948,12 +961,15 @@ main() {
       ;;
   esac
 
+  if [[ -n "$web_grp" ]]; then
+    safe_chgrp "$web_grp" "$UI_ROOT/tmp" "$UI_ROOT/logs" "$UI_ROOT/www" "$UI_ROOT/cgi-bin" "$UI_ROOT/.status" "$UI_ROOT/var/run/apache2" "$UI_ROOT/config"
+    info "Assigned Group Ownership to: $web_grp"
+  fi
+
   info "bash4llm-gui-adapt.sh completed"
-  info "Artifacts (if any) are confined to: $UI_ROOT"
-  info "To test the Apache config manually: httpd -t -f $UI_ROOT/apache-termux-gui-${DEFAULT_PORT}.conf"
+  info "Artifacts are confined to: $UI_ROOT"
 }
 
-# Esegui il flusso principale solo se lo script è eseguito, non se viene sourced
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   main "$@"
 fi
