@@ -61,104 +61,7 @@ run_if_func() {
 }
 
 # -------------------------
-# Safe atomic write/append wrappers (prefer central implementations)
-# -------------------------
-atomic_write_safe() {
-  # atomic_write_safe <path> <content>
-  local path="$1"; shift
-  local content="$*"
-  if [[ -z "${path:-}" ]]; then
-    log_error "GUIIO" "atomic_write_safe called without path"
-    return 1
-  fi
-
-  # Ensure target is inside UI_ROOT to enforce confinement
-  if declare -f path_within_ui_root >/dev/null 2>&1; then
-    if ! path_within_ui_root "$path"; then
-      log_error "GUIIO" "atomic_write_safe: refusing to write outside UI_ROOT: $path"
-      return 1
-    fi
-  else
-    # Fallback conservative check: path must start with UI_ROOT (if UI_ROOT set)
-    if [[ -n "${UI_ROOT:-}" ]]; then
-      case "$path" in
-        "${UI_ROOT%/}/"*) ;; 
-        *) log_error "GUIIO" "atomic_write_safe: UI_ROOT not available or path outside UI_ROOT: $path"; return 1 ;;
-      esac
-    fi
-  fi
-
-  mkdir -p -- "$(dirname -- "$path")" 2>/dev/null || true
-
-  if declare -f atomic_write >/dev/null 2>&1; then
-    atomic_write "$path" "$content"
-    return $?
-  fi
-
-  : "${TMP_DIR:=${TMP_DIR:-${UI_ROOT:-$PWD}/tmp}}"
-  mkdir -p -- "${TMP_DIR%/}" 2>/dev/null || true
-
-  local tmp
-  if declare -f portable_mktemp >/dev/null 2>&1; then
-    tmp="$(portable_mktemp "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"
-  else
-    tmp=""
-  fi
-
-  if [[ -z "$tmp" ]]; then
-    log_error "GUIIO" "atomic_write_safe: portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform non-atomic write"
-    return 1
-  fi
-
-  printf '%s' "$content" >"$tmp" 2>/dev/null || { log_error "GUIIO" "atomic_write_safe: failed to write to temp $tmp"; rm -f "$tmp" 2>/dev/null || true; return 1; }
-  chmod 600 "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$path" 2>/dev/null || { log_error "GUIIO" "atomic_write_safe: mv failed from $tmp to $path"; rm -f "$tmp" 2>/dev/null || return 1; }
-
-  return 0
-}
-
-atomic_append_conv_safe() {
-  # atomic_append_conv_safe <conv_file> <line...>
-  local conv="$1"; shift
-  local line="$*"
-  if [[ -z "${conv:-}" ]]; then
-    return 1
-  fi
-
-  # Ensure target is inside UI_ROOT to enforce confinement
-  if declare -f path_within_ui_root >/dev/null 2>&1; then
-    if ! path_within_ui_root "$conv"; then
-      log_error "GUIIO" "atomic_append_conv_safe: refusing to append outside UI_ROOT: $conv"
-      return 1
-    fi
-  else
-    if [[ -n "${UI_ROOT:-}" ]]; then
-      case "$conv" in
-        "${UI_ROOT%/}/"*) ;;
-        *) log_error "GUIIO" "atomic_append_conv_safe: UI_ROOT not available or path outside UI_ROOT: $conv"; return 1 ;;
-      esac
-    fi
-  fi
-
-  mkdir -p -- "$(dirname -- "$conv")" 2>/dev/null || true
-  if declare -f atomic_append_conv >/dev/null 2>&1; then
-    atomic_append_conv "$conv" "$line"
-    return $?
-  fi
-  if command -v flock >/dev/null 2>&1; then
-    (
-      flock -x 200
-      printf '%s\n' "$line" >>"$conv"
-    ) 200>"${conv}.lock"
-    return $?
-  else
-    printf '%s\n' "$line" >>"$conv" 2>/dev/null || return 1
-    return 0
-  fi
-}
-
-# -------------------------
-# Environment normalization and wrapper enforcement (non-duplicative)
+# Environment normalization and wrapper enforcement
 # -------------------------
 : "${BASH4LLM_CONFIG_DIR:=${BASH4LLM_CONFIG_DIR:-}}"
 if [[ -z "${CFG_DIR:-}" ]]; then
@@ -176,26 +79,6 @@ export CFG_DIR
 : "${PROVIDER_MODELS_DIR:=${CFG_DIR%/}/models}"
 export PROVIDER_CACHE_FILE PROVIDER_MODELS_DIR
 
-# Prefer persisted bash4llm-path if present and valid
-if [[ -f "${CFG_DIR%/}/bash4llm-path" ]]; then
-  read -r _p <"${CFG_DIR%/}/bash4llm-path" 2>/dev/null || _p=''
-  if [[ -n "$_p" ]]; then
-    if command -v readlink >/dev/null 2>&1; then
-      _p="$(readlink -f -- "$_p" 2>/dev/null || printf '%s' "$_p")"
-    fi
-    if [[ -x "$_p" ]]; then
-      BASH4LLM_CMD="$_p"
-      export BASH4LLM_CMD
-      if [[ -n "${UI_ROOT:-}" ]]; then
-        case ":${PATH:-}:" in *":${UI_ROOT%/}/bin:"*) ;; *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;; esac
-      fi
-      log_info "GUI" "Using persisted BASH4LLM_CMD from bash4llm-path: $BASH4LLM_CMD"
-    else
-      log_warn "GUI" "Persisted bash4llm-path not executable: ${_p:-<empty>}"
-    fi
-  fi
-fi
-
 if [[ -z "${BASH4LLM_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
   BASH4LLM_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
   if [[ "${BASH4LLM_ROOT##*/}" == "bash4llm.d" ]]; then
@@ -208,32 +91,6 @@ export BASH4LLM_ROOT BASH4LLM_DIR
 
 : "${PROVIDERS_DIR:=${PROVIDERS_DIR:-${BASH4LLM_DIR%/}/extras/providers}}"
 export PROVIDERS_DIR
-
-# Force use of UI_ROOT/bin/bash4llm-wrapper when present and executable.
-if [[ -n "${UI_ROOT:-}" && -x "${UI_ROOT%/}/bin/bash4llm-wrapper" ]]; then
-  BASH4LLM_CMD="${UI_ROOT%/}/bin/bash4llm-wrapper"
-  export BASH4LLM_CMD
-  case ":${PATH:-}:" in
-    *":${UI_ROOT%/}/bin:"*) ;;
-    *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
-  esac
-  log_info "GUI" "Forcing BASH4LLM_CMD -> wrapper: $BASH4LLM_CMD"
-else
-  if [[ -z "${BASH4LLM_CMD:-}" && -f "${CFG_DIR%/}/bash4llm-path" ]]; then
-    read -r p <"${CFG_DIR%/}/bash4llm-path" 2>/dev/null || p=''
-    if [[ -n "$p" && -x "$p" ]]; then
-      BASH4LLM_CMD="$p"
-      export BASH4LLM_CMD
-      case ":${PATH:-}:" in
-        *":${UI_ROOT%/}/bin:"*) ;;
-        *) PATH="${UI_ROOT%/}/bin:${PATH:-}"; export PATH ;;
-      esac
-      log_info "GUI" "Using persisted BASH4LLM_CMD: $BASH4LLM_CMD"
-    else
-      log_info "GUI" "Persisted bash4llm-path missing or not executable: ${p:-<empty>}"
-    fi
-  fi
-fi
 
 # -------------------------
 # Helpers (small, focused)
@@ -356,7 +213,7 @@ refresh_models_via_bash4llm() {
   out="$(call_bash4llm_with_args --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
   out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
   if [[ -n "$out" ]]; then
-    atomic_write_safe "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
+    atomic_write "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
     log_info "GUIIO" "Models refreshed for provider $prov"
     return 0
   else
@@ -472,7 +329,6 @@ build_model_list_and_select() {
 # POST handlers and rendering
 # -------------------------
 handle_post_settings() {
-  # Aquire lock exclusively for mutation (POST)
   if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
     log_error "GUILOCK" "Failed to acquire lock in handle_post_settings"
     cgi_fatal 1 "Server busy"
@@ -502,9 +358,10 @@ handle_post_settings() {
   api_key="$(sanitize_param "$api_key")"
   theme="$(printf '%s' "$body" | parse_form_field "theme" || printf '')"
   theme="$(sanitize_param "$theme")"
+  
   if [[ -n "$theme" ]]; then
     if [[ "$theme" == "light" || "$theme" == "dark" ]]; then
-      atomic_write_safe "$THEME_CURRENT_FILE" "$theme" || log_warn "GUIIO" "Failed to write theme"
+      atomic_write "$THEME_CURRENT_FILE" "$theme" || log_warn "GUIIO" "Failed to write theme"
     else
       log_warn "GUIIO" "Invalid theme value attempted: $theme"
     fi
@@ -516,9 +373,8 @@ handle_post_settings() {
       log_warn "GUIIO" "Refresh requested but provider empty"
     else
       if validate_name "$provider"; then
-        # Sblocca il server prima del refresh lento (network call) per prevenire starvation
         release_lock
-        refresh_models_via_bash4llm "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
+        refresh_models_via_bash4llm "$provider" || log_error "GUIIO" "Failed to refresh models: $provider"
         acquire_lock || true
       else
         log_warn "GUIIO" "Invalid provider attempted for refresh: $provider"
@@ -532,7 +388,7 @@ handle_post_settings() {
       log_warn "GUIIO" "Set model requested but model empty"
     else
       if validate_name "$model"; then
-        atomic_write_safe "$DEFAULT_MODEL_FILE" "$model" || log_warn "GUIIO" "Failed to write default model"
+        atomic_write "$DEFAULT_MODEL_FILE" "$model" || log_warn "GUIIO" "Failed to write default model"
       else
         log_warn "GUIIO" "Invalid model attempted to set: $model"
       fi
@@ -556,11 +412,11 @@ handle_post_settings() {
   if [[ -z "${CFG_DIR:-}" || ! -d "${CFG_DIR%/}" || ! -w "${CFG_DIR%/}" ]]; then
     log_warn "GUIIO" "CFG_DIR not writable or unset; cannot persist provider/lang"
   else
-    atomic_write_safe "$DEFAULT_PROVIDER_FILE" "$provider" || log_warn "GUIIO" "Failed to write default provider"
+    atomic_write "$DEFAULT_PROVIDER_FILE" "$provider" || log_warn "GUIIO" "Failed to write default provider"
     if [[ -n "$provider" ]]; then
       ensure_model_cache_fresh "$provider" || log_warn "MODEL" "ensure_model_cache_fresh failed for $provider"
     fi
-    atomic_write_safe "$LANG_CURRENT_FILE" "$lang" || true
+    atomic_write "$LANG_CURRENT_FILE" "$lang" || true
   fi
   if [[ -n "$api_key" ]]; then
     save_api_key_file "$api_key" || log_warn "GUIIO" "Failed to save API key"
@@ -627,19 +483,16 @@ handle_post_main() {
   conv_file="$(get_current_conversation_file)"
   if [[ -n "$conv_title" ]]; then
     title_file="$(get_title_file_for_conv "$conv_file")"
-    atomic_write_safe "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
+    atomic_write "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
   fi
 
-  # Scrive il prompt utente sotto lock
-  atomic_append_conv_safe "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
-
-  # RILASCIA IL LOCK PRIMA DELLA CHIAMATA API DI RETE LENTA (Previene Concurrency Lock e DoS!)
+  atomic_append_conv "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
   release_lock
 
   if ! is_configured; then
     log_error "GUIIO" "Attempt to call bash4llm while GUI not configured"
     acquire_lock || true
-    atomic_append_conv_safe "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
+    atomic_append_conv "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
     release_lock
     return 0
   fi
@@ -647,7 +500,7 @@ handle_post_main() {
   if ! (declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"); then
     log_error "GUIIO" "API key missing for provider $provider"
     acquire_lock || true
-    atomic_append_conv_safe "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
+    atomic_append_conv "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
     release_lock
     return 0
   fi
@@ -658,7 +511,7 @@ handle_post_main() {
       if ! grep -Fxq "$model" "$models_file" 2>/dev/null; then
         log_error "GUIIO" "Model $model not in whitelist"
         acquire_lock || true
-        atomic_append_conv_safe "$conv_file" "AI: ERROR: Selected model not in whitelist. Please refresh models or choose another model." || true
+        atomic_append_conv "$conv_file" "AI: ERROR: Selected model not in whitelist. Please refresh models or choose another model." || true
         release_lock
         return 0
       fi
@@ -667,7 +520,7 @@ handle_post_main() {
       model="$(sanitize_param "$model")"
       if [[ -z "$model" ]]; then
         acquire_lock || true
-        atomic_append_conv_safe "$conv_file" "AI: ERROR: No model selected and whitelist empty. Please refresh models in Settings." || true
+        atomic_append_conv "$conv_file" "AI: ERROR: No model selected and whitelist empty. Please refresh models in Settings." || true
         release_lock
         return 0
       fi
@@ -678,11 +531,10 @@ handle_post_main() {
   if [[ -n "$provider" ]]; then safe_args+=( --provider "$provider" ); fi
   if [[ -n "$model" ]]; then safe_args+=( --model "$model" ); fi
 
-  # Invocazione sbloccata dell'LLM (i prompt multipli o di altri utenti procedono in parallelo!)
   if ! output="$(printf '%s' "$prompt" | call_bash4llm_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
     log_error "GUIIO" "bash4llm invocation failed"
     acquire_lock || true
-    atomic_append_conv_safe "$conv_file" "AI: ERROR: bash4llm invocation failed. Check server logs." || true
+    atomic_append_conv "$conv_file" "AI: ERROR: bash4llm invocation failed. Check server logs." || true
     release_lock
     return 0
   fi
@@ -693,14 +545,13 @@ handle_post_main() {
 
   sanitized_output="$(sanitize_model_output "$output")"
 
-  # RIACQUISISCI IL LOCK solo per appendere la risposta finale nel database di chat locale
   if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
     log_error "GUILOCK" "Failed to acquire lock for AI response writing; falling back to direct stream"
     printf 'AI: %s\n' "$sanitized_output" >>"$conv_file" || true
     return 0
   fi
 
-  atomic_append_conv_safe "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
+  atomic_append_conv "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
   
   release_lock
   return 0
@@ -876,7 +727,7 @@ main() {
   if [[ -n "$lang_code" ]]; then
     lang_code="$(sanitize_param "$lang_code")"
     if validate_name "$lang_code"; then
-      atomic_write_safe "$LANG_CURRENT_FILE" "$lang_code"
+      atomic_write "$LANG_CURRENT_FILE" "$lang_code"
     else
       lang_code="en"
     fi
@@ -889,7 +740,7 @@ main() {
   if [[ -n "$theme_code" ]]; then
     theme_code="$(sanitize_param "$theme_code")"
     if [[ "$theme_code" == "light" || "$theme_code" == "dark" ]]; then
-      atomic_write_safe "$THEME_CURRENT_FILE" "$theme_code"
+      atomic_write "$THEME_CURRENT_FILE" "$theme_code"
     else
       theme_code="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
     fi
