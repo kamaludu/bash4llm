@@ -7,7 +7,7 @@
 # Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 set -euo pipefail
-umask 077
+umask 007 # Conforme al modello di condivisione Unix Group Access (770/660)
 
 PROJECT_NAME="bash4llm-gui"
 CONF_FILENAME="${PROJECT_NAME}.conf"
@@ -144,7 +144,7 @@ derive_server_root() {
     return 1
   fi
 
-  cfgdir="$(cd "$(dirname -- "$cfgpath")" 2>/dev/null && pwd -P)"
+  cfgdir="$(cd "$(dirname -- "$cfgpath")" 2>/dev/null && pwd -P || dirname -- "$cfgpath")"
   SERVER_CONFIG_PATH="$cfgdir/$(basename -- "$cfgpath")"
 
   if [[ ! -r "$SERVER_CONFIG_PATH" ]]; then
@@ -207,7 +207,7 @@ parse_includes() {
   while [[ "${#stack[@]}" -gt 0 ]]; do
     file="${stack[0]}"; stack=("${stack[@]:1}")
     [[ -e "$file" ]] || continue
-    file="$(cd "$(dirname -- "$file")" 2>/dev/null && pwd -P)/$(basename -- "$file")"
+    file="$(cd "$(dirname -- "$file")" 2>/dev/null && pwd -P || dirname -- "$file")/$(basename -- "$file")"
     for m in "${seen[@]}"; do [[ "$m" = "$file" ]] && continue 2; done
     seen+=("$file")
     printf '%s\n' "$file"
@@ -291,24 +291,54 @@ check_dependencies() {
   return 0
 }
 
+# -------- Dynamic Web Server Group Discovery --------
+detect_apache_group() {
+  local grp
+  for grp in www-data apache http nobody nogroup; do
+    if getent group "$grp" >/dev/null 2>&1; then
+      printf '%s' "$grp"
+      return 0
+    fi
+  done
+  id -gn 2>/dev/null || true
+}
+
+safe_chgrp() {
+  local grp="$1"; shift
+  local target
+  [[ -n "$grp" ]] || return 0
+  for target in "$@"; do
+    if [[ -e "$target" ]]; then
+      chgrp -R "$grp" "$target" 2>/dev/null || true
+    fi
+  done
+}
+
 check_permissions_and_dirs() {
   local app_bin="$1"
   local runtime_dirs=( "$app_bin/config" "$app_bin/conversations" "$app_bin/files" "$app_bin/logs" "$app_bin/tmp" "$app_bin/assets" )
   for d in "${runtime_dirs[@]}"; do
     mkdir -p "$d" 2>/dev/null || true
-    chmod 700 "$d" 2>/dev/null || warn "Could not set 700 on $d"
+    chmod 770 "$d" 2>/dev/null || warn "Could not set 770 on $d"
   done
-  chmod 755 "$app_bin/gui-server.sh" 2>/dev/null || warn "Could not set 755 on gui-server.sh"
-  chmod 755 "$app_bin/gui-bootstrap.sh" 2>/dev/null || warn "Could not set 755 on gui-bootstrap.sh"
-  chmod 755 "$app_bin/gui-env.sh" 2>/dev/null || warn "Could not set 755 on gui-env.sh"
-  [[ -d "$app_bin/templates" ]] && find "$app_bin/templates" -type f -exec chmod 644 {} \; 2>/dev/null || true
-  [[ -d "$app_bin/config" ]] && find "$app_bin/config" -maxdepth 1 -type f -exec chmod 600 {} \; 2>/dev/null || true
+  chmod 750 "$app_bin/gui-server.sh" 2>/dev/null || warn "Could not set 750 on gui-server.sh"
+  chmod 750 "$app_bin/gui-bootstrap.sh" 2>/dev/null || warn "Could not set 750 on gui-bootstrap.sh"
+  chmod 750 "$app_bin/gui-env.sh" 2>/dev/null || warn "Could not set 750 on gui-env.sh"
+  [[ -d "$app_bin/templates" ]] && find "$app_bin/templates" -type f -exec chmod 640 {} \; 2>/dev/null || true
+  [[ -d "$app_bin/config" ]] && find "$app_bin/config" -maxdepth 1 -type f -exec chmod 660 {} \; 2>/dev/null || true
+
+  # Ensure group sharing access by changing group ownership (best-effort)
+  local web_grp
+  web_grp="$(detect_apache_group)"
+  if [[ -n "$web_grp" ]]; then
+    safe_chgrp "$web_grp" "${runtime_dirs[@]}" "$app_bin/templates"
+  fi
 }
 
 check_bash4llm_bootstrap() {
   local bootstrap="$1/gui-bootstrap.sh"
   if [[ ! -f "$bootstrap" ]]; then err "Missing $bootstrap"; return 1; fi
-  if ! { . "$bootstrap"; ensure_bash4llm_available; }; then
+  if ! { BOOTSTRAP_SKIP_INIT=1 . "$bootstrap" && ensure_bash4llm_available; }; then
     err "ensure_bash4llm_available failed"; return 1
   fi
   return 0
@@ -498,7 +528,7 @@ choose_port_interactive() {
     read -r alt || true
     [[ -z "$alt" ]] && { err "Aborted"; return 1; }
     if ! printf '%s' "$alt" | grep -Eq '^[0-9]+$' || (( alt < 1025 || alt > 65535 )); then
-      warn "Invalid port"; tries=$((tries-1)); continue
+      warn "Invalid_port"; tries=$((tries-1)); continue
     fi
     PORT="$alt"
   done
@@ -507,6 +537,7 @@ choose_port_interactive() {
 
 # generate_vhost_config: emits ScriptSock only when cgid_module is actually loaded
 # Adds explicit Alias for /extras/ui to match templates that reference /extras/ui/...
+# Options +FollowSymLinks changed to +SymLinksIfOwnerMatch for Apache Hardening.
 generate_vhost_config() {
   local out="$1" app_bin="$2" app_static="$3" sock="$4"
 
@@ -543,7 +574,7 @@ EOF
     Alias ${STATIC_URL_PATH} "${app_static}"
 
     <Directory "${app_bin}">
-        Options +ExecCGI -Indexes
+        Options +ExecCGI -Indexes +SymLinksIfOwnerMatch
         AllowOverride None
         Require all granted
     </Directory>
@@ -553,7 +584,7 @@ EOF
     cat >>"$out" <<EOF
 
     <Directory "${app_static}">
-        Options -ExecCGI -Indexes
+        Options -ExecCGI -Indexes +SymLinksIfOwnerMatch
         AllowOverride None
         Require all granted
     </Directory>
@@ -622,9 +653,14 @@ install_apache_conf_idempotent() {
     info "Backed up existing config to $bak"
   fi
 
-  # Move staged into place atomically
+  # Move staged into place atomically with safe web permissions (0640)
   if mv -f -- "$staged" "$final"; then
-    chmod 0600 "$final" 2>/dev/null || true
+    chmod 0640 "$final" 2>/dev/null || true
+    local web_grp
+    web_grp="$(detect_apache_group)"
+    if [[ -n "$web_grp" ]]; then
+      chgrp "$web_grp" "$final" 2>/dev/null || true
+    fi
     info "Installed config: $final"
     return 0
   else
@@ -727,7 +763,7 @@ main() {
   # before the bootstrap is sourced or any global user paths are touched.
   if [[ -f "${APP_BIN}/bash4llm-gui-adapt.sh" ]]; then
     info "Found UI adapt script; ensuring executable and running it (install mode)"
-    chmod 0755 "${APP_BIN}/bash4llm-gui-adapt.sh" 2>/dev/null || true
+    chmod 0750 "${APP_BIN}/bash4llm-gui-adapt.sh" 2>/dev/null || true
     if [[ -x "${APP_BIN}/bash4llm-gui-adapt.sh" ]]; then
       INSTALL_MODE=1 "${APP_BIN}/bash4llm-gui-adapt.sh" || warn "bash4llm-gui-adapt.sh returned non-zero; continuing"
       info "Delegated bash4llm shadow/wrapper/bash4llm-path persistence to bash4llm-gui-adapt.sh (INSTALL_MODE=1)"
@@ -762,7 +798,7 @@ main() {
   if type ensure_provider_cache_fresh >/dev/null 2>&1; then
     # Ensure config dir exists and is writable for the GUI runtime
     mkdir -p "${APP_BIN}/config" 2>/dev/null || true
-    chmod 700 "${APP_BIN}/config" 2>/dev/null || true
+    chmod 770 "${APP_BIN}/config" 2>/dev/null || true
 
     # Refresh providers cache (best-effort)
     if ! ( cd "$APP_BIN" && ensure_provider_cache_fresh ); then
@@ -783,8 +819,8 @@ main() {
   fi
 
   mkdir -p "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
-  chmod 700 "$APP_RUNTIME_DIR" 2>/dev/null || true
-  chmod 700 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
+  chmod 770 "$APP_RUNTIME_DIR" 2>/dev/null || true
+  chmod 770 "$APP_CGI_RUNTIME_DIR" 2>/dev/null || true
 
   check_permissions_and_dirs "$APP_BIN" || exit 1
   check_bash4llm_bootstrap "$APP_BIN" || exit 1
@@ -804,7 +840,7 @@ main() {
   fi
 
   mkdir -p "$(dirname -- "$CGI_SOCK_PATH")" 2>/dev/null || true
-  chmod 700 "$(dirname -- "$CGI_SOCK_PATH")" 2>/dev/null || true
+  chmod 770 "$(dirname -- "$CGI_SOCK_PATH")" 2>/dev/null || true
 
   local gen_tmp
   gen_tmp="$(safe_mktemp_in_dir "$APACHE_CONF_DIR" "${CONF_FILENAME}.gen.XXXXXX")"
@@ -842,6 +878,13 @@ main() {
     err "Failed to install config $FINAL_CONF_PATH"; rm -f -- "$staged_tmp" || true; exit 1
   fi
   TMP_FILES=("${TMP_FILES[@]/$staged_tmp}") || true
+
+  # Secure file sharing permissions for other newly created installation variables (best-effort)
+  local web_grp
+  web_grp="$(detect_apache_group)"
+  if [[ -n "$web_grp" ]]; then
+    safe_chgrp "$web_grp" "$APP_RUNTIME_DIR" "$APP_CGI_RUNTIME_DIR" "$(dirname -- "$CGI_SOCK_PATH")"
+  fi
 
   if ! reload_apache; then
     warn "Apache reload failed; config installed"
