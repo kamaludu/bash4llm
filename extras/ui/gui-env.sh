@@ -1429,16 +1429,20 @@ export_api_key_for_provider() {
 }
 
 find_lang_conf() {
-  local cand="${UI_ROOT}/lang.conf"
-  if [[ -f "$cand" ]]; then
-    printf '%s' "$cand"
-    return 0
-  fi
-  cand="${UI_ROOT}/config/lang.conf"
-  if [[ -f "$cand" ]]; then
-    printf '%s' "$cand"
-    return 0
-  fi
+  local candidates=(
+    "${UI_ROOT}/static/gui-lang.conf"
+    "${UI_ROOT}/gui-lang.conf"
+    "${UI_ROOT}/config/gui-lang.conf"
+    "${UI_ROOT}/lang.conf"
+    "${UI_ROOT}/config/lang.conf"
+  )
+  local cand
+  for cand in "${candidates[@]}"; do
+    if [[ -f "$cand" ]]; then
+      printf '%s' "$cand"
+      return 0
+    fi
+  done
   return 1
 }
 
@@ -1466,12 +1470,52 @@ build_current_conv_block() {
   export CURRENT_CONV
 }
 
+load_translations() {
+  local lang_code="${1:-en}"
+  local lang_conf line key_lang val key code
+  lang_conf="$(find_lang_conf || true)"
+  if [[ -n "$lang_conf" && -f "$lang_conf" ]]; then
+    # Normalizza le righe multi-colonna separando le definizioni con awk
+    while IFS="=" read -r key_lang val || [[ -n "$key_lang" ]]; do
+      # Rimuove spazi vuoti iniziali e finali
+      key_lang="${key_lang#"${key_lang%%[![:space:]]*}"}"
+      key_lang="${key_lang%"${key_lang##*[![:space:]]}"}"
+      val="${val#"${val%%[![:space:]]*}"}"
+      val="${val%"${val##*[![:space:]]}"}"
+      
+      [[ "$key_lang" == "#"* ]] && continue
+      [[ -z "$key_lang" ]] && continue
+      [[ "$key_lang" != *"."* ]] && continue
+      
+      key="${key_lang%%.*}"
+      code="${key_lang#*.}"
+      
+      # Rimuove spazi vuoti interni
+      key="${key//[[:space:]]/}"
+      code="${code//[[:space:]]/}"
+      
+      if [[ "$code" == "$lang_code" ]]; then
+        export "$key"="$val" 2>/dev/null || true
+      fi
+    done < <(awk -F'[ \t][ \t]+' '{for(i=1;i<=NF;i++) if($i ~ /=/) print $i}' "$lang_conf" 2>/dev/null || cat "$lang_conf")
+  fi
+}
+
 render_template() {
   local file="$1"
   if [[ ! -f "$file" ]]; then return 1; fi
   
+  # Supporta ed elabora in modo sicuro sia {{VAR}} che ${VAR}
   awk '
   {
+    # 1. Elabora i segnaposto nel formato {{VAR}}
+    while (match($0, /[{][{][A-Za-z0-9_]+[}][}]/)) {
+      target = substr($0, RSTART, RLENGTH)
+      varname = substr(target, 3, length(target) - 4)
+      val = ENVIRON[varname]
+      $0 = substr($0, 1, RSTART - 1) val substr($0, RSTART + RLENGTH)
+    }
+    # 2. Elabora i segnaposto nel formato ${VAR}
     while (match($0, /[$][{][A-Za-z0-9_]+[}]/)) {
       target = substr($0, RSTART, RLENGTH)
       varname = substr(target, 3, length(target) - 3)
@@ -1480,4 +1524,36 @@ render_template() {
     }
     print
   }' "$file"
+}
+
+acquire_lock() {
+  local lockfile="${LOCK_FILE:-/tmp/gui.lock}"
+  if command -v flock >/dev/null 2>&1; then
+    exec 8>"$lockfile" 2>/dev/null || return 1
+    flock -x -w 5 8
+    return $?
+  fi
+  local lockdir="${lockfile}.dir"
+  local i=0
+  while (( i < 50 )); do
+    if mkdir "$lockdir" 2>/dev/null; then
+      echo "$$" > "$lockdir/pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+    i=$((i+1))
+  done
+  return 1
+}
+
+release_lock() {
+  local lockfile="${LOCK_FILE:-/tmp/gui.lock}"
+  if command -v flock >/dev/null 2>&1; then
+    flock -u 8 2>/dev/null || true
+    exec 8>&- 2>/dev/null || true
+    return 0
+  fi
+  local lockdir="${lockfile}.dir"
+  rm -rf "$lockdir" 2>/dev/null || true
+  return 0
 }
