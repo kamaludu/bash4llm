@@ -703,10 +703,11 @@ main() {
   run_if_func log_rotate_if_needed "${SERVER_LOG:-/dev/null}" 1048576 || true
   run_if_func log_rotate_if_needed "${ERROR_LOG:-/dev/null}" 1048576 || true
 
-  if ! (declare -f ensure_flock_available >/dev/null 2>&1 && ensure_flock_available); then
-    log_error "GUILOCK" "flock missing"
+  if ! command -v flock >/dev/null 2>&1; then
+    log_error "GUILOCK" "flock missing in PATH"
     cgi_fatal 1 "Server misconfiguration: flock not available"
   fi
+  
   if ! (declare -f ensure_bash4llm_available >/dev/null 2>&1 && ensure_bash4llm_available); then
     log_error "GUIIO" "bash4llm not found: ${BASH4LLM_CMD:-<unset>}"
     cgi_fatal 1 "bash4llm not found on server. Contact administrator."
