@@ -261,13 +261,6 @@ is_configured() {
   return 1
 }
 
-# ---------------------------------------------------------------------
-# call_bash4llm_with_args: wrapper sicuro per invocare il core
-# - obbliga argomenti nominati
-# - valida provider/model con validate_name
-# - preferisce passare prompt/testo tramite stdin (--prompt-from-stdin)
-# - evita posizionali e costruzioni dinamiche
-# ---------------------------------------------------------------------
 call_bash4llm_with_args() {
   if [[ -z "${BASH4LLM_CMD:-}" || ! -x "${BASH4LLM_CMD}" ]]; then
     log_error "GUIIO" "BASH4LLM_CMD not set or not executable: ${BASH4LLM_CMD:-<unset>}"
@@ -297,7 +290,6 @@ call_bash4llm_with_args() {
         stdin_payload="${1:-}"; shift || true
         ;;
       --*)
-        # generic named flag with value
         val="${1:-}"; shift || true
         val="$(sanitize_param "$val")"
         argv+=( "$key" "$val" )
@@ -353,7 +345,6 @@ refresh_models_via_bash4llm() {
     return 1
   fi
 
-  # Sanitize and validate provider before any use
   prov="$(sanitize_param "$prov")"
   if ! validate_name "$prov"; then
     log_error "GUIIO" "Invalid provider for refresh: $prov"
@@ -389,23 +380,6 @@ read_conv_title() {
   fi
 }
 
-find_lang_conf() {
-  local candidates=()
-  [[ -n "${CFG_DIR:-}" ]] && candidates+=("$CFG_DIR/gui-lang.conf")
-  [[ -n "${UI_ROOT:-}" ]] && candidates+=("$UI_ROOT/gui-lang.conf" "$UI_ROOT/static/gui-lang.conf" "$UI_ROOT/extras/ui/gui-lang.conf")
-  [[ -n "${SCRIPT_DIR:-}" ]] && candidates+=("$SCRIPT_DIR/gui-lang.conf")
-  [[ -n "${HOME:-}" ]] && candidates+=("$HOME/.config/bash4llm/gui-lang.conf")
-  [[ -n "${UI_ROOT:-}" ]] && candidates+=("$UI_ROOT/../gui-lang.conf")
-  local c
-  for c in "${candidates[@]}"; do
-    if [[ -n "$c" && -r "$c" ]]; then
-      printf '%s' "$c"
-      return 0
-    fi
-  done
-  return 1
-}
-
 build_lang_options() {
   local lang_conf lang_code out code label
   lang_conf="$(find_lang_conf || true)"
@@ -430,39 +404,6 @@ build_lang_options() {
     done <"$lang_conf"
   fi
   printf '%s' "$out"
-}
-
-read_txt_key() {
-  local key="$1" lang="$2" lang_conf val default_lang
-  lang_conf="$(find_lang_conf || true)"
-  if [[ -z "$lang_conf" ]]; then
-    printf ''
-    return 0
-  fi
-  val="$(awk -F= -v k="${key}.${lang}" '
-    $1 == k {
-      sub(/^[^=]*=/, "", $0)
-      print $0
-      exit
-    }
-  ' "$lang_conf" 2>/dev/null || true)"
-  if [[ -n "$val" ]]; then
-    printf '%s' "$val"
-    return 0
-  fi
-  default_lang="$(awk -F= '$1=="DEFAULT_LANG" {print $2; exit}' "$lang_conf" 2>/dev/null || true)"
-  if [[ -n "$default_lang" ]]; then
-    val="$(awk -F= -v k="${key}.${default_lang}" '
-      $1 == k {
-        sub(/^[^=]*=/, "", $0)
-        print $0
-        exit
-      }
-    ' "$lang_conf" 2>/dev/null || true)"
-    printf '%s' "$val"
-    return 0
-  fi
-  printf ''
 }
 
 build_provider_options() {
@@ -528,9 +469,15 @@ build_model_list_and_select() {
 }
 
 # -------------------------
-# POST handlers and rendering (unchanged)
+# POST handlers and rendering
 # -------------------------
 handle_post_settings() {
+  # Aquire lock exclusively for mutation (POST)
+  if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
+    log_error "GUILOCK" "Failed to acquire lock in handle_post_settings"
+    cgi_fatal 1 "Server busy"
+  fi
+
   local body model provider lang api_key action theme ct
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
   case "$ct" in
@@ -538,6 +485,7 @@ handle_post_settings() {
     *)
       log_error "GUIIO" "Unsupported Content-Type for POST in settings: ${ct:-<unset>}"
       print_http_error "415 Unsupported Media Type" "Unsupported content type: ${ct:-<unset>}"
+      release_lock
       return 1
       ;;
   esac
@@ -568,7 +516,10 @@ handle_post_settings() {
       log_warn "GUIIO" "Refresh requested but provider empty"
     else
       if validate_name "$provider"; then
+        # Sblocca il server prima del refresh lento (network call) per prevenire starvation
+        release_lock
         refresh_models_via_bash4llm "$provider" || log_error "GUIIO" "Refresh models failed for $provider"
+        acquire_lock || true
       else
         log_warn "GUIIO" "Invalid provider attempted for refresh: $provider"
       fi
@@ -614,10 +565,17 @@ handle_post_settings() {
   if [[ -n "$api_key" ]]; then
     save_api_key_file "$api_key" || log_warn "GUIIO" "Failed to save API key"
   fi
+
+  release_lock
   return 0
 }
 
 handle_post_main() {
+  if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
+    log_error "GUILOCK" "Failed to acquire lock in handle_post_main"
+    cgi_fatal 1 "Server busy"
+  fi
+
   local body prompt model provider conv_file output sanitized_output models_file lang model_raw provider_raw conv_title_raw conv_title _max_prompt ct
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
   case "$ct" in
@@ -625,6 +583,7 @@ handle_post_main() {
     *)
       log_error "GUIIO" "Unsupported Content-Type for POST in main: ${ct:-<unset>}"
       print_http_error "415 Unsupported Media Type" "Unsupported content type: ${ct:-<unset>}"
+      release_lock
       return 1
       ;;
   esac
@@ -648,7 +607,6 @@ handle_post_main() {
   fi
   unset _max_prompt
 
-  # Defensive validation (single place)
   if [[ -n "$model" ]]; then
     if ! validate_name "$model"; then
       log_error "GUIIO" "Invalid model name attempted: $model"
@@ -672,17 +630,25 @@ handle_post_main() {
     atomic_write_safe "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
   fi
 
+  # Scrive il prompt utente sotto lock
   atomic_append_conv_safe "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
+
+  # RILASCIA IL LOCK PRIMA DELLA CHIAMATA API DI RETE LENTA (Previene Concurrency Lock e DoS!)
+  release_lock
 
   if ! is_configured; then
     log_error "GUIIO" "Attempt to call bash4llm while GUI not configured"
+    acquire_lock || true
     atomic_append_conv_safe "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
+    release_lock
     return 0
   fi
 
   if ! (declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"); then
     log_error "GUIIO" "API key missing for provider $provider"
+    acquire_lock || true
     atomic_append_conv_safe "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
+    release_lock
     return 0
   fi
 
@@ -691,39 +657,53 @@ handle_post_main() {
     if [[ -n "$model" ]]; then
       if ! grep -Fxq "$model" "$models_file" 2>/dev/null; then
         log_error "GUIIO" "Model $model not in whitelist"
+        acquire_lock || true
         atomic_append_conv_safe "$conv_file" "AI: ERROR: Selected model not in whitelist. Please refresh models or choose another model." || true
+        release_lock
         return 0
       fi
     else
       model="$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)"
       model="$(sanitize_param "$model")"
       if [[ -z "$model" ]]; then
+        acquire_lock || true
         atomic_append_conv_safe "$conv_file" "AI: ERROR: No model selected and whitelist empty. Please refresh models in Settings." || true
+        release_lock
         return 0
       fi
     fi
   fi
 
-  # Build safe args for core call
   local safe_args=()
   if [[ -n "$provider" ]]; then safe_args+=( --provider "$provider" ); fi
   if [[ -n "$model" ]]; then safe_args+=( --model "$model" ); fi
 
-  # Call core safely, passing prompt via stdin
+  # Invocazione sbloccata dell'LLM (i prompt multipli o di altri utenti procedono in parallelo!)
   if ! output="$(printf '%s' "$prompt" | call_bash4llm_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
     log_error "GUIIO" "bash4llm invocation failed"
+    acquire_lock || true
     atomic_append_conv_safe "$conv_file" "AI: ERROR: bash4llm invocation failed. Check server logs." || true
+    release_lock
     return 0
   fi
 
   if type html_unescape >/dev/null 2>&1; then
     output="$(html_unescape "$output")"
-  else
-    output="$(html_unescape_fallback "$output")"
   fi
 
   sanitized_output="$(sanitize_model_output "$output")"
+
+  # RIACQUISISCI IL LOCK solo per appendere la risposta finale nel database di chat locale
+  if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
+    log_error "GUILOCK" "Failed to acquire lock for AI response writing; falling back to direct stream"
+    printf 'AI: %s\n' "$sanitized_output" >>"$conv_file" || true
+    return 0
+  fi
+
   atomic_append_conv_safe "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
+  
+  release_lock
+  return 0
 }
 
 build_model_options() {
@@ -880,10 +860,6 @@ main() {
     log_error "GUIIO" "bash4llm not found: ${BASH4LLM_CMD:-<unset>}"
     cgi_fatal 1 "bash4llm not found on server. Contact administrator."
   fi
-  if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
-    log_error "GUILOCK" "Failed to acquire lock"
-    cgi_fatal 1 "Server busy"
-  fi
 
   local method="${REQUEST_METHOD:-}"
   method="$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')"
@@ -930,7 +906,6 @@ main() {
           cgi_fatal 1 "settings handler failed"
         fi
       else
-        print_http_header "200 OK" "text/html; charset=utf-8"
         print_http_header
         render_page_settings "$lang_code"
       fi
@@ -943,13 +918,11 @@ main() {
           cgi_fatal 1 "main handler failed"
         fi
       else
-        print_http_header "200 OK" "text/html; charset=utf-8"
         print_http_header
         render_page_main "$lang_code"
       fi
       ;;
     *)
-      print_http_header "200 OK" "text/html; charset=utf-8"
       print_http_header
       render_page_main "$lang_code"
       ;;
