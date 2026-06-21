@@ -26,16 +26,14 @@
 # - Avoids GNU-only flags where possible; relies on coreutils commonly available.
 # - Designed to run on Termux/Android, Linux, macOS, WSL.
 
-# Prevent double-sourcing
-: "${GUI_ENV_LOADED:=}"
-if [[ -n "${GUI_ENV_LOADED:-}" ]]; then
+# Prevent double-sourcing robustly by checking function declaration
+if declare -f gui_env_init >/dev/null 2>&1; then
   return 0 2>/dev/null || true
 fi
-GUI_ENV_LOADED=1
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Basic helpers (timestamp, safe printf)
-# -------------------------
+# ---------------------------------------------------------------------------
 _now_iso() {
   # ISO-8601 UTC timestamp (fallbacks kept minimal)
   if command -v date >/dev/null 2>&1; then
@@ -49,9 +47,9 @@ _safe_printf() {
   printf '%s' "$1"
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Robust PS4: include timestamp and script name; avoid unbound-variable with set -u
-# -------------------------
+# ---------------------------------------------------------------------------
 {
   # Derive a safe script-name fallback
   _ps4_src="${BASH_SOURCE[0]:-$0}"
@@ -61,20 +59,33 @@ _safe_printf() {
   unset _ps4_src _ps4_name
 } 2>/dev/null || true
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # UI_ROOT placeholder (caller may set before sourcing)
-# -------------------------
-: "${UI_ROOT:=${UI_ROOT:-}}"
+# ---------------------------------------------------------------------------
+: "${UI_ROOT:=${UI_ROOT:-$PWD}}"
 
-# Derived variables (populated by canonicalize_ui_root)
-: "${CGI_DIR:=${CGI_DIR:-}}"
-: "${LOG_DIR:=${LOG_DIR:-}}"
-: "${SERVER_LOG:=${SERVER_LOG:-}}"
-: "${ERROR_LOG:=${ERROR_LOG:-}}"
+# Centralized Single Source of Truth for runtime variables and safe fallbacks
+: "${TMP_DIR:=${UI_ROOT}/tmp}"
+: "${LOG_DIR:=${UI_ROOT}/logs}"
+: "${CFG_DIR:=${UI_ROOT}/config}"
+: "${CONV_DIR:=${UI_ROOT}/conversations}"
+: "${FILES_DIR:=${UI_ROOT}/files}"
+: "${TEMPLATES_DIR:=${UI_ROOT}/templates}"
+: "${LOCK_FILE:=${TMP_DIR}/gui.lock}"
+: "${SERVER_LOG:=${LOG_DIR}/server.log}"
+: "${ERROR_LOG:=${LOG_DIR}/errors.log}"
+: "${CURRENT_CONV_FILE:=${CFG_DIR}/current-conv}"
+: "${LANG_CURRENT_FILE:=${CFG_DIR}/current-lang}"
+: "${THEME_CURRENT_FILE:=${CFG_DIR}/current-theme}"
+: "${DEFAULT_MODEL_FILE:=${CFG_DIR}/default-model}"
+: "${DEFAULT_PROVIDER_FILE:=${CFG_DIR}/default-provider}"
+: "${API_KEY_FILE:=${CFG_DIR}/api-key}"
+: "${BASH4LLM_CMD:=}"
+: "${conv_default:=conv-1.txt}"
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Structured logging primitives (server vs error logs)
-# -------------------------
+# ---------------------------------------------------------------------------
 # Log format:
 #   TIMESTAMP bash4llm: LEVEL: TAG: pid=PID: MESSAGE
 _log_common() {
@@ -125,9 +136,9 @@ safe_append_log() {
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Log rotation helper (centralized)
-# -------------------------
+# ---------------------------------------------------------------------------
 log_rotate_if_needed() {
   # log_rotate_if_needed <file> <max_bytes>
   local file="$1" max_bytes="${2:-1048576}"
@@ -143,9 +154,9 @@ log_rotate_if_needed() {
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Fatal helpers
-# -------------------------
+# ---------------------------------------------------------------------------
 fatal() {
   # fatal RC MSG  -- CLI context
   local rc="${1:-1}"; shift || true
@@ -177,9 +188,9 @@ cgi_fatal() {
   exit "$rc"
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Safe path canonicalization and verification helpers
-# -------------------------
+# ---------------------------------------------------------------------------
 _canonical_path() {
   local target="$1"
   if [[ -z "$target" ]]; then return 1; fi
@@ -199,8 +210,8 @@ _canonical_path() {
 }
 
 # path_within_ui_root <path>
-# Restituisce 0 se <path> è dentro UI_ROOT; se UI_ROOT non è impostato permette tutto.
-# Risolve sempre preventivamente i symlink (sandbox validation) per prevenire Directory Traversal.
+# Returns 0 if <path> is inside UI_ROOT; if UI_ROOT is not set, allows everything.
+# Always preemptively resolves symlinks (sandbox validation) to prevent Directory Traversal.
 path_within_ui_root() {
   local p="$1"
   if [[ -z "${UI_ROOT:-}" ]]; then
@@ -216,16 +227,17 @@ path_within_ui_root() {
   esac
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Sanitization and parsing helpers (central)
-# -------------------------
+# ---------------------------------------------------------------------------
 
 # url_decode: percent-decode, safe (returns decoded string)
 url_decode() {
   local s="$1"
   # replace + with space, then decode %HH
   s="${s//+/ }"
-  printf '%s' "$s" | sed -E 's/%([0-9A-Fa-f]{2})/\\x\1/g' | xargs -0 printf '%b'
+  # Safely decodes percent-encoded characters using the native b-format functionality of printf
+  printf '%b\n' "${s//%/\\x}" 2>/dev/null || printf '%s\n' "$s"
 }
 
 # html_escape: escape <>&"'
@@ -316,9 +328,9 @@ json_escape() {
   printf '%s' "$s"
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # HTTP helpers (minimal, safe)
-# -------------------------
+# ---------------------------------------------------------------------------
 print_http_header() {
   printf 'Content-Type: text/html; charset=utf-8\r\n'
   printf 'Cache-Control: no-store\r\n'
@@ -345,9 +357,9 @@ print_http_redirect() {
   printf '<html><body>See <a href="%s">%s</a></body></html>' "$(printf '%s' "$loc" | sed -e 's/&/\&amp;/g')" "$(printf '%s' "$loc" | sed -e 's/&/\&amp;/g')"
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Mode detection helpers
-# -------------------------
+# ---------------------------------------------------------------------------
 is_cgi_mode() {
   # Heuristic: presence of REQUEST_METHOD or GATEWAY_INTERFACE
   if [[ -n "${REQUEST_METHOD:-}" || -n "${GATEWAY_INTERFACE:-}" ]]; then
@@ -355,10 +367,9 @@ is_cgi_mode() {
   fi
   return 1
 }
-
-# -------------------------
+# ---------------------------------------------------------------------------
 # Canonicalize and validate UI_ROOT
-# -------------------------
+# ---------------------------------------------------------------------------
 canonicalize_ui_root() {
   # Ensures UI_ROOT is set, exists, is a directory, and is nested inside a trusted
   # base directory derived dynamically from this sourced script's position.
@@ -412,9 +423,9 @@ canonicalize_ui_root() {
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Ensure logs directory and error log exist with safe perms
-# -------------------------
+# ---------------------------------------------------------------------------
 ensure_logs_dir() {
   # Create LOG_DIR and log files with strict perms (dir 700, files 600).
   if [[ -z "${UI_ROOT:-}" ]]; then
@@ -446,9 +457,9 @@ ensure_logs_dir() {
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Exit hooks registry and on-exit handler
-# -------------------------
+# ---------------------------------------------------------------------------
 _GUI_ENV_EXIT_HOOKS=()
 
 gui_env_register_exit_hook() {
@@ -476,9 +487,9 @@ gui_env_on_exit() {
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Trap installation (safe, idempotent)
-# -------------------------
+# ---------------------------------------------------------------------------
 install_default_traps() {
   # install_default_traps MODE
   # MODE: "cgi" or "cli"
@@ -540,9 +551,9 @@ install_default_traps() {
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # Convenience initializer
-# -------------------------
+# ---------------------------------------------------------------------------
 gui_env_init() {
   # gui_env_init MODE
   # MODE: "cgi" or "cli"
@@ -1040,9 +1051,8 @@ portable_mktemp() {
 }
 
 # Atomic write: atomic_write <dest> <content>
-# - scrive in modo atomico usando tmp in TMP_DIR
-# - umask 077, chmod 600 sul file finale
-# - se è definita path_within_ui_root, rifiuta scritture fuori da UI_ROOT
+# - umask 077, chmod 600 on the final file
+# - if path_within_ui_root is defined, refuses writing outside UI_ROOT
 atomic_write() {
   local dest="$1" content="${2:-}" dest_dir tmp
 
@@ -1123,7 +1133,7 @@ atomic_append_conv() {
   return 0
 }
 
-# Atomic append variant that reads from stdin and appends into convfile (used by some callers)
+# Atomic append variant that reads from stdin and appends into convfile
 atomic_append_conv_in_uiroot() {
   local convfile="$1"
   if [[ -z "$convfile" ]]; then return 1; fi
@@ -1215,4 +1225,261 @@ gui_env_dump_diag() {
     tail -n "$lines" "${ERROR_LOG}" 2>/dev/null || true
   fi
   return 0
+}
+
+# =============================================================================
+# Read first line of a config file, returning default if file is missing/empty
+# =============================================================================
+read_config_or_default() {
+  local file="$1" default="${2:-}"
+  if [[ -f "$file" && -r "$file" ]]; then
+    local val
+    val="$(head -n 1 "$file" 2>/dev/null || true)"
+    val="$(printf '%s' "$val" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true)"
+    if [[ -n "$val" ]]; then
+      printf '%s' "$val"
+      return 0
+    fi
+  fi
+  printf '%s' "$default"
+  return 0
+}
+
+# =============================================================================
+# Ensure all runtime directories exist with safe permissions (Upstream Bugfix)
+# =============================================================================
+ensure_dirs() {
+  : "${UI_ROOT:=${UI_ROOT:-$PWD}}"
+  : "${TMP_DIR:=${UI_ROOT}/tmp}"
+  : "${LOG_DIR:=${UI_ROOT}/logs}"
+  : "${CFG_DIR:=${UI_ROOT}/config}"
+  : "${CONV_DIR:=${UI_ROOT}/conversations}"
+  : "${FILES_DIR:=${UI_ROOT}/files}"
+  : "${TEMPLATES_DIR:=${UI_ROOT}/templates}"
+
+  local d
+  for d in "$TMP_DIR" "$LOG_DIR" "$CFG_DIR" "$CONV_DIR" "$FILES_DIR" "$TEMPLATES_DIR"; do
+    mkdir -p -- "$d" 2>/dev/null || {
+      log_error "INIT" "Failed to create directory: $d"
+      return 1
+    }
+    chmod 700 -- "$d" 2>/dev/null || true
+  done
+
+  # Safe fallbacks for config files
+  : "${DEFAULT_MODEL_FILE:=${CFG_DIR}/default-model}"
+  : "${DEFAULT_PROVIDER_FILE:=${CFG_DIR}/default-provider}"
+  : "${CURRENT_CONV_FILE:=${CFG_DIR}/current-conv}"
+  : "${LANG_CURRENT_FILE:=${CFG_DIR}/current-lang}"
+  : "${THEME_CURRENT_FILE:=${CFG_DIR}/current-theme}"
+  : "${API_KEY_FILE:=${CFG_DIR}/api-key}"
+
+  return 0
+}
+
+# =============================================================================
+# Sandbox file permissions and directory security setups
+# =============================================================================
+ensure_sh_executables() {
+  local target_dir="${1:-}"
+  if [[ -z "$target_dir" || ! -d "$target_dir" ]]; then
+    log_warn "ENV" "ensure_sh_executables: target_dir invalid or missing"
+    return 1
+  fi
+  
+  # Confinements execution within the GUI directory for security
+  if declare -f path_within_ui_root >/dev/null 2>&1; then
+    if ! path_within_ui_root "$target_dir"; then
+      log_error "ENV" "ensure_sh_executables: attempt to access external path"
+      return 1
+    fi
+  fi
+
+  # Non-blocking configuration of appropriate permissions
+  find "$target_dir" -type f -name "*.sh" -exec chmod 750 {} + 2>/dev/null || true
+  return 0
+}
+
+remove_unnecessary_symlinks() {
+  local target_dir="${1:-}"
+  if [[ -z "$target_dir" || ! -d "$target_dir" ]]; then
+    log_warn "ENV" "remove_unnecessary_symlinks: target_dir invalid or missing"
+    return 1
+  fi
+
+  if declare -f path_within_ui_root >/dev/null 2>&1; then
+    if ! path_within_ui_root "$target_dir"; then
+      log_error "ENV" "remove_unnecessary_symlinks: attempt to access external path"
+      return 1
+    fi
+  fi
+
+  # Removes broken symlinks to prevent security misalignment (best-effort)
+  find "$target_dir" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+  return 0
+}
+
+ensure_config_defaults() {
+  : "${CFG_DIR:=${UI_ROOT}/config}"
+  : "${CONV_DIR:=${UI_ROOT}/conversations}"
+  
+  local default_model_file="${CFG_DIR}/default-model"
+  local default_provider_file="${CFG_DIR}/default-provider"
+  local current_conv_file="${CFG_DIR}/current-conv"
+  local lang_current_file="${CFG_DIR}/current-lang"
+  local theme_current_file="${CFG_DIR}/current-theme"
+  local conv_default="conv-1.txt"
+
+  # 1. Secure initialization of fallback configuration files
+  if [[ ! -f "$default_model_file" ]]; then
+    mkdir -p "$(dirname "$default_model_file")" 2>/dev/null || true
+    : > "$default_model_file"
+    chmod 600 "$default_model_file" 2>/dev/null || true
+  fi
+
+  if [[ ! -f "$default_provider_file" ]]; then
+    mkdir -p "$(dirname "$default_provider_file")" 2>/dev/null || true
+    printf 'groq\n' > "$default_provider_file" 2>/dev/null || true
+    chmod 600 "$default_provider_file" 2>/dev/null || true
+  fi
+
+  if [[ ! -f "$lang_current_file" ]]; then
+    mkdir -p "$(dirname "$lang_current_file")" 2>/dev/null || true
+    printf 'en\n' > "$lang_current_file" 2>/dev/null || true
+    chmod 600 "$lang_current_file" 2>/dev/null || true
+  fi
+
+  if [[ ! -f "$theme_current_file" ]]; then
+    mkdir -p "$(dirname "$theme_current_file")" 2>/dev/null || true
+    printf 'light\n' > "$theme_current_file" 2>/dev/null || true
+    chmod 600 "$theme_current_file" 2>/dev/null || true
+  fi
+
+  # 2. Initialization and validation of the current conversation state
+  local conv
+  conv="$(read_config_or_default "$current_conv_file" "$conv_default")"
+  conv="$(sanitize_param "$conv")"
+  
+  if ! validate_name "$conv"; then
+    conv="$conv_default"
+    atomic_write "$current_conv_file" "$conv" || true
+  fi
+
+  if [[ ! -f "$CONV_DIR/$conv" ]]; then
+    atomic_write "$CONV_DIR/$conv" "" || true
+  fi
+
+  return 0
+}
+
+# =============================================================================
+# Architectural State Getters / Setters and Runtime Configuration Helpers
+# =============================================================================
+
+get_default_provider() {
+  read_config_or_default "${DEFAULT_PROVIDER_FILE:-${CFG_DIR}/default-provider}" "groq"
+}
+
+get_default_model() {
+  read_config_or_default "${DEFAULT_MODEL_FILE:-${CFG_DIR}/default-model}" ""
+}
+
+read_api_key_file() {
+  read_config_or_default "${API_KEY_FILE:-${CFG_DIR}/api-key}" ""
+}
+
+save_api_key_file() {
+  atomic_write "${API_KEY_FILE:-${CFG_DIR}/api-key}" "$1"
+}
+
+get_current_conversation_file() {
+  local conv
+  conv="$(read_config_or_default "${CURRENT_CONV_FILE:-${CFG_DIR}/current-conv}" "conv-1.txt")"
+  conv="$(sanitize_param "$conv")"
+  if ! validate_name "$conv"; then
+    conv="conv-1.txt"
+  fi
+  printf '%s' "${CONV_DIR:-${UI_ROOT}/conversations}/$conv"
+}
+
+get_query_param() {
+  local key="$1"
+  if [[ -z "${QUERY_STRING:-}" ]]; then return 1; fi
+  local kv
+  kv="$(printf '%s' "$QUERY_STRING" | tr '&' '\n' | awk -F= -v k="$key" '$1==k{print substr($0, index($0,"=")+1); exit}')"
+  if [[ -n "$kv" ]]; then
+    url_decode "$kv"
+    return 0
+  fi
+  return 1
+}
+
+export_api_key_for_provider() {
+  local provider="$1"
+  if [[ -z "$provider" ]]; then return 1; fi
+  local key
+  key="$(read_api_key_file)"
+  if [[ -n "$key" ]]; then
+    local env_var
+    env_var="$(printf '%s' "$provider" | tr '[:lower:]' '[:upper:]')_API_KEY"
+    export "$env_var"="$key"
+    return 0
+  fi
+  return 1
+}
+
+find_lang_conf() {
+  local cand="${UI_ROOT}/lang.conf"
+  if [[ -f "$cand" ]]; then
+    printf '%s' "$cand"
+    return 0
+  fi
+  cand="${UI_ROOT}/config/lang.conf"
+  if [[ -f "$cand" ]]; then
+    printf '%s' "$cand"
+    return 0
+  fi
+  return 1
+}
+
+sanitize_model_output() {
+  local s="$1"
+  printf '%s' "$s" | tr -d '\000' | sed -E 's/\r$//g'
+}
+
+build_current_conv_block() {
+  local file="$1"
+  CURRENT_CONV=""
+  if [[ -f "$file" && -r "$file" ]]; then
+    local line escaped_line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      escaped_line="$(html_escape "$line")"
+      if [[ "$escaped_line" == "USER: "* ]]; then
+        CURRENT_CONV+="<div class=\"message user-message\"><strong>User:</strong> ${escaped_line#USER: }</div>\n"
+      elif [[ "$escaped_line" == "AI: "* ]]; then
+        CURRENT_CONV+="<div class=\"message ai-message\"><strong>Assistant:</strong> ${escaped_line#AI: }</div>\n"
+      else
+        CURRENT_CONV+="<div class=\"message system-message\">${escaped_line}</div>\n"
+      fi
+    done < "$file"
+  fi
+  export CURRENT_CONV
+}
+
+render_template() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then return 1; fi
+  
+  # POSIX AWK pure interpolation loop:
+  # Detects ${VAR} placeholders and performs safe substitution without using eval.
+  awk '
+  {
+    while (match($0, /\$\{[A-Za-z0-9_]+\}/)) {
+      target = substr($0, RSTART, RLENGTH)
+      varname = substr(target, 3, length(target) - 3)
+      val = ENVIRON[varname]
+      sub(/\$\{[A-Za-z0-9_]+\}/, val)
+    }
+    print
+  }' "$file"
 }
