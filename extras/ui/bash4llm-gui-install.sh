@@ -338,7 +338,7 @@ check_permissions_and_dirs() {
 check_bash4llm_bootstrap() {
   local bootstrap="$1/gui-bootstrap.sh"
   if [[ ! -f "$bootstrap" ]]; then err "Missing $bootstrap"; return 1; fi
-  if ! { BOOTSTRAP_SKIP_INIT=1 . "$bootstrap" && ensure_bash4llm_available; }; then
+  if ! { BOOTSTRAP_SKIP_INIT=1; . "$bootstrap" && ensure_bash4llm_available; }; then
     err "ensure_bash4llm_available failed"; return 1
   fi
   return 0
