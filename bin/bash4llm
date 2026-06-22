@@ -6,7 +6,7 @@
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # =============================================================================
-# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
+# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq comm
 
 ########################################
 # SECTION: PRECORE_BOOT - BEGIN
@@ -28,24 +28,23 @@ SCRIPT_DATE="2026-06-20"
 BASH4LLM_ERR_NO_API_KEY=10
 BASH4LLM_ERR_BAD_MODEL=11
 BASH4LLM_ERR_CURL_FAILED=12
-BASH4LLM_ERR_INVALID_JSON=13
 BASH4LLM_ERR_NO_PROMPT=14
 BASH4LLM_ERR_TMP=15
 BASH4LLM_ERR_API=16
 
-BASH4LLMERRNOAPIKEY=$BASH4LLM_ERR_NO_API_KEY
-BASH4LLMERRBAD_MODEL=$BASH4LLM_ERR_BAD_MODEL
-BASH4LLMERRCURL_FAILED=$BASH4LLM_ERR_CURL_FAILED
-BASH4LLMERRINVALID_JSON=$BASH4LLM_ERR_INVALID_JSON
-BASH4LLMERRNO_PROMPT=$BASH4LLM_ERR_NO_PROMPT
-BASH4LLMERRTMP=$BASH4LLM_ERR_TMP
-BASH4LLMERRAPI=$BASH4LLM_ERR_API
+# Legacy aliases mapped with consistent underscore notation
+BASH4LLMERR_NO_API_KEY=$BASH4LLM_ERR_NO_API_KEY
+BASH4LLMERR_BAD_MODEL=$BASH4LLM_ERR_BAD_MODEL
+BASH4LLMERR_CURL_FAILED=$BASH4LLM_ERR_CURL_FAILED
+BASH4LLMERR_NO_PROMPT=$BASH4LLM_ERR_NO_PROMPT
+BASH4LLMERR_TMP=$BASH4LLM_ERR_TMP
+BASH4LLMERR_API=$BASH4LLM_ERR_API
 #--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 #--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
 # ---------------------------------------------------------------------------
 # Verify mandatory commands (flock is excluded to allow macOS fallback)
 # ---------------------------------------------------------------------------
-for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do
+for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf comm; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'bash4llm: ERROR: required command not found: %s\n' "$cmd" >&2
     exit 1
@@ -121,14 +120,14 @@ ensure_api_key_for_provider() {
   # Non-interactive: fail fast with clear error (do not prompt)
   if [ ! -t 0 ]; then
     printf 'bash4llm: ERROR: missing API key for provider %s (env %s) in non-interactive mode\n' "$prov" "$envvar" >&2
-    return "$BASH4LLMERRNOAPIKEY"
+    return "$BASH4LLMERR_NO_API_KEY"
   fi
 
   # Interactive prompt (preserve previous behavior)
   printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
   if ! IFS= read -r input_key; then
     printf '\nbash4llm: ERROR: no input received. Aborting.\n' >&2
-    return "$BASH4LLMERRNOAPIKEY"
+    return "$BASH4LLMERR_NO_API_KEY"
   fi
 
   # Normalize input: strip CR/LF, leading "export ", and VAR=VALUE forms
@@ -140,7 +139,7 @@ ensure_api_key_for_provider() {
 
   if [ -z "$input_key" ]; then
     printf 'bash4llm: ERROR: API key required. Aborting.\n' >&2
-    return "$BASH4LLMERRNOAPIKEY"
+    return "$BASH4LLMERR_NO_API_KEY"
   fi
 
   export "$envvar"="$input_key"
@@ -258,14 +257,14 @@ BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR%/}"
 # Validate BASH4LLM_DIR / BASH4LLM_TMPDIR invariants
 if [ -z "${BASH4LLM_DIR:-}" ]; then
   log_error "TMP" "BASH4LLM_DIR is empty; cannot derive BASH4LLM_TMPDIR"
-  exit "${BASH4LLMERRTMP:-1}"
+  exit "${BASH4LLMERR_TMP:-1}"
 fi
 
 # Forbid using /tmp or subpaths of /tmp as BASH4LLM_TMPDIR
 case "${BASH4LLM_TMPDIR:-}" in
   /tmp|/tmp/*)
     log_error "TMP" "BASH4LLM_TMPDIR must not be /tmp or under /tmp: ${BASH4LLM_TMPDIR}"
-    exit "${BASH4LLMERRTMP:-1}"
+    exit "${BASH4LLMERR_TMP:-1}"
     ;;
 esac
 
@@ -276,7 +275,7 @@ case "${BASH4LLM_TMPDIR:-}" in
     ;;
   *)
     log_error "TMP" "BASH4LLM_TMPDIR must be inside BASH4LLM_DIR: ${BASH4LLM_TMPDIR} (root: ${BASH4LLM_DIR})"
-    exit "${BASH4LLMERRTMP:-1}"
+    exit "${BASH4LLERR_TMP:-1}"
     ;;
 esac
 
@@ -317,7 +316,7 @@ ensure_config_dir() {
 }
 
 # Ensure config dir exists now (fail early if not)
-ensure_config_dir || { log_error "CONFIG" "config dir unavailable; aborting."; exit "$BASH4LLMERRTMP"; }
+ensure_config_dir || { log_error "CONFIG" "config dir unavailable; aborting."; exit "$BASH4LLMERR_TMP"; }
 
 # Write provider-url file (single-line, non-secret). Best-effort; do not write API keys.
 # Usage: write_provider_url_if_missing <provider> <url>
@@ -334,7 +333,7 @@ write_provider_url_if_missing() {
   fi
   # Write atomically into RUN_TMPDIR if available, else directly (best-effort)
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    tmp="$(mktemp "${RUN_TMPDIR%/}/provider-url.XXXX" 2>/dev/null || true)"
+    tmp="$(mktemp "${RUN_TMPDIR%/}/provider-url.XXXXXX" 2>/dev/null || true)"
   else
     tmp="$(mktemp 2>/dev/null || true)"
   fi
@@ -567,6 +566,7 @@ stage_b64() {
 lock_exec() {
   local lockfile="$1"
   local timeout="${2:-10}"
+  local rc
   shift 2
   if [ "$1" != "--" ]; then
     log_error "USAGE" "lock_exec <lockfile> <timeout> -- <cmd> [args...]"
@@ -609,8 +609,10 @@ lock_exec() {
     done
 
     # Run inside fallback block
-    set +e
-    "$@"
+    (
+      set +e
+      "$@"
+    )
     rc=$?
     rmdir "$lockdir" 2>/dev/null || true
     return "$rc"
@@ -624,13 +626,13 @@ _mktemp_in_dir() {
   local base="${1:-}" prefix="${2:-groq}" tmp
   if [ -z "$base" ]; then
     log_error "TMP" "_mktemp_in_dir: base dir required"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   # Delegate to _tmpf which already enforces umask/perms and returns a path
   tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null)"
   if [ -z "$tmp" ]; then
     log_error "TMP" "_mktemp_in_dir: failed to create temp in $base"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   printf '%s' "$tmp"
   return 0
@@ -641,11 +643,11 @@ show_payload_head() {
   local path="${1:-$PAYLOAD}" lines="${2:-200}"
   if [ -z "${path:-}" ]; then
     printf 'bash4llm: ERROR: payload file missing: %s\n' "<unset>" >&2
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
   if [ ! -e "$path" ]; then
     printf 'bash4llm: ERROR: payload file missing: %s\n' "$path" >&2
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
   if [ ! -s "$path" ]; then
     printf 'bash4llm: INFO: payload exists but is empty: %s\n' "$path" >&2
@@ -673,11 +675,11 @@ atomic_write() {
   # Usage: atomic_write /path/to/target [timeout_seconds]
   local dest="$1"
   local timeout="${2:-10}"
-  [ -n "$dest" ] || return "$BASH4LLMERRTMP"
+  [ -n "$dest" ] || return "$BASH4LLMERR_TMP"
   local destdir tmp lockfile rc
 
   destdir="$(dirname -- "$dest")"
-  mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$BASH4LLMERRTMP"; }
+  mkdir -p "$destdir" 2>/dev/null || { log_error "ATOMICFAIL" "cannot create dir $destdir"; return "$BASH4LLMERR_TMP"; }
   lockfile="${destdir}/.bash4llm.lock"
 
   tmp="$(mktemp "$destdir/.groq-atomic.XXXXXX" 2>/dev/null || true)"
@@ -686,7 +688,7 @@ atomic_write() {
   if ! cat - > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "ATOMICFAIL" "writing to temp failed"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   chmod 600 "$tmp" 2>/dev/null || true
 
@@ -812,22 +814,22 @@ ensure_run_tmpdir() {
   # Validate BASH4LLM_TMPDIR
   if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
     log_error "TMP" "BASH4LLM_TMPDIR not set"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   mkdir -p "$BASH4LLM_TMPDIR" 2>/dev/null || {
     log_error "TMP" "cannot create base tmpdir $BASH4LLM_TMPDIR"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   }
   chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
   if [ -L "$BASH4LLM_TMPDIR" ]; then
     log_error "TMP" "BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   # Create RUN_TMPDIR exclusively via _tmpf (dir)
   tmpdir="$(_tmpf dir "$BASH4LLM_TMPDIR" run 2>/dev/null)" || {
     log_error "TMP" "ensure_run_tmpdir: _tmpf failed to create run tmpdir"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   }
 
   RUN_TMPDIR="$tmpdir"
@@ -912,7 +914,7 @@ b64_atomic_write() {
 
   [ -n "$dest" ] || {
     log_error "B64FAIL" "b64_atomic_write: dest required"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   }
 
   local destdir tmp lockfile
@@ -920,7 +922,7 @@ b64_atomic_write() {
 
   mkdir -p "$destdir" 2>/dev/null || {
     log_error "B64FAIL" "cannot create dir $destdir"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   }
 
   lockfile="${destdir%/}/.bash4llm.lock"
@@ -928,13 +930,13 @@ b64_atomic_write() {
   # Allocate tmp inside BASH4LLM_TMPDIR (safe), not inside destdir
   tmp="$(_tmpf file "$BASH4LLM_TMPDIR" .groq-b64 2>/dev/null)" || {
     log_error "B64FAIL" "failed to allocate tmp for b64_atomic_write"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   }
 
   if ! b64encode > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "B64FAIL" "base64 encoding failed"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   chmod 600 "$tmp" 2>/dev/null || true
 
@@ -1058,9 +1060,9 @@ mkdir -p "$(canonical_config_dir)" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TEMPLATES_D
 for d in "$BASH4LLM_DIR" "$(canonical_config_dir)" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TEMPLATES_DIR" "$BASH4LLM_HISTORY_DIR" "$BASH4LLM_TMPDIR" "$BASH4LLM_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
   if [ -L "$d" ]; then
     printf 'bash4llm: ERROR: directory is a symlink: %s\n' "$d" >&2
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
-  mkdir -p "$d" 2>/dev/null || { printf 'bash4llm: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$BASH4LLMERRTMP"; }
+  mkdir -p "$d" 2>/dev/null || { printf 'bash4llm: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$BASH4LLMERR_TMP"; }
   chmod 700 "$d" 2>/dev/null || true
 done
 
@@ -1390,7 +1392,7 @@ rotate_history() {
       break
     fi
 
-    # C4: Prevent infinite loop / CPU DoS if files cannot be deleted
+    # Prevent infinite loop / CPU DoS if files cannot be deleted
     if [ "$total" -ge "$last_total" ]; then
       log_warn "ROTATE" "History rotation bytes-based removal stuck (total=$total). Breaking loop."
       break
@@ -1433,7 +1435,7 @@ rotate_history() {
       break
     fi
 
-    # C4: Prevent infinite loop / CPU DoS if files cannot be deleted
+    # Prevent infinite loop / CPU DoS if files cannot be deleted
     if [ "$count" -ge "$last_count" ]; then
       log_warn "ROTATE" "History rotation files-based removal stuck (count=$count). Breaking loop."
       break
@@ -1470,13 +1472,13 @@ save_to_history() {
   tmpf="$(_tmpf file "$BASH4LLM_HISTORY_DIR" groq-out 2>/dev/null)"
   if [ -z "$tmpf" ]; then
     log_error "HISTORYFAIL" "save_to_history: cannot allocate tmp file in $BASH4LLM_HISTORY_DIR"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   if ! printf '%s\n' "$content" > "$tmpf" 2>/dev/null; then
     rm -f -- "$tmpf" 2>/dev/null || true
     log_error "HISTORYFAIL" "save_to_history: cannot write tmp file $tmpf"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   dest="$BASH4LLM_HISTORY_DIR/$filename"
@@ -1543,7 +1545,7 @@ manifest_create() {
   lock_exec "${manifest}.lock" "$timeout" -- sh -c '
    set -e
    manifest="$1"
-   tmp="$(mktemp "$(dirname "$manifest")/manifest.tmp.XXXX")"
+   tmp="$(mktemp "$(dirname "$manifest")/manifest.tmp.XXXXXX")"
    printf "%s" "{\"parts\":[]}" > "$tmp"
    # write base64 staging using base64 binary and exported opts
    if [ -n "${B64_WRAP_OPT:-}" ]; then
@@ -1592,7 +1594,7 @@ manifest_add_part() {
     part_b64="$2"
     name="$3"
     mime="$4"
-    tmp="$(mktemp "$(dirname "$manifest")/manifest.edit.XXXX")"
+    tmp="$(mktemp "$(dirname "$manifest")/manifest.edit.XXXXXX")"
     if [ -f "${manifest}.b64" ]; then
       # decode base64 staging to tmp using exported decode opt
       base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
@@ -1721,9 +1723,9 @@ getfile_signature() { _get_file_signature "$1"; }
 
 _is_world_writable() {
   local d="$1" perms others_write
-  [ -d "$d" ] || return "$BASH4LLMERRTMP"
+  [ -d "$d" ] || return "$BASH4LLMERR_TMP"
   perms="$(_get_perm_string "$d")"
-  [ -z "$perms" ] && return "$BASH4LLMERRTMP"
+  [ -z "$perms" ] && return "$BASH4LLMERR_TMP"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
   [ "$others_write" = "w" ]
 }
@@ -1736,7 +1738,7 @@ make_tmpdir() {
   lockfile="$TMP_LOCK"
 
   # Ensure base tmpdir exists before locking
-  mkdir -p "$BASH4LLM_TMPDIR" 2>/dev/null || return "$BASH4LLMERRTMP"
+  mkdir -p "$BASH4LLM_TMPDIR" 2>/dev/null || return "$BASH4LLMERR_TMP"
   chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
 
   lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_TMP" -- sh -c '
@@ -1746,7 +1748,7 @@ make_tmpdir() {
     # Use _tmpf as the single source of truth for secure tmpdir creation
     tmpd="$(_tmpf dir "$base" groq 2>/dev/null)" || {
       log_error "TMP" "make_tmpdir: _tmpf failed for base=$base"
-      exit "$BASH4LLMERRTMP"
+      exit "$BASH4LLMERR_TMP"
     }
 
     printf "%s" "$tmpd"
@@ -1766,22 +1768,22 @@ _tmpf() {
 
   if [ -z "$mode" ]; then
     log_error "TMP" "_tmpf usage: _tmpf <file|dir> <base_dir> [prefix]"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   # Validate BASH4LLM_TMPDIR as canonical tmp base
   if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
     log_error "TMP" "_tmpf: BASH4LLM_TMPDIR not set"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   if [ ! -d "$BASH4LLM_TMPDIR" ]; then
     log_error "TMP" "_tmpf: BASH4LLM_TMPDIR does not exist: $BASH4LLM_TMPDIR"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   # Reject symlinks for BASH4LLM_TMPDIR
   if [ -L "$BASH4LLM_TMPDIR" ]; then
     log_error "TMP" "_tmpf: BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
   # Enforce strict perms (700) on BASH4LLM_TMPDIR
   chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
@@ -1803,26 +1805,26 @@ _tmpf() {
 
   umask 077
   if [ "$mode" = "file" ]; then
-    tmp="$(mktemp "$base/${prefix}.XXXX" 2>/dev/null || true)"
+    tmp="$(mktemp "$base/${prefix}.XXXXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
       log_error "TMP" "_tmpf: mktemp failed for file in $base"
-      return "$BASH4LLMERRTMP"
+      return "$BASH4LLMERR_TMP"
     fi
     chmod 600 "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
     return 0
   elif [ "$mode" = "dir" ]; then
-    tmp="$(mktemp -d "$base/${prefix}.XXXX" 2>/dev/null || true)"
+    tmp="$(mktemp -d "$base/${prefix}.XXXXXX" 2>/dev/null || true)"
     if [ -z "$tmp" ]; then
       log_error "TMP" "_tmpf: mktemp failed for dir in $base"
-      return "$BASH4LLMERRTMP"
+      return "$BASH4LLMERR_TMP"
     fi
     chmod 700 "$tmp" 2>/dev/null || true
     printf '%s' "$tmp"
     return 0
   else
     log_error "TMP" "_tmpf: unknown mode: $mode"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
@@ -2028,6 +2030,15 @@ session_append() {
     chmod 600 "$session_file" 2>/dev/null || true
   fi
 
+  # Global guard: skip appending empty user messages
+  case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
+  if [ "$role_norm" = "user" ] && [ -z "${content:-}" ]; then
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "SESSION" "skipping append of empty user message for session $sid"
+    fi
+    return 0
+  fi
+
   # Marker: message_id-based folder locks (stable on macOS and Linux)
   # Cleanup is handled automatically on EXIT by cleanup_run_tmp_on_exit.
   if [ -n "${message_id:-}" ]; then
@@ -2086,18 +2097,6 @@ session_append() {
 
   # Normalize role and meta, build line
   meta_json="$(printf '%s' "$meta_json" | jq -c '.' 2>/dev/null || printf '%s' '{}' )"
-  case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
-
-  # Global guard: skip appending empty user messages
-  if [ "$role_norm" = "user" ] && [ -z "${content:-}" ]; then
-    if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "SESSION" "skipping append of empty user message for session $sid"
-    fi
-    flock -u 200 2>/dev/null || true
-    exec 200>&- 2>/dev/null || true
-    rm -f "$tmpf" 2>/dev/null || true
-    return 0
-  fi
 
   # Build a compact single-line NDJSON record for the session
   # Ensure meta_json is valid JSON (it was normalized earlier in the function)
@@ -2337,7 +2336,7 @@ CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
 if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 0 ]; then
   if ! ensure_run_tmpdir >/dev/null 2>&1; then
     log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
 fi
 
@@ -2389,7 +2388,7 @@ buildpayload_groq() {
   # Assumes: MODEL, TURE, MAX_TOKENS, MESSAGES_JSON, BUILD_MESSAGES_FILE, STREAM_MODE, JSON_INPUT, CONTENT may be set
   local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs msgs_from_file
 
-  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERR_TMP"
 
   # always allocate a random tmp file; never use deterministic fallback
   tmp_payload="$(_mktemp_in_dir "$RUN_TMPDIR" payload.XXXXXX.json 2>/dev/null || _tmpf file "$RUN_TMPDIR" payload.json)"
@@ -2483,13 +2482,13 @@ buildpayload_groq() {
        '{model:$model, stream:$stream, temperature:($ture|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' >"$tmp_payload" 2>/dev/null; then
     log_error "PAYLOAD" "jq failed to build payload; tmp_payload not created"
     rm -f "$tmp_payload" 2>/dev/null || true
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   if [ ! -s "$tmp_payload" ]; then
     log_error "PAYLOAD" "tmp_payload is empty after jq; aborting"
     rm -f "$tmp_payload" 2>/dev/null || true
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2536,7 +2535,7 @@ call_api_groq() {
   # Expects: RUN_TMPDIR, RESP path variable, and payload file (BASH4LLM_TMP_PAYLOAD or PAYLOAD)
   local tmp_payload resp_tmp ERRF http_code rc resp_size errf_size now_ts stderr_head provider_url send_payload decoded_payload key_header CURL_CMD_ARR
 
-  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERR_TMP"
 
   # Determine payload file to send
   tmp_payload="${BASH4LLM_TMP_PAYLOAD:-${PAYLOAD:-}}"
@@ -2555,7 +2554,7 @@ call_api_groq() {
       return 0
     fi
     log_error "NETWORK" "Network calls disabled; aborting non-streaming request."
-    return "$BASH4LLMERRCURL_FAILED"
+    return "$BASH4LLMERR_CURL_FAILED"
   fi
 
   # Ensure API key present (unless dry-run)
@@ -2564,7 +2563,7 @@ call_api_groq() {
   fi
   if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${BASH4LLM_API_KEY:-}" ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
     log_error "APIKEY" "GROQ_API_KEY (or BASH4LLM_API_KEY) is not set."
-    return "$BASH4LLMERRNOAPIKEY"
+    return "$BASH4LLMERR_NO_API_KEY"
   fi
 
   # Use canonical provider URL resolved earlier by resolve_provider_url.
@@ -2595,7 +2594,7 @@ call_api_groq() {
       log_error "B64DECODE" "failed to allocate decoded_payload tmp"
       now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       jq -c -n --arg ts "$now_ts" --arg note "tmp_alloc_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
-      return "$BASH4LLMERRTMP"
+      return "$BASH4LLMERR_TMP"
     }
 
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>/dev/null; then
@@ -2603,7 +2602,7 @@ call_api_groq() {
       rm -f "$decoded_payload" 2>/dev/null || true
       now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       jq -c -n --arg ts "$now_ts" --arg note "b64_decode_failed" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
-      return "$BASH4LLMERRTMP"
+      return "$BASH4LLMERR_TMP"
     fi
 
     if [ ! -s "$decoded_payload" ]; then
@@ -2756,7 +2755,7 @@ call_api_streaming_groq() {
   # Expects: RUN_TMPDIR, RESP variable, and payload file (BASH4LLM_TMP_PAYLOAD or PAYLOAD).
   local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code
 
-  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERR_TMP"
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
@@ -2767,7 +2766,7 @@ call_api_streaming_groq() {
       return 0
     fi
     log_error "NETWORK" "Network calls disabled; aborting streaming request."
-    return "$BASH4LLMERRCURL_FAILED"
+    return "$BASH4LLMERR_CURL_FAILED"
   fi
 
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
@@ -2775,7 +2774,7 @@ call_api_streaming_groq() {
   fi
   if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${BASH4LLM_API_KEY:-}" ]; then
     log_error "APIKEY" "GROQ_API_KEY (or BASH4LLM_API_KEY) is not set."
-    return "$BASH4LLMERRNOAPIKEY"
+    return "$BASH4LLMERR_NO_API_KEY"
   fi
 
   tmp_payload="${BASH4LLM_TMP_PAYLOAD:-${PAYLOAD:-}}"
@@ -2819,14 +2818,13 @@ call_api_streaming_groq() {
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$ERRF"; then
       log_error "B64DECODE" "base64 decode failed for payload; see $ERRF"
       rm -f "$decoded_payload" 2>/dev/null || true
-      return "$BASH4LLMERRTMP"
+      return "$BASH4LLMERR_TMP"
     fi
     send_payload="$decoded_payload"
   else
     send_payload="$tmp_payload"
   fi
 
-  # CORRECT: removed stdbuf to avoid aborts/blocks on Android's dynamic linker (Termux)
   CURL_CMD=(curl --http1.1 -sS -N)
 
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
@@ -2840,9 +2838,6 @@ call_api_streaming_groq() {
     CURL_CMD+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
   fi
 
-  # CORRECT: removed tee from the pipeline to eliminate buffering and enable immediate streaming
-  # CORRECT: modified the jq query to safely handle chunks in both string and native JSON object formats (avoiding fromjson errors)
-  # CORRECT: applied a dummy "x" technique combined with "jq -j" to preserve actual newline (\n) characters intact while removing jq's dummy padding
   "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | \
   while IFS= read -r line || [ -n "$line" ]; do
     printf '%s\n' "$line" >> "$resp_raw"
@@ -2866,7 +2861,7 @@ call_api_streaming_groq() {
         fi
         ;;
     esac
-  done
+  done || true
 
   rc=${PIPESTATUS[0]:-0}
 
@@ -2960,7 +2955,6 @@ call_api_streaming_groq() {
   rm -f "$ERRF" 2>/dev/null || true
 
   if ensure_run_tmpdir >/dev/null 2>&1; then
-    # CORRECT: Initialized http_code=200 to prevent "http_code: unbound variable" errors under set -u
     http_code=200
     finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "${RESP}" 2>/dev/null || echo "")"
     req_id="$(jq -r '.x_groq?.id // .id // empty' "${RESP}" 2>/dev/null || echo "")"
@@ -2988,14 +2982,14 @@ refresh_models_groq() {
   fi
   if [ -z "${GROQ_API_KEY:-}" ]; then
     log_error "APIKEY" "GROQ_API_KEY is required to refresh models."
-    return "$BASH4LLMERRNOAPIKEY"
+    return "$BASH4LLMERR_NO_API_KEY"
   fi
 
-  ensure_run_tmpdir || return "$BASH4LLMERRTMP"
+  ensure_run_tmpdir || return "$BASH4LLMERR_TMP"
   local workdir tmpd out errf api_url tmp_parsed tmp_trim tmpout rc
   workdir="${RUN_TMPDIR:-}"
-  [ -n "$workdir" ] || return "$BASH4LLMERRTMP"
-  tmpd="$(mktemp -d "$workdir/groq-models.XXXX")" || return "$BASH4LLMERRTMP"
+  [ -n "$workdir" ] || return "$BASH4LLMERR_TMP"
+  tmpd="$(mktemp -d "$workdir/groq-models.XXXXXX")" || return "$BASH4LLMERR_TMP"
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
 
@@ -3004,10 +2998,9 @@ refresh_models_groq() {
     origin="$(printf '%s' "$BASH4LLM_PROVIDER_URL" | sed -E 's#(https?://[^/]+).*#\1#')"
     api_url="${origin%/}/openai/v1/models"
   else
-    # CORRECT: Eliminated unreachable conditional logic (the active provider here is always groq)
     log_error "MODELREFRESH" "no provider URL available to refresh models"
     rm -rf "$tmpd"
-    return "$BASH4LLMERRAPI"
+    return "$BASH4LLMERR_API"
   fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
@@ -3017,7 +3010,7 @@ refresh_models_groq() {
       head -n 200 "$errf" >&2 || true
     fi
     rm -rf "$tmpd"
-    return "$BASH4LLMERRAPI"
+    return "$BASH4LLMERR_API"
   fi
 
   if ! jq -e . "$out" >/dev/null 2>&1; then
@@ -3026,13 +3019,12 @@ refresh_models_groq() {
       head -n 200 "$errf" >&2 || true
     fi
     rm -rf "$tmpd"
-    return "$BASH4LLMERRAPI"
+    return "$BASH4LLMERR_API"
   fi
 
   tmp_parsed="$tmpd/parsed_models.txt"
   : > "$tmp_parsed"
 
-  # CORRECT: Changed (.name // .id // empty) to (.id // .name // empty) to avoid excluding models with spaces
   jq -r '
     if (has("data") and (.data|type) == "array") then
       .data[]? | (.id // .name // empty)
@@ -3049,7 +3041,7 @@ refresh_models_groq() {
       head -n 200 "$errf" >&2 || true
     fi
     rm -rf "$tmpd"
-    return "$BASH4LLMERRAPI"
+    return "$BASH4LLMERR_API"
   fi
 
   tmp_trim="$tmpd/parsed_trimmed.txt"
@@ -3063,7 +3055,7 @@ refresh_models_groq() {
   if [ ! -s "$tmp_trim" ]; then
     log_error "MODELREFRESH" "no valid model names after normalization"
     rm -rf "$tmpd"
-    return "$BASH4LLMERRAPI"
+    return "$BASH4LLMERR_API"
   fi
 
   mkdir -p "$(dirname "$MODELS_FILE")" 2>/dev/null || true
@@ -3076,12 +3068,12 @@ refresh_models_groq() {
     log_error "MODELREFRESH" "failed to stage models file"
     rm -f "$tmpout" 2>/dev/null || true
     rm -rf "$tmpd"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   lockfile="$MODELS_LOCK"
   lock_exec "$lockfile" 10 -- base64 "${B64_DECODE_OPT}" < "${MODELS_FILE}.b64" > "$MODELS_FILE" \
-    || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$BASH4LLMERRTMP"; }
+    || { log_error "MODELREFRESH" "failed to write models file under lock"; rm -rf "$tmpd"; return "$BASH4LLMERR_TMP"; }
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
 
@@ -3369,7 +3361,7 @@ build_payload_from_vars() {
     rc=$?
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$BASH4LLMERRAPI"
+      exit "$BASH4LLMERR_API"
     else
       return "$rc"
     fi
@@ -3394,7 +3386,7 @@ call_api_once() {
     rc=$?
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$BASH4LLMERRAPI"
+      exit "$BASH4LLMERR_API"
     else
       return "$rc"
     fi
@@ -3416,7 +3408,7 @@ call_api_streaming() {
     rc=$?
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$BASH4LLMERRAPI"
+      exit "$BASH4LLMERR_API"
     else
       return "$rc"
     fi
@@ -3483,7 +3475,7 @@ detect_empty_edge_case() {
   BASH4LLM_EDGE_FINISH_REASON="${finish_reason:-}"
   BASH4LLM_EDGE_COMPLETION_TOKENS="${completion_tokens:-0}"
 
-  if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "${completion_tokens:-0}" -le 1 ]; then
+  if [ -z "$content" ] && [ "$finish_reason" = "stop" ] && [ "${completion_tokens:-0}" -ne 0 ] && [ "${completion_tokens:-0}" -le 1 ]; then
     BASH4LLM_EDGE_EMPTY=1
   else
     BASH4LLM_EDGE_EMPTY=0
@@ -3503,14 +3495,14 @@ finalize_and_output() {
   local resp_file tmp_copy
   resp_file="${RESP:-}"
   if [ -n "$resp_file" ]; then
-    tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return "$BASH4LLMERRTMP"
-    cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return "$BASH4LLMERRTMP"
+    tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return "$BASH4LLMERR_TMP"
+    cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return "$BASH4LLMERR_TMP"
     resp_file="$tmp_copy"
   fi
 
   if { [ "$mode" = "json" ] || [ "$mode" = "pretty" ]; } && [ ! -s "$resp_file" ]; then
     log_error "RESP" "response file missing or empty: ${RESP:-<unset>}"
-    return "$BASH4LLMERRTMP"
+    return "$BASH4LLMERR_TMP"
   fi
 
   case "$mode" in
@@ -3549,7 +3541,7 @@ finalize_and_output() {
 
       if [ -z "${RUN_TMPDIR:-}" ] || [ ! -d "$RUN_TMPDIR" ]; then
         log_error "TMPFAIL" "RUN_TMPDIR not available for saving output."
-        return "$BASH4LLMERRTMP"
+        return "$BASH4LLMERR_TMP"
       fi
 
       save_to_history "$text" || log_warn "HISTORY" "Failed to save output to history."
@@ -3603,7 +3595,7 @@ perform_request_once() {
         api_err="$(extract_api_error || true)"
         if [ -n "$api_err" ]; then
           log_error "API" "API error: $api_err"
-          return "$BASH4LLMERRAPI"
+          return "$BASH4LLMERR_API"
         else
           # Output structured logs exactly once if empty completion edgecase is matched
           if [ "${BASH4LLM_EDGE_EMPTY:-0}" -eq 1 ]; then
@@ -3614,7 +3606,7 @@ perform_request_once() {
               "  completion_tokens: ${BASH4LLM_EDGE_COMPLETION_TOKENS:-0}" >&2
 
             log_error "API" "empty completion returned by provider (see previous diagnostic lines)."
-            return "$BASH4LLMERRAPI"
+            return "$BASH4LLMERR_API"
           fi
 
           # Generic fallback when response text is blank with no detailed API errors
@@ -3622,7 +3614,7 @@ perform_request_once() {
           if [ "${DEBUG:-0}" -eq 1 ]; then
             head -n 50 "${RESP:-/dev/null}" >&2 || true
           fi
-          return "$BASH4LLMERRAPI"
+          return "$BASH4LLMERR_API"
         fi
       fi
       # Ensure separation between JSON and assistant text
@@ -3634,14 +3626,14 @@ perform_request_once() {
       return 0
     else
       rc=$?
-      if [ "$rc" -eq "$BASH4LLMERRCURL_FAILED" ]; then
+      if [ "$rc" -eq "$BASH4LLMERR_CURL_FAILED" ]; then
         printf 'bash4llm: WARN: Network error (curl). Retrying...\n' >&2
-      elif [ "$rc" -eq "$BASH4LLMERRAPI" ]; then
+      elif [ "$rc" -eq "$BASH4LLMERR_API" ]; then
         printf 'bash4llm: ERROR: HTTP/API error. Not retrying.\n' >&2
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
-        return "$BASH4LLMERRAPI"
+        return "$BASH4LLMERR_API"
       else
         printf 'bash4llm: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
       fi
@@ -3651,7 +3643,7 @@ perform_request_once() {
   done
 
   log_error "REQUEST" "request failed after $MAX_RETRIES attempts."
-  return "$BASH4LLMERRAPI"
+  return "$BASH4LLMERR_API"
 }
 
 #--3<---[ SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
@@ -3662,7 +3654,7 @@ collect_input_from_files() {
     if file_readable "$f"; then
       [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${f} ---"$'\n\n'
       out="${out}$(cat "$f")"; first=0
-    else log_error "FILE" "file not readable: $f"; exit "$BASH4LLMERRTMP"; fi
+    else log_error "FILE" "file not readable: $f"; exit "$BASH4LLMERR_TMP"; fi
   done
   printf '%s' "$out"
 }
@@ -3841,7 +3833,7 @@ while [ $# -gt 0 ]; do
         shift 2
       else
         log_error "ARGS" "--session requires an argument"
-        exit "$BASH4LLMERRTMP"
+        exit "$BASH4LLMERR_TMP"
       fi
       ;;
     --session-window)
@@ -3901,7 +3893,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --) shift; break ;;
-    -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$BASH4LLMERRTMP" ;;
+    -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$BASH4LLMERR_TMP" ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -3959,7 +3951,7 @@ fi
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
-  exit "$BASH4LLMERRTMP"
+  exit "$BASH4LLMERR_TMP"
 fi
 
 # Rebuild supported providers array (machine-readable source of truth)
@@ -4040,15 +4032,15 @@ if [ "$LIST_PROVIDERS" -eq 1 ]; then
 fi
 
 if [ "$LIST_MODELS" -eq 1 ]; then
-  if list_models_cli; then exit 0; else exit "$BASH4LLMERRTMP"; fi
+  if list_models_cli; then exit 0; else exit "$BASH4LLMERR_TMP"; fi
 fi
 
 if [ -n "$SET_DEFAULT_MODEL" ]; then
   # Ensure canonical config dir exists and is safe
   if ! mkdir -p "$(canonical_config_dir)" 2>/dev/null; then
-    log_error "SEC" "cannot create config dir: $(canonical_config_dir)"; exit "$BASH4LLMERRTMP"
+    log_error "SEC" "cannot create config dir: $(canonical_config_dir)"; exit "$BASH4LLMERR_TMP"
   fi
-  if [ -L "$(canonical_config_dir)" ]; then log_error "SEC" "config dir is a symlink."; exit "$BASH4LLMERRTMP"; fi
+  if [ -L "$(canonical_config_dir)" ]; then log_error "SEC" "config dir is a symlink."; exit "$BASH4LLMERR_TMP"; fi
 
   # Determine the active provider robustly:
   # 1) explicit CLI override PROVIDER_CLI
@@ -4067,7 +4059,7 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
   # Persist default model for the explicit/active provider under canonical config dir
   target_model_file="$(canonical_model_file "${target_provider}")"
   printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$target_model_file" 10 \
-    || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$BASH4LLMERRTMP"; }
+    || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$BASH4LLMERR_TMP"; }
   chmod 600 "$target_model_file" 2>/dev/null || true
 
   # Log must reflect the actual provider used (target_provider)
@@ -4077,7 +4069,7 @@ fi
 
 if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE" = "pretty" ]; }; then
   log_error "ARGS" "--stream incompatible with --json/--pretty."
-  exit "$BASH4LLMERRTMP"
+  exit "$BASH4LLMERR_TMP"
 fi
 
 if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
@@ -4106,31 +4098,31 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     if [ "${LEGACY_REAL}" != "${DEST_BASE}" ] && [ "${LEGACY_REAL}" != "${SRC_BASE}" ]; then
       printf 'bash4llm: ERROR: legacy extras directory found at %s\n' "${LEGACY_REAL}" >&2
       printf 'bash4llm: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${DEST_BASE}" >&2
-      exit "$BASH4LLMERRTMP"
+      exit "$BASH4LLMERR_TMP"
     fi
   fi
 
   # Validate source existence and type
   if [ ! -d "${SRC_BASE}" ]; then
     log_error "EXTRAS" "missing extras source directory: ${SRC_BASE}"
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
   if [ -L "${SRC_BASE}" ]; then
     log_error "EXTRAS" "extras source is a symlink: ${SRC_BASE}"
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
 
   # Prevent copying when source equals destination or source is inside destination (avoid nested copies)
   if [ "${SRC_BASE}" = "${DEST_BASE}" ]; then
     log_error "EXTRAS" "extras source and destination are identical (${SRC_BASE}); nothing to do."
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
   case "${SRC_BASE}/" in
-    "${DEST_BASE}/"*) log_error "EXTRAS" "extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy."; exit "$BASH4LLMERRTMP" ;;
+    "${DEST_BASE}/"*) log_error "EXTRAS" "extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy."; exit "$BASH4LLMERR_TMP" ;;
   esac
 
   # Prepare destination directories with strict perms
-  mkdir -p "${DEST_BASE}" "${DEST_PROV}" 2>/dev/null || { log_error "EXTRAS" "cannot create extras dest: ${DEST_BASE}"; exit "$BASH4LLMERRTMP"; }
+  mkdir -p "${DEST_BASE}" "${DEST_PROV}" 2>/dev/null || { log_error "EXTRAS" "cannot create extras dest: ${DEST_BASE}"; exit "$BASH4LLMERR_TMP"; }
   chmod 700 "${DEST_BASE}" 2>/dev/null || true
 
   # Gather regular files from source
@@ -4145,10 +4137,10 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   # Validate ownership and file types before any writes
   current_user="$(id -un 2>/dev/null || printf '')"
   for src in "${files_to_copy[@]}"; do
-    [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$BASH4LLMERRTMP"; }
-    [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$BASH4LLMERRTMP"; }
+    [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$BASH4LLMERR_TMP"; }
+    [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$BASH4LLMERR_TMP"; }
     src_owner="$(_get_owner "$src")"
-    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$BASH4LLMERRTMP"; }
+    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$BASH4LLMERR_TMP"; }
   done
 
   # Copy files atomically preserving relative layout under DEST_BASE
@@ -4162,12 +4154,12 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     rel="${src#${SRC_BASE}/}"
     dest="${DEST_BASE}/${rel}"
     destdir="$(dirname "$dest")"
-    mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$BASH4LLMERRTMP"; }
+    mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$BASH4LLMERR_TMP"; }
 
     if type atomic_write >/dev/null 2>&1; then
-      cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERRTMP"; }
+      cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERR_TMP"; }
     else
-      cp -f "$src" "$dest" 2>/dev/null || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERRTMP"; }
+      cp -f "$src" "$dest" 2>/dev/null || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERR_TMP"; }
       chmod 600 "$dest" 2>/dev/null || true
     fi
 
@@ -4251,13 +4243,13 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
       prev_provider="$PROVIDER"
       PROVIDER="$PROVIDER_CLI"
       ;;
-    *) log_error "PROVIDER" "unknown provider: $PROVIDER_CLI"; exit "$BASH4LLMERRTMP" ;;
+    *) log_error "PROVIDER" "unknown provider: $PROVIDER_CLI"; exit "$BASH4LLMERR_TMP" ;;
   esac
 
   # Ensure config dir is available and writable
   if ! ensure_config_dir; then
     log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
@@ -4270,7 +4262,7 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   target_provider="${PROVIDER_CLI}"
   target_provider_file="$(canonical_provider_file)"
   printf '%s\n' "$target_provider" | atomic_write "$target_provider_file" 10 \
-    || { log_error "PROVIDER" "cannot persist provider selection to ${target_provider_file}."; exit "$BASH4LLMERRTMP"; }
+    || { log_error "PROVIDER" "cannot persist provider selection to ${target_provider_file}."; exit "$BASH4LLMERR_TMP"; }
   chmod 600 "$target_provider_file" 2>/dev/null || true
   rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
@@ -4307,7 +4299,7 @@ EOF
   printf '> ' >&2
   if ! IFS= read -r sel; then
     printf 'No selection made.\n' >&2
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
   sel="$(trim "$sel")"
 
@@ -4331,20 +4323,20 @@ EOF
     fi
   fi
 
-  [ -n "$chosen" ] || { log_error "PROVIDER" "Selection out of range or unknown provider."; exit "$BASH4LLMERRTMP"; }
+  [ -n "$chosen" ] || { log_error "PROVIDER" "Selection out of range or unknown provider."; exit "$BASH4LLMERR_TMP"; }
 
   prev_provider="$PROVIDER"
 
   # Ensure config dir available
   if ! ensure_config_dir; then
     log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
 
   target_provider_file="$(canonical_provider_file)"
   if ! printf '%s\n' "$chosen" | atomic_write "$target_provider_file" 10; then
     log_error "PROVIDER" "cannot persist provider selection to $target_provider_file."
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
   chmod 600 "$target_provider_file" 2>/dev/null || true
   rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
@@ -4358,7 +4350,7 @@ EOF
 
   if ! load_provider_module "$PROVIDER"; then
     log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-    exit "$BASH4LLMERRTMP"
+    exit "$BASH4LLMERR_TMP"
   fi
 
   if [ -n "${prev_provider:-}" ] && [ "$prev_provider" != "$PROVIDER" ]; then
@@ -4394,7 +4386,7 @@ fi
 # if the interactive branch already loaded the module.
 if ! load_provider_module "$PROVIDER"; then
   log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-  exit "$BASH4LLMERRTMP"
+  exit "$BASH4LLMERR_TMP"
 fi
 
 # --- Minimal: resolve provider URL now (ENV > provider-url file > embedded default) ---
@@ -4433,11 +4425,11 @@ validate_provider_interface() {
 # Ensure provider module loaded and interface valid
 if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
   if ! validate_provider_interface "$PROVIDER"; then
-    exit "$BASH4LLMERRAPI"
+    exit "$BASH4LLMERR_API"
   fi
 else
   log_error "PROVIDER" "no valid provider loaded for '$PROVIDER'. Install or configure a provider plugin."
-  exit "$BASH4LLMERRAPI"
+  exit "$BASH4LLMERR_API"
 fi
 
 # Handle explicit --refresh-models only after provider module is loaded and validated
@@ -4447,9 +4439,9 @@ if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
 
   if ! ensure_api_key_for_provider "$PROVIDER"; then
     log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-    exit "$BASH4LLMERRNOAPIKEY"
+    exit "$BASH4LLMERR_NO_API_KEY"
   fi
-  refresh_models_dispatch "$MODELS_FILE" || exit "$BASH4LLMERRAPI"
+  refresh_models_dispatch "$MODELS_FILE" || exit "$BASH4LLMERR_API"
   exit 0
 fi
 
@@ -4588,25 +4580,25 @@ load_whitelist
 # Ensure run tmpdir is available before proceeding with model selection and payload assembly
 if ! ensure_run_tmpdir; then
   log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
-  exit "$BASH4LLMERRTMP"
+  exit "$BASH4LLMERR_TMP"
 fi
 
 # Determine final model using centralized resolver
 if ! resolve_model; then
   log_error "MODEL" "no model could be selected."
-  exit "$BASH4LLMERRBAD_MODEL"
+  exit "$BASH4LLMERR_BAD_MODEL"
 fi
 
 # FINAL_MODEL set by resolve_model()
 # Validate core and provider-specific constraints
 if ! validate_model_core "$FINAL_MODEL"; then
   log_error "MODEL" "model failed core validation: $FINAL_MODEL"
-  exit "$BASH4LLMERRBAD_MODEL"
+  exit "$BASH4LLMERR_BAD_MODEL"
 fi
 
 if ! validate_model_dispatch "$FINAL_MODEL"; then
   log_error "MODEL" "invalid model for provider $PROVIDER: $FINAL_MODEL"
-  exit "$BASH4LLMERRBAD_MODEL"
+  exit "$BASH4LLMERR_BAD_MODEL"
 fi
 
 MODEL="$FINAL_MODEL"
@@ -4695,16 +4687,16 @@ elif [ "$#" -gt 0 ]; then
 else
   # No prompt/content available: emit clear error and exit with input error code.
   log_error "INPUT" "no prompt provided."
-  exit "$BASH4LLMERRNO_PROMPT"
+  exit "$BASH4LLMERR_NO_PROMPT"
 fi
 
 if [ -z "$CONTENT" ] && [ -z "$JSON_INPUT" ] && [ "$CHAT_MODE" -eq 0 ] && [ -z "$BATCH_FILE" ]; then
   log_error "INPUT" "no prompt provided."
-  exit "$BASH4LLMERRNO_PROMPT"
+  exit "$BASH4LLMERR_NO_PROMPT"
 fi
 
-is_number "$TURE" || { log_error "ARGS" "--ture must be numeric"; exit "$BASH4LLMERRTMP"; }
-is_number "$MAX_TOKENS" || { log_error "ARGS" "--max must be numeric"; exit "$BASH4LLMERRTMP"; }
+is_number "$TURE" || { log_error "ARGS" "--ture must be numeric"; exit "$BASH4LLMERR_TMP"; }
+is_number "$MAX_TOKENS" || { log_error "ARGS" "--max must be numeric"; exit "$BASH4LLMERR_TMP"; }
 
 # Final guard: if ALLOWED_MODELS is present, compare normalized model names
 if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
@@ -4712,7 +4704,7 @@ if [ -n "$ALLOWED_MODELS" ] && [ -n "$MODEL" ]; then
   if ! printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$norm_model"; then
     log_error "MODEL" "model '$MODEL' not supported or deprecated."
     printf '%s\n' "$ALLOWED_MODELS" >&2
-    exit "$BASH4LLMERRBAD_MODEL"
+    exit "$BASH4LLMERR_BAD_MODEL"
   fi
 fi
 
@@ -4728,7 +4720,7 @@ if [ -n "$BATCH_FILE" ]; then
     if [ -n "${SESSION_ID:-}" ]; then
       if ! session_validate_id "$SESSION_ID"; then
         log_error "SESSION" "invalid session id: $SESSION_ID"
-        exit "$BASH4LLMERRTMP"
+        exit "$BASH4LLMERR_TMP"
       fi
       # Ensure sessions dir exists with strict perms
       mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
@@ -4747,7 +4739,7 @@ if [ -n "$BATCH_FILE" ]; then
       fi
 
       # Prepare messages JSON file under RUN_TMPDIR and populate it (atomic)
-      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
+      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERR_TMP"; }
       BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
       export BUILD_MESSAGES_FILE
 
@@ -4795,7 +4787,7 @@ fi
 
 # Interactive chat mode
 if [ "$CHAT_MODE" -eq 1 ]; then
-  if [ ! -t 0 ]; then log_error "CHAT" "interactive chat requires a TTY."; exit "$BASH4LLMERRTMP"; fi
+  if [ ! -t 0 ]; then log_error "CHAT" "interactive chat requires a TTY."; exit "$BASH4LLMERR_TMP"; fi
   [ -t 1 ] && [ "$QUIET" -ne 1 ] && printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2
   CONVERSATION=""
   while true; do
@@ -4809,7 +4801,7 @@ if [ "$CHAT_MODE" -eq 1 ]; then
     if [ -n "${SESSION_ID:-}" ]; then
       if ! session_validate_id "$SESSION_ID"; then
         log_error "SESSION" "invalid session id: $SESSION_ID"
-        exit "$BASH4LLMERRTMP"
+        exit "$BASH4LLMERR_TMP"
       fi
       mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
       chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
@@ -4825,7 +4817,7 @@ if [ "$CHAT_MODE" -eq 1 ]; then
         log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
       fi
 
-      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
+      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERR_TMP"; }
       BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
       # Try Session Engine first; fallback to legacy on any failure
@@ -4856,7 +4848,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   if [ -n "${SESSION_ID:-}" ]; then
     if ! session_validate_id "$SESSION_ID"; then
       log_error "SESSION" "invalid session id: $SESSION_ID"
-      exit "$BASH4LLMERRTMP"
+      exit "$BASH4LLMERR_TMP"
     fi
     mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
     chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
@@ -4872,7 +4864,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
       log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
     fi
 
-    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
+    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERR_TMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
     # Try Session Engine first; fallback to legacy on any failure
@@ -4898,7 +4890,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   else
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "missing API key; aborting."
-      exit "$BASH4LLMERRNOAPIKEY"
+      exit "$BASH4LLMERR_NO_API_KEY"
     fi
   fi
 
@@ -4952,7 +4944,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
     exit 0
   else
     log_error "STREAM" "streaming request failed."
-    exit "$BASH4LLMERRCURL_FAILED"
+    exit "$BASH4LLMERR_CURL_FAILED"
   fi
 
 else
@@ -4974,7 +4966,7 @@ else
   if [ -n "${SESSION_ID:-}" ]; then
     if ! session_validate_id "$SESSION_ID"; then
       log_error "SESSION" "invalid session id: $SESSION_ID"
-      exit "$BASH4LLMERRTMP"
+      exit "$BASH4LLMERR_TMP"
     fi
     mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
     chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
@@ -4990,7 +4982,7 @@ else
       log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
     fi
 
-    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERRTMP"; }
+    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERR_TMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
     # Try Session Engine first; fallback to legacy on any failure
@@ -5016,7 +5008,7 @@ else
   else
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "missing API key; aborting."
-      exit "$BASH4LLMERRNOAPIKEY"
+      exit "$BASH4LLMERR_NO_API_KEY"
     fi
   fi
 
@@ -5079,11 +5071,10 @@ else
         fi
       fi
     fi
-    exit "$BASH4LLMERRAPI"
+    exit "$BASH4LLMERR_API"
   fi
 fi
 #--3<---[ /SECTION: CORE_PROVIDER_MAIN ]--->3--
 ########################################
 # SECTION: CORE_PROVIDER - END
 ########################################
-# End of file
