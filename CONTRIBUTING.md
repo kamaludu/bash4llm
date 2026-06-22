@@ -1,4 +1,5 @@
 [![Bash4LLM](https://img.shields.io/badge/_Bash4LLM_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Discussions](https://img.shields.io/badge/Bash4LLM-Discussions-green?logo=github)](https://github.com/kamaludu/bash4llm/discussions/126)
 
 # CONTRIBUTING.md
 
