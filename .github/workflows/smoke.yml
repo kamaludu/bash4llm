@@ -1,6 +1,7 @@
 name: Smoke tests
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main", "release-v1.3"]
   pull_request:
