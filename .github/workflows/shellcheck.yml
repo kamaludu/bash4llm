@@ -1,6 +1,7 @@
 name: ShellCheck
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "main" ]
   pull_request:
@@ -18,4 +19,4 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Run ShellCheck
-        run: shellcheck -x -S style -S warning -S error bin/groqbash 
+        run: shellcheck -x -S style -S warning -S error bin/bash4llm 

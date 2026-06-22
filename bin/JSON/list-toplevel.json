@@ -1,0 +1,183 @@
+{
+  "metadata": {
+    "software": "Bash4LLM",
+    "version": "2.0.0",
+    "date": "2026-06-09"
+  },
+  "code_blocks": [
+    {
+      "name": "PRECORE_BOOT_SETUP_SHELL",
+      "category": "PRECORE_BOOT",
+      "phase": "Inizializzazione primaria assoluta dello script.",
+      "action": "Imposta i parametri operativi restrittivi della shell Bash (set -euo pipefail) per forzare l'arresto immediato dello script in caso di comandi falliti, tentativi di accesso a variabili non dichiarate o errori di esecuzione all'interno di pipeline."
+    },
+    {
+      "name": "PRECORE_BOOT_SOURCE_ONLY_CHECK",
+      "category": "PRECORE_BOOT",
+      "phase": "Avvio preliminare dell'ambiente.",
+      "action": "Controlla se la variabile globale $BASH4LLM_SOURCE_ONLY è impostata su 1. In tal caso, interrompe immediatamente l'elaborazione del codice principale (uscendo con stato 0), consentendo esclusivamente l'importazione passiva e provvisoria di variabili e funzioni del software all'interno di un'altra sessione di shell o di uno script esterno."
+    },
+    {
+      "name": "PRECORE_BOOT_VERIFY_CMDS",
+      "category": "PRECORE_BOOT",
+      "phase": "Validazione dei requisiti software di sistema.",
+      "action": "Esegue una scansione di sistema per accertarsi che tutte le utilità essenziali richieste siano installate nel percorso di sistema (bash, jq, curl, mktemp, stat, flock, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf). Se una o più utilità risultano assenti, emette un messaggio di errore fatale su stderr ed esce con stato 1."
+    },
+    {
+      "name": "PRECORE_BOOT_DIR_RESOLUTION",
+      "category": "PRECORE_BOOT",
+      "phase": "Determinazione della directory di runtime.",
+      "action": "Risolve il percorso radice dell'installazione del software ($BASH4LLM_DIR). Adotta in ordine di priorità la cartella definita in $BASH4LLM_DIR, in alternativa compila il percorso tramite $BASH4LLM_ROOT (derivandone la directory bash4llm.d), o calcola la directory predefinita puntando a $SCRIPTDIR/bash4llm.d."
+    },
+    {
+      "name": "PRECORE_BOOT_FALLBACK_PROVIDERS",
+      "category": "PRECORE_BOOT",
+      "phase": "Configurazione delle estensioni di fallback.",
+      "action": "Imposta ed esporta globalmente il percorso della directory dei provider esterni ($PROVIDERS_DIR), facendolo coincidere con la sottocartella /providers all'interno della directory delle estensioni utente qualora non sia già definita in ambiente. Esporta $BASH4LLM_EXTRAS_DIR e $PROVIDERS_DIR."
+    },
+    {
+      "name": "PRECORE_BOOT_DIR_INVARIANTS",
+      "category": "PRECORE_BOOT",
+      "phase": "Controlli di sicurezza e integrità strutturale del file-system.",
+      "action": "Esegue controlli di sicurezza rigorosi: impedisce l'avvio se $BASH4LLM_DIR risulta vuota, convalida che $BASH4LLM_TMPDIR non coincida direttamente con la directory di sistema /tmp o risieda sotto /tmp (per mitigare minacce di dirottamento di collegamenti simbolici o attacchi concorrenti in ambienti multi-utente) e forza il posizionamento della cartella temporanea all'interno del percorso radice $BASH4LLM_DIR. Inizializza o convalida la directory canonica di configurazione $BASH4LLM_CONFIG_DIR."
+    },
+    {
+      "name": "PRECORE_BOOT_ENSURE_CONFIG_DIR",
+      "category": "PRECORE_BOOT",
+      "phase": "Verifica e allocazione cartelle di persistenza.",
+      "action": "Invoca la funzione ensure_config_dir. Se fallisce, emette log di errore ed interrompe l'esecuzione con codice BASH4LLMERRTMP."
+    },
+    {
+      "name": "PRECORE_BOOT_FAILFAST_CONFIG_DIR",
+      "category": "PRECORE_BOOT",
+      "phase": "Controllo di sicurezza post-configurazione.",
+      "action": "Impedisce l'avvio se il percorso canonico della directory di configurazione è vuoto, prevenendo esecuzioni instabili o letture errate. Esce con stato 1."
+    },
+    {
+      "name": "PRECORE_BOOT_NORMALIZE_DEBUG",
+      "category": "PRECORE_BOOT",
+      "phase": "Allineamento della verbosità.",
+      "action": "Normalizza le configurazioni di debug ereditando eventuali valori da $BASH4LLM_DEBUG se $DEBUG non è definita, e forzando il valore di default a 0 in caso di assenza totale."
+    },
+    {
+      "name": "PRECORE_BOOT_EARLY_PRINT_CONFIG",
+      "category": "PRECORE_BOOT",
+      "phase": "Intercettazione opzioni diagnostiche a riga di comando.",
+      "action": "Ispeziona in modo preventivo tutti gli argomenti CLI passati allo script. Se rileva flag specifici di ispezione del percorso (--print-config-dir, --print-provider-file, --print-model-file <provider>, --print-model-file=<provider>), stampa immediatamente il percorso corrispondente su stdout ed esce direttamente con stato 0 (o 2 in caso di uso errato dei parametri) prima di inizializzare l'intero runtime. Se incontra --help o -h, interrompe questo ciclo di scansione anticipato."
+    },
+    {
+      "name": "PRECORE_BOOT_MKDIR_PERMS",
+      "category": "PRECORE_BOOT",
+      "phase": "Creazione e blindatura delle cartelle utente.",
+      "action": "Crea sistematicamente l'intera gerarchia di directory operative necessarie allo script (sessions, config, models, templates, history, tmp, extras, providers). Esegue verifiche di sicurezza rigorose bloccando l'esecuzione se una delle directory operative risulta essere un collegamento simbolico (symlink attack mitigation), forza i permessi di accesso di tutte le cartelle a 700 (solo utente proprietario autorizzato) e imposta la maschera di creazione dei file (umask 077) per blindare tutti i file temporanei o persistenti generati in seguito."
+    },
+    {
+      "name": "PRECORE_BOOT_DETECT_B64_OPTS",
+      "category": "PRECORE_BOOT",
+      "phase": "Configurazione runtime delle dipendenze di codifica.",
+      "action": "Invoca la funzione _detect_base64_opts per configurare le opzioni corrette di Base64 in base all'architettura di sistema ospite."
+    },
+    {
+      "name": "block_mkdir_session_cache",
+      "category": "PRECORE_RUN",
+      "phase": "Avvio del sistema di cache di Bash4LLM.",
+      "action": "Alloca e configura sul file-system la cartella dedicata a ospitare la cache temporanea delle sessioni ($SESSION_CACHE_DIR), blindandone i permessi d'accesso a 700."
+    },
+    {
+      "name": "block_ensure_config_dir",
+      "category": "PRECORE_RUN",
+      "phase": "Validazione dell'ambiente transazionale di runtime.",
+      "action": "Garantisce l'esistenza e l'accessibilità della directory di configurazione, richiamando ensure_config_dir o creando la cartella qualora non si operi in esecuzione esclusiva."
+    },
+    {
+      "name": "block_ensure_run_tmpdir",
+      "category": "PRECORE_RUN",
+      "phase": "Inizializzazione dell'ambiente provvisorio di istanza.",
+      "action": "Se non si è in modalità \"solo caricamento sorgenti\" ($BASH4LLM_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di fallimento nella creazione dei percorsi temporanei, emette un log di errore fatale ed interrompe l'esecuzione con codice BASH4LLMERRTMP."
+    },
+    {
+      "name": "block_normalize_bool_env_call",
+      "category": "PRECORE_RUN",
+      "phase": "Normalizzazione delle configurazioni d'ambiente.",
+      "action": "Esegue _normalize_bool_env per uniformare i flag booleani prima di processare la logica dello script."
+    },
+    {
+      "name": "block_last_check_lines_default",
+      "category": "PRECORE_RUN",
+      "phase": "Impostazione delle variabili di controllo.",
+      "action": "Definisce il valore di default a 50 per la variabile $LAST_CHECK_LINES (utilizzata per scansioni e verifiche storiche) qualora questa non sia pre-configurata in ambiente dall'utente."
+    },
+    {
+      "name": "GROQ_API_KEY_override",
+      "category": "PROVIDER",
+      "phase": "Avvio ed autenticazione delle richieste del provider.",
+      "action": "Verifica se è impostata una variabile d'ambiente personalizzata deputata a contenere la chiave API di Groq (PROVIDER_API_ENV_groq). Se presente e valorizzata, estrae e sovrascrive il valore all'interno della variabile globale $GROQ_API_KEY per allineare l'autenticazione delle richieste."
+    },
+    {
+      "name": "parse_cli_arguments",
+      "category": "CORE_SETUP",
+      "phase": "Parsing iniziale dei parametri a riga di comando.",
+      "action": "Analizza in modo iterativo tutti gli argomenti passati da CLI. Registra e configura le opzioni booleane e i parametri complessi (file di input -f, JSON d'ingresso, file batch, sessioni, scadenze, modelli, formati di layout, log di tracciamento e parametri dei provider). Raggruppa i parametri posizionali o i prompt liberi all'interno dell'array $ARGS. Gestisce la terminazione immediata dello script in caso di parametri di aiuto (-h/--help) o visualizzazione versione (--version)."
+    },
+    {
+      "name": "source_session_engine",
+      "category": "CORE_SETUP",
+      "phase": "Integrazione ed attivazione dei moduli estesi.",
+      "action": "Rileva e tenta di importare lo script del Session Engine esterno (session-engine.sh). Esegue un dry-run di analisi sintattica (bash -n) e verifica la presenza in memoria delle funzioni chiave di interfaccia. Se i controlli hanno successo e l'engine non è disabilitato da configurazione utente, attiva le flag $SE_AVAILABLE=1 (abilitando la gestione estesa della cronologia della chat), altrimenti imposta il fallback automatico sui metodi storici legacy integrati."
+    },
+    {
+      "name": "verify_api_calls_and_rebuild_providers",
+      "category": "CORE_SETUP",
+      "phase": "Convalida delle chiamate esterne e mappatura dei plug-in.",
+      "action": "Blocca l'esecuzione dello script se è configurata la chiave API ma le chiamate esterne sono inibite senza essere in modalità di simulazione dry-run. Esegue una scansione dei file all'interno della directory dei provider (providers/*.sh) per raccogliere dinamicamente tutti i moduli dei provider installati e comporre la stringa globale aggiornata $SUPPORTED_PROVIDERS."
+    },
+    {
+      "name": "raw_listings",
+      "category": "CORE_SETUP",
+      "phase": "Elaborazione delle interrogazioni rapide.",
+      "action": "Intercetta le richieste di visualizzazione cruda dei provider (--list-providers-raw) o dei modelli locali (--list-models-raw), le stampa riga per riga su stdout ed esce immediatamente con stato 0 (o codici di errore in caso di elenchi vuoti o assenti) senza procedere oltre con l'esecuzione dello script."
+    },
+    {
+      "name": "immediate_actions",
+      "category": "CORE_SETUP",
+      "phase": "Esecuzione comandi immediati ed installazione estensioni.",
+      "action": "Elabora ed esegue le azioni che non richiedono l'avvio delle chiamate API dei modelli, terminando lo script con stato 0: --list-providers (visualizza l'elenco dei provider installati); --list-models (visualizza i modelli supportati); --set-default (imposta in modo persistente il modello predefinito per il provider attivo scrivendolo nel file dedicato); --install-extras (installa le estensioni sul sistema verificando i percorsi e mitigando minacce di sicurezza tramite conformità dell'owner e dell'integrità dei file, copiandoli nelle cartelle operative e validandoli prima del termine). Blocca inoltre l'avvio se la modalità streaming è accoppiata con output strutturato JSON."
+    },
+    {
+      "name": "normalize_boolean_flags",
+      "category": "CORE_SETUP",
+      "phase": "Normalizzazione e allineamento logico dei flag booleani.",
+      "action": "Scorre una lista predefinita di variabili di controllo booleane dello script, converte i loro valori in stati numerici puri 0 o 1 tramite is_truthy, uniformandone l'elaborazione interna."
+    },
+    {
+      "name": "CORE_PROVIDER_PRO_LOAD_INITIALIZATION",
+      "category": "CORE_PROVIDER",
+      "phase": "Selezione e caricamento del modulo provider attivo.",
+      "action": "Scansiona la directory dei provider esterni per mappare i moduli installati. Determina il provider attivo leggendolo dai parametri CLI o dal file di configurazione del provider $PROVIDER_FILE (adottando \"groq\" in caso di assenza). Se configurato un nuovo provider da CLI, convalida la compatibilità, la salva nel file $PROVIDER_FILE con permessi 600, cancella il vecchio file dei modelli e il vecchio URL per forzare il nuovo allineamento delle API. In caso di selezione interattiva, visualizza il menu numerato dei provider installati, acquisisce la scelta dall'utente tramite stdin, la memorizza e ne configura l'URL predefinito nel file canonico. Infine, invoca load_provider_module ed esegue la risoluzione dell'URL API."
+    },
+    {
+      "name": "CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH",
+      "category": "CORE_PROVIDER",
+      "phase": "Validazione del modulo provider ed allineamento modelli.",
+      "action": "Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida della conformità della sua interfaccia via validate_provider_interface; in caso di errori strutturali termina con codice BASH4LLMERRAPI. Se è stato richiesto esplicitamente il refresh dei modelli, richiede la chiave API ed avvia l'allineamento dei modelli locali tramite refresh_models_dispatch, terminando con stato 0. In subordine, se il file dei modelli locali $MODELS_FILE è assente o vuoto, tenta di eseguire un allineamento automatico dei modelli in background senza bloccare lo script."
+    },
+    {
+      "name": "CORE_PROVIDER_SHOW",
+      "category": "CORE_PROVIDER",
+      "phase": "Esecuzione delle risposte diagnostiche immediate.",
+      "action": "Gestisce e soddisfa le richieste diagnostiche e di ispezione dei percorsi dello script, terminando l'esecuzione con stato 0 dopo la visualizzazione dei dati: stampa della directory di configurazione, del file canonico del provider o del file del modello canonico. Gestisce inoltre SHOW_CONFIG (mostrando un riepilogo tabulare dettagliato dei parametri di installazione e runtime) e DIAGNOSTICS (avviando un'analisi di integrità completa del sistema controllando l'accessibilità fisica delle cartelle operative, la mappatura in memoria delle funzioni obbligatorie del provider, la validità del modello attivo e la corretta chiave API)."
+    },
+    {
+      "name": "CORE_PROVIDER_MAIN_RESOLVE",
+      "category": "CORE_PROVIDER",
+      "phase": "Risoluzione del modello e cattura standard input.",
+      "action": "Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY), esce immediatamente con stato 0. Altrimenti, carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via resolve_model ed esegue su di esso le convalide sintattiche e di interfaccia del provider (uscendo con codice BASH4LLM_ERR_BAD_MODEL se falliscono). Infine, cattura e memorizza l'eventuale flusso di testo in arrivo dallo standard input (cat -) all'interno di $STDIN_CONTENT."
+    },
+    {
+      "name": "CORE_PROVIDER_MAIN_EXECUTION",
+      "category": "CORE_PROVIDER",
+      "phase": "Esecuzione principale del prompt (Core Execution loop).",
+      "action": "Invoca assemble_content per generare il prompt definitivo. Gestisce i tre flussi di esecuzione principali: 1) Elaborazione BATCH, leggendo il file batch riga per riga, definendo le finestre di sessione storiche via Session Engine o modulo legacy, compilando il payload e interrogando le API; 2) Chat Interattiva, connettendo un terminale reale (TTY) ed eseguendo un ciclo continuo di lettura e invio di token in streaming o sincrono fino al segnale di fine trasmissione (Ctrl+D); 3) Esecuzione Standard di Singolo Prompt, gestendo le sessioni di storico, compilando il JSON di payload ed eseguendo la chiamata in streaming (call_api_streaming) o sincrona standard (perform_request_once) con relativo accodamento transazionale dei messaggi sul file NDJSON storico della sessione."
+    }
+  ]
+}

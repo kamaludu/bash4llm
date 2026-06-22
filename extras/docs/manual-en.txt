@@ -1,0 +1,626 @@
+================================================================================
+BASH4LLM(1)                      Bash4LLM Manual .en                 BASH4LLM(1)
+================================================================================
+
+NAME
+    bash4llm - Resilient and secure Bash-first wrapper for querying external 
+    LLM providers (v2.0.0)
+
+SYNOPSIS
+    bash4llm [OPTIONS] [PROMPT]
+    bash4llm -f FILE [OPTIONS]
+    echo "prompt" | bash4llm [OPTIONS]
+    bash4llm --batch BATCH_FILE [OPTIONS]
+
+DESCRIPTION
+    bash4llm is a native shell command-line utility designed for the flexible 
+    integration, automation, and orchestration of interactions with Large 
+    Language Models (LLMs) hosted by external providers such as Groq, Gemini, 
+    and HuggingFace.
+
+    The runtime operates under restrictive execution constraints (set -euo 
+    pipefail) to ensure the immediate termination of pipelines when failing 
+    commands or uninitialized variables are encountered. The architecture is 
+    entirely designed to isolate system operations from remote execution, 
+    prohibiting any dynamic evaluation or local execution of generated content 
+    (zero eval policy) and strictly avoiding the use of shared system 
+    directories like /tmp to mitigate symlink hijack risks (symlink attack 
+    mitigation).
+
+OPTIONS
+    Script options are grouped by usage category. Parameters can be passed in 
+    any order, with the exception of the end-of-options marker.
+
+  Section 1: Input and Prompt Management
+    -f FILE
+        Appends the specified file as a context source for processing. Can be 
+        declared multiple times to concatenate multiple input files in 
+        sequential order. Individual files are separated by structured visual 
+        headers and footers to allow the model to clearly distinguish between 
+        different sources.
+
+    --json-input FILE
+        Sends a structured payload in JSON format, which is useful for 
+        directly defining a custom message list with explicit roles. If set 
+        to '-', the script redirects input reading from the standard input 
+        (stdin). Using this option excludes and clears the resolution of the 
+        generic prompt variable.
+
+    --template NAME
+        Specifies the text template to apply to the user prompt, retrieved 
+        from the user templates directory. The template file must contain the 
+        "{{CONTENT}}" placeholder, which is replaced at runtime with the 
+        assembled user input text.
+
+    --batch FILE
+        Activates batch processing mode. The script scans the specified file 
+        and executes a separate API call for each line, excluding empty lines 
+        and comments (lines starting with a hash '#' character). An error in a 
+        single prompt does not halt the overall execution of the batch.
+
+    PROMPT (Positional Arguments)
+        All positional arguments not intercepted by specific flags are 
+        treated as text fragments. If an argument corresponds to a regular, 
+        readable file path on disk, the script expands it by reading and 
+        incorporating its content; otherwise, it treats it as literal text 
+        to be appended to the main prompt.
+
+  Section 2: Model and Generation Parameters
+    -m, --model MODEL
+        Specifies the LLM model name to be used for the query. This setting 
+        takes absolute precedence over locally saved default models.
+
+    --system TEXT
+        Defines or overrides the system prompt, which is used to instruct or 
+        condition the behavior, tone, and operational context of the language 
+        model.
+
+    --ture VALUE, --temperature VALUE
+        Sets the decimal sampling temperature (typically between 0.0 and 2.0). 
+        Both flags map and synchronize bidirectionally to the internal "TURE" 
+        variable and the corresponding "TEMPERATURE" variable, ensuring 
+        consistent internal resolution before transmission.
+
+    --max NUMBER
+        Sets the maximum limit of tokens that can be generated in the model's 
+        response (MAX_TOKENS variable).
+
+  Section 3: Session and Conversation Management
+    --session SESSION_ID
+        Enables multi-turn chat context persistence by linking the history to 
+        a unique alphanumeric identifier. The ID is formally validated to 
+        exclude directory traversal or unauthorized characters. The ID must 
+        match the regex ^[A-Za-z0-9._-]{1,128}$.
+
+    --session-window [WINDOW_SIZE]
+        Specifies the maximum number of previous history messages to retrieve 
+        from the session log to compose the context window. If the flag is 
+        declared without arguments, the default value is set to 10. To 
+        optimize performance and prevent model context saturation, values less 
+        than or equal to 20 are recommended; for values greater than 20, the 
+        runtime emits a diagnostic warning.
+
+  Section 4: Output and Formatting
+    --json
+        Disables text extraction and displays the raw JSON response payload 
+        received from the external provider's API on standard output.
+
+    --pretty
+        Performs structured pretty-printing of the response JSON before 
+        displaying it on standard output.
+
+    --text
+        Selects standard text display mode (default). The script extracts 
+        exclusively the text content of the message generated by the model, 
+        stripping away JSON wrapper structures.
+
+    --raw
+        Returns only the generated response text, excluding any additional 
+        trailing newline character.
+
+    --out PATH
+        Saves the final response to the specified path. If the path points to 
+        an existing directory, the script generates a unique file named with 
+        a chronological timestamp inside it; if it points to a file, it 
+        overwrites it in an atomic, secure transaction.
+
+    --threshold NUMBER
+        Sets the limit threshold, expressed in text characters (default 1000 
+        characters), above which the response generated by the LLM is 
+        automatically and permanently saved to the interaction history directory.
+
+    --save
+        Forces the unconditional saving of the textual result to the history 
+        directory, bypassing character threshold checks (FORCE_SAVE_MODE="save").
+
+    --nosave
+        Absolutely disables automatic archiving of the response in the 
+        interaction history (FORCE_SAVE_MODE="nosave").
+
+  Section 5: Connection and Network Flows
+    --stream
+        Enables real-time token reception (data streaming). This requires the 
+        active provider to support the Server-Sent Events (SSE) protocol. 
+        This option is mutually exclusive and incompatible with structured 
+        formats such as --json and --pretty; if used together, the script 
+        terminates execution.
+
+    --no-stream
+        Explicitly disables token streaming mode, restoring synchronous, 
+        blocking reception of the complete response.
+
+    --dry-run
+        Simulates the transaction without initiating real network connections. 
+        The script compiles the final JSON request payload, prints its first 
+        lines (head) to standard error for diagnostic purposes, and exits 
+        with a success status.
+
+  Section 6: Module Selection and Installation
+    --provider [NAME]
+        If specified with a name (excluding strings starting with a hyphen), 
+        selects and sets the active provider, persisting this preference in the 
+        user's configuration file. If the value passed is the literal string 
+        "list", or if the flag is declared without arguments in an interactive 
+        terminal (TTY), the script opens an interactive selection menu listing 
+        all installed providers, allowing the user to select the default.
+
+    --install-extras [SOURCE]
+        Installs and extends the runtime by copying modules and resources 
+        from the extras directory (e.g., providers, session scripts, tests, 
+        documentation) into the persistent user extras folder. If not specified, 
+        the script attempts to locate source files under the "extras" folder 
+        relative to the script's position. The installation module performs 
+        strict security checks to prevent copying symbolic links or installing into 
+        unauthorized nested paths.
+
+  Section 7: Model Management and Quick Configuration
+    --refresh-models, --refresh-model
+        Forces immediate communication with the active provider's API to 
+        synchronize the local list of available models, saving it atomically 
+        and securely under an exclusive lock in the models file.
+
+    --list-models
+        Displays a formatted, human-readable list of text models currently 
+        available and ready for use in the local system.
+
+    --list-models-raw
+        Returns the raw list of local models in machine-readable format (one 
+        normalized identifier per line) for automation purposes.
+
+    --list-providers
+        Displays the list of provider modules (both integrated and extended 
+        via plugins) currently installed in the system.
+
+    --list-providers-raw
+        Returns the list of installed providers in machine-readable format, 
+        without any text formatting or headers.
+
+    --set-default MODEL
+        Sets and permanently archives the specified model as the default choice 
+        for the currently active provider in the system.
+
+  Section 8: Diagnostics and Maintenance
+    --quiet
+        Runtime silencer. Suppresses all informational prints, tracking 
+        messages, and non-critical warnings on standard error, restricting the 
+        output strictly to formal query results or blocking execution errors.
+
+    --debug
+        Activates advanced developer diagnostics mode. Writes detailed logging 
+        messages to standard error and, if configured, to the log destination. 
+        Additionally, it prevents the automatic cleanup of resources allocated 
+        in the instance's temporary directory upon script termination.
+
+    --show-config
+        Generates a structured tabular view of the current runtime parameters 
+        (software versions, release dates, selected provider, active model, 
+        absolute filesystem paths of all working directories, debug flag 
+        status, and lock file sizes).
+
+    --diagnostics
+        Launches a complete self-check and security compliance cycle. 
+        Verifies the physical existence of user directories, resolve write 
+        permissions, validates the syntax of imported provider modules, and 
+        checks for the presence of the correct API key for the active provider.
+
+    --version
+        Prints the script name, current software version, release date, and 
+        exits.
+
+    -h, --help
+        Displays the synopsis and help guide, then exits.
+
+    --
+        End-of-options marker. Any argument placed after this delimiter is 
+        fully interpreted as the prompt text, bypassing any subsequent option 
+        parsing.
+
+ENVIRONMENT VARIABLES
+    The behavior of the bash4llm runtime is governed and can be influenced by 
+    the following environment variables.
+
+  Section 1: API Authentication Credentials
+    GROQ_API_KEY
+        The default API key used for authenticating network calls to the 
+        built-in Groq provider.
+
+    PROVIDER_API_ENV_[PROVIDER]
+        Indirect mapping for external providers. Allows defining the name of 
+        an alternative environment variable containing the API key for a 
+        specific custom provider (e.g., setting 
+        PROVIDER_API_ENV_gemini="CUSTOM_KEY" forces the script to search for 
+        the API key in the CUSTOM_KEY environment variable).
+
+  Section 2: Paths and Filesystem Structure
+    BASH4LLM_DIR
+        The persistent root directory for bash4llm resources and data. If 
+        omitted, it is dynamically resolved to the "bash4llm.d" directory 
+        located under the script's source directory.
+
+    BASH4LLM_ROOT
+        An alternative path used to derive the root directory if BASH4LLM_DIR 
+        is not explicitly declared in the environment.
+
+    BASH4LLM_CONFIG_DIR
+        The directory designated for archiving persistent user configurations 
+        (default: $BASH4LLM_DIR/config).
+
+    BASH4LLM_MODELS_DIR
+        The directory containing the list of configured and downloaded models 
+        (default: $BASH4LLM_DIR/models).
+
+    BASH4LLM_TEMPLATES_DIR
+        The directory containing user-defined prompt template files 
+        (default: $BASH4LLM_DIR/templates).
+
+    BASH4LLM_HISTORY_DIR
+        The directory designated for accumulating response history and 
+        interaction logs (default: $BASH4LLM_DIR/history).
+
+    BASH4LLM_TMPDIR
+        The secure root directory for allocating temporary script data 
+        (default: $BASH4LLM_DIR/tmp).
+
+    BASH4LLM_EXTRAS_DIR
+        The active directory for accessing and importing user extensions 
+        (default: $BASH4LLM_DIR/extras).
+
+    PROVIDERS_DIR
+        The directory containing external provider modules installed in the 
+        system (default: $BASH4LLM_EXTRAS_DIR/providers).
+
+    SESSION_CACHE_DIR
+        The directory designated for hosting the raw temporary cache of session 
+        messages and contexts (located in $BASH4LLM_CONFIG_DIR/session_cache).
+
+  Section 3: Resource Configuration and Synchronization
+    MODELS_FILE
+        The absolute or relative path of the local file where the list of 
+        models retrieved from the APIs is stored (default: 
+        $BASH4LLM_MODELS_DIR/models.txt).
+
+    MAX_MODELS
+        The numerical limit of models manageable locally in the models file. 
+        If the provider returns a larger number of models, the excess is 
+        truncated to avoid memory saturation (default: 200).
+
+    PROVIDER_FILE
+        The path of the file that persists the name of the last active 
+        provider configured by the user (located under the config directory).
+
+    MODELS_LOCK
+        An exclusive synchronization lock file to coordinate access and updates 
+        to the local models file (default: $BASH4LLM_MODELS_DIR/models.lock).
+
+    HISTORY_LOCK
+        An exclusive lock file to prevent physical corruption due to parallel 
+        or concurrent access to the history and session directories (default: 
+        $BASH4LLM_HISTORY_DIR/history.lock).
+
+    TMP_LOCK
+        An exclusive lock file associated with the temporary directory to 
+        coordinate the creation of instance subdirectories (default: 
+        $BASH4LLM_TMPDIR/tmp.lock).
+
+    BASH4LLM_LOCK_TIMEOUT_TMP
+        The maximum wait timeout, in seconds, for acquiring temporary directory 
+        locks (default: 10 seconds).
+
+    BASH4LLM_LOCK_TIMEOUT_MODELS
+        The maximum wait timeout, in seconds, for acquiring the models file 
+        lock (default: 10 seconds).
+
+    BASH4LLM_LOCK_TIMEOUT_HISTORY
+        The maximum wait timeout, in seconds, for acquiring history and session 
+        access locks (default: 10 seconds).
+
+  Section 4: History Maintenance (Rotation)
+    BASH4LLM_ROTATE_HISTORY
+        A boolean flag (1 or 0) to enable automatic, periodic cleanup of 
+        history logs after query execution (default: 0).
+
+    BASH4LLM_HISTORY_MAX_FILES
+        The maximum number of files allowed in the response history directory 
+        (default: 100). When exceeded, the oldest files are removed.
+
+    BASH4LLM_HISTORY_MAX_BYTES
+        The cumulative size limit, in bytes, of all archived history files 
+        (default: 104857600 bytes, equivalent to 100MB).
+
+    BASH4LLM_HISTORY_KEEP_DAYS
+        The retention limit, in days, for history and log files (default: 90 
+        days). Files older than this threshold are deleted.
+
+  Section 5: Runtime Execution Control and Parameters
+    ALLOW_API_CALLS
+        API transaction enablement flag. If set to a value other than 1 (e.g., 
+        0), and if the script is not operating in dry-run mode, the presence of 
+        a valid API key triggers a fatal error, proactively blocking network 
+        transmission.
+
+    BASH4LLM_SKIP_NETWORK
+        Inhibits and excludes any network calls. If set to 1, it forces the 
+        API call to produce a mocked diagnostic response, simulating a dry-run.
+
+    BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET
+        If set to 1 and combined with quiet mode (QUIET=1), it enforces an 
+        immediate block on all external connections, intended for secure 
+        non-interactive automation.
+
+    MAX_STAGE_BYTES
+        The security size limit, in bytes, applied to the transfer and 
+        staging of external resources encoded in Base64 (default: 10485760 
+        bytes, equivalent to 10MB). Files larger than this are blocked 
+        before encoding to prevent resource exhaustion.
+
+    LAST_CHECK_LINES
+        The standard number of lines to scan backward in the NDJSON session 
+        history file during record extraction (default: 50 lines).
+
+    DEBUG
+        Diagnostic alignment variable. If set to 1, it activates internal 
+        debug features (inherits configurations from BASH4LLM_DEBUG).
+
+    BASH4LLM_LOG
+        An optional file path where structured runtime logs with UTC 
+        timestamps are appended.
+
+    BASH4LLM_SOURCE_ONLY
+        Core execution bypass variable (development guard). If set to 1 
+        before importing the script, it halts execution immediately after the 
+        bootstrap phase. This allows loading and testing only environment variables, 
+        definitions, and functions of bash4llm within an active shell or 
+        external unit tests.
+
+EXIT STATUS
+    The runtime adopts a set of fixed numerical exit codes to isolate failure 
+    causes at the process level:
+
+    10 (BASH4LLM_ERR_NO_API_KEY)
+        The API key required by the active provider is missing from the 
+        environment, and the script is executing in a non-interactive session 
+        (no TTY), preventing manual input.
+
+    11 (BASH4LLM_ERR_BAD_MODEL)
+        The selected model is invalid, unsupported by the active provider, 
+        or was excluded by the core validation filters (non-textual 
+        multimodal models).
+
+    12 (BASH4LLM_ERR_CURL_FAILED)
+        The network call executed via the curl utility failed due to 
+        connectivity issues, DNS resolution failure, server instability, or a 
+        connection timeout.
+
+    13 (BASH4LLM_ERR_INVALID_JSON)
+        The configuration JSON file, the local models file, or the response 
+        payload returned by the provider's API is corrupted or lacks a 
+        valid syntax structure.
+
+    14 (BASH4LLM_ERR_NO_PROMPT)
+        No prompt text or input JSON file was provided for processing 
+        (except when operating in interactive chat or batch execution modes).
+
+    15 (BASH4LLM_ERR_TMP)
+        Unable to allocate or configure the instance's temporary directory, 
+        or irreversible failures occurred while acquiring exclusive lock files.
+
+    16 (BASH4LLM_ERR_API)
+        The provider's API server rejected the request, returned an invalid 
+        HTTP status code (e.g., 400, 401, 429, 500), or an anomalous empty 
+        generation event occurred (empty completion).
+
+OPERATIONAL MODES
+    bash4llm implements five primary operational modes, selectable via CLI 
+    flags or automatically determined by the state of the input flows.
+
+  1. Single Request (Default)
+    The runtime acquires and assembles the prompt following the strict priority 
+    chain defined in "Internal Implementation Details". It resolves the active 
+    model and provider, validates the API key, and executes a single 
+    synchronous or streaming call. Upon completion, it extracts the text 
+    response, displays it on screen according to the requested output format, 
+    saves it to the history if it exceeds the character limit threshold, and 
+    registers it in the active session file (if configured).
+
+  2. Token Streaming (--stream)
+    When enabled, the HTTP connection is established with all network buffering 
+    disabled. The runtime parses the real-time data flow line-by-line, adhering 
+    to the Server-Sent Events (SSE) standard. It extracts the text fragments 
+    (delta.content), validates their JSON syntax, and immediately sends them 
+    to standard output (stdout). In parallel, it accumulates the entire raw 
+    stream in a temporary file to transactionally reconstruct the complete 
+    response and save the summary JSON packet to the official response file 
+    upon connection termination.
+
+  3. Batch Processing (--batch)
+    Sequentially scans lines in a prompt file. For each prompt, it executes the 
+    entire pipeline of model resolution, payload compilation, request 
+    dispatch, response extraction, and history archival. Each execution is 
+    isolated: any API or network failure on a single call does not halt the 
+    subsequent prompt processing.
+
+  4. Interactive Chat (--chat)
+    Available exclusively in the presence of an interactive terminal (TTY). 
+    Opens a continuous read loop on the console: acquires the user's prompt, 
+    compiles the payload incorporating the session history, executes the query 
+    (streaming or synchronous), and displays the assistant's response. The 
+    interface updates in real time until the end-of-transmission signal is 
+    captured.
+
+  5. Interactive Provider Selection
+    If invoked, the console lists the supported providers and waits for user 
+    input. Once the selection is validated, it stores the preference in the 
+    persistent provider file, clears the local temporary files associated with 
+    the previous provider's models to force a new synchronization on the next 
+    run, and exits.
+
+INTERNAL IMPLEMENTATION DETAILS
+    This section describes the mechanisms, algorithms, and logic governing 
+    the functional core of bash4llm.
+
+  1. Prompt Assembly Algorithm (Priority Chain)
+    The final prompt string ($CONTENT) sent to the provider is resolved by 
+    scanning the following conditions in a sequential and mutually exclusive 
+    manner (the first satisfied condition bypasses the remaining ones):
+      I.   If a structured JSON file is configured ($JSON_INPUT), the $CONTENT 
+           variable is completely cleared, as the JSON file independently 
+           defines the messages array.
+      II.  If files are provided via the "-f" flag ($FILE_INPUTS), the runtime 
+           acquires and concatenates their contents, framing them with clear 
+           visual header and footer delimiters for each file. Any trailing 
+           positional arguments are appended as text fragments.
+      III. If a template is configured ($TEMPLATE), the corresponding file 
+           is retrieved and the "{{CONTENT}}" placeholder is replaced with the 
+           user's prompt (sourced from stdin or positional arguments).
+      IV.  If text redirected from standard input is detected ($STDIN_CONTENT), 
+           this is adopted as the main prompt, appending any positional 
+           arguments passed from the CLI to the end.
+      V.   If only positional arguments exist in $ARGS, they are unified and 
+           expanded to generate the final prompt string.
+
+  2. Session Management and Session Engine Integration
+    Multi-turn chat session management for context persistence operates on 
+    two logical levels:
+      - Extended Architecture (Session Engine): At boot, the runtime searches 
+        for the "session-engine.sh" extension script in the extras directory. 
+        If detected and deemed compliant (passing syntax checks), the 
+        $SE_AVAILABLE variable is set to 1. The runtime delegates all context 
+        window building and message writing to the advanced routines of the 
+        external script (session_engine_build_window and session_engine_append).
+      - Built-in Fallback (Legacy): If the Session Engine is unavailable, the 
+        script falls back to native flat NDJSON file operations. The 
+        session_read_window function extracts the last N lines backward to 
+        compose a consistent JSON array, while session_append records 
+        messages in append mode in the chronological log, securing its 
+        permissions to 600. An idempotency mechanism based on SHA-256 hashes 
+        prevents duplicate entries under concurrent conditions.
+
+  3. Model Synchronization and Core Whitelisting
+    Model validation is controlled centrally by the validate_model_core 
+    function. It normalizes the model name, verifies its presence in the 
+    provider's registered local models file, and executes a compatibility 
+    filter (is_supported_model). Models requiring non-textual inputs (such as 
+    image inputs for computer vision, audio files for transcription, or pure 
+    vector generation models for embeddings) are proactively blocked to prevent 
+    transmissions destined to fail due to the text-only payload structure of 
+    bash4llm.
+
+  4. Session Cache
+    To avoid redundant network calls or concurrent filesystem lookups, 
+    bash4llm implements a local caching mechanism for session responses. 
+    Responses are archived in the designated directory with 600 permissions. 
+    The first line of the cache file stores the absolute Unix epoch timestamp 
+    specifying expiration (TTL, configurable in seconds, default 300). Upon 
+    each query, the session_cache_get function verifies the temporal validity 
+    of the record against the current system time; if expired, the file is 
+    removed from disk.
+
+  5. Multimodal Manifest and Base64 Staging
+    For the structured transmission of attachments or complex context parts, 
+    the runtime exposes manifest management primitives:
+      - manifest_create initializes a new JSON manifest file and generates a 
+        Base64-encoded counterpart (.b64) for fast transport.
+      - manifest_add_part acquires a resource, invokes stage_b64 to encode 
+        the payload into Base64 in an isolated staging file with 600 permissions 
+        (after validating that the file size does not exceed the 
+        $MAX_STAGE_BYTES security limit of 10MB), and transactionally updates 
+        the JSON manifest via atomic modifications under lock.
+
+  6. Concurrent Synchronization and File Locking (flock)
+    The physical consistency of shared resources on disk (the models file, 
+    history log files, and the temporary directory) is protected by an 
+    exclusive locking mechanism regulated via the flock utility. The lock_exec 
+    function manages mutual exclusion: it attempts to acquire an exclusive lock 
+    on the lock file associated with the resource within a strict time limit 
+    (timeout, default 10 seconds); if acquisition does not succeed within the 
+    timeout limit, the process halts the operation, failing gracefully with 
+    exit code 124.
+
+  7. Network Control Gate and Network Policy
+    All network access for dispatching requests and aligning models is 
+    centralized and protected by the enforce_network_policy function. This 
+    function acts as a security gate and denies network access (returning a 
+    blocked status) if:
+      - Dry-run simulation is active ($DRY_RUN = 1).
+      - Network exclusion is set ($BASH4LLM_SKIP_NETWORK = 1).
+      - Quiet mode is combined with network restriction ($QUIET = 1 and 
+        $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET = 1).
+    Any API invocation point within provider modules must query 
+    enforce_network_policy before executing curl; if access is blocked, the 
+    provider must abstain from generating network traffic, producing a mock 
+    local diagnostic response and returning a non-zero exit code.
+
+  8. Architectural Detection of Base64 Encoding
+    At boot, during the PRECORE_BOOT phase, the _detect_base64_opts function 
+    runs a diagnostic probe to detect the optimal flags for the base64 
+    executable present on the host system. This analysis handles the syntactic 
+    differences between GNU/Linux distributions (which adopt -w0 for wrap 
+    inhibition and -d for decoding) and BSD/macOS systems (which do not support 
+    automatic wrapping options and require the uppercase -D flag to decode), 
+    storing the parameters in global variables to ensure maximum portability.
+
+WRAPPER LEGACY ALIASES
+    To ensure integration with legacy scripts or third-party workflows 
+    developed for previous versions of bash4llm, the runtime exposes and 
+    maintains the following direct interface wrapper aliases:
+
+    buildpayloadgroq
+        Direct alias of buildpayload_groq. Compiles the Groq JSON payload.
+
+    call_api_streaming_groq_legacy
+        Direct alias of call_api_streaming_groq. Initiates token streaming.
+
+    refreshmodelsgroq
+        Direct alias of refresh_models_groq. Executes model synchronization.
+
+    validatemodelgroq
+        Direct alias of validate_model_groq. Executes model validation.
+
+    autoselectmodelgroq
+        Direct alias of auto_select_model_groq. Executes model auto-selection.
+
+TROUBLESHOOTING AND DIAGNOSTICS
+    This section describes known anomalous behaviors and procedures to 
+    resolve them.
+
+  Edge Case: Anomalous Empty Responses (Empty Completion)
+    Occasionally, external APIs of the remote provider may return an HTTP 
+    success status code (200 OK) but halt generation without producing any 
+    usable text, returning a termination reason (finish_reason) equal to "stop" 
+    or a generated token count near zero.
+    bash4llm automatically detects this anomaly via the detect_empty_edge_case 
+    function, which inspects the structured response and extracts:
+      - The unique request identifier (Request ID) if present.
+      - The formal generation termination reason (Finish Reason).
+      - The exact count of returned tokens (Completion Tokens).
+    Upon positive detection, the script writes a single structured log record 
+    to standard error or the log file to facilitate developer inspection and 
+    terminates execution with an API call error (exit code 16).
+
+  Connection Failure or Lock Timeout
+    If the script returns exit code 15 (BASH4LLM_ERR_TMP) accompanied by lock 
+    timeout messages, verify that there are no other instances of bash4llm 
+    running in the background blocking filesystem resources. If necessary, 
+    the maximum wait times can be extended by setting the environment variables 
+    BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS, or 
+    BASH4LLM_LOCK_TIMEOUT_HISTORY to higher numerical values (e.g., 30 seconds).

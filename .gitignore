@@ -10,11 +10,11 @@
 *.tmp
 .cache/
 
-# GroqShell specific
+# GroqBash specific
 *.resp.json
 *.err.log
 
-# Output generati da GroqShell
+# Output generati da GroqBash
 *.out
 *.json
 *.txt

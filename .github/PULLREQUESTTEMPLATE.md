@@ -13,4 +13,4 @@ Istruzioni chiare per verificare la modifica, ad es.:
 # eseguire smoke test
 ./tests/smoke.sh
 # testare scenario specifico
-./bin/groqbash --dry-run "test"
+./bin/bash4llm --dry-run "test"

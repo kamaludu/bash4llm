@@ -1,86 +1,75 @@
-# =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
-# File: extras/docs/help.txt
-# Copyright (C) 2026 Cristian Evangelisti
-# License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
-# =============================================================================
+--------------------------------------
+Bash4LLM 2.x — Bash-first wrapper for the Groq API
+--------------------------------------
+  --version            Bash4LLM version
+  -h, --help           This Help
 
-GroqBash is a secure, modular, Bash-focused CLI wrapper for the Groq
-OpenAI-compatible Chat Completions API. It supports streaming, model
-selection, provider modules, safe temporary directories, and optional extras.
+Usage:
+  bash4llm "prompt"
+  echo "text" | bash4llm
+  bash4llm -f file.txt
+  bash4llm --batch batch.txt
 
-Quick setup
------------
-  chmod +x groqbash
-  export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
+Options:
 
-Basic usage
------------
-  groqbash "write a bash function"
-  echo "hello" | groqbash
-  groqbash -f input.txt
-  groqbash --provider gemini "translate this"
+Input:
+  -f <file>            Add file to FILE_INPUTS (repeatable)
+  --json-input <json>  Direct JSON input (literal JSON, not a file)
+  --template <name>    Template from bash4llm.d/templates
+  --batch <file>       One prompt per non-empty line
 
-Main options
-------------
-  -m, --model <name>         Select model (e.g. llama3-70b-8192)
-  -f <file>                  Use file as input
-  --system <text>            Set system prompt
-  --temp <value>             Temperature (default: 1.0)
-  --max <n>                  Max tokens (default: 4096)
+Output:
+  --text               Text output
+  --raw                Raw output (no formatting)
+  --json               Raw JSON output
+  --pretty             Pretty-print JSON
+  --out <path>         Save output to file or directory
+  --save               Force save
+  --nosave             Disable save
+  --threshold <n>      Autosave threshold (bytes)
 
-  --refresh-models           Update model list using Groq Models API
-  --list-models              Show available models
-  --set-default <model>      Set default model
-  --auto-default-policy <p>  preferred | alpha (default: preferred)
+Streaming:
+  --stream             Enable SSE streaming
+  --no-stream          Disable streaming
 
-  --provider <name>          Use external provider module (extras/providers)
-  --provider                 Interactive provider selection
-  --install-extras           Install extras (docs, utils, providers)
+Provider & Model:
+  --provider <name>    Select provider
+  --provider           Interactive provider selection
+  -m, --model <name>   Select model
+  --refresh-models     Refresh provider model list
+  --list-models        List models (interactive)
+  --list-models-raw    List models (raw, one per line)
+  --list-providers     List providers (interactive)
+  --list-providers-raw List providers (raw, one per line)
+  --set-default <m>    Set persistent default model
 
-  --save                     Force save to file
-  --nosave                   Force print to terminal
-  --out <path>               Output file or directory
-  --threshold <n>            Auto-save threshold (default: 1000 chars)
+Sessions:
+  --session <id>       Enable persistent session
+  --session-window [n] Session window size (default 10 if omitted)
 
-  --dry-run                  Print payload and exit
-  --quiet                    Minimal output
-  --debug                    Verbose debug + keep temp files
-  --version                  Print version
-  -h, --help                 Show this help
+Generation parameters:
+  --system <text>      System prompt
+  --temperature <n>    Temperature (alias: --ture)
+  --ture <n>           Temperature (internal alias)
+  --max <n>            Max tokens
 
-Security notes
---------------
-  • GroqBash never uses /tmp.
-  • All temporary files are created under a secure directory.
-  • Temporary directories require mktemp -d; insecure fallbacks are refused.
-  • Provider modules are loaded only from non-world-writable locations.
-  • GROQBASHEXTRASDIR must be an absolute, non-world-writable path.
-  • GROQBASHTMPDIR must be a non-world-writable path.
-  • Never commit your API key.
-  • Never execute model output as shell commands.
+General:
+  --dry-run            Show payload, skip API call
+  --quiet              Reduce output
+  --debug              Enable debug mode
+  --chat               Interactive chat mode
+  --bootstrap-only     Run bootstrap only
 
-Requirements
-------------
-  Required:
-    - bash
-    - curl
-    - coreutils (mktemp, chmod, mv, mkdir, head, sed, awk, grep)
-    - jq (JSON parsing)
+Extras installation:
+  --install-extras           Install extras (all components)
+  --install-extras <dir>     Install extras from directory
+  --install-extras=<dir>     Inline form
+  # (Selective install supported: bash4llm --install-extras provider1 templateA)
 
-  Recommended:
-    - python3 (fsync)
-    - sha256sum / shasum — (security extras)
-
-Compatibility
--------------
-  • Works on Linux, macOS, Termux, WSL.
-  • Requires Bash (not POSIX sh).
-  • Colors disabled in non-interactive environments.
-
-Examples
---------
-  TMPDIR="$HOME/.cache/groq_tmp" groqbash "say hi"
-  echo "text" | groqbash -m llama3-70b-8192
-  groqbash --provider gemini "summarize this"
+Examples:
+  bash4llm "Summarize this text"
+  echo "hello" | bash4llm --model mixtral-8x7b
+  bash4llm -f prompt.txt --json
+  bash4llm --stream "Generate streaming text"
+  bash4llm --session chat1 "Continue conversation"
+--------------------------------------

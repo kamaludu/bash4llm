@@ -1,0 +1,644 @@
+================================================================================
+BASH4LLM(1)                      Bash4LLM Manual .it                 BASH4LLM(1)
+================================================================================
+
+NOME
+    bash4llm - Wrapper Bash-first resiliente e sicuro per l'interrogazione di 
+    provider LLM esterni (v2.0.0)
+
+SINTASSI
+    bash4llm [OPZIONI] [PROMPT]
+    bash4llm -f FILE [OPZIONI]
+    echo "prompt" | bash4llm [OPZIONI]
+    bash4llm --batch FILE_BATCH [OPZIONI]
+
+DESCRIZIONE
+    bash4llm è un'utilità di riga di comando nativa in ambiente shell progettata 
+    per l'integrazione, l'automazione e l'orchestrazione flessibile delle 
+    interazioni con modelli linguistici di grandi dimensioni (LLM) forniti da 
+    servizi esterni quali Groq, Gemini e HuggingFace.
+
+    Il runtime opera sotto vincoli di esecuzione restrittivi (set -euo pipefail) 
+    per garantire l'interruzione immediata delle pipeline in presenza di comandi 
+    non validi o variabili non inizializzate. L'architettura è interamente 
+    progettata per isolare le operazioni di sistema dall'esecuzione remota, 
+    vietando qualsiasi interpretazione dinamica o esecuzione locale di codice 
+    generato (zero eval policy) ed escludendo l'uso di directory condivise di 
+    sistema come /tmp per mitigare minacce basate su collegamenti simbolici 
+    (symlink attack mitigation).
+
+OPZIONI
+    Le opzioni dello script sono raggruppate per categoria d'uso. I parametri 
+    possono essere passati in ordine arbitrario, ad eccezione del marcatore di 
+    fine opzioni.
+
+  Sezione 1: Gestione dell'Input e del Prompt
+    -f FILE
+        Aggiunge il file specificato come sorgente di contesto per l'elaborazione.
+        Può essere specificato più volte per concatenare in ordine sequenziale 
+        più file di input. I singoli file vengono separati da demarcatori 
+        visivi strutturati per consentire al modello di distinguere nettamente 
+        le sorgenti.
+
+    --json-input FILE
+        Invia un payload strutturato in formato JSON, utile per definire 
+        direttamente un elenco di messaggi personalizzati con ruoli specifici. 
+        Se impostato sul valore '-', lo script devia la lettura dallo standard 
+        input (stdin). L'utilizzo di questa opzione esclude e azzera la 
+        risoluzione della variabile di prompt generica.
+
+    --template NOME
+        Indica il template testuale da applicare al prompt dell'utente, da 
+        prelevare dalla directory dei modelli di template utente. Il file del 
+        template deve contenere il marcatore segnaposto "{{CONTENT}}" che viene 
+        rimpiazzato a runtime con il testo assemblato dell'input dell'utente.
+
+    --batch FILE
+        Attiva la modalità di elaborazione in serie. Lo script analizza il file 
+        indicato ed esegue una chiamata API distinta per ciascuna riga del file, 
+        escludendo le righe vuote e i commenti (righe che iniziano con il 
+        carattere cancelletto). Un errore in un singolo prompt non arresta la 
+        sequenza complessiva del batch.
+
+    PROMPT (Argomenti Posizionali)
+        Tutti gli argomenti posizionali non intercettati da flag specifici sono 
+        trattati come frammenti testuali. Se un argomento corrisponde a un 
+        percorso di file regolare e leggibile sul disco, lo script lo espande 
+        leggendone e incorporandone il contenuto; in caso contrario, lo 
+        interpreta come testo letterale da accodare al prompt principale.
+
+  Sezione 2: Parametri del Modello e Generazione
+    -m, --model MODELLO
+        Specifica il nome del modello LLM da utilizzare per l'interrogazione. 
+        Questa impostazione ha la precedenza assoluta rispetto ai modelli di 
+        default salvati localmente.
+
+    --system TESTO
+        Definisce o sovrascrive il prompt di sistema (System Prompt), deputato a 
+        istruire o condizionare il comportamento, il tono e il contesto 
+        operativo del modello linguistico.
+
+    --ture VALORE, --temperature VALORE
+        Imposta la temperatura di campionamento decimale (compresa solitamente 
+        tra 0.0 e 2.0). Entrambi i flag si collegano e sincronizzano in modo 
+        bidirezionale alla variabile interna "TURE" e alla corrispondente 
+        "TEMPERATURE", uniformandone la risoluzione interna prima dell'invio.
+
+    --max NUMERO
+        Imposta il limite massimo di token generabili nella risposta dal modello 
+        LLM (variabile MAX_TOKENS).
+
+  Sezione 3: Gestione delle Sessioni e Conversazioni
+    --session ID_SESSIONE
+        Abilita la persistenza del contesto di chat multi-turno associando lo 
+        storico a un identificativo alfanumerico univoco. L'ID viene validato 
+        formalmente per escludere iniezioni di percorso (directory traversal) o 
+        caratteri non ammessi. L'ID deve corrispondere alla regex 
+        ^[A-Za-z0-9._-]{1,128}$.
+
+    --session-window [FINESTRA]
+        Specifica il numero massimo di messaggi storici precedenti da recuperare 
+        dal file cronologico della sessione per comporre la finestra di 
+        contesto. Se il flag viene specificato senza argomenti, il valore di 
+        default viene impostato a 10. Per ottimizzare le prestazioni e non 
+        saturare il contesto del modello, si raccomandano valori inferiori o 
+        uguali a 20; impostando valori superiori a 20, il runtime emette un 
+        avviso diagnostico di avvertimento.
+
+  Sezione 4: Output e Formattazione
+    --json
+        Disabilita l'estrazione testuale e visualizza a schermo il payload JSON 
+        di risposta grezzo del provider così come ricevuto dalle API esterne.
+
+    --pretty
+        Esegue la formattazione avanzata strutturata (pretty-print) del JSON di 
+        risposta prima di visualizzarlo sullo standard output.
+
+    --text
+        Seleziona la modalità di visualizzazione standard testuale (default). Lo 
+        script estrae esclusivamente il corpo del messaggio testuale prodotto 
+        dal modello, rimuovendo le strutture di contorno JSON.
+
+    --raw
+        Restituisce il solo testo della risposta escludendo qualsiasi carattere 
+        di a capo (newline) finale aggiuntivo.
+
+    --out PERCORSO
+        Salva la risposta finale nel percorso indicato. Se il percorso punta a 
+        una directory esistente, lo script genera all'interno di essa un file 
+        univoco nominato con un timestamp cronologico; se punta a un file, lo 
+        sovrascrive in modo transazionale e sicuro.
+
+    --threshold NUMERO
+        Imposta la soglia limite, espressa in caratteri testuali (default 1000 
+        caratteri), al di sopra della quale la risposta prodotta dal modello LLM 
+        viene salvata automaticamente e permanentemente nella directory dello 
+        storico delle interazioni.
+
+    --save
+        Forza il salvataggio incondizionato del risultato testuale nella 
+        directory della cronologia storica, ignorando la verifica del limite di 
+        soglia (FORCE_SAVE_MODE="save").
+
+    --nosave
+        Disabilita in modo assoluto l'archiviazione automatica del risultato 
+        nello storico delle interazioni (FORCE_SAVE_MODE="nosave").
+
+  Sezione 5: Flussi di Connessione e Rete
+    --stream
+        Abilita la ricezione dei token di risposta in tempo reale (streaming dei 
+        dati). Richiede che il provider attivo supporti l'interfaccia di 
+        connessione SSE (Server-Sent Events). Questa opzione è mutuamente 
+        esclusiva e incompatibile con i formati strutturati --json e --pretty; 
+        se utilizzate congiuntamente, lo script blocca l'esecuzione.
+
+    --no-stream
+        Inibisce e disattiva in modo esplicito la modalità di streaming dei 
+        token, ripristinando la ricezione sincrona e bloccante dell'intera 
+        risposta.
+
+    --dry-run
+        Simula la transazione senza effettuare reali connessioni di rete. Lo 
+        script compila la struttura del payload JSON finale di richiesta, ne 
+        visualizza le prime righe (head) sullo standard error a fini 
+        diagnostici e termina l'esecuzione con stato di successo.
+
+  Sezione 6: Selezione dei Moduli e Installazione
+    --provider [NOME]
+        Se specificato con un nome (escluding stringhe che iniziano con un 
+        trattino), seleziona ed imposta il provider attivo, salvando in modo 
+        persistente la preferenza nel file di configurazione dell'utente. Se 
+        il valore passato è la stringa letterale "list", o se il flag viene 
+        specificato senza alcun argomento in un terminale interattivo (TTY), 
+        lo script apre un menu di selezione interattivo che elenca tutti i 
+        provider installati e permette all'utente di selezionare il default.
+
+    --install-extras [SORGENTE]
+        Installa ed estende il runtime copiando i moduli e le risorse della 
+        directory delle estensioni (es. providers, script di sessione, test, 
+        documentazione) all'interno della cartella operativa persistente delle 
+        estensioni utente. Se non specificato, lo script tenta di localizzare 
+        le sorgenti sotto la cartella di origine "extras" relativa alla 
+        posizione dello script. Il modulo esegue rigorose verifiche di 
+        sicurezza per prevenire la copia di collegamenti simbolici o 
+        l'installazione in percorsi annidati non autorizzati.
+
+  Sezione 7: Gestione Modelli e Configurazione Rapida
+    --refresh-models, --refresh-model
+        Forza il collegamento immediato con le API del provider attivo per 
+        sincronizzare l'elenco locale dei modelli disponibili, salvandolo in 
+        modo atomico e sicuro sotto lock esclusivo nel file dei modelli.
+
+    --list-models
+        Mostra a schermo l'elenco formattato e leggibile dei modelli di testo 
+        correntemente disponibili e pronti per l'uso nel sistema locale.
+
+    --list-models-raw
+        Restituisce la lista pura dei modelli locali in formato macchina (un 
+        identificatore normalizzato per riga) per scopi di automazione.
+
+    --list-providers
+        Mostra l'elenco dei moduli provider (sia integrati sia estesi tramite 
+        plugin) installati nel sistema.
+
+    --list-providers-raw
+        Restituisce la lista dei provider installati in formato macchina, senza 
+        formattazioni o intestazioni testuali.
+
+    --set-default MODELLO
+        Imposta ed archivia in modo permanente il modello indicato come scelta 
+        predefinita per il provider correntemente attivo nel sistema.
+
+  Sezione 8: Diagnostica e Manutenzione
+    --quiet
+        Silenziatore di runtime. Inibisce tutte le stampe informative, i 
+        messaggi di tracciamento e gli avvisi non critici sullo standard error, 
+        limitando l'output ai soli risultati formali dell'interrogazione o a 
+        errori bloccanti di esecuzione.
+
+    --debug
+        Attiva la modalità di diagnostica avanzata per gli sviluppatori. Scrive 
+        i messaggi di log dettagliati sullo standard error e, se configurata, 
+        nella destinazione log. Inoltre, inibisce la rimozione automatica 
+        delle risorse allocate nella directory temporanea di istanza al termine 
+        dell'esecuzione dello script.
+
+    --show-config
+        Genera una vista tabulare strutturata dei parametri di runtime correnti 
+        (versioni software, date di rilascio, provider selezionato, modello 
+        attivo, percorsi assoluti di tutte le directory operative del file 
+        system, stato dei flag di debug e dimensioni dei file di sincronizzazione).
+
+    --diagnostics
+        Avvia un ciclo completo di autoverifica e ispezione dei requisiti di 
+        sicurezza. Verifica l'esistenza fisica delle cartelle utente, la 
+        risoluzione dei permessi di scrittura, la validità sintattica dei 
+        moduli provider importati e la presenza della chiave API corretta per 
+        il provider attivo.
+
+    --version
+        Stampa il nome identificativo dello script, la versione software 
+        corrente, la data di rilascio e termina l'esecuzione.
+
+    -h, --help
+        Visualizza la guida sintetica d'uso dell'interfaccia e termina.
+
+    --
+        Marcatore di fine opzioni. Qualsiasi argomento posizionato dopo questo 
+        delimitatore viene integralmente interpretato come stringa testuale del 
+        prompt di input, escludendo l'elaborazione di flag successivi.
+
+VARIABILI D'AMBIENTE
+    Il comportamento del runtime di bash4llm è governato e può essere 
+    condizionato dalle seguenti variabili d'ambiente.
+
+  Sezione 1: Credenziali di Autenticazione API
+    GROQ_API_KEY
+        Chiave API predefinita per l'autenticazione delle chiamate di rete 
+        verso il provider integrato Groq.
+
+    PROVIDER_API_ENV_[PROVIDER]
+        Mappatura indiretta per provider esterni. Consente di definire il nome 
+        di una variabile d'ambiente alternativa deputata a contenere la chiave 
+        API per un determinato provider personalizzato (es. impostando 
+        PROVIDER_API_ENV_gemini="CUSTOM_KEY", lo script cercherà la chiave API 
+        all'interno della variabile CUSTOM_KEY).
+
+  Sezione 2: Percorsi e Struttura del File System
+    BASH4LLM_DIR
+        Directory radice persistente per le risorse e i dati di bash4llm. Se 
+        omessa, viene risolta dinamicamente puntando alla directory 
+        "bash4llm.d" posizionata sotto la cartella d'origine dello script.
+
+    BASH4LLM_ROOT
+        Percorso alternativo utilizzato per derivare la directory radice qualora 
+        BASH4LLM_DIR non sia esplicitamente dichiarata in ambiente.
+
+    BASH4LLM_CONFIG_DIR
+        Directory destinata ad archiviare le impostazioni persistenti dell'utente 
+        (default: $BASH4LLM_DIR/config).
+
+    BASH4LLM_MODELS_DIR
+        Directory contenente la lista dei modelli configurati e scaricati 
+        (default: $BASH4LLM_DIR/models).
+
+    BASH4LLM_TEMPLATES_DIR
+        Directory contenente i file dei modelli di template utente 
+        (default: $BASH4LLM_DIR/templates).
+
+    BASH4LLM_HISTORY_DIR
+        Directory destinata ad accumulare lo storico delle risposte e i log di 
+        interazione (default: $BASH4LLM_DIR/history).
+
+    BASH4LLM_TMPDIR
+        Directory radice protetta per l'allocazione dei dati temporanei dello 
+        script (default: $BASH4LLM_DIR/tmp).
+
+    BASH4LLM_EXTRAS_DIR
+        Directory attiva per l'accesso e l'importazione delle estensioni utente 
+        (default: $BASH4LLM_DIR/extras).
+
+    PROVIDERS_DIR
+        Directory contenente i moduli dei provider esterni installati nel 
+        sistema (default: $BASH4LLM_EXTRAS_DIR/providers).
+
+    SESSION_CACHE_DIR
+        Directory destinata ad ospitare la cache temporanea cruda dei messaggi 
+        e contesti di sessione (posizionata in $BASH4LLM_CONFIG_DIR/session_cache).
+
+  Sezione 3: Configurazione Risorse e Sincronizzazione
+    MODELS_FILE
+        Percorso assoluto o relativo del file locale in cui memorizzare 
+        l'elenco dei modelli recuperati dalle API (default: 
+        $BASH4LLM_MODELS_DIR/models.txt).
+
+    MAX_MODELS
+        Limite numerico di modelli gestibili localmente nel file dei modelli. Se 
+        il provider restituisce un numero maggiore di modelli, l'eccedenza 
+        viene troncata per evitare saturazioni di memoria (default: 200).
+
+    PROVIDER_FILE
+        Percorso del file che persiste il nome dell'ultimo provider attivo 
+        impostato dall'utente (collocato sotto la directory di configurazione).
+
+    MODELS_LOCK
+        File di sincronizzazione (lock) esclusivo per regolare l'accesso e l'aggiornamento 
+        del file locale dei modelli (default: $BASH4LLM_MODELS_DIR/models.lock).
+
+    HISTORY_LOCK
+        File di lock esclusivo per prevenire corruzioni fisiche dovute ad accessi 
+        paralleli o concorrenti alla directory storica e alle sessioni (default: 
+        $BASH4LLM_HISTORY_DIR/history.lock).
+
+    TMP_LOCK
+        File di lock esclusivo associato alla directory temporanea per regolare 
+        la creazione di sottocartelle di istanza (default: 
+        $BASH4LLM_TMPDIR/tmp.lock).
+
+    BASH4LLM_LOCK_TIMEOUT_TMP
+        Timeout massimo di attesa espresso in secondi per acquisire il lock sui 
+        file temporanei (default: 10 secondi).
+
+    BASH4LLM_LOCK_TIMEOUT_MODELS
+        Timeout massimo espresso in secondi per acquisire il lock sul file dei 
+        modelli (default: 10 secondi).
+
+    BASH4LLM_LOCK_TIMEOUT_HISTORY
+        Timeout massimo espresso in secondi per acquisire il lock di accesso allo 
+        storico e sessioni (default: 10 secondi).
+
+  Sezione 4: Manutenzione dello Storico (Rotazione)
+    BASH4LLM_ROTATE_HISTORY
+        Flag booleano (1 o 0) per abilitare la purga e la manutenzione periodica 
+        automatica dei log dello storico al termine delle interrogazioni (default: 0).
+
+    BASH4LLM_HISTORY_MAX_FILES
+        Soglia numerica massima di file memorizzabili nella directory dello 
+        storico delle risposte (default: 100). Superata la soglia, i file più 
+        vecchi vengono rimossi.
+
+    BASH4LLM_HISTORY_MAX_BYTES
+        Soglia limite cumulativa espressa in byte dello spazio occupato in totale 
+        dai file dello storico (default: 104857600 byte, equivalente a 100MB).
+
+    BASH4LLM_HISTORY_KEEP_DAYS
+        Limite di conservazione temporale espresso in giorni per i file di log 
+        e storici (default: 90 giorni). I file più vecchi del limite vengono eliminati.
+
+  Sezione 5: Parametri e Controllo Esecuzione Runtime
+    ALLOW_API_CALLS
+        Flag di abilitazione delle transazioni esterne. Se impostato a un valore 
+        diverso da 1 (es. 0), e se lo script non opera in modalità di simulazione 
+        dry-run, la presenza di una chiave API valida genera un errore fatale, 
+        bloccando la trasmissione di rete a scopo precauzionale.
+
+    BASH4LLM_SKIP_NETWORK
+        Inibisce ed esclude qualsiasi chiamata di rete. Se impostato a 1, forza 
+        la chiamata API a produrre una risposta diagnostica fittizia simulando il 
+        dry-run.
+
+    BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET
+        Se impostato a 1, combinato con l'abilitazione della modalità quiet 
+        (QUIET=1), impone il blocco immediato di tutte le connessioni esterne 
+        a scopo di automazione sicura in assenza di TTY.
+
+    MAX_STAGE_BYTES
+        Soglia di sicurezza dimensionale espressa in byte applicata al 
+        trasferimento e staging delle risorse esterne codificate in Base64 (default: 
+        10485760 byte, equivalente a 10MB). File di dimensioni superiori 
+        vengono bloccati prima della codifica per evitare saturazione delle risorse.
+
+    LAST_CHECK_LINES
+        Numero di righe standard da scansionare a ritroso nel file storico di 
+        sessione NDJSON durante l'estrazione dei record (default: 50 righe).
+
+    DEBUG
+        Variabile di allineamento diagnostico. Se valorizzata a 1, attiva le 
+        funzionalità di debug interno (eredita le configurazioni da BASH4LLM_DEBUG).
+
+    BASH4LLM_LOG
+        Percorso opzionale di un file all'interno del quale appendere in modo 
+        strutturato e cronologico i log operativi unificati dello script con 
+        timestamp UTC.
+
+    BASH4LLM_SOURCE_ONLY
+        Variabile di esclusione del nucleo operativo (guard di sviluppo). Se 
+        impostata a 1 prima di importare lo script, interrompe l'esecuzione 
+        principale subito dopo il bootstrap. Consente di caricare e testare 
+        isolatamente le sole variabili d'ambiente, definizioni e funzioni di 
+        bash4llm all'interno di una shell attiva o di test unitari esterni.
+
+CODICI DI USCITA
+    Il runtime adotta un insieme di codici di errore numerici fissi per isolare 
+    le cause di fallimento a livello di processo:
+
+    10 (BASH4LLM_ERR_NO_API_KEY)
+        La chiave API richiesta dal provider attivo è assente nell'ambiente e 
+        lo script è in esecuzione in una sessione non interattiva (assenza di 
+        TTY), impedendo l'inserimento manuale.
+
+    11 (BASH4LLM_ERR_BAD_MODEL)
+        Il modello selezionato non è valido, non è supportato dal provider 
+        attivo o è stato escluso a causa dei filtri di convalida del nucleo 
+        (modelli multimodali non-testuali).
+
+    12 (BASH4LLM_ERR_CURL_FAILED)
+        La chiamata di rete effettuata tramite l'utilità curl è fallita a causa 
+        di problemi di connessione, DNS, instabilità del server o scadenza del 
+        tempo massimo di attesa (timeout).
+
+    13 (BASH4LLM_ERR_INVALID_JSON)
+        Il file JSON di configurazione, il file dei modelli o il payload di 
+        risposta restituito dalle API del provider è corrotto o privo di una 
+        struttura sintattica valida.
+
+    14 (BASH4LLM_ERR_NO_PROMPT)
+        Nessun prompt testuale o file JSON è stato fornito in ingresso per 
+        l'elaborazione (fatta eccezione per la modalità chat interattiva o 
+        l'esecuzione in serie batch).
+
+    15 (BASH4LLM_ERR_TMP)
+        Impossibile allocare o configurare la directory temporanea di istanza 
+        o anomalie irreversibili nell'acquisizione dei file di lock esclusivi.
+
+    16 (BASH4LLM_ERR_API)
+        Il server API del provider ha rifiutato la richiesta o ha restituito un 
+        codice di stato HTTP non valido (es. errore 400, 401, 429, 500), oppure 
+        si è verificato un caso di generazione vuota anomala (empty completion).
+
+MODALITÀ OPERATIVE
+    bash4llm implementa cinque modalità operative principali, selezionabili via 
+    flag CLI o determinate automaticamente dallo stato dei flussi di input.
+
+  1. Richiesta Singola (Default)
+    Il runtime acquisisce e assembla il prompt seguendo la catena di priorità 
+    esclusive definita in "Dettagli di Implementazione". Risolve il modello e 
+    il provider attivi, valida la chiave API ed esegue una singola chiamata 
+    sincrona o in streaming. Al termine, estrae la risposta testuale, la 
+    visualizza a schermo in base al formato di output richiesto, la salva 
+    nello storico se supera il limite di caratteri definito e la registra nel 
+    file di sessione (se attiva).
+
+  2. Streaming dei Token (--stream)
+    Se abilitato, la connessione HTTP viene stabilita disabilitando qualsiasi 
+    buffering di rete. Il runtime analizza riga per riga il flusso dati in 
+    tempo reale conforme allo standard Server-Sent Events (SSE). Estrae i 
+    frammenti di testo (delta.content) validandone la sintassi JSON e li 
+    invia istantaneamente a schermo (stdout). In parallelo, accumula l'intero 
+    flusso crudo in un file temporaneo per ricostruire transazionalmente la 
+    risposta complessiva e salvare il pacchetto JSON di riepilogo nel file di 
+    risposta ufficiale al termine della connessione.
+
+  3. Elaborazione in Serie (--batch)
+    Scansiona sequenzialmente le righe di un file di prompt. Per ciascun prompt 
+    esegue l'intera pipeline di risoluzione del modello, compilazione del 
+    payload, inoltro della richiesta, estrazione della risposta e salvataggio 
+    nello storico. Ciascuna esecuzione è isolata: un eventuale fallimento di 
+    una chiamata API o di rete non interrompe l'elaborazione dei prompt successivi.
+
+  4. Chat Interattiva (--chat)
+    Disponibile esclusivamente in presenza di un terminale interattivo (TTY). 
+    Apre un ciclo continuo di lettura da console: acquisisce il prompt dell'utente, 
+    compila il payload integrando la cronologia della sessione, esegue 
+    l'interrogazione (in streaming o sincrona) e visualizza la risposta dell'assistente. 
+    L'interfaccia si aggiorna in tempo reale fino alla cattura del segnale di 
+    fine trasmissione.
+
+  5. Selezione del Provider Interattiva
+    Se invocata, la console elenca i provider supportati ed attende l'inserimento 
+    da parte dell'utente. Una volta convalidata la scelta, memorizza l'opzione 
+    nel file persistente del provider, rimuove i file temporanei locali 
+    associati ai modelli del provider precedente per forzare una nuova 
+    sincronizzazione al primo avvio utile, e termina l'esecuzione.
+
+DETTAGLI DI IMPLEMENTAZIONE INTERNA
+    Questa sezione descrive i meccanismi, gli algoritmi e le logiche che 
+    governano il nucleo funzionale di bash4llm.
+
+  1. Algoritmo di Assemblaggio del Prompt (Priority Chain)
+    La determinazione del prompt definitivo ($CONTENT) da trasmettere al 
+    provider avviene scansionando in modo sequenziale ed esclusivo le 
+    seguenti condizioni (la prima condizione soddisfatta interrompe le altre):
+      I.   Se è configurato un JSON strutturato ($JSON_INPUT), la variabile 
+           $CONTENT viene interamente svuotata in quanto il file JSON contiene 
+           autonomamente l'array dei messaggi.
+      II.  Se sono presenti file via flag "-f" ($FILE_INPUTS), il runtime 
+           ne acquisisce e concatena i contenuti strutturandoli con demarcatori 
+           visivi di intestazione e chiusura per ciascun file. Eventuali 
+           argomenti posizionali in coda vengono accodati come frammenti di testo.
+      III. Se è configurato un template ($TEMPLATE), il file corrispondente 
+           viene estratto e il segnaposto "{{CONTENT}}" rimpiazzato con il 
+           prompt dell'utente (proveniente da stdin o posizionali).
+      IV.  Se viene rilevato del testo proveniente da standard input ($STDIN_CONTENT), 
+           questo viene adottato come prompt principale, accodando in coda eventuali 
+           argomenti posizionali passati da CLI.
+      V.   Se vi sono solo argomenti posizionali in $ARGS, questi vengono unificati 
+           ed espansi per generare la stringa di prompt finale.
+
+  2. Gestione delle Sessioni ed Integrazione con il Session Engine
+    La gestione delle sessioni multi-turno per la persistenza del contesto opera 
+    su due livelli logici:
+      - Architettura Estesa (Session Engine): All'avvio, il runtime ricerca la 
+        presenza dello script di estensione "session-engine.sh" nella directory 
+        delle estensioni. Se rilevato e ritenuto conforme (superamento dell'analisi 
+        sintattica), la variabile $SE_AVAILABLE viene impostata a 1. Il runtime 
+        delega interamente la costruzione della finestra di contesto e la 
+        scrittura dei messaggi alle routine avanzate dello script esterno 
+        (session_engine_build_window e session_engine_append).
+      - Fallback Integrato (Legacy): Se il Session Engine non è disponibile, lo 
+        script ricade sulle funzioni native basate su file NDJSON piatti. La 
+        funzione session_read_window estrae a ritroso le ultime righe per 
+        comporre un array JSON coerente, mentre la funzione session_append registra 
+        i messaggi in append nel file cronologico blindandone i permessi a 600. 
+        Un meccanismo di marcatura basato su hash SHA-256 previene inserimenti 
+        duplicati in caso di concorrenza.
+
+  3. Sincronizzazione dei Modelli e Core Whitelisting
+    La convalida dei modelli è controllata centralmente dalla funzione 
+    validate_model_core. Essa normalizza il nome del modello, ne verifica la 
+    presenza nel file locale dei modelli registrati del provider ed esegue un 
+    filtro di compatibilità sintattica (is_supported_model). I modelli che 
+    richiedono formati non testuali (come input di immagini per visione artificiale, 
+    audio per trascrizione, o modelli di pura generazione di vettori di embedding) 
+    vengono bloccati preventivamente per impedire trasmissioni destinate a 
+    fallire a causa dell'incompatibilità dei payload testuali di bash4llm.
+
+  4. Cache di Sessione (Session Cache)
+    Per evitare ridondanti chiamate di rete o calcoli concorrenti sul file system, 
+    bash4llm implementa un meccanismo di cache locale per le risposte delle 
+    sessioni. Le risposte vengono archiviate nella directory dedicata con permessi 600. 
+    La prima riga del file di cache memorizza il timestamp Unix assoluto di scadenza 
+    (TTL, impostabile in secondi, default 300). Ad ogni interrogazione, la funzione 
+    session_cache_get verifica la validità temporale del record confrontandolo 
+    con l'ora di sistema; in caso di scadenza, il file viene rimosso dal disco.
+
+  5. Manifest Multimodale e Staging Base64
+    Per l'inoltro strutturato di allegati o parti di contesto complesse, il 
+    runtime mette a disposizione le primitive di gestione dei manifest:
+      - manifest_create inizializza un nuovo file di manifesto JSON e genera 
+        una controparte codificata Base64 (.b64) per la trasmissione veloce.
+      - manifest_add_part acquisisce una risorsa, invoca stage_b64 per codificare 
+        il payload in Base64 in un file di staging isolato con permessi 600 (dopo 
+        aver convalidato che la dimensione del file non superi la soglia di 
+        sicurezza $MAX_STAGE_BYTES di 10MB), ed aggiorna transazionalmente 
+        il manifesto JSON tramite manipolazioni atomiche sotto lock.
+
+  6. Sincronizzazione Concorrente e File Locking (flock)
+    La consistenza fisica delle risorse condivise sul disco (file dei modelli, 
+    file di log della cronologia e directory temporanea) è protetta da un 
+    meccanismo di lock esclusivo regolato tramite l'utilità flock. La funzione 
+    lock_exec gestisce la mutua esclusione: tenta di acquisire il descrittore 
+    di blocco esclusivo sul file di lock associato alla risorsa entro un limite 
+    temporale rigido (timeout, default 10 secondi); se l'acquisizione non si 
+    conclude entro la scadenza del timeout, il processo interrompe l'operazione 
+    fallendo in modo controllato con codice di stato 124.
+
+  7. Gate di Controllo Rete e Network Policy
+    Tutto l'accesso di rete per l'invio delle richieste e l'allineamento dei 
+    modelli è centralizzato e protetto dalla funzione enforce_network_policy. 
+    Questa funzione agisce da barriera di sicurezza autorizzativa e nega l'accesso 
+    alla rete (ritornando stato di blocco) se:
+      - È attivo il simulatore dry-run ($DRY_RUN = 1).
+      - È impostata la variabile di esclusione rete ($BASH4LLM_SKIP_NETWORK = 1).
+      - È attiva la modalità silenziosa combinata con la restrizione di rete 
+        ($QUIET = 1 e $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET = 1).
+    Qualsiasi punto di chiamata API all'interno dei moduli provider deve interrogare 
+    enforce_network_policy prima di invocare curl; se l'accesso è bloccato, il 
+    provider è obbligato ad astenersi dal generare traffico di rete, producendo 
+    invece un file di risposta diagnostica locale e ritornando un codice non-zero.
+
+  8. Rilevamento Architetturale della Codifica Base64
+    All'avvio, durante la fase di PRECORE_BOOT, la funzione _detect_base64_opts 
+    esegue una sonda diagnostica per rilevare le opzioni e i flag ottimali 
+    dell'eseguibile base64 presente nel sistema ospite. Questa analisi rileva 
+    le differenze sintattiche tra le distribuzioni GNU/Linux (che adottano -w0 
+    per l'inibizione dell'a capo ed il flag -d per la decodifica) e i sistemi 
+    BSD/macOS (che non supportano l'opzione di a capo automatico e richiedono il 
+    flag maiuscolo -D per decodificare), memorizzando i parametri nelle 
+    variabili globali per garantire la massima portabilità.
+
+ALIAS WRAPPER DI COMPATIBILITÀ (LEGACY)
+    Per garantire l'integrazione con script storici o flussi di terze parti 
+    sviluppati per le versioni precedenti di bash4llm, il runtime espone e 
+    mantiene attivi i seguenti wrapper legacy di interfaccia diretti:
+
+    buildpayloadgroq
+        Alias diretto di buildpayload_groq. Compila il payload JSON di Groq.
+
+    call_api_streaming_groq_legacy
+        Alias diretto di call_api_streaming_groq. Avvia lo streaming dei token.
+
+    refreshmodelsgroq
+        Alias diretto di refresh_models_groq. Esegue il refresh dei modelli.
+
+    validatemodelgroq
+        Alias diretto di validate_model_groq. Esegue la convalida dei modelli.
+
+    autoselectmodelgroq
+        Alias diretto di auto_select_model_groq. Esegue l'auto-selezione.
+
+RISOLUZIONE DEI PROBLEMI E DIAGNOSTICA
+    Questa sezione descrive i comportamenti anomali noti e le procedure per 
+    risolverli.
+
+  Caso Limite: Risposte Vuote Anomale (Empty Completion)
+    Può accadere che le API esterne del provider remoto restituiscano un codice 
+    di stato HTTP di successo (200 OK) ma interrompano la generazione senza 
+    produrre alcun testo utilizzabile, inviando un motivo di arresto (finish_reason) 
+    pari a "stop" o un numero di token generati prossimo a zero.
+    bash4llm rileva automaticamente questa anomalia tramite la funzione 
+    detect_empty_edge_case, la quale ispeziona la risposta strutturata ed estrae:
+      - L'identificativo univoco della richiesta (Request ID) se presente.
+      - Il motivo formale dell'arresto della generazione (Finish Reason).
+      - Il conteggio esatto dei token restituiti (Completion Tokens).
+    In caso di riscontro positivo, lo script scrive un unico record log strutturato 
+    sullo standard error o nel file di log per facilitare l'ispezione dello 
+    sviluppatore e termina l'esecuzione con l'errore di chiamata API (codice 16).
+
+  Mancata Connessione o Timeout dei Lock
+    Se lo script restituisce il codice di errore 15 (BASH4LLM_ERR_TMP) accompagnato 
+    da messaggi di timeout, verificare che non vi siano altre istanze di bash4llm 
+    in esecuzione in background che bloccano le risorse del file system. In caso di 
+    necessità, è possibile estendere i tempi massimi di attesa impostando in ambiente 
+    le variabili BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS o 
+    BASH4LLM_LOCK_TIMEOUT_HISTORY su valori numerici superiori (es. 30 secondi).

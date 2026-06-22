@@ -1,17 +1,18 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
-[![ShellCheck](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/shellcheck.yml)
-[![Smoke Tests](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/groqbash/actions/workflows/smoke.yml)
+[![ShellCheck](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml)
+[![Smoke Tests](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml)
 
-# GroqBash &nbsp; [![English](https://img.shields.io/badge/EN-English_version-orange?style=flat)](README-en.md)
+# Bash4LLM⁺ 🇮🇹 [🇬🇧](README-en.md)
 
-**GroqBash** — *wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq.*
+**Bash4LLM⁺** — wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq.
 
-GroqBash è un **singolo script Bash**, auto‑contenuto, leggibile e verificabile.  
+Bash4LLM è un singolo script Bash, auto‑contenuto, leggibile e verificabile.  
 Scaricalo, rendilo eseguibile, esporta la tua API key e inizia subito a usarlo.
 
-Compatibile con ambienti Unix‑like: **Linux**, **macOS**, **WSL**, **Termux**.
+Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Cygwin, Termux, BSD.
 
 ---
 
@@ -19,13 +20,16 @@ Compatibile con ambienti Unix‑like: **Linux**, **macOS**, **WSL**, **Termux**.
 
 - **Lista modelli dinamica**  
   tramite `GET https://api.groq.com/openai/v1/models`  
-  → nessun modello hardcoded, nessun fallback nascosto.
+  → nessun modello hardcoded.
 
 - **Sicurezza by design**  
-  → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, controlli provider robusti.
+  → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, validazione provider avanzata.
 
-- **Bash‑first**  
-  → logica chiara, nessuna dipendenza non necessaria.
+- **Struttura modulare a sezioni**  
+  → PRECORE_BOOT, PRECORE_RUN, PROVIDER, CORE_SETUP, CORE_PROVIDER .
+  
+- **Sistema di Stato UI (ui_state)**  
+  → il CORE espone metadati per GUI/strumenti esterni tramite file JSON atomici.
 
 - **Streaming e non‑streaming**  
   → output in tempo reale o completo a fine risposta.
@@ -34,59 +38,94 @@ Compatibile con ambienti Unix‑like: **Linux**, **macOS**, **WSL**, **Termux**.
   → per output lunghi oltre una soglia configurabile.
 
 - **Gestione modelli avanzata**  
-  → refresh, lista, default persistente, auto‑selezione basata su policy.
+  → refresh, lista, default persistente, whitelist dinamica, auto‑selezione.
 
 - **Extras opzionali**  
-  → provider, documentazione estesa, strumenti di sicurezza, test.
+  → provider aggiuntivi, template, documentazione, strumenti di sicurezza.
 
 ---
 
 ## Modello di minaccia (versione breve)
 
-GroqBash è progettato per **ambienti single‑user** (laptop, Termux, shell personale).
+Bash4LLM è progettato per ambienti single‑user (PC/laptop, server personali).
 
-- I provider sono **codice eseguito nella tua shell**: devono risiedere in directory sicure e non scrivibili da altri.  
-- Variabili come `GROQBASHEXTRASDIR` e `GROQBASHTMPDIR` sono considerate **configurazione fidata**.  
-- Lo script **non esegue mai** l’output del modello.  
+- I provider sono codice eseguito nella tua shell: devono risiedere in directory sicure.  
+- Variabili come `BASH4LLM_EXTRAS_DIR` e `BASH4LLM_TMPDIR` sono considerate configurazione fidata.  
+- Lo script non esegue mai l’output del modello.  
 - I rischi TOCTOU e i limiti del parsing JSON/SSE sono mitigati e documentati.
 
-Per dettagli completi: **[SECURITY](SECURITY.md)**.
+Dettagli completi in **[SECURITY](SECURITY.md)**.
 
 ---
 
 ## Requisiti
 
-**Minimi**
+Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 
-- `bash`
-- `curl`
-- coreutils (`mktemp`, `chmod`, `mv`, `mkdir`, `head`, `sed`, `awk`, `grep`)
-- `jq` (parsing JSON)
-
-**Consigliati**
-
-- `python3` (fsync opzionale)
-- `sha256sum` o `shasum` (per extras di sicurezza)
+- ***bash***
+- coreutils
+- findutils
+- util-linux
+- gawk
+- curl
+- jq
 
 ---
 
 ## Installazione
 
-Istruzioni dettagliate in **[INSTALL](INSTALL.md)**.
+> [!TIP]
+> **⏩ Installazione Rapida (Fast-Forward)**
+> 
+> Eegui questi comandi nel tuo terminale per avviare subito **Bash4LLM**:
+> 
+> ```sh
+> # 1. Clona il repository (solo l'ultimo commit per massima velocità)
+> git clone --depth 1 --branch main https://github.com/kamaludu/bash4llm.git repo-bash4llm  
+> 
+> # 2. Crea una cartella di lavoro ed estrai l'eseguibile
+> mkdir -p bash4llm
+> cp repo-bash4llm/bin/bash4llm bash4llm/
+> chmod +x bash4llm/bash4llm
+> 
+> # 3. Entra nella cartella e aggiorna i modelli 
+> cd bash4llm 
+> ./bash4llm --refresh-models
+> ```
+> 
+> Lo script ti chiederà l'inserimento della chiave API:
+> `Enter API key for provider groq (env GROQ_API_KEY):`
+> 
+> Inserisci la tua API key, poi esportala per non doverla più inserire durante la sessione:
+> 
+> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
+> 
+> Usa Groqbash ⚡
+> 
+
+Istruzioni dettagliate in: **[INSTALL](INSTALL.md)**
 
 In breve:
 
 ```sh
-chmod +x groqbash
+chmod +x bash4llm
 export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
-./groqbash --help
+./bash4llm --help
 ```
 
-Extras opzionali (docs, provider, sicurezza, test):
+Extras opzionali:
 
 ```sh
-./groqbash --install-extras
+./bash4llm --install-extras
 ```
+
+Con opzioni:
+
+- `--source <dir>`  
+- `--force`  
+- `--dry-run`  
+- installazione selettiva:  
+  `./bash4llm --install-extras provider1 templateA`
 
 ---
 
@@ -95,171 +134,283 @@ Extras opzionali (docs, provider, sicurezza, test):
 Prompt diretto:
 
 ```sh
-./groqbash "scrivi una breve poesia in italiano"
+./bash4llm "scrivi una breve poesia in italiano"
+```
+
+Prompt multilinea:
+
+```sh
+./bash4llm <<'EOF'
+scrivi una breve poesia
+in italiano
+EOF
 ```
 
 Input da file:
 
 ```sh
-./groqbash -f prompt.txt
+./bash4llm -f prompt.txt
 ```
 
 Pipe:
 
 ```sh
-echo "spiegami la relatività" | ./groqbash
+echo "spiegami la relatività" | ./bash4llm
 ```
 
 Modello specifico:
 
 ```sh
-./groqbash -m llama-3.3-70b-versatile "scrivi un saggio breve"
+./bash4llm -m llama-3.3-70b-versatile "scrivi un saggio breve"
 ```
 
-Dry run (mostra il payload JSON):
+Dry run:
 
 ```sh
-./groqbash --dry-run "ciao"
+./bash4llm --dry-run "ciao"
 ```
 
-Provider (se extras installati):
+Provider esterno (se installato):
 
 ```sh
-./groqbash --provider gemini "traduci questo"
+./bash4llm --provider gemini "traduci questo"
 ```
 
 ---
 
-## Opzioni principali
+## Comandi, flag e opzioni disponibili  
 
-| Opzione                        | Descrizione                                              |
-|--------------------------------|----------------------------------------------------------|
-| `-m, --model <name>`           | Seleziona il modello                                     |
-| `-f <file>`                    | Legge il prompt da file                                  |
-| `--system <text>`              | Imposta il system prompt                                 |
-| `--temp <value>`               | Temperature (default: `1.0`)                             |
-| `--max <n>`                    | Max tokens (default: `4096`)                             |
-| `--refresh-models`             | Aggiorna la lista modelli da Groq                        |
-| `--list-models`                | Mostra i modelli disponibili                             |
-| `--set-default <model>`        | Imposta il modello predefinito persistente               |
-| `--auto-default-policy <p>`    | `preferred` \| `alpha`                                   |
-| `--provider <name>`            | Usa un provider esterno                                  |
-| `--provider`                   | Selezione provider interattiva                           |
-| `--install-extras`             | Installa extras (docs, utils, provider, sicurezza, test) |
-| `--save` / `--nosave`          | Forza salvataggio o stampa                               |
-| `--out <path>`                 | Percorso file o directory                                |
-| `--threshold <n>`              | Soglia auto‑salvataggio (default: `1000`)                |
-| `--dry-run`                    | Mostra payload e termina                                 |
-| `--quiet`                      | Output minimale                                           |
-| `--debug`                      | Debug esteso + conserva temporanei                       |
-| `--version`                    | Mostra versione                                           |
-| `-h, --help`                   | Mostra l’help (da extras/docs/help.txt se presente)      |
+### Modelli e provider
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--refresh-models`, `--refresh-model` | no | Aggiorna la lista modelli (richiede API key). |
+| `--list-models` | no | Stampa lista modelli (formato interattivo). |
+| `--list-models-raw` | no | Stampa lista modelli in formato raw (una riga per modello). |
+| `--list-providers` | no | Stampa lista provider. |
+| `--list-providers-raw` | no | Stampa provider in formato raw. |
+| `--set-default <model>` | sì | Imposta modello di default persistente. |
+| `-m <model>`, `--model <model>` | sì | Imposta modello per questa esecuzione. |
+| `--provider <name>` | sì | Imposta provider da CLI. |
+| `--provider` | no | Se senza argomento → apre selezione interattiva. |
+
+
+### Input (file, JSON, template, batch)
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `-f <file>` | sì | Aggiunge file a `FILE_INPUTS`. |
+| `--json-input <json>` | sì | Imposta input JSON. |
+| `--template <name>` | sì | Applica template da `BASH4LLM_TEMPLATES_DIR`. |
+| `--batch <file>` | sì | Esegue richieste batch (una riga = un prompt). |
+
+
+### Sessioni
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--session <id>` | sì | Abilita sessione con ID specifico. |
+| `--session-window [n]` | opzionale | Imposta finestra sessione (default 10 se non fornito). |
+
+
+### Parametri modello / generazione
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--system <text>` | sì | Imposta system prompt. |
+| `--ture <n>` | sì | Imposta temperatura (alias interno). |
+| `--temperature <n>` | sì | Alias di `--ture`. |
+| `--max <n>` | sì | Imposta max token. |
+
+
+### Output e salvataggio
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--save` | no | Forza salvataggio output. |
+| `--nosave` | no | Disabilita salvataggio. |
+| `--out <path>` | sì | Percorso file/directory output. |
+| `--threshold <n>` | sì | Soglia dimensione per salvataggio. |
+| `--json` | no | Output JSON. |
+| `--pretty` | no | Output JSON formattato. |
+| `--text` | no | Output testuale. |
+| `--raw` | no | Output grezzo. |
+
+
+### Modalità operative
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--dry-run` | no | Nessuna chiamata API. |
+| `--quiet` | no | Riduce output. |
+| `--stream` | no | Streaming attivo. |
+| `--no-stream` | no | Disattiva streaming. |
+| `--chat` | no | Modalità chat interattiva. |
+| `--bootstrap-only` | no | Esegue solo bootstrap e termina. |
+
+
+### Configurazione e diagnostica
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--show-config` | no | Mostra configurazione completa. |
+| `--diagnostics` | no | Esegue diagnostica completa. |
+| `--version` | no | Stampa versione e termina. |
+| `-h`, `--help` | no | Mostra help da file. |
+
+
+### Installazione extras
+| Flag | Argomento | Effetto |
+|------|-----------|---------|
+| `--install-extras` | opzionale | Installa extras; può accettare directory. |
+| `--install-extras=<dir>` | sì | Installa extras da directory specifica. |
+
+
+### Terminazione parsing
+| Flag | Effetto |
+|------|---------|
+| `--` | Termina parsing opzioni. |
+| `-*` | Opzione sconosciuta → errore. |
+| `*` | Argomento posizionale → aggiunto a `ARGS`. |
+
 
 ---
 
-## Configurazione e comportamento modelli
+## Configurazione e modelli
 
 ### File di configurazione
 
-- `~/.config/groq/models.txt`  
-  → lista modelli dinamica (ricreata a ogni refresh).  
-- `~/.config/groq/default_model`  
-  → modello predefinito persistente.
+- `$BASH4LLM_CONFIG_DIR/config`  
+  → parametri locali (MODEL, TURE, MAX_TOKENS, FORMAT, THRESHOLD)
+
+- `$BASH4LLM_CONFIG_DIR/model.$PROVIDER`  
+  → modello predefinito per provider
+
+- `$MODELS_FILE`  
+  → whitelist modelli aggiornata da `--refresh-models`
 
 ### Precedenza selezione modello
 
 1. `-m/--model`  
-2. `default_model`  
-3. `GROQ_MODEL`  
-4. Auto‑selezione basata su policy  
+2. `model.$PROVIDER`  
+3. `config`  
+4. auto‑selezione provider  
+5. prima voce della whitelist
 
-Se la lista modelli è vuota: errore → richiede `--refresh-models`.
+---
 
-### Refresh modelli
+## File temporanei e output
 
-```sh
-./groqbash --refresh-models
+- Nessun uso di `/tmp`.  
+- Temporanei in directory dedicata con permessi 700.  
+- File salvati con permessi 600.  
+- Con `--out` Bash4LLM crea la directory se possibile.
+
+---
+
+# 📁 Sistema di Stato UI (ui_state)
+
+Bash4LLM espone metadati operativi destinati a GUI/strumenti esterni tramite file JSON atomici in:
+
+```
+$BASH4LLM_CONFIG_DIR/ui_state
 ```
 
-Scarica la lista ufficiale, ricostruisce `models.txt`, mostra diagnostica (più dettagli con `--debug`).
+Contiene:
+
+- `sessions/<id>.json` → stato sessione (active, msg_count, last_ts)  
+- `sessions/index.json` → elenco sessioni  
+- `last_api.json` → ultimo risultato API  
+- `last_history.json` → ultimo salvataggio history  
+- `provider_capabilities.json` → capacità provider attivo  
+
+La GUI (extra opzionale) legge **solo** questi file per i placeholder CGI (20–23).  
+La semantica dei placeholder è definita nella *Fonte di Verità Unificata dei Placeholder (GUI + CGI)*.
 
 ---
 
-## File temporanei e percorsi output
+# 📘 Memoria contestuale in Bash4LLM
 
-- GroqBash **non usa mai `/tmp`**.  
-- I temporanei runtime sono creati con `mktemp -d` e permessi `700`.  
-- I file salvati hanno permessi restrittivi (`600`).  
-- Con `--out`, GroqBash crea la directory se possibile; altrimenti stampa su terminale.
+Bash4LLM **non mantiene memoria da solo**.  
+La memoria esiste **solo se attivi una sessione** tramite `--session`.
 
----
+Ogni sessione crea un file NDJSON persistente:
 
-## Extras avanzati (opzionali)
-
-Gli extras non modificano il comportamento del core.
-
-### Sicurezza
-
-- `extras/security/verify.sh`  
-  → verifica provider, permessi, symlink, owner, checksum.  
-- `extras/security/validate-env.sh`  
-  → controlla `GROQBASHEXTRASDIR`, `GROQBASHTMPDIR`, strumenti richiesti.
-
-Esecuzione:
-
-```sh
-extras/security/verify.sh
-extras/security/validate-env.sh
+```
+$BASH4LLM_HISTORY_DIR/sessions/<session_id>.ndjson
 ```
 
-### Test
+E Bash4LLM mantiene metadati della sessione in:
 
-- `extras/test/json-sse-suite.sh`  
-  → test per escaping JSON e parsing SSE (senza chiamate API reali).
+```
+$BASH4LLM_CONFIG_DIR/ui_state/sessions/<session_id>.json
+```
+
+Questi metadati sono la fonte canonica per GUI/strumenti esterni.
 
 ---
 
-## Note di sicurezza e limitazioni
+### 🟩 Uso corretto di `--session`
 
-- **Nessun eval**.  
-- **Nessuna esecuzione dell’output del modello**.  
-- **Provider = codice**: mantieni `extras/providers` sicuro.  
-- **Variabili d’ambiente = configurazione fidata**.  
-- **Parsing JSON/SSE**: robusto ma non un parser completo.  
-- **TOCTOU**: mitigato ma non eliminabile in Bash.
+```sh
+./bash4llm --session chat1 "Ciao"
+./bash4llm --session chat1 "Riassumi ciò che ho detto"
+```
 
-Per dettagli completi: **[SECURITY](SECURITY.md)**.
+### 🟩 Uso corretto di `--session-window`
+
+```sh
+./bash4llm --session chat1 --session-window 10 "continua"
+```
+
+### 🟧 Regola fondamentale
+
+Per avere memoria contestuale **devi sempre** includere `--session <id>`.
+
+---
+
+## Note di sicurezza
+
+- Nessun `eval`.  
+- Nessuna esecuzione dell’output del modello.  
+- Provider = codice: mantieni `extras/providers` sicuro.  
+- Variabili d’ambiente = configurazione fidata.  
+- TOCTOU mitigato.
 
 ---
 
 ## Codici di uscita
 
-| Codice | Significato                                                                 |
-|--------|------------------------------------------------------------------------------|
-| 0      | Successo                                                                      |
-| 1      | Errore generico (argomenti, file, configurazione)                             |
-| 2      | Errore di rete / curl                                                         |
-| 3      | Errore HTTP/API (4xx/5xx)                                                     |
-| 4      | Nessun contenuto testuale estratto (errore parsing)                           |
+| Codice | Significato |
+|--------|-------------|
+| 0 | Successo |
+| `BASH4LLMERRTMP` | Errore generico / temporanei |
+| `BASH4LLMERRCURL_FAILED` | Errore rete/curl |
+| `BASH4LLMERRAPI` | Errore HTTP/API |
+| `BASH4LLMERRBAD_MODEL` | Modello non valido |
+| `BASH4LLMERRNO_PROMPT` | Nessun prompt fornito |
+| `BASH4LLMERRNOAPIKEY` | API key mancante |
+| `BASH4LLMERRINSTALL` | Errore installer extras |
+
+---
+
+## Variabili principali  
+
+| Variabile | Necessaria | Descrizione |
+|-----------|------------|-------------|
+| `GROQ_API_KEY` | sì per chiamate API | API key provider. |
+| `BASH4LLM_CONFIG_DIR` | consigliata | Directory configurazione. |
+| `BASH4LLM_MODELS_DIR` | consigliata | Directory modelli. |
+| `BASH4LLM_TMPDIR` | sì | Directory temporanea. |
+| `BASH4LLM_HISTORY_DIR` | consigliata | Directory sessioni. |
+| `MODEL` | no | Modello attivo. |
+| `PROVIDER` | no | Provider attivo. |
+| `ALLOWED_MODELS` | no | Whitelist modelli. |
 
 ---
 
 ## Licenza
 
-GroqBash è distribuito sotto licenza **GNU GPL v3**.  
-Vedi **[LICENSE](LICENSE)** per il testo completo.
-
----
-
-## Note
-
-Parte del codice e della documentazione è stata redatta con l’assistenza di strumenti di IA.  
-L’architettura e le decisioni tecniche restano curate manualmente.
+Bash4LLM è distribuito sotto licenza GPL v3.  
+Vedi `LICENSE`.
 
 ---
 
 ## Contatti
 
-- Autore: Cristian Evangelisti  
-- Email: opensource​@​cevangel.​anonaddy.​me  
-- Repository: https://github.com/kamaludu/groqbash
+Autore: Cristian Evangelisti  
+Email: opensource​@​cevangel.​anonaddy.​me  
+Repository: https://github.com/kamaludu/bash4llm

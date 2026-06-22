@@ -1,241 +1,263 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+# INSTALLATION [🇮🇹](INSTALL.md) 🇬🇧
 
-# INSTALLATION &nbsp; [![Italian](https://img.shields.io/badge/IT-Versione_italiana-00aa55?style=flat)](INSTALL.md) 
-
-
-This document explains how to install GroqBash, configure your environment, verify the installation, and understand how temporary files, output paths, and exit codes work.
-
-GroqBash is a **single Bash script**, secure and self‑contained, designed for **single‑user environments** (Linux, macOS, WSL, Termux).
+**Bash4LLM** is a portable and secure Bash wrapper for the Groq API.  
+It does not require Python nor external dependencies beyond POSIX/coreutils commands.
 
 ---
 
-# 1. Requirements and Dependencies
+## 1. Requirements
 
-## Required
-- **bash**
-- **curl**
-- **coreutils** (mktemp, chmod, mv, mkdir, head, sed, awk, grep)
-- **jq**
+Bash4LLM requires the following packages (or equivalents) to be available in PATH:
 
-## Recommended
-- **python3** — fallback for fsync and serialization (optional)
-- **sha256sum / shasum** — for optional security extras
+- ***bash***
+- coreutils
+- findutils
+- util-linux
+- gawk
+- curl
+- jq
 
-## Locale and encoding
-GroqBash requires a UTF‑8 environment.
+### Compatibility
 
-If needed:
+Bash4LLM works on:
 
-`sh
-export LC_ALL=C.UTF-8
-export LANG=C.UTF-8
-`
-
----
-
-# 2. Installation
-
-## Download the script
-
-`sh
-curl -O https://raw.githubusercontent.com/kamaludu/groqbash/main/bin/groqbash
-`
-
-## Make it executable
-
-`sh
-chmod +x groqbash
-`
-
-## (Optional but recommended) Install into your PATH
-
-`sh
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-`
-
-## Set your API key
-
-`sh
-export GROQ_API_KEY="gsk_XXXXXXXXXXXXXXXX"
-`
-
-## Verify installation
-
-`sh
-groqbash --version
-`
+- GNU/Linux  
+- macOS (with GNU packages installable via Homebrew)  
+- WSL and Cygwin (Windows)  
+- Termux (Android)  
+- BSD  
 
 ---
 
-# 3. Installing Extras (optional)
+## 2. Basic installation
 
-Extras include:
+### 2.1 Clone or download Bash4LLM
 
-- additional documentation  
-- external providers  
-- security tools  
-- JSON/SSE test suite  
+`git clone https://github.com/<your-repo>/bash4llm.git`  
+`cd bash4llm`
 
-Install everything with:
+Or download the `bash4llm` file and make it executable:
 
-`sh
-groqbash --install-extras
-`
+`chmod +x bash4llm`
 
-Extras **do not modify core behavior**.
+### 2.2 Set the API key
 
----
+Bash4LLM uses the variable:
 
-# 4. Temporary File Behavior
+`export GROQ_API_KEY="your_key"`
 
-- GroqBash **never uses `/tmp`** for internal temporary files.  
-- Temporary directories are created using:
-  - `mktemp -d`
-  - permissions `700`
-  - inside `$GROQBASHTMPDIR` or a safe fallback under the user’s home
-
-- With `--debug`, temporary files are **not removed** to help inspection.
+You can place it in your `.bashrc` or `.zshrc`.
 
 ---
 
-# 5. Output Path (`--out`)
+## 3. Directory structure
 
-- When using `--out /path/to/file`, GroqBash:
-  - attempts to create the directory  
-  - checks safety and permissions  
-  - saves the file with restrictive permissions (`600`)
-
-- If the directory is unsafe or unwritable:
-  - GroqBash **does not** fall back to `/tmp`
-  - prints the output to the terminal
-  - shows a clear warning
-
-**Recommendation:** use paths under your home directory or `$GROQBASHTMPDIR`.
-
----
-
-# 6. Basic Usage and Examples
-
-Simple prompt:
-
-`sh
-groqbash "write a bash function that..."
-`
-
-Pipe input:
-
-`sh
-echo "Explain this code" | groqbash
-`
-
-Input from file:
-
-`sh
-groqbash -f input.txt
-`
-
-Force saving:
-
-`sh
-groqbash --save --out output.txt "long text..."
-`
-
-Dry run (show JSON payload):
-
-`sh
-groqbash --dry-run "hello"
-`
-
-Provider (if extras installed):
-
-`sh
-groqbash --provider gemini "translate this"
-`
+On first execution, Bash4LLM automatically creates:
+```
+bash4llm.d/
+    config/
+    models/
+    templates/
+    history/
+    tmp/
+    extras/
+        providers/
+```
+All directories are created with permissions 700 (best‑effort on non‑POSIX filesystems).
 
 ---
 
-# 7. Exit Codes
+## 4. Quick usage
 
-| Code | Meaning                                                                   |
-|------|---------------------------------------------------------------------------|
-| **0** | Success                                                                   |
-| **1** | Generic error (arguments, file, configuration)                            |
-| **2** | Network / curl error                                                      |
-| **3** | HTTP/API error (4xx/5xx)                                                  |
-| **4** | No textual content extracted (parsing error)                              |
+### Single prompt
 
-**Operational notes**
-- Code 2 → automatic retries (DNS, timeout, connection refused)  
-- Code 3 → no retries (API errors, authorization, rate limits)  
-- With `--debug`, full logs are kept in the runtime tmpdir
+`./bash4llm -m mixtral-8x7b -- "Write a haiku about the wind."`
 
----
+### Streaming mode
 
-# 8. Troubleshooting and Recommended Tests
+`./bash4llm --stream -- "Generate text in streaming."`
 
-## Verify JSON payload
+### Input from file
 
-`sh
-groqbash --dry-run "Test payload with \"quotes\" and newlines\nand unicode: € ✓"
-`
+`./bash4llm -f input.txt`
 
-## Pipe input
+### JSON output
 
-`sh
-echo "Explain this code" | groqbash
-`
-
-## Invalid API key
-
-`sh
-GROQ_API_KEY="invalid" groqbash "hello" || echo "exit:$?"
-`
-
-## Test without jq
-
-Temporarily hide jq:
-
-`sh
-mv /usr/bin/jq /usr/bin/jq.bak
-groqbash --dry-run "test"
-mv /usr/bin/jq.bak /usr/bin/jq
-`
+`./bash4llm --json -- "What do you know about Bash?"`
 
 ---
 
-# 9. Common Issues
+## 5. Models
 
-- **cannot create destination directory**  
-  → the path passed to `--out` is unsafe or unwritable
+### Refresh the model list
 
-- **Output not saved but present in tmp**  
-  → `mv` failed; check the tmpdir shown in the logs
+`./bash4llm --refresh-models`
 
-- **Strange characters / invalid JSON**  
-  → ensure UTF‑8 locale and jq/python3 availability
+The list is saved in:
 
----
+`bash4llm.d/models/models.txt`
 
-# 10. Termux Installation Example
+### List models
 
-`sh
-pkg update
-pkg install -y bash curl jq python
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-chmod +x "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-export GROQ_API_KEY="gsk_..."
-groqbash --version
-`
+`./bash4llm --list-models`
 
 ---
 
-# 11. Final Notes
+## 6. History and automatic saving
 
-- GroqBash is designed for **single‑user environments**.  
-- Providers and extras are **optional** and must live in safe directories.  
-- Model output is **never executed** as shell commands.  
-- For full security details, see **SECURITY.md**.
+Bash4LLM automatically saves output when:
+
+- it exceeds a certain size (THRESHOLD, default 1000 bytes), or  
+- `--save` is active.
+
+Files are saved in:
+
+`bash4llm.d/history/`
+
+Rotation is configurable via:
+
+- BASH4LLM_ROTATE_HISTORY  
+- BASH4LLM_HISTORY_MAX_FILES  
+- BASH4LLM_HISTORY_MAX_BYTES  
+- BASH4LLM_HISTORY_KEEP_DAYS  
+
+---
+
+## 7. Installing extras (`--install-extras` option)
+
+Bash4LLM includes a secure and portable installer to copy additional components (scripts, providers, templates, documentation) into:
+
+`bash4llm.d/extras/`
+
+### 7.1 Basic usage
+
+`./bash4llm --install-extras`
+
+If you do not specify components, **all** files in the extras source directory are installed.
+
+### 7.2 Install specific components
+
+`./bash4llm --install-extras provider1 templateA`
+
+### 7.3 Custom source
+
+`./bash4llm --install-extras --source /path/to/extras`
+
+### 7.4 Overwrite conflicting files
+
+`./bash4llm --install-extras --force`
+
+### 7.5 Dry‑run mode
+
+`./bash4llm --install-extras --dry-run`
+
+No files are modified.
+
+---
+
+## 8. Installer behavior (technical details)
+
+### 8.1 Security and atomicity
+
+- Each file is copied using:
+  - mktemp  
+  - cat (portable)  
+  - atomic mv -f  
+- Each operation is protected by a lock (flock) on:  
+  `bash4llm.d/extras/.install.lock`
+
+### 8.2 Permissions
+
+- Regular files → chmod 600  
+- Executable files → chmod 700  
+- If the filesystem does not support permissions (NTFS/WSL), Bash4LLM shows a **warning**, not an error.
+
+### 8.3 Symlinks
+
+- Symlinks in the source are resolved safely.  
+- If they point outside the source directory → **they are rejected**.
+
+### 8.4 Conflicts
+
+- If a file already exists and **is different**, Bash4LLM:
+  - shows a **warning**,  
+  - **does not overwrite**,  
+  - **does not fail** (exit code 0),  
+  - unless `--force` is used.
+
+### 8.5 Lock timeout
+
+Lock timeout is configurable:
+
+`export BASH4LLM_LOCK_TIMEOUT_MODELS=10`
+
+Default: **10 seconds**.
+
+---
+
+## 9. Useful environment variables
+
+- GROQ_API_KEY — Groq API key  
+- MODEL — default model  
+- TURE / TEMPERATURE — temperature  
+- MAX_TOKENS  
+- OUTPUT_MODE — text, raw, json, pretty  
+- BASH4LLM_DEBUG=1 — enables detailed logs  
+- ALLOW_API_CALLS=0 — blocks real API calls (useful for testing)
+
+---
+
+## 10. Portability and filesystem notes
+
+### 10.1 NTFS / WSL
+
+- chmod may fail → Bash4LLM shows a warning.  
+- Operations remain atomic.
+
+### 10.2 NFS
+
+- flock may be unreliable → Bash4LLM shows a warning in debug mode.
+
+### 10.3 BusyBox
+
+- All functions are compatible.
+
+---
+
+## 11. Uninstallation
+
+To remove Bash4LLM:
+
+`rm -rf bash4llm.d`  
+`rm bash4llm`
+
+---
+
+## 12. Troubleshooting
+
+### No response from model
+
+- Check GROQ_API_KEY  
+- Check network connection  
+- Enable debug:  
+  `BASH4LLM_DEBUG=1 ./bash4llm -- "test"`
+
+### Permission error
+
+Likely a non‑POSIX filesystem (NTFS).  
+Bash4LLM continues installation anyway.
+
+### Lock timeout
+
+Increase:
+
+`export BASH4LLM_LOCK_TIMEOUT_MODELS=30`
+
+---
+
+## 13. License
+
+Bash4LLM is distributed under the `[Sembra che non fosse sicuro mostrare il risultato. Cambiamo le cose e facciamo un altro tentativo.]`.
+
+---

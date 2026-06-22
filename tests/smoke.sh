@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GroqBash — Bash-first wrapper for the Groq API
+# Bash4LLM — Bash-first wrapper for the Groq API
 # File: tests/smoke.sh
-# Robust smoke test for GroqBash --dry-run
+# Robust smoke test for Bash4LLM --dry-run
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/groqbash
+# Source: https://github.com/kamaludu/bash4llm
 # =============================================================================
 set -euo pipefail
 
-# Locate groqbash binary in order: ./bin/groqbash, ./groqbash, groqbash in PATH
-if [ -x "./bin/groqbash" ]; then
-  GROQSH="./bin/groqbash"
-elif [ -f "./bin/groqbash" ]; then
-  GROQSH="bash ./bin/groqbash"
-elif [ -x "./groqbash" ]; then
-  GROQSH="./groqbash"
-elif [ -f "./groqbash" ]; then
-  GROQSH="bash ./groqbash"
-elif command -v groqbash >/dev/null 2>&1; then
-  GROQSH="$(command -v groqbash)"
+# Locate bash4llm binary in order: ./bin/bash4llm, ./bash4llm, bash4llm in PATH
+if [ -x "./bin/bash4llm" ]; then
+  GROQSH="./bin/bash4llm"
+elif [ -f "./bin/bash4llm" ]; then
+  GROQSH="bash ./bin/bash4llm"
+elif [ -x "./bash4llm" ]; then
+  GROQSH="./bash4llm"
+elif [ -f "./bash4llm" ]; then
+  GROQSH="bash ./bash4llm"
+elif command -v bash4llm >/dev/null 2>&1; then
+  GROQSH="$(command -v bash4llm)"
 else
-  echo "FAIL: groqbash non trovato. Assicurati che ./bin/groqbash o ./groqbash esistano o che groqbash sia nel PATH."
+  echo "FAIL: bash4llm non trovato. Assicurati che ./bin/bash4llm o ./bash4llm esistano o che bash4llm sia nel PATH."
   exit 2
 fi
 
@@ -36,10 +36,10 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 2
 fi
 
-DRY_LOG="$(mktemp 2>/dev/null || mktemp -t groqbash-dry.XXXXXX)"
+DRY_LOG="$(mktemp 2>/dev/null || mktemp -t bash4llm-dry.XXXXXX)"
 trap 'rm -f "$DRY_LOG"' EXIT
 
-# Run groqbash --dry-run capturing stdout+stderr
+# Run bash4llm --dry-run capturing stdout+stderr
 set +e
 DEBUG=1 "$GROQSH" --dry-run "$JSON_FILE" >"$DRY_LOG" 2>&1
 DRY_EXIT=$?

@@ -1,6 +1,7 @@
 name: Smoke tests
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main", "release-v1.3"]
   pull_request:
@@ -53,20 +54,20 @@ jobs:
           chmod 600 /home/runner/.config/groq/models.txt || true
 
           # Internal whitelist
-          mkdir -p ./bin/groqbash.d/models
-          echo "llama-3.3-70b-versatile" > ./bin/groqbash.d/models/models.txt
-          chmod 600 ./bin/groqbash.d/models/models.txt || true
+          mkdir -p ./bin/bash4llm.d/models
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
+          chmod 600 ./bin/bash4llm.d/models/models.txt || true
 
           # REQUIRED: internal config file (even empty)
-          mkdir -p ./bin/groqbash.d/config
-          touch ./bin/groqbash.d/config/config
-          chmod 600 ./bin/groqbash.d/config/config || true
+          mkdir -p ./bin/bash4llm.d/config
+          touch ./bin/bash4llm.d/config/config
+          chmod 600 ./bin/bash4llm.d/config/config || true
 
-      - name: Make groqbash executable
+      - name: Make bash4llm executable
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x bin/groqbash || true
+          chmod +x bin/bash4llm || true
 
       - name: Persist runner temp as TMPDIR
         shell: bash
@@ -94,10 +95,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -x "./bin/groqbash" ]; then
-            GROQ_BIN="./bin/groqbash"
+          if [ -x "./bin/bash4llm" ]; then
+            GROQ_BIN="./bin/bash4llm"
           else
-            echo "FAIL: groqbash non trovato"
+            echo "FAIL: bash4llm non trovato"
             exit 2
           fi
 

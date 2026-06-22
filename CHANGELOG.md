@@ -1,4 +1,4 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
 
 # Changelog
 
@@ -69,7 +69,7 @@
 
 ## [Initial]
 - Minimal repository structure
-- First prototype of `groqbash` with basic model refresh
+- First prototype of `bash4llm` with basic model refresh
 - Essential documentation
 
 ---

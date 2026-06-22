@@ -1,241 +1,261 @@
-[![GroqBash](https://img.shields.io/badge/_GroqBash_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+# INSTALLAZIONE  🇮🇹 [🇬🇧](INSTALL-en.md)
 
-# INSTALLAZIONE &nbsp; [![English](https://img.shields.io/badge/EN-English_version-orange?style=flat)](INSTALL-en.md) 
-
-Questo documento spiega come installare GroqBash, configurare l’ambiente, verificare la corretta installazione e comprendere il comportamento dei file temporanei, dell’output e dei codici di uscita.
-
-GroqBash è uno **script Bash singolo**, sicuro e auto‑contenuto, progettato per ambienti **single‑user** (Linux, macOS, WSL, Termux).
+Bash4LLM è un wrapper Bash portabile e sicuro per l’API Groq.  
+Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
 
 ---
 
-# 1. Prerequisiti e dipendenze
+## 1. Requisiti
 
-## Richiesti
-- **bash**
-- **curl**
-- **coreutils** (mktemp, chmod, mv, mkdir, head, sed, awk, grep)
-- **jq**
+Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 
-## Consigliati
-- **python3** — fallback per fsync e serializzazione (opzionale)
-- **sha256sum / shasum** — per gli extras di sicurezza
+- ***bash***
+- coreutils
+- findutils
+- util-linux
+- gawk
+- curl
+- jq
 
-## Locale e encoding
-GroqBash richiede un ambiente UTF‑8.
+### Compatibilità
 
-Se necessario:
+Bash4LLM funziona su:
 
-`sh
-export LC_ALL=C.UTF-8
-export LANG=C.UTF-8
-`
-
----
-
-# 2. Installazione
-
-## Scarica lo script
-
-`sh
-curl -O https://raw.githubusercontent.com/kamaludu/groqbash/main/bin/groqbash
-`
-
-## Rendi eseguibile
-
-`sh
-chmod +x groqbash
-`
-
-## (Opzionale ma consigliato) Installa nel PATH
-
-`sh
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-`
-
-## Imposta la chiave API
-
-`sh
-export GROQ_API_KEY="gsk_XXXXXXXXXXXXXXXX"
-`
-
-## Verifica installazione
-
-`sh
-groqbash --version
-`
+- GNU/Linux
+- macOS (con pacchetti GNU installabili via Homebrew)
+- WSL e Cygwin (Windows)
+- Termux (Android)
+- BSD
 
 ---
 
-# 3. Installazione degli extras (opzionale)
+## 2. Installazione di base
 
-Gli extras includono:
+### 2.1 Clonare o scaricare Bash4LLM
 
-- documentazione aggiuntiva  
-- provider esterni  
-- strumenti di sicurezza  
-- test suite JSON/SSE  
+`git clone https://github.com/<tuo-repo>/bash4llm.git`  
+`cd bash4llm`
 
-Installa tutto con:
+Oppure scarica il file `bash4llm` e rendilo eseguibile:
 
-`sh
-groqbash --install-extras
-`
+`chmod +x bash4llm`
 
-Gli extras **non modificano il comportamento del core**.
+### 2.2 Impostare la chiave API
 
----
+Bash4LLM usa la variabile:
 
-# 4. Comportamento dei file temporanei
+`export GROQ_API_KEY="la_tua_chiave"`
 
-- GroqBash **non usa mai `/tmp`** per i temporanei interni.  
-- I temporanei vengono creati con:
-
-  - `mktemp -d`  
-  - permessi `700`  
-  - sotto `$GROQBASHTMPDIR` o un fallback sicuro nella home  
-
-- In modalità `--debug`, i temporanei **non vengono rimossi** per facilitare l’ispezione.
+Puoi inserirla nel tuo `.bashrc` o `.zshrc`.
 
 ---
 
-# 5. Percorso di output (`--out`)
+## 3. Struttura delle directory
 
-- Se passi `--out /percorso/file`, GroqBash:
-  - tenta di creare la directory  
-  - verifica permessi e sicurezza  
-  - salva il file con permessi restrittivi (`600`)
-
-- Se la directory non è sicura o non è scrivibile:
-  - **non** usa `/tmp`
-  - stampa l’output su terminale
-  - mostra un messaggio esplicito
-
-**Consiglio:** usa percorsi sotto la tua home o `$GROQBASHTMPDIR`.
+Alla prima esecuzione, Bash4LLM crea automaticamente:
+`
+bash4llm.d/
+    config/
+    models/
+    templates/
+    history/
+    tmp/
+    extras/
+        providers/
+`
+Tutte le directory sono create con permessi 700 (best‑effort su filesystem non‑POSIX).
 
 ---
 
-# 6. Uso base ed esempi
+## 4. Uso rapido
 
-Prompt semplice:
+### Prompt singolo
 
-`sh
-groqbash "scrivi una funzione bash che..."
-`
+`./bash4llm -m mixtral-8x7b -- "Scrivi un haiku sul vento."`
 
-Input da pipe:
+### Modalità streaming
 
-`sh
-echo "Spiegami questo codice" | groqbash
-`
+`./bash4llm --stream -- "Genera testo in streaming."`
 
-Input da file:
+### Input da file
 
-`sh
-groqbash -f input.txt
-`
+`./bash4llm -f input.txt`
 
-Forzare salvataggio:
+### Output in JSON
 
-`sh
-groqbash --save --out output.txt "testo lungo..."
-`
-
-Dry run (mostra payload JSON):
-
-`sh
-groqbash --dry-run "ciao"
-`
-
-Provider (se extras installati):
-
-`sh
-groqbash --provider gemini "traduci questo"
-`
+`./bash4llm --json -- "Cosa sai di Bash?"`
 
 ---
 
-# 7. Codici di uscita
+## 5. Modelli
 
-| Codice | Significato                                                                 |
-|-------:|------------------------------------------------------------------------------|
-| **0**  | Successo                                                                      |
-| **1**  | Errore generico (argomenti, file, configurazione)                            |
-| **2**  | Errore di rete / curl                                                         |
-| **3**  | Errore HTTP/API (4xx/5xx)                                                     |
-| **4**  | Nessun contenuto testuale estratto (errore parsing)                           |
+### Aggiornare la lista dei modelli
 
-**Note operative**
-- Codice 2 → retry automatici (timeout, DNS, connessione rifiutata)  
-- Codice 3 → nessun retry (errori API, autorizzazione, limiti)  
-- Con `--debug`, i log completi sono nel tmpdir runtime
+`./bash4llm --refresh-models`
 
----
+La lista viene salvata in:
 
-# 8. Troubleshooting e test consigliati
+`bash4llm.d/models/models.txt`
 
-## Verifica JSON inviato
+### Elencare i modelli
 
-`sh
-groqbash --dry-run "Test payload with \"quotes\" and newlines\nand unicode: € ✓"
-`
-
-## Pipe input
-
-`sh
-echo "Spiegami questo codice" | groqbash
-`
-
-## API key non valida
-
-`sh
-GROQ_API_KEY="invalid" groqbash "ciao" || echo "exit:$?"
-`
-
-## Test senza jq
-
-Rinomina temporaneamente jq:
-
-`sh
-mv /usr/bin/jq /usr/bin/jq.bak
-groqbash --dry-run "test"
-mv /usr/bin/jq.bak /usr/bin/jq
-`
+`./bash4llm --list-models`
 
 ---
 
-# 9. Problemi comuni
+## 6. History e salvataggio automatico
 
-- **cannot create destination directory**  
-  → percorso passato a `--out` non sicuro o non scrivibile
+Bash4LLM salva automaticamente l’output quando:
 
-- **Output non salvato ma presente nel tmp**  
-  → `mv` fallito; controlla il tmpdir mostrato
+- supera una certa dimensione (THRESHOLD, default 1000 byte), oppure  
+- è attivo `--save`.
 
-- **Caratteri strani / JSON invalido**  
-  → assicurati di avere locale UTF‑8 e jq/python3 disponibili
+I file vengono salvati in:
 
----
+`bash4llm.d/history/`
 
-# 10. Installazione su Termux
+La rotazione è configurabile tramite:
 
-`sh
-pkg update
-pkg install -y bash curl jq python
-mkdir -p "$HOME/.local/bin"
-mv groqbash "$HOME/.local/bin/groqbash"
-chmod +x "$HOME/.local/bin/groqbash"
-export PATH="$HOME/.local/bin:$PATH"
-export GROQ_API_KEY="gsk_..."
-groqbash --version
-`
+- BASH4LLM_ROTATE_HISTORY  
+- BASH4LLM_HISTORY_MAX_FILES  
+- BASH4LLM_HISTORY_MAX_BYTES  
+- BASH4LLM_HISTORY_KEEP_DAYS  
 
 ---
 
-# 11. Note finali
+## 7. Installazione degli extras (opzione `--install-extras`)
 
-- GroqBash è progettato per ambienti **single‑user**.  
-- Provider e extras sono **opzionali** e devono risiedere in directory sicure.  
-- Nessun output del modello viene mai eseguito come comando.  
-- Per dettagli sulla sicurezza, vedi **SECURITY.md**.
+Bash4LLM include un installer sicuro e portabile per copiare componenti aggiuntivi (script, provider, template, documentazione) nella directory:
+
+`bash4llm.d/extras/`
+
+### 7.1 Uso base
+
+`./bash4llm --install-extras`
+
+Se non specifichi componenti, vengono installati **tutti** i file presenti nella directory sorgente degli extras.
+
+### 7.2 Installare componenti specifici
+
+`./bash4llm --install-extras provider1 templateA`
+
+### 7.3 Sorgente personalizzata
+
+`./bash4llm --install-extras --source /path/to/extras`
+
+### 7.4 Sovrascrivere file in conflitto
+
+`./bash4llm --install-extras --force`
+
+### 7.5 Modalità dry‑run
+
+`./bash4llm --install-extras --dry-run`
+
+Nessun file viene modificato.
+
+---
+
+## 8. Comportamento dell’installer (dettagli tecnici)
+
+### 8.1 Sicurezza e atomicità
+
+- Ogni file è copiato tramite:
+  - mktemp  
+  - cat (portabile)  
+  - mv -f atomico  
+- Ogni operazione è protetta da lock (flock) su:
+  `bash4llm.d/extras/.install.lock`
+
+### 8.2 Permessi
+
+- File normali → chmod 600  
+- File eseguibili → chmod 700  
+- Se il filesystem non supporta i permessi (NTFS/WSL), Bash4LLM mostra un **warning**, non un errore.
+
+### 8.3 Symlink
+
+- I symlink nella sorgente vengono risolti in modo sicuro.  
+- Se puntano fuori dalla directory sorgente → **vengono rifiutati**.
+
+### 8.4 Conflitti
+
+- Se un file esiste già e **è diverso**, Bash4LLM:
+  - mostra un **warning**,  
+  - **non sovrascrive**,  
+  - **non fallisce** (exit code 0),  
+  - a meno che non sia usato `--force`.
+
+### 8.5 Timeout lock
+
+Il timeout del lock è configurabile:
+
+`export BASH4LLM_LOCK_TIMEOUT_MODELS=10`
+
+Default: **10 secondi**.
+
+---
+
+## 9. Variabili d’ambiente utili
+
+- GROQ_API_KEY — chiave API Groq  
+- MODEL — modello predefinito  
+- TURE / TEMPERATURE — temperatura  
+- MAX_TOKENS  
+- OUTPUT_MODE — text, raw, json, pretty  
+- BASH4LLM_DEBUG=1 — abilita log dettagliati  
+- ALLOW_API_CALLS=0 — blocca chiamate reali (utile per test)
+
+---
+
+## 10. Portabilità e note sui filesystem
+
+### 10.1 NTFS / WSL
+
+- chmod può fallire → Bash4LLM mostra un warning.  
+- Le operazioni restano atomiche.
+
+### 10.2 NFS
+
+- flock può essere inaffidabile → Bash4LLM mostra un warning in modalità debug.
+
+### 10.3 BusyBox
+
+- Tutte le funzioni sono compatibili.
+
+---
+
+## 11. Disinstallazione
+
+Per rimuovere Bash4LLM:
+
+`rm -rf bash4llm.d`  
+`rm bash4llm`
+
+---
+
+## 12. Troubleshooting
+
+### Nessuna risposta dal modello
+
+- Verifica GROQ_API_KEY  
+- Verifica connessione  
+- Attiva debug:  
+  `BASH4LLM_DEBUG=1 ./bash4llm -- "test"`
+
+### Errore su permessi
+
+Probabile filesystem non‑POSIX (NTFS).  
+Bash4LLM continua comunque l’installazione.
+
+### Lock timeout
+
+Aumenta:
+
+`export BASH4LLM_LOCK_TIMEOUT_MODELS=30`
+
+---
+
+## 13. Licenza
+
+Bash4LLM è distribuito sotto licenza [**GNU GPL v3**](LICENSE)

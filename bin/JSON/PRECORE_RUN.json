@@ -1,0 +1,269 @@
+{
+  "metadata": {
+    "script_name": "bash4llm.sh",
+    "total_parts": 5
+  },
+  "macro_sections": [
+    {
+      "section_name": "PRECORE_RUN",
+      "variables": [
+        {
+          "var": "BASH4LLM_ROTATE_HISTORY",
+          "init": "\"${BASH4LLM_ROTATE_HISTORY:-0}\""
+        },
+        {
+          "var": "BASH4LLM_HISTORY_MAX_FILES",
+          "init": "\"${BASH4LLM_HISTORY_MAX_FILES:-100}\""
+        },
+        {
+          "var": "BASH4LLM_HISTORY_MAX_BYTES",
+          "init": "\"${BASH4LLM_HISTORY_MAX_BYTES:-104857600}\""
+        },
+        {
+          "var": "BASH4LLM_HISTORY_KEEP_DAYS",
+          "init": "\"${BASH4LLM_HISTORY_KEEP_DAYS:-90}\""
+        },
+        {
+          "var": "SESSION_CACHE_DIR",
+          "init": "\"${BASH4LLM_CONFIG_DIR:-$BASH4LLM_DIR/config}/session_cache\""
+        },
+        {
+          "var": "CONTENT",
+          "init": "\"${CONTENT:-}\""
+        },
+        {
+          "var": "JSON_INPUT",
+          "init": "\"${JSON_INPUT:-}\""
+        },
+        {
+          "var": "SESSION_ID",
+          "init": "\"${SESSION_ID:-}\""
+        },
+        {
+          "var": "SESSION_WINDOW",
+          "init": "\"${SESSION_WINDOW:-}\""
+        },
+        {
+          "var": "TEMPLATE",
+          "init": "\"${TEMPLATE:-}\""
+        },
+        {
+          "var": "BATCH_FILE",
+          "init": "\"${BATCH_FILE:-}\""
+        },
+        {
+          "var": "CHAT_MODE",
+          "init": "\"${CHAT_MODE:-0}\""
+        },
+        {
+          "var": "SET_DEFAULT_MODEL",
+          "init": "\"${SET_DEFAULT_MODEL:-}\""
+        },
+        {
+          "var": "REFRESH_MODELS",
+          "init": "\"${REFRESH_MODELS:-0}\""
+        },
+        {
+          "var": "LIST_MODELS",
+          "init": "\"${LIST_MODELS:-0}\""
+        },
+        {
+          "var": "FORCE_SAVE_MODE",
+          "init": "\"${FORCE_SAVE_MODE:-0}\""
+        },
+        {
+          "var": "OUT_PATH",
+          "init": "\"${OUT_PATH:-}\""
+        },
+        {
+          "var": "SYSTEM_PROMPT",
+          "init": "\"${SYSTEM_PROMPT:-}\""
+        },
+        {
+          "var": "TURE",
+          "init": "\"${TURE:-${TEMPERATURE:-1.0}}\""
+        },
+        {
+          "var": "TEMPERATURE",
+          "init": "\"${TEMPERATURE:-${TURE:-1.0}}\""
+        },
+        {
+          "var": "TURE",
+          "init": "\"${TURE:-$TEMPERATURE}\""
+        },
+        {
+          "var": "MAX_TOKENS",
+          "init": "\"${MAX_TOKENS:-4096}\""
+        },
+        {
+          "var": "MODEL",
+          "init": "\"${MODEL:-}\""
+        },
+        {
+          "var": "AUTO_POLICY",
+          "init": "\"${AUTO_POLICY:-preferred}\""
+        },
+        {
+          "var": "DEBUG",
+          "init": "\"${DEBUG:-0}\""
+        },
+        {
+          "var": "QUIET",
+          "init": "\"${QUIET:-0}\""
+        },
+        {
+          "var": "DRY_RUN",
+          "init": "\"${DRY_RUN:-0}\""
+        },
+        {
+          "var": "STREAM_MODE",
+          "init": "\"${STREAM_MODE:-0}\""
+        },
+        {
+          "var": "OUTPUT_MODE",
+          "init": "\"${OUTPUT_MODE:-text}\""
+        },
+        {
+          "var": "THRESHOLD",
+          "init": "\"${THRESHOLD:-1000}\""
+        },
+        {
+          "var": "MAX_RETRIES",
+          "init": "\"${MAX_RETRIES:-3}\""
+        },
+        {
+          "var": "SUPPORTED_PROVIDERS",
+          "init": "\"${SUPPORTED_PROVIDERS:-groq gemini huggingface}\""
+        },
+        {
+          "var": "PROVIDER",
+          "init": "\"${PROVIDER:-groq}\""
+        },
+        {
+          "var": "CURL_BASE_OPTS",
+          "init": "( --silent --show-error --no-buffer --max-time 120 )"
+        }
+      ],
+      "functions": [
+        {
+          "fn": "rotate_history",
+          "body": "local timeout=\"${1:-$BASH4LLM_LOCK_TIMEOUT_HISTORY}\";local dir=\"${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}\";local max_files=\"${BASH4LLM_HISTORY_MAX_FILES:-100}\";local max_bytes=\"${BASH4LLM_HISTORY_MAX_BYTES:-104857600}\";local keep_days=\"${BASH4LLM_HISTORY_KEEP_DAYS:-90}\";mapfile -t old_files < <(find \"$dir\" -type f -mtime +\"$keep_days\" 2>/dev/null);if [ \"${#old_files[@]}\" -gt 0 ]; then for f in \"${old_files[@]}\"; do lock_exec \"$HISTORY_LOCK\" \"$timeout\" -- sh -c 'rm -f -- \"$1\"' _ \"$f\"; done; fi;while :; do mapfile -t entries < <(find \"$dir\" -type f -printf \"%T@|%s|%p\\n\" 2>/dev/null | sort -n);local total=0;local line mtime size path;for line in \"${entries[@]}\"; do IFS='|' read -r mtime size path <<< \"$line\";total=$((total + size));done;[ \"$total\" -le \"$max_bytes\" ] && break;IFS='|' read -r _ _ oldest <<< \"${entries[0]}\";lock_exec \"$HISTORY_LOCK\" \"$timeout\" -- sh -c 'rm -f -- \"$1\"' _ \"$oldest\";done;while :; do mapfile -t entries < <(find \"$dir\" -type f -printf \"%T@ %p\\n\" 2>/dev/null | sort -n);local count=\"${#entries[@]}\";[ \"$count\" -le \"$max_files\" ] && break;oldest=\"$(echo \"${entries[0]}\" | awk '{print $2}')\";lock_exec \"$HISTORY_LOCK\" \"$timeout\" -- sh -c 'rm -f -- \"$1\"' _ \"$oldest\";done;return 0"
+        },
+        {
+          "fn": "save_to_history",
+          "body": "local content=\"$1\";local filename;filename=\"$(date +%Y%m%d-%H%M%S)-groq-output-$$.txt\";mkdir -p \"$BASH4LLM_HISTORY_DIR\" 2>/dev/null || true;local tmpf dest lockfile;tmpf=\"$(_tmpf file  \"$BASH4LLM_HISTORY_DIR\" groq-out 2>/dev/null)\";if [ -z \"$tmpf\" ]; then log_error \"HISTORYFAIL\" \"save_to_history: cannot allocate tmp file in $BASH4LLM_HISTORY_DIR\";return \"$BASH4LLMERRTMP\";fi;if ! printf '%s\\n' \"$content\" > \"$tmpf\" 2>/dev/null; then rm -f -- \"$tmpf\" 2>/dev/null || true;log_error \"HISTORYFAIL\" \"save_to_history: cannot write tmp file $tmpf\";return \"$BASH4LLMERRTMP\";fi;dest=\"$BASH4LLM_HISTORY_DIR/$filename\";lockfile=\"$HISTORY_LOCK\";if ! lock_exec \"$lockfile\" \"$BASH4LLM_LOCK_TIMEOUT_HISTORY\" -- sh -c 'set -e; mv -f -- \"$1\" \"$2\"; chmod 600 \"$2\" 2>/dev/null || true' _ \"$tmpf\" \"$dest\"; then rc=$?;rm -f -- \"$tmpf\" 2>/dev/null || true;return \"$rc\";fi;if [ -f \"$dest\" ]; then local size_bytes ts base history_json;size_bytes=\"$(file_size  \"$dest\" 2>/dev/null || echo 0)\";ts=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\";base=\"$(basename  \"$dest\")\";history_json=\"$(jq -c -n --arg path \"$dest\" --arg base \"$base\" --arg ts \"$ts\" --argjson size \"$size_bytes\" '{saved:true, path:$path, basename:$base, ts:$ts, size_bytes:$size}')\";ui_state_write \"last_history.json\" \"$history_json\" || log_warn \"UI_STATE\" \"failed to write last_history.json\";else local ts history_json;ts=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\";history_json=\"$(jq -c -n --arg ts \"$ts\" '{saved:false, ts:$ts}')\";ui_state_write \"last_history.json\" \"$history_json\" || true;fi;if [ \"${BASH4LLM_ROTATE_HISTORY:-0}\" -eq 1 ]; then rotate_history \"$BASH4LLM_LOCK_TIMEOUT_HISTORY\" || true;fi;if [ \"${DEBUG:-0}\" -eq 1 ]; then log_info \"HISTORY_SAVE\" \"$dest\";fi;return 0"
+        },
+        {
+          "fn": "manifest_create",
+          "body": "local manifest=\"$1\";local timeout=\"${2:-$BASH4LLM_LOCK_TIMEOUT_MODELS}\";mkdir -p \"$(dirname \"$manifest\")\" 2>/dev/null || { log_error \"MANIFESTFAIL\" \"manifest_create: cannot create dir\"; return 1; };lock_exec \"${manifest}.lock\" \"$timeout\" -- sh -c 'set -e; manifest=\"$1\"; tmp=\"$(mktemp \"$(dirname \"$manifest\")/manifest.tmp.XXXX\")\"; printf \"%s\" \"{\\\"parts\\\":[]}\" > \"$tmp\"; if [ -n \"${B64_WRAP_OPT:-}\" ]; then base64 ${B64_WRAP_OPT} \"$tmp\" > \"${manifest}.b64\"; else base64 \"$tmp\" | tr -d \"\\n\" > \"${manifest}.b64\"; fi; mv -f \"$tmp\" \"$manifest\"; chmod 600 \"$manifest\" 2>/dev/null || true' _ \"$manifest\";return $?"
+        },
+        {
+          "fn": "manifest_add_part",
+          "body": "local manifest=\"$1\" name=\"$2\" file_path=\"$3\" mime=\"$4\" timeout=\"${5:-$BASH4LLM_LOCK_TIMEOUT_MODELS}\";[ -f \"$file_path\" ] || { log_error \"MANIFESTFAIL\" \"manifest_add_part: file not found: $file_path\"; return 1; };mkdir -p \"$(dirname \"$manifest\")\" 2>/dev/null || true;lockfile=\"${manifest}.lock\";local destdir part_b64 tmpstamp tmp_part;destdir=\"$(dirname \"$manifest\")\";tmpstamp=\"$(date +%s)-$$\";part_b64=\"$destdir/parts-$(basename \"$file_path\").${tmpstamp}.b64\";tmp_part=\"$(_tmpf file \"$BASH4LLM_TMPDIR\" part 2>/dev/null)\" || { log_error \"TMP\" \"manifest_add_part: _tmpf failed for BASH4LLM_TMPDIR\"; return 1; };if ! b64encode < \"$file_path\" > \"$tmp_part\"; then rm -f \"$tmp_part\" 2>/dev/null || true;log_error \"B64FAIL\" \"manifest_add_part: b64 encode failed\";return 1;fi;mv -f \"$tmp_part\" \"$part_b64\" 2>/dev/null || { rm -f \"$tmp_part\" 2>/dev/null || true; log_error \"MANIFESTFAIL\" \"cannot move staged part to $part_b64\"; return 1; };chmod 600 \"$part_b64\" 2>/dev/null || true;lock_exec \"$lockfile\" \"$timeout\" -- sh -c 'set -e; manifest=\"$1\"; part_b64=\"$2\"; name=\"$3\"; mime=\"$4\"; tmp=\"$(mktemp \"$(dirname \"$manifest\")/manifest.edit.XXXX\")\"; if [ -f \"${manifest}.b64\" ]; then base64 ${B64_DECODE_OPT} < \"${manifest}.b64\" > \"$tmp\" 2>/dev/null || printf \"%s\" \"{\\\"parts\\\":[]}\" > \"$tmp\"; elif [ -f \"$manifest\" ]; then cp -f \"$manifest\" \"$tmp\"; else printf \"%s\" \"{\\\"parts\\\":[]}\" > \"$tmp\"; fi; jq --arg name \"$name\" --arg path \"$part_b64\" --arg enc \"b64\" --arg type \"$mime\" \".parts += [{name:\\$name, path:\\$part_b64, encoding:\\$enc, type:\\$type}]\" \"$tmp\" > \"${tmp}.new\"; mv -f \"${tmp}.new\" \"$tmp\"; if [ -n \"${B64_WRAP_OPT:-}\" ]; then base64 ${B64_WRAP_OPT} \"$tmp\" > \"${manifest}.b64\"; else base64 \"$tmp\" | tr -d \"\\n\" > \"${manifest}.b64\"; fi; cp -f \"$tmp\" \"$manifest\"; chmod 600 \"$manifest\" 2>/dev/null || true; rm -f \"$tmp\" 2>/dev/null || true' _ \"$manifest\" \"$part_b64\" \"$name\" \"$mime\" || { log_error \"MANIFESTFAIL\" \"manifest_add_part: update failed\"; return 1; };if [ \"${DEBUG:-0}\" -eq 1 ]; then log_info \"MANIFEST_ADD\" \"added part $name -> $part_b64\";fi;return 0"
+        },
+        {
+          "fn": "manifest_read",
+          "body": "local manifest=\"$1\";if [ -f \"$manifest\" ]; then cat \"$manifest\";return 0;fi;if [ -f \"${manifest}.b64\" ]; then b64decode < \"${manifest}.b64\";return $?;fi;return 1"
+        },
+        {
+          "fn": "_get_perm_string",
+          "body": "local path=\"$1\" perm=\"\";case \"$(uname 2>/dev/null || echo Linux)\" in Darwin) perm=\"$(stat -f %Sp \"$path\" 2>/dev/null || true)\";;;*) if command -v stat >/dev/null 2>&1; then perm=\"$(stat -c %A \"$path\" 2>/dev/null || true)\";elif command -v ls >/dev/null 2>&1; then perm=\"$(ls -ld -- \"$path\" 2>/dev/null | awk '{print $1}' || true)\";fi;;esac;printf '%s' \"$perm\""
+        },
+        {
+          "fn": "_get_owner",
+          "body": "local path=\"$1\" owner=\"\";case \"$(uname 2>/dev/null || echo Linux)\" in Darwin) owner=\"$(stat -f %Su \"$path\" 2>/dev/null || true)\";;;*) if command -v stat >/dev/null 2>&1; then owner=\"$(stat -c %U \"$path\" 2>/dev/null || true)\";elif command -v ls >/dev/null 2>&1; then owner=\"$(ls -ld -- \"$path\" 2>/dev/null | awk '{print $3}' || true)\";fi;;esac;printf '%s' \"$owner\""
+        },
+        {
+          "fn": "_get_file_signature",
+          "body": "local path=\"$1\";local hash=\"\" stat_out=\"\" dev=\"\" inode=\"\" size=\"\" ctime=\"\" mtime=\"\" uid=\"\" gid=\"\" mode=\"\";[ -f \"$path\" ] || { printf ''; return 0; };local use_hash=\"${BASH4LLM_SIG_HASH:-1}\";if [ \"${use_hash}\" != \"0\" ] && command -v sha256sum >/dev/null 2>&1; then hash=\"$(sha256sum \"$path\" 2>/dev/null | awk '{print $1}' || true)\";else hash=\"\";fi;case \"$(uname 2>/dev/null || echo Linux)\" in Darwin) stat_out=\"$(stat -f '%d %i %z %c %m %u %g %p' \"$path\" 2>/dev/null || true)\";;;*) stat_out=\"$(stat -c '%d %i %s %Z %Y %u %g %a' \"$path\" 2>/dev/null || true)\";;;esac;if [ -z \"${stat_out:-}\" ]; then dev=\"\"; inode=\"\"; size=\"\"; ctime=\"\"; mtime=\"\"; uid=\"\"; gid=\"\"; mode=\"\";else read -r dev inode size ctime mtime uid gid mode <<EOF\n$stat_out\nEOF\nif [ -z \"${dev:-}\" ] && [ -z \"${inode:-}\" ] && [ -z \"${size:-}\" ]; then dev=\"\"; inode=\"\"; size=\"\"; ctime=\"\"; mtime=\"\"; uid=\"\"; gid=\"\"; mode=\"\";fi;fi;printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' \"${hash:-}\" \"${dev:-}\" \"${inode:-}\" \"${size:-}\" \"${ctime:-}\" \"${mtime:-}\" \"${uid:-}\" \"${gid:-}\" \"${mode:-}\""
+        },
+        {
+          "fn": "getfile_signature",
+          "body": "_get_file_signature \"$1\""
+        },
+        {
+          "fn": "_is_world_writable",
+          "body": "local d=\"$1\" perms others_write;[ -d \"$d\" ] || return \"$BASH4LLMERRTMP\";perms=\"$(_get_perm_string \"$d\")\";[ -z \"$perms\" ] && return \"$BASH4LLMERRTMP\";others_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,9,1)}')\";[ \"$others_write\" = \"w\" ]"
+        },
+        {
+          "fn": "make_tmpdir",
+          "body": "umask 077;local tmpd lockfile;lockfile=\"$TMP_LOCK\";mkdir -p \"$BASH4LLM_TMPDIR\" 2>/dev/null || return \"$BASH4LLMERRTMP\";chmod 700 \"$BASH4LLM_TMPDIR\" 2>/dev/null || true;lock_exec \"$lockfile\" \"$BASH4LLM_LOCK_TIMEOUT_TMP\" -- sh -c 'set -e; base=\"$1\"; tmpd=\"$(_tmpf dir \"$base\" groq 2>/dev/null)\" || { log_error \"TMP\" \"make_tmpdir: _tmpf failed for base=$base\"; exit \"$BASH4LLMERRTMP\"; }; printf \"%s\" \"$tmpd\"' _ \"$BASH4LLM_TMPDIR\";return $?"
+        },
+        {
+          "fn": "_tmpf",
+          "body": "local mode=\"$1\" base=\"$2\" prefix=\"${3:-groq}\" tmp;if [ -z \"$mode\" ]; then log_error \"TMP\" \"_tmpf usage: _tmpf <file|dir> <base_dir> [prefix]\";return \"$BASH4LLMERRTMP\";fi;if [ -z \"${BASH4LLM_TMPDIR:-}\" ]; then log_error \"TMP\" \"_tmpf: BASH4LLM_TMPDIR not set\";return \"$BASH4LLMERRTMP\";fi;if [ ! -d \"$BASH4LLM_TMPDIR\" ]; then log_error \"TMP\" \"_tmpf: BASH4LLM_TMPDIR does not exist: $BASH4LLM_TMPDIR\";return \"$BASH4LLMERRTMP\";fi;if [ -L \"$BASH4LLM_TMPDIR\" ]; then log_error \"TMP\" \"_tmpf: BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR\";return \"$BASH4LLMERRTMP\";fi;chmod 700 \"$BASH4LLM_TMPDIR\" 2>/dev/null || true;if [ -z \"$base\" ] || [ ! -d \"$base\" ]; then base=\"$BASH4LLM_TMPDIR\";fi;case \"$base\" in \"$BASH4LLM_TMPDIR\"/*|\"$BASH4LLM_TMPDIR\") :;;*) base=\"$BASH4LLM_TMPDIR\";;esac;umask 077;if [ \"$mode\" = \"file\" ]; then tmp=\"$(mktemp \"$base/${prefix}.XXXX\" 2>/dev/null || true)\";if [ -z \"$tmp\" ]; then log_error \"TMP\" \"_tmpf: mktemp failed for file in $base\";return \"$BASH4LLM_TMPDIR\";fi;chmod 600 \"$tmp\" 2>/dev/null || true;printf '%s' \"$tmp\";return 0;elif [ \"$mode\" = \"dir\" ]; then tmp=\"$(mktemp -d \"$base/${prefix}.XXXX\" 2>/dev/null || true)\";if [ -z \"$tmp\" ]; then log_error \"TMP\" \"_tmpf: mktemp failed for dir in $base\";return \"$BASH4LLMERRTMP\";fi;chmod 700 \"$tmp\" 2>/dev/null || true;printf '%s' \"$tmp\";return 0;else log_error \"TMP\" \"_tmpf: unknown mode: $mode\";return \"$BASH4LLMERRTMP\";fi"
+        },
+        {
+          "fn": "session_validate_id",
+          "body": "local id=\"$1\";if [ -z \"$id\" ]; then return 1; fi;if printf '%s' \"$id\" | grep -qE '^[A-Za-z0-9._-]{1,128}$'; then return 0; else return 1; fi"
+        },
+        {
+          "fn": "session_now_ts",
+          "body": "date -u +%Y-%m-%dT%H:%M:%SZ"
+        },
+        {
+          "fn": "session_messages_tmp_path",
+          "body": "local sid=\"$1\";ensure_run_tmpdir || return 1;printf '%s' \"$RUN_TMPDIR/session-${sid}-messages.json\""
+        },
+        {
+          "fn": "session_sanitize_cmd",
+          "body": "local cmd=\"$1\";local sanitized;sanitized=\"$(printf '%s' \"$cmd\" | sed -E 's/[A-Za-z0-9_]+=([^[:space:]]+)//g' | sed -E 's/(token|key|secret)[^[:space:]]*/[REDACTED]/Ig' )\";printf '%s' \"$(printf '%s' \"$sanitized\" | cut -c1-256)\""
+        },
+        {
+          "fn": "session_read_window",
+          "body": "local sid=\"$1\" n=\"${2:-10}\" out=\"$3\";local history_dir=\"${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}\";local session_file=\"$history_dir/sessions/${sid}.ndjson\";local tmpdir=\"${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-$PWD/bash4llm.d/tmp}}\";local tmpf out_tmp line role content role_norm role_json content_json;[ -n \"$sid\" ] || return 1;[ -n \"$out\" ] || return 1;mkdir -p \"${history_dir%/}/sessions\" 2>/dev/null || true;chmod 700 \"${history_dir%/}/sessions\" 2>/dev/null || true;if ! printf '%s' \"$n\" | grep -qE '^[0-9]+$'; then n=10; fi;if [ \"$n\" -le 0 ]; then n=10; fi;mkdir -p \"${tmpdir%/}\" 2>/dev/null || true;chmod 700 \"${tmpdir%/}\" 2>/dev/null || true;if ! : > \"${tmpdir%/}/.bash4llm_tmp_check\" 2>/dev/null; then if [ \"${DEBUG:-0}\" -eq 1 ]; then printf 'DEBUG: session_read_window: tmpdir not writable: %s\\n' \"$tmpdir\" >&2; fi;return 1;else rm -f \"${tmpdir%/}/.bash4llm_tmp_check\" 2>/dev/null || true;fi;tmpf=\"$(_tmpf file \"$tmpdir\" session.read 2>/dev/null)\" || { if [ \"${DEBUG:-0}\" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create tmpf\\n' >&2; fi; return 1; };if [ -f \"$session_file\" ]; then lock_exec \"${session_file}.lock\" 5 -- sh -c 'set -e; session_file=\"$1\"; n=\"$2\"; tmpf=\"$3\"; if grep -q \"^$\" \"$session_file\" 2>/dev/null; then awk -v n=\"$n\" \"BEGIN{RS=\\\"\\\"; ORS=RS} {rec[++c]=\\$0} END{start=c-n+1; if(start<1) start=1; for(i=start;i<=c;i++) print rec[i]}\" \"$session_file\" > \"$tmpf\" 2>/dev/null || cp -f \"$session_file\" \"$tmpf\" 2>/dev/null || true; else if ! tail -n \"$n\" \"$session_file\" 2>/dev/null > \"$tmpf\"; then cp -f \"$session_file\" \"$tmpf\" 2>/dev/null || true; fi; fi' _ \"$session_file\" \"$n\" \"$tmpf\";else if [ \"${DEBUG:-0}\" -eq 1 ]; then printf 'DEBUG: session_read_window: session file not found: %s\\n' \"$session_file\" >&2; fi;fi;out_tmp=\"$(_tmpf file \"$(dirname \"$out\")\" out.tmp 2>/dev/null)\" || { if [ \"${DEBUG:-0}\" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create out_tmp\\n' >&2; fi; return 1; };mkdir -p \"$(dirname \"$out\")\" 2>/dev/null || true;: > \"$out_tmp\";chmod 600 \"$out_tmp\" 2>/dev/null || true;printf '%s' '{\"messages\":[' >> \"$out_tmp\";local first=1;if jq -c . \"$tmpf\" >/dev/null 2>&1; then jq -c . \"$tmpf\" 2>/dev/null | while IFS= read -r line || [ -n \"$line\" ]; do role=\"$(printf '%s' \"$line\" | jq -r '.role // \"user\"')\";case \"$role\" in user|assistant|system) role_norm=\"$role\" ;; *) role_norm=\"user\" ;; esac;content=\"$(printf '%s' \"$line\" | jq -r '.content // \"\"')\";role_json=\"$(printf '%s' \"$role_norm\" | jq -R -c '.')\";content_json=\"$(printf '%s' \"$content\" | jq -R -s '.')\";if [ \"$first\" -eq 0 ]; then printf ',' >> \"$out_tmp\"; fi;printf '%s' \"{\\\"role\\\":${role_json},\\\"content\\\":${content_json}}\" >> \"$out_tmp\" 2>/dev/null || true;first=0;done;else while IFS= read -r line || [ -n \"$line\" ]; do if printf '%s' \"$line\" | jq -e . >/dev/null 2>&1; then role=\"$(printf '%s' \"$line\" | jq -r '.role // \"user\"')\";case \"$role\" in user|assistant|system) role_norm=\"$role\" ;; *) role_norm=\"user\" ;; esac;content=\"$(printf '%s' \"$line\" | jq -r '.content // \"\"')\";role_json=\"$(printf '%s' \"$role_norm\" | jq -R -c '.')\";content_json=\"$(printf '%s' \"$content\" | jq -R -s '.')\";if [ \"$first\" -eq 0 ]; then printf ',' >> \"$out_tmp\"; fi;printf '%s' \"{\\\"role\\\":${role_json},\\\"content\\\":${content_json}}\" >> \"$out_tmp\" 2>/dev/null || true;first=0;fi;done < \"$tmpf\";fi;printf '%s' ']}' >> \"$out_tmp\";if mv -f \"$out_tmp\" \"$out\" 2>/dev/null; then :;else cp -f \"$out_tmp\" \"$out\" 2>/dev/null || true;rm -f \"$out_tmp\" 2>/dev/null || true;fi;rm -f \"$tmpf\" 2>/dev/null || true;chmod 600 \"$out\" 2>/dev/null || true;if [ -n \"$sid\" ]; then if ensure_run_tmpdir >/dev/null 2>&1; then msg_count=0;last_ts=\"\";if [ -f \"$session_file\" ]; then msg_count=\"$(wc -l < \"$session_file\" 2>/dev/null || echo 0)\";last_line=\"$(tail -n 1 \"$session_file\" 2>/dev/null || true)\";if printf '%s' \"$last_line\" | jq -e . >/dev/null 2>&1; then last_ts=\"$(printf '%s' \"$last_line\" | jq -r '.ts // empty' 2>/dev/null || true)\";fi;fi;meta_json=\"$(jq -c -n --arg id \"$sid\" --argjson msg_count \"$msg_count\" --arg last_ts \"${last_ts:-}\" '{id:$id, active:(( $msg_count | tonumber) > 0), msg_count:$msg_count, last_ts:$last_ts}')\";ui_state_write \"sessions/${sid}.json\" \"$meta_json\" || log_warn \"UI_STATE\" \"failed to update session meta for $sid (read_window)\";fi;fi;if [ \"${DEBUG:-0}\" -eq 1 ]; then printf 'DEBUG: session_read_window done: out=%s size=%s tmpf=%s\\n' \"$out\" \"$( [ -f \"$out\" ] && wc -c < \"$out\" || echo 0 )\" \"$tmpf\" >&2;fi;return 0"
+        },
+        {
+          "fn": "session_append",
+          "body": "local sid=\"$1\" role=\"$2\" content=\"$3\" meta_json=\"$4\";local base_sessions_dir=\"${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-./bash4llm.d}/sessions}\";local session_file=\"${base_sessions_dir%/}/${sid}.ndjson\";local lockfile=\"${session_file}.lock\";local invocation_ts message_id marker normalized rand tmpf found=0 role_norm line timeout;local marker_dir created_marker=0 sess_dir tmp_init;[ -n \"$sid\" ] || return 1;[ -n \"$content\" ] || content=\"\";trap 'if [ \"${created_marker:-0}\" -eq 1 ] && [ -n \"${marker_dir:-}\" ]; then rm -rf -- \"$marker_dir\" 2>/dev/null || true; fi' RETURN;invocation_ts=\"$(session_now_ts)\";message_id=\"$(printf '%s' \"$meta_json\" | jq -r '.id // empty' 2>/dev/null || true)\";if [ -z \"$message_id\" ]; then normalized=\"$(printf '%s' \"$content\" | sed -e 's/\\r$//' -e 's/\\r\\n/\\n/g' | awk '{$1=$1; print}')\";rand=\"$(printf '%04x' $((RANDOM & 0xFFFF)))\";if command -v sha256sum >/dev/null 2>&1; then message_id=\"$(printf '%s|%s|%s' \"$normalized\" \"$invocation_ts\" \"$rand\" | sha256sum | cut -c1-16)\";elif command -v openssl >/dev/null 2>&1; then message_id=\"$(printf '%s|%s|%s' \"$normalized\" \"$invocation_ts\" \"$rand\" | openssl dgst -sha256 | awk '{print $2}' | cut -c1-16)\";else message_id=\"$rand\";fi;fi;sess_dir=\"$(dirname \"$session_file\")\";if ! mkdir -p \"$sess_dir\" 2>/dev/null; then log_error \"SESSION\" \"cannot create session directory: $sess_dir\";return 1;fi;chmod 700 \"$sess_dir\" 2>/dev/null || true;if [ ! -f \"$session_file\" ]; then tmp_init=\"$(_tmpf file  \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" session.init 2>/dev/null)\" || true;: > \"${tmp_init:-/dev/null}\" 2>/dev/null || true;if ! mv -f \"$tmp_init\" \"$session_file\" 2>/dev/null; then cp -f \"$tmp_init\" \"$session_file\" 2>/dev/null || true;fi;chmod 600 \"$session_file\" 2>/dev/null || true;fi;if [ -n \"${message_id:-}\" ]; then marker_dir=\"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/session-msg-${message_id}.lockdir\";if mkdir \"$marker_dir\" 2>/dev/null; then printf '%s\\n' \"$$\" > \"${marker_dir}/owner.pid\" 2>/dev/null || true;printf '%s\\n' \"$(date +%s)\" > \"${marker_dir}/owner.ts\" 2>/dev/null || true;chmod 700 \"$marker_dir\" 2>/dev/null || true;created_marker=1;else if [ \"${DEBUG:-0}\" -eq 1 ]; then log_info \"SESSION\" \"append skipped: marker exists for message_id $message_id\";fi;return 0;fi;else marker_dir=\"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/run-$$-${RANDOM}.lockdir\";mkdir -p \"$marker_dir\" 2>/dev/null || true;printf '%s\\n' \"$$\" > \"${marker_dir}/owner.pid\" 2>/dev/null || true;printf '%s\\n' \"$(date +%s)\" > \"${marker_dir}/owner.ts\" 2>/dev/null || true;chmod 700 \"$marker_dir\" 2>/dev/null || true;created_marker=1;fi;tmpf=\"$(_tmpf file  \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" session.append 2>/dev/null)\" || true;: > \"${tmpf:-/dev/null}\" 2>/dev/null || true;timeout=\"${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}\";exec 200>\"$lockfile\" 2>/dev/null || true;if ! flock -x -w \"$timeout\" 200 2>/dev/null; then if [ \"${created_marker:-0}\" -eq 1 ] && [ -n \"${marker_dir:-}\" ]; then rm -rf -- \"$marker_dir\" 2>/dev/null || true;fi;exec 200>&- 2>/dev/null || true;rm -f \"$tmpf\" 2>/dev/null || true;log_error \"SESSION\" \"could not acquire session lock for append\";return 1;fi;if [ -n \"${message_id:-}\" ] && [ -f \"$session_file\" ]; then if grep -F \"\\\"id\\\":\\\"$message_id\\\"\" \"$session_file\" >/dev/null 2>/dev/null; then flock -u 200 2>/dev/null || true;exec 200>&- 2>/dev/null || true;rm -f \"$tmpf\" 2>/dev/null || true;if [ \"${DEBUG:-0}\" -eq 1 ]; then log_info \"SESSION\" \"append skipped: duplicate detected for message_id $message_id\";fi;return 0;fi;fi;meta_json=\"$(printf '%s' \"$meta_json\" | jq -c '.' 2>/dev/null || printf '%s' '{}' )\";case \"$role\" in user|assistant|system) role_norm=\"$role\" ;; *) role_norm=\"user\" ;; esac;if [ \"$role_norm\" = \"user\" ] && [ -z \"${content:-}\" ]; then if [ \"${DEBUG:-0}\" -eq 1 ]; then log_info \"SESSION\" \"skipping append of empty user message for session $sid\";fi;trap - RETURN;return 0;fi;line=\"$(jq -c -n --arg ts \"$invocation_ts\" --arg role \"$role_norm\" --arg content \"$content\" --argjson meta \"$meta_json\" '{ts:$ts, role:$role, content:$content, meta:$meta}')\";if ! printf \"%s\\n\" \"$line\" >> \"$session_file\" 2>/dev/null; then : > \"$session_file\" 2>/dev/null || true;if ! printf \"%s\\n\" \"$line\" >> \"$session_file\" 2>/dev/null; then if [ \"${created_marker:-0}\" -eq 1 ]; then rm -rf -- \"$marker_dir\" 2>/dev/null || true;fi;flock -u 200 2>/dev/null || true;exec 200>&- 2>/dev/null || true;rm -f \"$tmpf\" 2>/dev/null || true;log_error \"SESSION\" \"failed to append message to $session_file\";return 1;fi;fi;chmod 600 \"$session_file\" 2>/dev/null || true;flock -u 200 2>/dev/null || true;exec 200>&- 2>/dev/null || true;rm -f \"$tmpf\" 2>/dev/null || true;touch \"${marker_dir}/done\" 2>/dev/null || true;trap - RETURN;if ensure_run_tmpdir >/dev/null 2>&1; then msg_count=0;last_ts=\"\";if [ -f \"$session_file\" ]; then msg_count=\"$(wc -l < \"$session_file\" 2>/dev/null || echo 0)\";last_line=\"$(tail -n 1 \"$session_file\" 2>/dev/null || true)\";if printf '%s' \"$last_line\" | jq -e . >/dev/null 2>&1; then last_ts=\"$(printf '%s' \"$last_line\" | jq -r '.ts // empty' 2>/dev/null || true)\";fi;fi;meta_json=\"$(jq -c -n --arg id \"$sid\" --argjson msg_count \"$msg_count\" --arg last_ts \"${last_ts:-}\" '{id:$id, active:true, msg_count:$msg_count, last_ts:$last_ts}')\";ui_state_write \"sessions/${sid}.json\" \"$meta_json\" || log_warn \"UI_STATE\" \"failed to write session meta for $sid\";idx_file=\"${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json\";if [ -f \"$idx_file\" ]; then if jq -e --arg sid \"$sid\" '(.sessions // []) | index($sid) // empty' \"$idx_file\" >/dev/null 2>&1; then :;else tmp_idx=\"$(_tmpf file  \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" uiidx 2>/dev/null)\" || true;if [ -n \"$tmp_idx\" ]; then jq --arg sid \"$sid\" '.sessions = ((.sessions // []) + [$sid])' \"$idx_file\" > \"${tmp_idx}.new\" 2>/dev/null && mv -f \"${tmp_idx}.new\" \"$tmp_idx\" && ui_state_write \"sessions/index.json\" \"$(cat \"$tmp_idx\")\" || true;rm -f \"$tmp_idx\" 2>/dev/null || true;fi;fi;else ui_state_write \"sessions/index.json\" \"$(jq -c -n --argjson arr '[]' '{sessions:[]}' )\" >/dev/null 2>&1 || true;ui_state_write \"sessions/index.json\" \"$(jq -c -n --arg sid \"$sid\" '{sessions:[$sid]}' )\" >/dev/null 2>&1 || true;fi;fi;if [ \"${DEBUG:-0}\" -eq 1 ]; then log_info \"SESSION\" \"appended message id ${message_id:-<no-id>} to $session_file\";fi;return 0"
+        },
+        {
+          "fn": "_session_hash",
+          "body": "local s=\"$1\" h=\"\";if command -v sha256sum >/dev/null 2>&1; then h=\"$(printf '%s'  \"$s\" | sha256sum 2>/dev/null | awk '{print $1}' || true)\";elif command -v openssl >/dev/null 2>&1; then h=\"$(printf '%s'  \"$s\" | openssl dgst -sha256 2>/dev/null | awk '{print $2}' || true)\";else h=\"$(printf '%s'  \"$s\" | base64 | tr -d '\\n' | cut -c1-64)\";fi;printf '%s' \"${h:-}\""
+        },
+        {
+          "fn": "session_cache_key",
+          "body": "local sid=\"$1\" params=\"$2\";[ -n \"$sid\" ] || return 1;params=\"${params:-}\";printf '%s|%s' \"$sid\" \"$(_session_hash  \"$params\")\""
+        },
+        {
+          "fn": "session_cache_get",
+          "body": "local sid=\"$1\" params=\"$2\" out=\"$3\";local key file ts now ttl;key=\"$(session_cache_key  \"$sid\"  \"$params\")\" || return 1;file=\"${SESSION_CACHE_DIR%/}/${key}.cache\";if [ ! -f \"$file\" ]; then return 1; fi;read -r ts < \"$file\" 2>/dev/null || ts=0;now=\"$(date +%s)\";if [ \"$now\" -ge \"$ts\" ]; then rm -f \"$file\" 2>/dev/null || true;return 1;fi;if [ -n \"$out\" ]; then tail -n +2 \"$file\" > \"$out\" 2>/dev/null || return 1;else tail -n +2 \"$file\" 2>/dev/null || return 0;fi;return 0"
+        },
+        {
+          "fn": "session_cache_set",
+          "body": "local sid=\"$1\" params=\"$2\" ttl=\"${3:-300}\" infile=\"$4\";local key file expiry now;key=\"$(session_cache_key  \"$sid\"  \"$params\")\" || return 1;file=\"${SESSION_CACHE_DIR%/}/${key}.cache\";now=\"$(date +%s)\";expiry=$((now + (ttl + 0)));{ printf '%s\\n' \"$expiry\";if [ -n \"$infile\" ] && [ -f \"$infile\" ]; then cat \"$infile\";else cat -;fi; } > \"$(_tmpf file  \"${SESSION_CACHE_DIR%/}\" session.cache 2>/dev/null)\" || return 1;mv -f \"$(_tmpf file  \"${SESSION_CACHE_DIR%/}\" session.cache 2>/dev/null)\" \"$file\" 2>/dev/null || { rm -f \"$(_tmpf file  \"${SESSION_CACHE_DIR%/}\" session.cache 2>/dev/null)\" 2>/dev/null || true;return 1; };chmod 600 \"$file\" 2>/dev/null || true;return 0"
+        },
+        {
+          "fn": "session_cache_invalidate",
+          "body": "local sid=\"$1\" params=\"$2\" key pattern;if [ -z \"$sid\" ]; then return 1; fi;if [ -n \"$params\" ]; then key=\"$(session_cache_key  \"$sid\"  \"$params\")\" || return 1;rm -f \"${SESSION_CACHE_DIR%/}/${key}.cache\" 2>/dev/null || true;else pattern=\"${SESSION_CACHE_DIR%/}/${sid}|*.cache\";for f in ${pattern}; do [ -e \"$f\" ] && rm -f -- \"$f\" 2>/dev/null || true;done;fi;return 0"
+        },
+        {
+          "fn": "_normalize_bool_env",
+          "body": "local var val;for var in ALLOW_API_CALLS DRY_RUN DEBUG; do val=\"${!var:-}\";if [ -n \"$val\" ]; then if is_truthy \"$val\"; then export \"$var\"=1;else export \"$var\"=0;fi;fi;done"
+        }
+      ],
+      "blocks": [
+        {
+          "blk": "block_mkdir_session_cache",
+          "body": "mkdir -p \"$SESSION_CACHE_DIR\" 2>/dev/null || true;chmod 700 \"$SESSION_CACHE_DIR\" 2>/dev/null || true"
+        },
+        {
+          "blk": "block_ensure_config_dir",
+          "body": "if type ensure_config_dir >/dev/null 2>&1; then ensure_config_dir >/dev/null 2>&1 || true;else mkdir -p \"${BASH4LLM_CONFIG_DIR%/}\" 2>/dev/null || true;fi"
+        },
+        {
+          "blk": "block_ensure_run_tmpdir",
+          "body": "if [ \"${BASH4LLM_SOURCE_ONLY:-0}\" -eq 0 ]; then if ! ensure_run_tmpdir >/dev/null 2>&1; then log_error \"TMP\" \"cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting.\";exit \"$BASH4LLMERRTMP\";fi;fi"
+        },
+        {
+          "blk": "block_normalize_bool_env_call",
+          "body": "_normalize_bool_env"
+        },
+        {
+          "blk": "block_last_check_lines_default",
+          "body": ": \"${LAST_CHECK_LINES:=50}\""
+        }
+      ]
+    }
+  ]
+}
