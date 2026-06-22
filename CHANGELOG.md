@@ -8,6 +8,34 @@
 
 ---
 
+## [2.0.0] – 2026‑06‑20 - [RELEASE NOTES](RELEASE-NOTES.md)
+### Added
+- Rebranding completo da *GroqBash* a *Bash4LLM* (v2.0.0) con aggiornamento della struttura del repository.
+- Supporto per Session Engine modulare con integrazione opzionale del modulo esterno `session-engine.sh`.
+- Gestore di sessione MVP nativo (`session_append`, `session_read_window`) con deduplicazione dei messaggi cross-processo basata su marcatori.
+- Sistema integrato di cache delle risposte (`session_cache_get`, `session_cache_set`) con TTL configurabile per ridurre le chiamate API ripetute.
+- Gestore di stato centralizzato per le interfacce grafiche (`ui_state_write`) con salvataggio atomico di file JSON in `ui_state/`.
+- Nuove opzioni CLI per output automatizzato e machine-readable: `--list-providers-raw` e `--list-models-raw`.
+- Nuova opzione `--bootstrap-only` per consentire l'inizializzazione strutturale dello shell senza effetti collaterali a runtime.
+- Standardizzazione dei codici di errore tramite l'uso di costanti canoniche (`BASH4LLM_ERR_*`).
+
+### Changed
+- Riorganizzazione del layout di runtime, consolidando tutte le risorse e configurazioni all'interno della directory `bash4llm.d/` (migrando `extras`, `config`, `history` e `tmp`).
+- Riprogettazione della scrittura temporanea tramite l'helper sicuro `_tmpf`, vincolando tutte le operazioni all'interno del perimetro validato di `BASH4LLM_TMPDIR`.
+- Unificazione dell'elaborazione Base64 multi-piattaforma tramite wrapper interni (`b64encode`/`b64decode`).
+- Isolamento del caricamento dei moduli provider esterni tramite cattura in subshell e importazione controllata delle funzioni.
+- Potenziamento di `lock_exec` con l'introduzione di un fallback atomico basato su directory per sistemi macOS/Darwin privi di `flock`.
+- Ottimizzazione della pipeline di streaming SSE con la rimozione del comando `tee` per azzerare i ritardi di buffering e garantire una risposta immediata.
+
+### Fixed
+- Rafforzate le barriere di sicurezza vietando esplicitamente l'uso di `/tmp` o delle sue sotto-cartelle per `BASH4LLM_TMPDIR`.
+- Risolti i crash dovuti al dynamic linker su ambienti Termux (Android) rimuovendo `stdbuf` dalla pipeline di streaming.
+- Risolti potenziali errori di variabile non definita sotto `set -u` (es. inizializzazione di `http_code` durante il fallback dello stream).
+- Corretto il comportamento di normalizzazione dei prefissi durante la validazione e l'auto-selezione dei modelli con namespace personalizzati.
+- Impedita la scrittura di messaggi vuoti dell'utente all'interno dei file di cronologia.
+
+---
+
 ## [1.0.0] – 2026‑01‑23 - [RELEASE NOTES](RELEASE-NOTES.md)
 [![Announcements](https://img.shields.io/badge/GroqBash-Announcements-green?logo=github)](https://github.com/kamaludu/groqbash/discussions/127)
 
