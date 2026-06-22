@@ -1,4 +1,6 @@
 [![Bash4LLM](https://img.shields.io/badge/_Bash4LLM_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Announcements](https://img.shields.io/badge/Bash4LLM-Announcements-green?logo=github)](https://github.com/kamaludu/bash4llm/discussions/127)
+
 
 # Bash4LLM 1.0.0 — Release Notes  
 **Data / Date:** 2026‑01‑23  
