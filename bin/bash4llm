@@ -159,11 +159,18 @@ ensure_api_key_for_provider() {
     export GROQ_API_KEY="$input_key"
   fi
 
-  printf '\n%s\n' '----------------------------------------' >&2
-  printf 'To avoid re-entering the key for subsequent invocations, run this in your shell:\n' >&2
-  printf '\n export %s="%s"\n' "$envvar" "$input_key" >&2
-  printf '\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.' >&2
-  printf '%s\n\n' '----------------------------------------' >&2
+  printf '%b' "
+${C_TITLE}----------------------------------------${C_RST}
+
+To avoid re-entering the key for subsequent invocations, run this in your shell:
+
+  ${C_CMD}export ${envvar}=\"${input_key}\"${C_RST}
+
+You can add that line to your shell profile (e.g., ${C_ARG}~/.bashrc${C_RST} or ${C_ARG}~/.profile${C_RST}) to persist it across sessions.
+
+${C_TITLE}----------------------------------------${C_RST}
+
+" >&2
 
   return 0
 }
@@ -227,6 +234,28 @@ dbg() {
     printf '%s\n' "$*" >&2
   fi
 }
+
+# ---------------------------------------------------------------------------
+# Terminal Color Theme Initialization (conforms to NO_COLOR standard)
+# ---------------------------------------------------------------------------
+C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
+
+# Enable colors if standard output or standard error are real terminals (TTY)
+# and the user has not expressed a preference NO_COLOR
+if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
+  C_TITLE=$'\e[1;36m'   # Celeste Grassetto (Titoli, Prompt)
+  C_CMD=$'\e[1;32m'     # Verde (Comandi REPL, Nome utente/provider)
+  C_ARG=$'\e[0;33m'     # Giallo/Arancio (Argomenti dei comandi, variabili)
+  C_RST=$'\e[0m'        # Reset del colore standard
+  C_GREEN=$'\e[0;32m'   # Verde standard
+  C_RED=$'\e[0;31m'     # Rosso standard (Errori)
+  C_YELLOW=$'\e[0;33m'  # Giallo standard
+  C_BLUE=$'\e[0;34m'    # Blu standard
+  C_CYAN=$'\e[0;36m'    # Celeste standard (Info)
+  C_BOLD=$'\e[1m'       # Grassetto
+  C_LOGO=$'\e[1;37;42m' # Bianco Grassetto su Sfondo Verde
+fi
+
 #--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 
 #--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
@@ -3933,7 +3962,22 @@ while [ $# -gt 0 ]; do
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
       help_file="$BASH4LLM_EXTRAS_DIR/docs/help.txt"
-      if [ -f "$help_file" ]; then cat "$help_file"; else printf 'Help file not found: %s\n' "$help_file" >&2; fi
+      if [ -f "$help_file" ]; then
+        # If colors are not active, show the normal file
+        if [ -z "${c_title:-$C_TITLE}" ]; then
+          cat "$help_file"
+        else
+          # Colorazione al volo ultra-portabile (funziona sia su macOS che su Linux)
+          sed \
+            -e "s/^\([A-Za-z]\{2,\}:\)/${C_TITLE}\1${C_RST}/" \
+            -e "s/\(--[a-zA-Z0-9-][a-zA-Z0-9-]*\)/${C_CMD}\1${C_RST}/g" \
+            -e "s/\([[:blank:],]\)\(-[a-zA-Z0-9]\)/\1${C_CMD}\2${C_RST}/g" \
+            -e "s/\(<[a-zA-Z0-9_]\{1,\}>\)/${C_ARG}\1${C_RST}/g" \
+            "$help_file"
+        fi
+      else
+        printf 'Help file not found: %s\n' "$help_file" >&2
+      fi
       exit 0 ;;
     --bootstrap-only)
       BOOTSTRAP_ONLY=1
@@ -4764,9 +4808,9 @@ if [ "$CHAT_MODE" -eq 1 ]; then
 
   while true; do
     PROMPT="You (model: ${MODEL:-default}) > "
-    if [ -t 1 ] && [ "$QUIET" -ne 1 ]; then
+    if [ -n "$C_TITLE" ] && [ -t 1 ] && [ "$QUIET" -ne 1 ]; then
       # Wrap color escape sequences in \001 and \002 so readline calculates prompt width correctly
-      PROMPT=$'\001\e[1;36m\002'"You (model: ${MODEL:-default}) > "$'\001\e[0m\002'
+      PROMPT=$'\001'"$C_TITLE"$'\002'"You (model: ${MODEL:-default}) > "$'\001'"$C_RST"$'\002'
     fi
 
     userline=""
@@ -4787,30 +4831,18 @@ if [ "$CHAT_MODE" -eq 1 ]; then
         exit 0
         ;;
       /help|/\?)
-        # Initialize color variables as empty (plain text)
-        c_title="" c_cmd="" c_arg="" c_rst=""
-
-        # Turn on colors ONLY if the standard error is a real interactive terminal (TTY)
-        # and if the user has not set the global environment variable NO_COLOR
-        if [ -t 2 ] && [ "${NO_COLOR:-}" = "" ]; then
-          c_title="\033[1;33m"  # Yellow 
-          c_cmd="\033[1;32m"    # Green
-          c_arg="\033[0;33m"    # Yellow (dark)
-          c_rst="\033[0m"       # Reset
-        fi
-
         printf '%b' "
-${c_title}------------------------------------------${c_rst}
-${c_title}Interactive Shell Commands:${c_rst}
-  ${c_cmd}/help${c_rst}, ${c_cmd}/?${c_rst}            - Show this help menu
-  ${c_cmd}/exit${c_rst}, ${c_cmd}/quit${c_rst}         - Exit the interactive shell
-  ${c_cmd}/clear${c_rst}               - Clear terminal screen and reset conversation history
-  ${c_cmd}/undo${c_rst}                - Remove the last prompt and response from history
-  ${c_cmd}/status${c_rst}              - Show active configurations and session statistics
-  ${c_cmd}/system${c_rst} [${c_arg}<prompt>${c_rst}]   - View or update the current system prompt instructions
-  ${c_cmd}/model${c_rst} ${c_arg}<name>${c_rst}        - Switch the active LLM model
-  ${c_cmd}/file${c_rst} ${c_arg}<path>${c_rst} [${c_arg}prompt${c_rst}]- Read a file, append an optional prompt, and send to model
-${c_title}------------------------------------------${c_rst}
+${C_TITLE}------------------------------------------${C_RST}
+${C_TITLE}Interactive Shell Commands:${C_RST}
+  ${C_CMD}/help${C_RST}, ${C_CMD}/?${C_RST}            - Show this help menu
+  ${C_CMD}/exit${C_RST}, ${C_CMD}/quit${C_RST}         - Exit the interactive shell
+  ${C_CMD}/clear${C_RST}               - Clear terminal screen and reset conversation history
+  ${C_CMD}/undo${C_RST}                - Remove the last prompt and response from history
+  ${C_CMD}/status${C_RST}              - Show active configurations and session statistics
+  ${C_CMD}/system${C_RST} [${C_ARG}<prompt>${C_RST}]   - View or update the current system prompt instructions
+  ${C_CMD}/model${C_RST} ${C_ARG}<name>${C_RST}        - Switch the active LLM model
+  ${C_CMD}/file${C_RST} ${C_ARG}<path>${C_RST} [${C_ARG}prompt${C_RST}]- Read a file, append an optional prompt, and send to model
+${C_TITLE}------------------------------------------${C_RST}
 
 " >&2
         continue
@@ -5008,7 +5040,7 @@ ${c_title}------------------------------------------${c_rst}
         fi
       else
         if [ -t 1 ] && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
-          printf '\n\033[1;32mAssistant:\033[0m\n' >&2
+          printf '\n%s\n' "${C_CMD}Assistant:${C_RST}" >&2
         fi
         if ! perform_request_once; then
           log_error "CALL" "API request failed."
@@ -5158,7 +5190,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
 else
   # Non-streaming single request path
   if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
-    printf '%b\n' "\033[1;36mYou:\033[0m" >&2
+    printf '%s\n' "${C_TITLE}You:${C_RST}" >&2
     if [ "${#ARGS[@]}" -gt 0 ]; then
       anyfile=0
       for a in "${ARGS[@]}"; do [ -r "$a" ] && [ -f "$a" ] && { anyfile=1; break; }; done
@@ -5166,7 +5198,7 @@ else
     else
       printf '%s\n' "$CONTENT" >&2
     fi
-    printf '%b\n' "\033[1;32mProvider ($PROVIDER, model: $MODEL):\033[0m" >&2
+    printf '%s\n' "${C_CMD}Provider ($PROVIDER, model: $MODEL):${C_RST}" >&2
   fi
 
   if [ -n "${SESSION_ID:-}" ]; then
