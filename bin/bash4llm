@@ -4785,59 +4785,192 @@ if [ -n "$BATCH_FILE" ]; then
   exit 0
 fi
 
-# Interactive chat mode
+# =============================================================================
+# chat mode: REPL / INTERACTIVE SHELL MODE
+# =============================================================================
 if [ "$CHAT_MODE" -eq 1 ]; then
-  if [ ! -t 0 ]; then log_error "CHAT" "interactive chat requires a TTY."; exit "$BASH4LLMERR_TMP"; fi
-  [ -t 1 ] && [ "$QUIET" -ne 1 ] && printf 'Entering interactive chat. Press Ctrl+D to exit.\n' >&2
-  CONVERSATION=""
+  if [ ! -t 0 ]; then
+    log_error "CHAT" "interactive chat requires a valid TTY."
+    exit "$BASH4LLMERR_TMP"
+  fi
+
+  # 1. Secure and isolated GNU Readline history configuration
+  set -o history
+  export HISTSIZE=1000
+  HISTFILE="${BASH4LLM_HISTORY_DIR}/repl_history"
+  # Securely initialize and restrict read/write access to owner only
+  touch "$HISTFILE" 2>/dev/null && chmod 600 "$HISTFILE" 2>/dev/null
+  history -r "$HISTFILE" 2>/dev/null
+
+  if [ "$QUIET" -ne 1 ]; then
+    printf 'Starting Bash4LLM Interactive Shell (REPL). Press Ctrl+D or type /exit to quit.\n' >&2
+    printf 'Local commands: /exit, /clear, /model <model_name>\n\n' >&2
+  fi
+
+  # 2. Signal handling (SIGINT) to prevent REPL termination on Ctrl+C
+  trap 'printf "\n[Interrupted. Type /exit or press Ctrl+D to exit]\n" >&2' INT
+
+  # 3. Default stateful session setup
+  if [ -z "${SESSION_ID:-}" ]; then
+    SESSION_ID="repl-$(date +%Y%m%d)-$$"
+  fi
+
   while true; do
-    if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then printf '\nYou: ' >&2; fi
-    if ! IFS= read -r userline; then printf '\n' >&2; break; fi
-    [ -z "$userline" ] && continue
-    [ -z "$CONVERSATION" ] && CONVERSATION="$userline" || CONVERSATION="${CONVERSATION}"$'\n\n'"User: ${userline}"
-    CONTENT="$userline"
-
-    # Pre-JSON session hook: prepare BUILD_MESSAGES_FILE if sessioning requested
-    if [ -n "${SESSION_ID:-}" ]; then
-      if ! session_validate_id "$SESSION_ID"; then
-        log_error "SESSION" "invalid session id: $SESSION_ID"
-        exit "$BASH4LLMERR_TMP"
-      fi
-      mkdir -p "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
-      chmod 700 "$BASH4LLM_HISTORY_DIR/sessions" 2>/dev/null || true
-
-      if [ -n "${SESSION_WINDOW:-}" ]; then
-        if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
-          SESSION_WINDOW=10
-        fi
-      else
-        SESSION_WINDOW=10
-      fi
-      if [ "$SESSION_WINDOW" -gt 20 ]; then
-        log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
-      fi
-
-      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLMERR_TMP"; }
-      BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
-
-      # Try Session Engine first; fallback to legacy on any failure
-      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
-          log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
-          session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || log_warn "SESSION" "legacy session_read_window failed"
-        fi
-      else
-        session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || log_warn "SESSION" "legacy session_read_window failed"
-      fi
-
-      export BUILD_MESSAGES_FILE
+    # Define dynamic prompt (with optional ANSI colors when on TTY and not quiet)
+    PROMPT="You (model: ${MODEL:-default}) > "
+    if [ -t 1 ] && [ "$QUIET" -ne 1 ]; then
+      PROMPT=$'\e[1;36m'"You (model: ${MODEL:-default}) > "$'\e[0m'
     fi
 
-    build_payload_from_vars
-    if ! ensure_api_key_for_provider "$PROVIDER"; then log_error "APIKEY" "missing API key; aborting chat turn."; continue; fi
-    if [ "$STREAM_MODE" -eq 1 ]; then call_api_streaming || log_error "CALL" "Streaming call failed."
-    else perform_request_once || log_error "CALL" "Call failed."; fi
+    # Read user input securely using GNU Readline (-e)
+    userline=""
+    if ! IFS= read -r -e -p "$PROMPT" userline; then
+      printf '\nExited.\n' >&2
+      break
+    fi
+
+    # Trim leading/trailing whitespace and ignore empty lines
+    userline="$(printf '%s' "$userline" | awk '{$1=$1;print}')"
+    [ -z "$userline" ] && continue
+
+    # Persist input to history securely
+    history -s "$userline"
+    history -w "$HISTFILE" 2>/dev/null
+
+    # 4. Local Command Dispatcher (Sanitized and Secure)
+    case "$userline" in
+      /exit|/quit)
+        cleanup_run_tmp_on_exit
+        exit 0
+        ;;
+      /clear)
+        if [ -n "${SESSION_ID:-}" ]; then
+          session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${SESSION_ID}.ndjson"
+          if [ -f "$session_file" ]; then
+            # Securely truncate the session file preserving current permissions
+            : > "$session_file" 2>/dev/null || true
+          fi
+          # Invalidate local session cache if available
+          if type session_cache_invalidate >/dev/null 2>/dev/null; then
+            session_cache_invalidate "$SESSION_ID" >/dev/null 2>/dev/null || true
+          fi
+          printf '\n\033[1;33mSession cleared.\033[0m\n' >&2
+        fi
+        continue
+        ;;
+      /model\ *)
+        # Extract and strictly sanitize the argument to prevent command injection
+        new_model="${userline#/model }"
+        new_model="$(printf '%s' "$new_model" | tr -d -c 'A-Za-z0-9._/:-' | awk '{$1=$1;print}')"
+        if [ -z "$new_model" ]; then
+          printf 'bash4llm: ERROR: Empty or invalid model name.\n' >&2
+        else
+          # Validate model availability before updating state
+          if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
+            MODEL="$new_model"
+            printf '\n\033[1;32mModel successfully set to: %s\033[0m\n' "$MODEL" >&2
+          else
+            printf 'bash4llm: ERROR: Model "%s" is not supported or registered.\n' "$new_model" >&2
+          fi
+        fi
+        continue
+        ;;
+      /*)
+        printf 'bash4llm: ERROR: Unknown command. Type /exit to quit, /clear to empty conversation, /model <name> to switch model.\n' >&2
+        continue
+        ;;
+    esac
+
+    # 5. API Request processing and state preservation
+    CONTENT="$userline"
+
+    if [ -n "${SESSION_ID:-}" ]; then
+      if ! session_validate_id "$SESSION_ID" >/dev/null 2>&1; then
+        log_error "SESSION" "invalid session id: $SESSION_ID"
+        continue
+      fi
+
+      # Establish isolated messages context directory inside RUN_TMPDIR
+      ensure_run_tmpdir || { log_error "SESSION" "cannot access run tmpdir"; continue; }
+      BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
+      export BUILD_MESSAGES_FILE
+
+      # Attempt context assembly (supporting Session Engine if available)
+      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+        session_engine_build_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 \
+          || session_read_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 || true
+      else
+        session_read_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 || true
+      fi
+    fi
+
+    # API execution is encapsulated in 'if' blocks to prevent 'set -e' from aborting the shell
+    if build_payload_from_vars >/dev/null 2>&1; then
+      if ! ensure_api_key_for_provider "$PROVIDER" >/dev/null 2>&1; then
+        log_error "APIKEY" "Missing API key for provider $PROVIDER."
+        continue
+      fi
+
+      if [ "$STREAM_MODE" -eq 1 ]; then
+        # Handle streaming request
+        if ! call_api_streaming; then
+          log_error "CALL" "Streaming request failed."
+          continue
+        fi
+      else
+        # Print role metadata if on TTY and not quiet
+        if [ -t 1 ] && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
+          printf '\n\033[1;32mAssistant:\033[0m\n' >&2
+        fi
+        # Handle standard request
+        if ! perform_request_once; then
+          log_error "CALL" "API request failed."
+          continue
+        fi
+      fi
+
+      # 6. Save session history (Secure metadata writing via JQ)
+      if [ -n "${SESSION_ID:-}" ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
+        # Securely build user message metadata
+        meta_source="cli"
+        meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+        meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
+
+        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+          session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 \
+            || session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 || true
+        else
+          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 || true
+        fi
+
+        # Extract and securely save the assistant response
+        if [ -s "${RESP:-}" ]; then
+          assistant_text="$(extract_text_from_resp 2>/dev/null || true)"
+          assistant_text="$(printf '%s' "$assistant_text" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d' || true)"
+          if [ -n "${assistant_text:-}" ]; then
+            meta_source="provider"
+            meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
+
+            if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+              session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" >/dev/null 2>&1 \
+                || session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" >/dev/null 2>&1 || true
+            else
+              session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" >/dev/null 2>&1 || true
+            fi
+          fi
+        fi
+      fi
+
+    else
+      log_error "PAYLOAD" "Failed to compile net request payload."
+    fi
+
+    printf '\n' >&2
+
   done
+
+  # Restore original signal behaviors before exiting
+  trap - INT
   exit 0
 fi
 
