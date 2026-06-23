@@ -29,7 +29,9 @@ _get_api_key_mistral() {
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "mistral")"
     if [ -n "$prov_env" ]; then
-      key="${!prov_env:-}"
+      if [ -n "${!prov_env+x}" ]; then
+        key="${!prov_env}"
+      fi
     fi
   fi
   if [ -z "$key" ]; then
@@ -61,7 +63,18 @@ _get_work_tmpdir_mistral() {
 }
 
 _mktemp_in_dir_mistral() {
-  local dir="$1" tmpf
+  local dir="$1"
+  # Delega la creazione sicura alle funzioni del core se disponibili
+  if type _tmpf >/dev/null 2>&1; then
+    _tmpf file "$dir" mistral
+    return $?
+  elif type _mktemp_in_dir >/dev/null 2>&1; then
+    _mktemp_in_dir "$dir" mistral
+    return $?
+  fi
+
+  # Fallback robusto locale
+  local tmpf
   [ -n "$dir" ] || return 1
   [ -d "$dir" ] || return 1
   tmpf="$(mktemp "${dir%/}/mistral-XXXXXX" 2>/dev/null || true)"
@@ -86,17 +99,17 @@ buildpayload_mistral() {
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return 1
+    ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  workdir="$(_get_work_tmpdir_mistral)" || return 1
-  tmp_payload="$(_mktemp_in_dir_mistral "$workdir")" || return 1
+  workdir="$(_get_work_tmpdir_mistral)" || return "${BASH4LLM_ERR_TMP:-15}"
+  tmp_payload="$(_mktemp_in_dir_mistral "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
   umask 077
 
   # Quick dependency check
   if ! command -v jq >/dev/null 2>&1; then
     dbg "DEPENDENCY" "jq not found"
-    return 1
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   # JSON_INPUT mode
@@ -118,7 +131,7 @@ buildpayload_mistral() {
 
       jq -n --arg model "$model_to_use" \
             --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-            --arg temp "${TEMP:-1.0}" \
+            --arg temp "${TURE:-${TEMPERATURE:-${TEMP:-1.0}}}" \
             --arg max_tokens "${MAX_TOKENS:-4096}" \
             --arg user "$user_prompt" \
             '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
@@ -142,36 +155,56 @@ buildpayload_mistral() {
     return 0
   fi
 
-  # Build from variables
-  local stream_flag=false model temp max_tokens esc_content esc_system
+  # CORREZIONE: Integrazione completa della logica della cronologia e del prompt OpenAI-compatible
+  local VALID_MESSAGES_JSON=""
+
+  if [ -z "$VALID_MESSAGES_JSON" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
+    VALID_MESSAGES_JSON="${MESSAGES_JSON}"
+  fi
+
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
+    local msgs_from_file
+    msgs_from_file="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
+    if printf '%s' "$msgs_from_file" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
+      if [ -n "${CONTENT:-}" ]; then
+        VALID_MESSAGES_JSON="$(printf '%s' "$msgs_from_file" | jq -c --arg content "$CONTENT" '. + [{role:"user", content:$content}]' 2>/dev/null || printf '%s' "$msgs_from_file")"
+      else
+        VALID_MESSAGES_JSON="$msgs_from_file"
+      fi
+    fi
+  fi
+
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${CONTENT:-}" ]; then
+    VALID_MESSAGES_JSON="$(jq -c -n --arg content "$CONTENT" '[{role:"user",content:$content}]')"
+  fi
+
+  if [ -z "$VALID_MESSAGES_JSON" ]; then
+    VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
+  fi
+
+  # Inserimento opzionale del system prompt in testa
+  if [ -n "${SYSTEM_PROMPT:-}" ]; then
+    VALID_MESSAGES_JSON="$(jq -n --argjson messages "$VALID_MESSAGES_JSON" --arg sys "$SYSTEM_PROMPT" '[{role:"system", content:$sys}] + $messages' 2>/dev/null || printf '%s' "$VALID_MESSAGES_JSON")"
+  fi
+
+  # Compilazione del payload finale tramite jq (sicuro, senza bisogno di escape manuale Bash)
+  local stream_flag=false model temp max_tokens
   is_truthy "${STREAM_MODE:-0}" && stream_flag=true
 
   model="${MODEL:-}"
-  temp="${TEMP:-1.0}"
+  temp="${TURE:-${TEMPERATURE:-${TEMP:-1.0}}}"
   max_tokens="${MAX_TOKENS:-4096}"
 
-  esc_content="$(_escape_json_string_mistral "${CONTENT:-}")"
-  esc_system="$(_escape_json_string_mistral "${SYSTEM_PROMPT:-}")"
-
-  if [ -n "${SYSTEM_PROMPT:-}" ]; then
-    jq -n --arg model "$model" \
-          --argjson stream "$stream_flag" \
-          --arg temp "$temp" \
-          --arg max_tokens "$max_tokens" \
-          --arg system "$esc_system" \
-          --arg user "$esc_content" \
-          '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber),
-            messages:[{role:"system",content:$system},{role:"user",content:$user}] }' \
-          > "$tmp_payload"
-  else
-    jq -n --arg model "$model" \
-          --argjson stream "$stream_flag" \
-          --arg temp "$temp" \
-          --arg max_tokens "$max_tokens" \
-          --arg user "$esc_content" \
-          '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber),
-            messages:[{role:"user",content:$user}] }' \
-          > "$tmp_payload"
+  if ! jq -n --arg model "$model" \
+       --argjson stream "$stream_flag" \
+       --arg temp "$temp" \
+       --arg max_tokens "$max_tokens" \
+       --argjson messages "$VALID_MESSAGES_JSON" \
+       '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' \
+       > "$tmp_payload" 2>/dev/null; then
+    printf 'Error: jq failed to construct the Mistral API payload\n' >&2
+    rm -f "$tmp_payload" 2>/dev/null || true
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   if type atomic_write >/dev/null 2>&1; then
@@ -180,6 +213,8 @@ buildpayload_mistral() {
     cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
     chmod 600 "$PAYLOAD" 2>/dev/null || true
   fi
+
+  rm -f "$tmp_payload" 2>/dev/null || true
   return 0
 }
 
@@ -192,34 +227,46 @@ call_api_mistral() {
     *u*) _set_u_was_on=1; set +u ;;
   esac
 
+  # Gestione ed applicazione della policy di rete globale del core
+  if type enforce_network_policy >/dev/null 2>&1; then
+    if ! enforce_network_policy; then
+      if is_truthy "${DRY_RUN:-0}"; then
+        if type show_payload_head >/dev/null 2>&1 && [ "${DEBUG:-0}" -eq 1 ]; then
+          show_payload_head "${PAYLOAD:-}" 200 || true
+        fi
+        dbg "DRY-RUN: skipping HTTP call (exit 0)"
+        [ "$_set_u_was_on" -eq 1 ] && set -u
+        return 0
+      fi
+      echo "Error: Network calls disabled by policy." >&2
+      [ "$_set_u_was_on" -eq 1 ] && set -u
+      return "${BASH4LLM_ERR_CURL_FAILED:-12}"
+    fi
+  fi
+
   local key
   key="$(_get_api_key_mistral)"
 
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 2
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
   if [ ! -s "${PAYLOAD:-}" ]; then
     echo "Error: payload file missing or empty: ${PAYLOAD:-<unset>}" >&2
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 3
-  fi
-  if is_truthy "${DRY_RUN:-0}"; then
-    printf 'DRY-RUN: skipping HTTP call (exit 0)\n' >&2
-    [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 0
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
   local workdir tmpout tmpresp api_url http_code time_total
-  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
-  tmpout="$(_mktemp_in_dir_mistral "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
-  tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  tmpout="$(_mktemp_in_dir_mistral "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
   
@@ -280,7 +327,7 @@ call_api_mistral() {
       dbg "HTTP error code: $http_code"
       dbg "Response (head):"; head -n 200 "${RESP:-/dev/null}" >&2 || true
       dbg "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
-      return 5
+      return "${BASH4LLM_ERR_API:-16}"
       ;;
   esac
 }
@@ -294,23 +341,32 @@ call_api_streaming_mistral() {
     *u*) _set_u_was_on=1; set +u ;;
   esac
 
+  # Gestione ed applicazione della policy di rete globale del core in modalità streaming
+  if type enforce_network_policy >/dev/null 2>&1; then
+    if ! enforce_network_policy; then
+      if is_truthy "${DRY_RUN:-0}"; then
+        dbg "DRY-RUN: skipping streaming HTTP call (exit 0)"
+        [ "$_set_u_was_on" -eq 1 ] && set -u
+        return 0
+      fi
+      echo "Error: Network calls disabled by policy." >&2
+      [ "$_set_u_was_on" -eq 1 ] && set -u
+      return "${BASH4LLM_ERR_CURL_FAILED:-12}"
+    fi
+  fi
+
   local key
   key="$(_get_api_key_mistral)"
 
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is not set." >&2
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 2
-  fi
-  if is_truthy "${DRY_RUN:-0}"; then
-    printf 'DRY-RUN: skipping streaming HTTP call (exit 0)\n' >&2
-    [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 0
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
   local api_url rc RESP_RAW workdir
@@ -318,7 +374,7 @@ call_api_streaming_mistral() {
   # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
   
-  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   RESP_RAW="${RUN_TMPDIR:-$workdir}/resp.raw"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
@@ -354,7 +410,7 @@ call_api_streaming_mistral() {
   [ "$rc" -ne 0 ] && {
     dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 6
+    return "${BASH4LLM_ERR_CURL_FAILED:-12}"
   }
 
   # Post-processing: build resp.chunks.json, resp.text.txt and write RESP atomically
@@ -408,26 +464,26 @@ refresh_models_mistral() {
   if [ -z "$key" ]; then
     echo "Error: MISTRAL_API_KEY is required to refresh models." >&2
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 2
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
   if [ -z "$outpath" ]; then
     echo "Error: MODELS file path not provided." >&2
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 7
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
   local workdir tmpd out errf api_url parsed http_code
-  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return 4; }
+  workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   tmpd="$(mktemp -d "${workdir}/mistral-models.XXXXXX" 2>/dev/null || true)"
 
   if [ -z "$tmpd" ] || [ ! -d "$tmpd" ]; then
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 4
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   out="$tmpd/models.json"
@@ -453,13 +509,13 @@ refresh_models_mistral() {
     dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
     rm -rf "$tmpd" 2>/dev/null || true
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 8
+    return "${BASH4LLM_ERR_CURL_FAILED:-12}"
   fi
 
   if [ "$http_code" != "200" ]; then
     rm -rf "$tmpd" 2>/dev/null || true
     [ "$_set_u_was_on" -eq 1 ] && set -u
-    return 8
+    return "${BASH4LLM_ERR_API:-16}"
   fi
 
   parsed="$tmpd/parsed_models.txt"
@@ -471,14 +527,24 @@ refresh_models_mistral() {
     else
       empty
     end
-  ' "$out" | sort -u > "$parsed" 2>/dev/null || true
+  ' "$out" | awk 'NF{print}' | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//' | sort -u > "$parsed" 2>/dev/null || true
 
-  if [ -s "$parsed" ]; then
+  # Sanitizzazione e normalizzazione dei modelli (solo caratteri sicuri)
+  local tmp_trim
+  tmp_trim="$tmpd/parsed_trimmed.txt"
+  awk '{
+    g=$0
+    sub(/^models\//,"",g)
+    sub(/^mistral[:\/-]*/,"",g)
+    if (g ~ /^[[:alnum:]._\/:-]+$/) print g
+  }' "$parsed" | awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' > "$tmp_trim" 2>/dev/null || true
+
+  if [ -s "$tmp_trim" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
     if type atomic_write >/dev/null 2>&1; then
-      cat "$parsed" | atomic_write "$outpath"
+      cat "$tmp_trim" | atomic_write "$outpath"
     else
-      cp -f "$parsed" "$outpath" 2>/dev/null || true
+      cp -f "$tmp_trim" "$outpath" 2>/dev/null || true
       chmod 600 "$outpath" 2>/dev/null || true
     fi
     chmod 600 "$outpath" 2>/dev/null || true
@@ -490,7 +556,7 @@ refresh_models_mistral() {
   dbg "Raw response (head):"; head -n 50 "$out" >&2 || true
   rm -rf "$tmpd" 2>/dev/null || true
   [ "$_set_u_was_on" -eq 1 ] && set -u
-  return 9
+  return "${BASH4LLM_ERR_API:-16}"
 }
 
 # -------------------------
