@@ -67,6 +67,10 @@ buildpayload_gemini() {
     messages_json="$(jq -c '.messages // if type=="array" then . else [.] end' "${BUILD_MESSAGES_FILE}" 2>/dev/null || true)"
     if [ -n "$messages_json" ] && [ "$messages_json" != "null" ]; then
       messages_arg=1
+      # CORREZIONE: Unisce immediatamente l'input corrente alla cronologia se presente
+      if [ -n "${CONTENT:-}" ]; then
+        messages_json="$(printf '%s' "$messages_json" | jq -c --arg content "$CONTENT" '. + [{role: "user", content: $content}]' 2>/dev/null || printf '%s' "$messages_json")"
+      fi
     fi
   elif [ -n "${MESSAGES_JSON:-}" ]; then
     if [ -f "${MESSAGES_JSON}" ]; then
@@ -162,6 +166,7 @@ buildpayload_gemini() {
     return 0
   fi
 }
+
 # -------------------------
 # gemini_report_error
 # -------------------------
