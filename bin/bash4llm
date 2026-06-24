@@ -4808,9 +4808,9 @@ if [ "$CHAT_MODE" -eq 1 ]; then
 
   while true; do
     PROMPT="You (model: ${MODEL:-default}) > "
-    if [ -n "$C_TITLE" ] && [ -t 1 ] && [ "$QUIET" -ne 1 ]; then
+    if [ -n "$C_CMD" ] && [ -t 1 ] && [ "$QUIET" -ne 1 ]; then
       # Wrap color escape sequences in \001 and \002 so readline calculates prompt width correctly
-      PROMPT=$'\001'"$C_TITLE"$'\002'"You (model: ${MODEL:-default}) > "$'\001'"$C_RST"$'\002'
+      PROMPT=$'\001'"$C_CMD"$'\002'"You (model: ${MODEL:-default}) > "$'\001'"$C_RST"$'\002'
     fi
 
     userline=""
