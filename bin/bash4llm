@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Bash4LLM⁺ — Bash-first wrapper for the Groq API
+# Bash4LLM⁺b — Bash-first wrapper for the Groq API
 # File: bash4llm
 # Version: 2.0.0
 # Copyright (C) 2026 Cristian Evangelisti
@@ -23,7 +23,7 @@ SCRIPT_VERSION="2.0.0"
 SCRIPT_DATE="2026-06-20"
 
 # Initialize color variables to prevent set -u (nounset) errors if referenced early
-C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
+C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_GBOLD="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
@@ -241,7 +241,7 @@ dbg() {
 # ---------------------------------------------------------------------------
 # Terminal Color Theme Initialization (conforms to NO_COLOR standard)
 # ---------------------------------------------------------------------------
-C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
+C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_GBOLD="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
 
 # Enable colors if standard output or standard error are real terminals (TTY)
 # and the user has not expressed a preference NO_COLOR
@@ -251,12 +251,13 @@ if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
   C_ARG=$'\e[0;33m'     # Giallo/Arancio (Argomenti dei comandi, variabili)
   C_RST=$'\e[0m'        # Reset del colore standard
   C_GREEN=$'\e[0;32m'   # Verde standard
+  C_GBOLD=$'\e[1;32m'   # Verde grassetto 
   C_RED=$'\e[0;31m'     # Rosso standard (Errori)
   C_YELLOW=$'\e[0;33m'  # Giallo standard
   C_BLUE=$'\e[0;34m'    # Blu standard
   C_CYAN=$'\e[0;36m'    # Celeste standard (Info)
   C_BOLD=$'\e[1m'       # Grassetto
-  C_LOGO=$'\e[1;37;42m' # Bianco Grassetto su Sfondo Verde (riservato al banner REPL)
+  C_LOGO=$'\e[1;97;42m' # Bianco Grassetto su Sfondo Verde
 fi
 
 #--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
@@ -3162,7 +3163,7 @@ validate_model_groq() {
 
   # Ensure the (normalized) model is text-capable
   if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GREEN}Bash4LLM⁺${C_RST}" >&2
+    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GBOLD}Bash4LLM⁺${C_RST}" >&2
     return 1
   fi
 
@@ -3790,7 +3791,7 @@ validate_model_core() {
 
   # Check textual support
   if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GREEN}Bash4LLM⁺${C_RST}" >&2
+    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GBOLD}Bash4LLM⁺${C_RST}" >&2
     return 1
   fi
 
@@ -4512,7 +4513,7 @@ fi
 
 if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf '%s configuration:\n' "${C_GREEN}Bash4LLM⁺${C_RST}"
+  printf '%s configuration:\n' "${C_GBOLD}Bash4LLM⁺${C_RST}"
   printf '  - Name: %s\n' "$SCRIPT_NAME"
   printf '  - Version: %s\n' "$SCRIPT_VERSION"
   printf '  - Date: %s\n' "$SCRIPT_DATE"
@@ -4527,14 +4528,18 @@ fi
 
 if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf '%s diagnostics:\n' "${C_GREEN}Bash4LLM⁺${C_RST}"
+  printf '%s diagnostics:\n' "${C_GBOLD}Bash4LLM⁺${C_RST}"
   printf '  - Config Dir: %s\n' "$(canonical_config_dir)"
   printf '  - Provider File: %s\n' "$(canonical_provider_file)"
   printf '  - History Dir: %s\n' "$BASH4LLM_HISTORY_DIR"
   printf '  - Temp Dir: %s\n' "$BASH4LLM_TMPDIR"
   printf '  - Active Temp Dir: %s\n' "${RUN_TMPDIR:-<none>}"
   printf '  - Models File: %s\n' "$MODELS_FILE"
-  printf '  - Allowed Models Count: %d\n' "$(printf '%s\n' "$ALLOWED_MODELS" | grep -c . || echo 0)"
+  allowed_count=0
+  if [ -n "$ALLOWED_MODELS" ]; then
+    allowed_count="$(printf '%s\n' "$ALLOWED_MODELS" | wc -l | tr -d ' ')"
+  fi
+  printf '  - Allowed Models Count: %d\n' "$allowed_count"
   exit 0
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
@@ -4744,10 +4749,10 @@ if [ "$CHAT_MODE" -eq 1 ]; then
   history -r "$HISTFILE" 2>/dev/null || true
 
   if [ "$QUIET" -ne 1 ]; then
-    printf '%s\n' '------------------------------------------' >&2
-    printf 'Starting %s Interactive Shell (REPL)\n' "${C_LOGO}Bash4LLM⁺${C_RST}" >&2
+    printf '%s\n' '-----------------------------------------' >&2
+    printf 'Starting %s Interactive Shell\n' "${C_LOGO} Bash4LLM⁺ ${C_RST}" >&2
     printf 'Press Ctrl+D to quit, type /? for Help\n' >&2
-    printf '%s\n\n' '------------------------------------------' >&2
+    printf '%s\n\n' '-----------------------------------------' >&2
   fi
 
   trap 'printf "\n[Interrupted. Type /exit or press Ctrl+D to exit]\n" >&2' INT
