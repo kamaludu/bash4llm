@@ -57,29 +57,24 @@ Lo script core e i moduli ufficiali non utilizzano mai il comando `eval` o costr
 ### ✔ Protezione del File System e divieto di `/tmp` di sistema  
 Per evitare minacce basate su collegamenti simbolici (symlink) o collisioni di scrittura ad opera di utenti concorrenti sul sistema, i file temporanei interni **non** vengono mai creati nella directory globale `/tmp`.  
 Bash4LLM⁺ impone che:
-- Ogni transazione scriva in una cartella isolata `$RUN_TMPDIR` generata dinamicamente con umask `077` e permessi `700` (esclusivi per l'utente proprietario).
-- La directory temporanea base `$BASH4LLM_TMPDIR` risieda obbligatoriamente all'interno del perimetro della cartella principale `$BASH4LLM_DIR`.
-- Lo script rilevi e blocchi immediatamente l'esecuzione se la directory temporanea configurata si trova in `/tmp` o sotto `/tmp`, o se è un collegamento simbolico.
+- Ogni transazione scriva in una cartella isolata `$RUN_TMPDIR` specifica del processo.
+- `$BASH4LLM_TMPDIR` debba essere una sottodirectory interna al perimetro di `$BASH4LLM_DIR`.
+- I file temporanei interni siano creati esclusivamente con permessi restrittivi `700` (`umask 077`).
 
-### ✔ Caricamento isolato dei provider (Sandbox statico)
-Per proteggere il runtime da script di terze parti instabili o dannosi:
-- La funzione `load_provider_module` esegue una pre-analisi statica in una sotto-shell isolata prima di importare il codice.
-- Viene creato un dump sicuro e temporaneo contenente **esclusivamente le definizioni delle funzioni** (tramite `declare -f`).
-- Eventuale codice arbitrario o dichiarazioni di variabili globali posizionate fuori dalle funzioni nel file del provider vengono scartate e non inquineranno in nessun modo la shell principale.
-- Vengono controllati severamente la proprietà del file del provider (che deve coincidere con l'utente corrente) e i permessi di scrittura del gruppo o del mondo (world/group-writable), bloccando il caricamento in caso di violazioni.
-
-### ✔ Gestione robusta dei lock concorrenti (Termux Friendly)
-Per prevenire conflitti o file corrotti durante l'uso parallelo (multi-istanza) della stessa sessione di chat, Bash4LLM⁺ implementa un sistema di lock centralizzato.
-- **Risoluzione blocchi Termux:** Sui sistemi Android/Termux, a causa di limitazioni strutturali della libreria C Bionic e delle politiche di sicurezza SELinux di Android, l'uso dell'utility di sistema `flock` (e delle relative chiamate di sistema BSD) causa spesso congelamenti o blocchi indefiniti del terminale.
-- **Mitigazione:** Bash4LLM⁺ rileva automaticamente l'ambiente Termux (tramite `TERMUX_VERSION`) e disattiva in modo trasparente l'uso di `flock`, deviando l'esecuzione su un meccanismo atomico alternativo basato sulla creazione di directory (`mkdir`). Questo garantisce la massima stabilità e portabilità in totale assenza di blocchi.
+### ✔ Sandbox dei provider (Isolamento funzioni)
+Durante il caricamento dei moduli aggiuntivi, lo script esegue l'importazione in una sotto-shell di sandbox isolata:
+- Cattura un dump statico delle sole funzioni dichiarate dal modulo (tramite `declare -f`).
+- Blocca l'esecuzione di codice globale arbitrario o la persistenza di variabili globali estranee nel runtime principale.
+- Controlla severamente i permessi di scrittura sul filesystem dei moduli prima del caricamento (vietati file world/group-writable o directory insicure).
 
 ### ✔ Sicurezza delle API Key e sanitizzazione dell'ambiente
-- Le chiavi di autenticazione vengono lette rigorosamente da variabili d'ambiente (o richieste interattivamente se in TTY) e memorizzate unicamente in memoria volatile per la durata dell'esecuzione della chiamata. **Nessuna chiave viene mai scritta sul filesystem.**
-- L'ambiente non-interattivo fallisce in modo sicuro senza mostrare prompt di inserimento se la chiave API non è già presente nelle variabili d'ambiente.
-- La sanitizzazione dinamica dell'espansione indiretta delle variabili (`${!prov_env}`) assicura che, in caso di variabili vuote sotto `set -u` (nounset), lo script non incorra in arresti anomali o errori di sintassi.
+- Le chiavi di autenticazione vengono caricate temporaneamente in memoria per la durata dell'invocazione curl e non vengono **mai persistite o scritte su disco**.
+- Lo script verifica la presenza e la validità delle chiavi per ciascun provider prima di avviare richieste, bloccando preventivamente i tentativi non autorizzati con il codice di errore `BASH4LLM_ERR_NO_API_KEY`.
+- L'espansione dinamica delle variabili sotto `set -u` (nounset) è protetta e sanitizzata, impedendo arresti anomali dovuti a query indirette vuote (es. `${!prov_env}`).
 
-### ✔ Sicurezza dei file di sessione e cronologia
-La cronologia di chat viene memorizzata in formato NDJSON protetto, accessibile esclusivamente con permessi restrittivi `600` nella directory `$BASH4LLM_HISTORY_DIR/sessions`, con rimozione atomica e sicura tramite rotazione dei file automatica e configurabile (`rotate_history`).
+### ✔ Gestione dei Lock concorrenti e compatibilità Termux
+- Per evitare collisioni di scrittura nella cronologia o nella cronologia dei messaggi NDJSON, lo script implementa un sistema centrale di lock.
+- **Risoluzione Termux:** Sotto ambiente Android/Termux, l'utility nativa `flock` (e il locking su file descriptor a livello kernel) può causare arresti e congelamenti indefiniti. Bash4LLM⁺ rileva automaticamente l'ambiente Termux (tramite `TERMUX_VERSION`) disattivando in trasparenza l'uso di `flock` e deviando la logica di locking sul robusto meccanismo atomico di directory lock (`mkdir`).
 
 ---
 
@@ -139,9 +134,22 @@ Il tempo di risposta garantito per l'analisi iniziale è **entro 72 ore**.
 
 ---
 
-## 7. Extras di sicurezza inclusi
+## 7. Responsible Disclosure
+
+- Si prega di non aprire pubblicamente issue su GitHub per segnalare vulnerabilità di sicurezza non ancora risolte.
+- Si consiglia di coordinare la pubblicazione dei dettagli solo a seguito del rilascio di un fix correttivo ufficiale.
+
+---
+
+## 8. Extras di sicurezza inclusi
 
 Bash4LLM⁺ include strumenti opzionali dedicati alla verifica della sicurezza in `extras/security/`:
 
 - `verify.sh` — Controlla l'integrità, la firma crittografica e i permessi dei file dei provider caricabili.
 - `validate-env.sh` — Verifica che l'ambiente e il filesystem in cui risiede lo script core soddisfino tutti i requisiti di sicurezza descritti in questa policy.
+
+---
+
+## 9. Note finali
+
+Bash4LLM⁺ è progettato con una forte attenzione alla sicurezza complessiva, ma rimane uno script operante all'interno dei limiti intrinseci di Bash. L'utente deve comprendere tali assunzioni e applicare le migliori pratiche locali prima di eseguirlo in contesti di produzione sensibili.
