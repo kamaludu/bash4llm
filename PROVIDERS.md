@@ -11,7 +11,7 @@ Bash4LLM 2.x
 
 # Contratto Provider
 
-Questo documento definisce il **contratto ufficiale** per creare o integrare provider esterni compatibili con Bash4LLM.  
+Questo documento definisce il **contratto ufficiale** per creare o integrare provider esterni compatibili con Bash4LLM⁺.  
 Un *provider* è un modulo Bash che implementa un adattatore alternativo all’API Groq (es. Gemini, HuggingFace, Mistral, ecc.).
 
 I provider vengono caricati in modalità isolata dal percorso di installazione degli extra:
@@ -22,7 +22,7 @@ I provider vengono caricati in modalità isolata dal percorso di installazione d
 
 ## 1. Caricamento e Isolamento (Sandbox)
 
-A tutela della sicurezza del sistema, Bash4LLM **non** esegue il codice dei provider direttamente nel flusso principale del programma, bensì applica un meccanismo di isolamento:
+A tutela della sicurezza del sistema, Bash4LLM⁺ **non** esegue il codice dei provider direttamente nel flusso principale del programma, bensì applica un meccanismo di isolamento:
 
 1. Il file del provider viene analizzato in una **sotto-shell isolata (sandbox)** tramite `load_provider_module`.
 2. Vengono catturate ed esportate nel guscio principale **esclusivamente le definizioni delle funzioni** (tramite `declare -f`).
@@ -46,7 +46,7 @@ Il nome del provider è determinato dal nome del file senza estensione (es. `gem
 
 ## 3. Interfaccia del Provider
 
-Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per essere considerato valido dal validatore d'interfaccia, un provider **deve implementare obbligatoriamente le due funzioni principali** (non-streaming), mentre le funzioni di streaming e di refresh dei modelli sono considerate moduli opzionali integrativi.
+Il core di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per essere considerato valido dal validatore d'interfaccia, un provider **deve implementare obbligatoriamente le due funzioni principali** (non-streaming), mentre le funzioni di streaming e di refresh dei modelli sono considerate moduli opzionali integrativi.
 
 ---
 
@@ -90,7 +90,7 @@ Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per es
 **Responsabilità:**
 - Eseguire la richiesta HTTP in modalità streaming a pacchetti (Server-Sent Events).
 - **Stampare direttamente su stdout il testo grezzo dei frammenti (chunk) non appena vengono ricevuti** per garantire l'effetto di digitazione fluida in tempo reale sul terminale.  
-  *(Nota: il core di Bash4LLM non decodifica l'output dello streaming dei provider esterni; pertanto il provider non deve stampare le buste JSON SSE tipo `data: {...}` a schermo, ma deve decodificarle internamente in tempo reale).*
+  *(Nota: il core di Bash4LLM⁺ non decodifica l'output dello streaming dei provider esterni; pertanto il provider non deve stampare le buste JSON SSE tipo `data: {...}` a schermo, ma deve decodificarle internamente in tempo reale).*
 - Accumulare i frammenti ricevuti e scrivere la risposta JSON aggregata e completa in `$RESP` prima del termine della funzione (fondamentale per consentire la persistenza della sessione e della cronologia).
 - Restituire `0` in caso di successo, non-zero in caso di errore di rete.
 
@@ -107,13 +107,13 @@ Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per es
 - Rispettare i vincoli di sicurezza (umask 077, nessun uso di cartelle condivise globali come `/tmp`, nessun uso di `eval` o `cd`).
 - Restituire 0 in caso di successo.
 
-*Nota sulle capacità: Il core di Bash4LLM rileva automaticamente se un provider supporta questa funzionalità ispezionando la presenza della funzione tramite `type "refresh_models_${provider}"`. Non è richiesto l'uso di variabili di abilitazione esterne.*
+*Nota sulle capacità: Il core di Bash4LLM⁺ rileva automaticamente se un provider supporta questa funzionalità ispezionando la presenza della funzione tramite `type "refresh_models_${provider}"`. Non è richiesto l'uso di variabili di abilitazione esterne.*
 
 ---
 
 ## 4. Variabili garantite dal CORE
 
-Il CORE di Bash4LLM rende disponibili e valorizza per il provider le seguenti variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
+Il CORE di Bash4LLM⁺ rende disponibili e valorizza per il provider le seguenti variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
 
 - `MODEL` (modello da utilizzare)
 - `CONTENT` (prompt testuale dell'utente)
@@ -259,7 +259,7 @@ call_api_example() {
 
 # Provider Contract
 
-This document defines the **official contract** to create or integrate external providers compatible with Bash4LLM.  
+This document defines the **official contract** to create or integrate external providers compatible with Bash4LLM⁺.  
 A *provider* is a Bash module that implements an alternative adapter to the Groq API (e.g., Gemini, HuggingFace, Mistral, etc.).
 
 Providers are loaded in an isolated mode from the extras installation path:
@@ -270,7 +270,7 @@ Providers are loaded in an isolated mode from the extras installation path:
 
 ## 1. Loading and Isolation (Sandbox)
 
-To protect system security, Bash4LLM **does not** execute provider code directly in the main shell. Instead, it applies an isolation mechanism:
+To protect system security, Bash4LLM⁺ **does not** execute provider code directly in the main shell. Instead, it applies an isolation mechanism:
 
 1. The provider file is analyzed in an **isolated subshell (sandbox)** via `load_provider_module`.
 2. Only **function definitions are captured and exported** into the main shell (via `declare -f`).
@@ -294,7 +294,7 @@ The provider name is determined by the filename without its extension (e.g., `ge
 
 ## 3. Provider Interface
 
-The core of Bash4LLM interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while the streaming and model refresh functions are considered optional integrations.
+The core of Bash4LLM⁺ interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while the streaming and model refresh functions are considered optional integrations.
 
 ---
 
@@ -338,7 +338,7 @@ The core of Bash4LLM interacts with providers through dedicated functions. To be
 **Responsibilities:**
 - Execute the HTTP request in streaming chunk mode (Server-Sent Events).
 - **Print the raw text of the chunks directly to stdout as they are received** to ensure a smooth, real-time typing effect on the terminal.  
-  *(Note: the Bash4LLM core does not decode the streaming output of external providers; therefore, the provider must not print raw SSE JSON lines like `data: {...}` on screen, but must decode them internally in real time).*
+  *(Note: the Bash4LLM⁺ core does not decode the streaming output of external providers; therefore, the provider must not print raw SSE JSON lines like `data: {...}` on screen, but must decode them internally in real time).*
 - Accumulate the received chunks and write the complete, aggregated JSON response into `$RESP` before the function terminates (crucial to allow session and history persistence).
 - Return `0` on success, non-zero on network error.
 
@@ -355,13 +355,13 @@ The core of Bash4LLM interacts with providers through dedicated functions. To be
 - Respect security constraints (umask 077, no use of global shared directories like `/tmp`, no use of `eval` or `cd`).
 - Return `0` on success.
 
-*Note on capabilities: The Bash4LLM core automatically detects whether a provider supports this feature by inspecting the presence of the function via `type "refresh_models_${provider}"`. No external enablement variables are required.*
+*Note on capabilities: The Bash4LLM⁺ core automatically detects whether a provider supports this feature by inspecting the presence of the function via `type "refresh_models_${provider}"`. No external enablement variables are required.*
 
 ---
 
 ## 4. Variables Guaranteed by the CORE
 
-The Bash4LLM CORE makes available and populates the following environment and state variables for the provider before invoking its respective functions:
+The Bash4LLM⁺ CORE makes available and populates the following environment and state variables for the provider before invoking its respective functions:
 
 - `MODEL` (model to use)
 - `CONTENT` (user's text prompt)
