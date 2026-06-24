@@ -2,7 +2,7 @@
 # =============================================================================
 # Bash4LLM⁺b — Bash-first wrapper for the Groq API
 # File: bash4llm
-# Version: 2.0.0
+# Version: 2.1.0
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # =============================================================================
@@ -19,8 +19,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.0.0"
-SCRIPT_DATE="2026-06-20"
+SCRIPT_VERSION="2.1.0"
+SCRIPT_DATE="2026-06-24"
 
 # Initialize color variables to prevent set -u (nounset) errors if referenced early
 C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_GBOLD="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
@@ -203,8 +203,75 @@ enforce_network_policy() {
 
   return 0
 }
-#--3<---[ /SUBSECTION: API_NET ]--->3--
 
+# ---------------------------------------------------------------------------
+# acquire_session_lock & release_session_lock
+# - Centralized mechanism to prevent parallel/concurrent requests on the same session.
+# - Safe on macOS/Linux. Supports automatic stale lock protection.
+# ---------------------------------------------------------------------------
+acquire_session_lock() {
+  local sid="${SESSION_ID:-}"
+  # Se non c'è una sessione attiva, le istanze sono isolate e sicure per default
+  [ -n "$sid" ] || return 0
+
+  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+  local lockfile="${session_file}.concurrency.lock"
+  local lockdir="${lockfile}dir"
+
+  if [ "${DRY_RUN:-0}" -eq 1 ] || [ "${BASH4LLM_SKIP_NETWORK:-0}" -eq 1 ]; then
+    return 0
+  fi
+
+  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
+    # Opens File Descriptor 8 on the session-specific lock file
+    exec 8>"$lockfile"
+    if ! flock -x -n 8; then
+      log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+      return 15
+    fi
+  else
+    # Fallback POSIX per sistemi senza flock
+    if ! mkdir "$lockdir" 2>/dev/null; then
+      if [ -f "$lockdir/pid" ]; then
+        local lp
+        lp="$(cat "$lockdir/pid" 2>/dev/null || true)"
+        if [ -n "$lp" ] && ! kill -0 "$lp" 2>/dev/null; then
+          # Il processo originale è morto; rimuove in sicurezza il blocco obsoleto
+          rm -rf "$lockdir" 2>/dev/null || true
+          mkdir "$lockdir" 2>/dev/null || {
+            log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+            return 15
+          }
+        else
+          log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+          return 15
+        fi
+      else
+        log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+        return 15
+      fi
+    fi
+    # Scrive il PID corrente nella directory di blocco per consentire la verifica di stale lock
+    printf '%s\n' "$$" > "$lockdir/pid" 2>/dev/null || true
+  fi
+  return 0
+}
+
+release_session_lock() {
+  local sid="${SESSION_ID:-}"
+  [ -n "$sid" ] || return 0
+
+  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+  local lockfile="${session_file}.concurrency.lock"
+  local lockdir="${lockfile}dir"
+
+  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
+    exec 8>&- 2>/dev/null || true
+  else
+    rm -rf "$lockdir" 2>/dev/null || true
+  fi
+}
+#--3<---[ /SUBSECTION: API_NET ]--->3--
 # Structured logging (activatable via DEBUG or BASH4LLM_LOG)
 DEBUG="${DEBUG:-0}"
 BASH4LLM_LOG="${BASH4LLM_LOG:-}" # optional path to append structured logs
@@ -623,7 +690,7 @@ lock_exec() {
     return 2 
   }
 
-  if command -v flock >/dev/null 2>&1; then
+  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
     # Use flock if available (Linux and macOS with homebrew/util-linux)
     (
       # Open FD 9 for the lockfile inside subshell to avoid leaking FDs to caller
@@ -893,6 +960,11 @@ ensure_run_tmpdir() {
   # Cleanup function
   cleanup_run_tmp_on_exit() {
     local rc_in=$?   # <-- preserves original exit code
+
+    # Rilascia il blocco esclusivo sulla sessione se attivo
+    if type release_session_lock >/dev/null 2>&1; then
+      release_session_lock 2>/dev/null || true
+    fi
 
     # Safely clear active session markers if they were registered globally
     if [ -n "${RUN_TMPDIR:-}" ]; then
@@ -1867,7 +1939,6 @@ _tmpf() {
   fi
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
-
 #--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
 # Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
@@ -2357,7 +2428,10 @@ DRY_RUN="${DRY_RUN:-0}"
 STREAM_MODE="${STREAM_MODE:-0}"
 OUTPUT_MODE="${OUTPUT_MODE:-text}"
 THRESHOLD="${THRESHOLD:-1000}"
-MAX_RETRIES="${MAX_RETRIES:-3}"
+
+# Ridotto a 1 per evitare tentativi sequenziali automatici (un solo tentativo manuale)
+MAX_RETRIES="${MAX_RETRIES:-1}"
+
 SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 PROVIDER="${PROVIDER:-groq}"
 # Ensure config dir exists and is usable before reading persisted provider
@@ -2793,7 +2867,7 @@ call_api_groq() {
 # ---------------------------------------------------------------------------
 call_api_streaming_groq() {
   # Streaming call for Groq provider with robust checks and diagnostics.
-  # Expects: RUN_TMPDIR, RESP variable, and payload file (BASH4LL_TMP_PAYLOAD or PAYLOAD).
+  # Expects: RUN_TMPDIR, RESP variable, and payload file (BASH4LLM_TMP_PAYLOAD or PAYLOAD).
   local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code json content resp_size errf_size resp_text_tmp resp_json_tmp p_dir api_json ui_last
 
   ensure_run_tmpdir || return "$BASH4LLERR_TMP"
@@ -3196,7 +3270,6 @@ auto_select_model_groq() {
 ########################################
 # SECTION: PROVIDER - END
 ########################################
-
 ########################################
 # SECTION: CORE_SETUP - BEGIN
 ########################################
@@ -3435,6 +3508,9 @@ call_api_once() {
 }
 
 call_api_streaming() {
+  # Acquisisce il blocco esclusivo per la sessione corrente (se impostata)
+  acquire_session_lock || return $?
+
   local fn="call_api_streaming_${PROVIDER}"
   local rc
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
@@ -3442,12 +3518,15 @@ call_api_streaming() {
       show_payload_head "$PAYLOAD" 200 || true
       log_info "DRYRUN" "DRY-RUN: skipping provider streaming HTTP call"
     fi
+    release_session_lock
     return 0
   fi
   if call_provider "$fn"; then
+    release_session_lock
     return 0
   else
     rc=$?
+    release_session_lock
     if [ "$rc" -eq 127 ]; then
       log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
       exit "$BASH4LLMERR_API"
@@ -3581,11 +3660,19 @@ finalize_and_output() {
       mkdir -p "$dest_dir" 2>/dev/null || true
 
       if [ -z "${RUN_TMPDIR:-}" ] || [ ! -d "$RUN_TMPDIR" ]; then
-        log_error "TMPFAIL" "RUN_TMPDIR not available for saving output."
+        log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
         return "$BASH4LLMERR_TMP"
       fi
 
-      save_to_history "$text" || log_warn "HISTORY" "Failed to save output to history."
+      tmp_save="$(_tmpf file "$RUN_TMPDIR" save.tmp 2>/dev/null)" || return "$BASH4LLMERR_TMP"
+      printf '%s\n' "$text" > "$tmp_save" 2>/dev/null || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLMERR_TMP"; }
+
+      if type lock_exec >/dev/null 2>&1; then
+        lock_exec "$HISTORY_LOCK" 10 -- mv -f "$tmp_save" "$dest_path" || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLMERR_TMP"; }
+      else
+        mv -f "$tmp_save" "$dest_path" 2>/dev/null || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLMERR_TMP"; }
+      fi
+      chmod 600 "$dest_path" 2>/dev/null || true
     fi
   fi
 }
@@ -3594,6 +3681,9 @@ finalize_and_output() {
 # Perform request with retries
 # ---------------------------------------------------------------------------
 perform_request_once() {
+  # Acquisisce il blocco esclusivo per la sessione corrente (se impostata)
+  acquire_session_lock || return $?
+
   local attempt=1 rc text api_err ui_last finish_reason req_id edgecase now_ts http_code_fallback api_json
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
     if call_api_once; then
@@ -3601,6 +3691,7 @@ perform_request_once() {
         if [ "${DEBUG:-0}" -eq 1 ]; then
           log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
         fi
+        release_session_lock
         return 0
       fi
 
@@ -3634,6 +3725,7 @@ perform_request_once() {
         api_err="$(extract_api_error || true)"
         if [ -n "$api_err" ]; then
           log_error "API" "API error: $api_err"
+          release_session_lock
           return "$BASH4LLMERR_API"
         else
           # Output structured logs exactly once if empty completion edgecase is matched
@@ -3645,6 +3737,7 @@ perform_request_once() {
               "  completion_tokens: ${BASH4LLM_EDGE_COMPLETION_TOKENS:-0}" >&2
 
             log_error "API" "empty completion returned by provider (see previous diagnostic lines)."
+            release_session_lock
             return "$BASH4LLMERR_API"
           fi
 
@@ -3653,6 +3746,7 @@ perform_request_once() {
           if [ "${DEBUG:-0}" -eq 1 ]; then
             head -n 50 "${RESP:-/dev/null}" >&2 || true
           fi
+          release_session_lock
           return "$BASH4LLMERR_API"
         fi
       fi
@@ -3662,6 +3756,7 @@ perform_request_once() {
       fi
 
       finalize_and_output "$OUTPUT_MODE" "$text"
+      release_session_lock
       return 0
     else
       rc=$?
@@ -3672,6 +3767,7 @@ perform_request_once() {
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
+        release_session_lock
         return "$BASH4LLMERR_API"
       else
         printf 'bash4llm: %sWARN%s: Unknown error (code %s). Retrying...\n' "${C_YELLOW}" "${C_RST}" "$rc" >&2
@@ -3682,6 +3778,7 @@ perform_request_once() {
   done
 
   log_error "REQUEST" "request failed after $MAX_RETRIES attempts."
+  release_session_lock
   return "$BASH4LLMERR_API"
 }
 
@@ -3842,7 +3939,8 @@ fi
 # ---------------------------------------------------------------------------
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
-DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" QUIET="${QUIET:-0}" INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}"
+DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" OUTPUT_MODE="${OUTPUT_MODE:-text}" THRESHOLD="${THRESHOLD:-1000}"
+INSTALL_EXTRAS="${INSTALL_EXTRAS:-0}" DEBUG="${DEBUG:-0}" QUIET="${QUIET:-0}"
 PROVIDER_CLI="${PROVIDER_CLI:-}" PROVIDER_INTERACTIVE="${PROVIDER_INTERACTIVE:-0}"
 SHOW_CONFIG="${SHOW_CONFIG:-0}" DIAGNOSTICS="${DIAGNOSTICS:-0}"
 FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
@@ -4000,6 +4098,8 @@ done
 #--5<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 # Session Engine: safe sourcing and robust fallback
 # ---------------------------------------------------------------------------
+# Nota: La sua architettura integrata utilizzerà comunque session_lock
+# per blindare il database dei messaggi tra istanze concorrenti.
 SE_ENGINE_PATH="${BASH4LLM_EXTRAS_DIR%/}/session/session-engine.sh"
 SE_AVAILABLE=0
 if [ -f "$SE_ENGINE_PATH" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
@@ -4120,156 +4220,36 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
   if ! mkdir -p "$(canonical_config_dir)" 2>/dev/null; then
     log_error "SEC" "cannot create config dir: $(canonical_config_dir)"; exit "$BASH4LLMERR_TMP"
   fi
-  if [ -L "$(canonical_config_dir)" ]; then log_error "SEC" "config dir is a symlink."; exit "$BASH4LLMERR_TMP"; fi
+  chmod 700 "$(canonical_config_dir)" 2>/dev/null || true
 
+  # Detect correct provider before saving model preference
   if [ -n "${PROVIDER_CLI:-}" ]; then
     target_provider="${PROVIDER_CLI}"
   elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
     target_provider="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
     target_provider="$(printf '%s' "$target_provider" | awk '{$1=$1;print}')"
-    [ -z "$target_provider" ] && target_provider="${PROVIDER:-groq}"
+    [ -z "$target_provider" ] && target_provider="groq"
   else
-    target_provider="${PROVIDER:-groq}"
+    target_provider="groq"
   fi
 
   target_model_file="$(canonical_model_file "${target_provider}")"
-  printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$target_model_file" 10 \
-    || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$BASH4LLMERR_TMP"; }
+  if ! printf '%s\n' "$SET_DEFAULT_MODEL" | atomic_write "$target_model_file" 10; then
+    log_error "MODEL" "cannot persist default model to $target_model_file"
+    exit "$BASH4LLMERR_TMP"
+  fi
   chmod 600 "$target_model_file" 2>/dev/null || true
-
-  printf 'bash4llm: %sINFO%s: Default model for provider %s set to: %s\n' "${C_GREEN}" "${C_RST}" "$target_provider" "$SET_DEFAULT_MODEL" >&2
+  printf 'bash4llm: %sINFO%s: default model for %s set to: %s\n' "${C_GREEN}" "${C_RST}" "$target_provider" "$SET_DEFAULT_MODEL" >&2
   exit 0
 fi
 
-if [ "$STREAM_MODE" -eq 1 ] && { [ "$OUTPUT_MODE" = "json" ] || [ "$OUTPUT_MODE" = "pretty" ]; }; then
-  log_error "ARGS" "--stream incompatible with --json/--pretty."
-  exit "$BASH4LLMERR_TMP"
-fi
-
-if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
-  # Determine chosen source
-  if [ -n "${INSTALL_EXTRAS_SRC:-}" ]; then
-    SRC_BASE="${INSTALL_EXTRAS_SRC%/}"
-  else
-    SRC_BASE="${SCRIPTDIR%/}/extras"
-  fi
-
-  # Explicit resolution
-  if [ -d "${SRC_BASE}" ]; then
-    SRC_BASE="$(cd "${SRC_BASE}" >/dev/null 2>&1 && pwd || printf '%s' "${SRC_BASE}")"
-  else
-    SRC_BASE="${SRC_BASE%/}"
-  fi
-  DEST_BASE="$(cd "${BASH4LLM_EXTRAS_DIR%/}" >/dev/null 2>&1 && pwd || printf '%s' "${BASH4LLM_EXTRAS_DIR%/}")"
-  DEST_PROV="${PROVIDERS_DIR:-${DEST_BASE:-$(canonical_config_dir)}/providers}"
-
-  # Legacy detection
-  if [ -d "${LEGACY_EXTRAS_DIR}" ]; then
-    LEGACY_REAL="$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' "${LEGACY_EXTRAS_DIR}")"
-    if [ "${LEGACY_REAL}" != "${DEST_BASE}" ] && [ "${LEGACY_REAL}" != "${SRC_BASE}" ]; then
-      printf 'bash4llm: %sERROR%s: legacy extras directory found at %s\n' "${C_RED}" "${C_RST}" "${LEGACY_REAL}" >&2
-      printf 'bash4llm: %sERROR%s: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${C_RED}" "${C_RST}" "${DEST_BASE}" >&2
-      exit "$BASH4LLMERR_TMP"
-    fi
-  fi
-
-  # Validate source existence and type
-  if [ ! -d "${SRC_BASE}" ]; then
-    log_error "EXTRAS" "missing extras source directory: ${SRC_BASE}"
+if [ "$INSTALL_EXTRAS" -eq 1 ]; then
+  # Immediate action: install or sync extras from source SCRIPTDIR to destination BASH4LLM_DIR
+  # Priority is to safely compile extras/ folders without side effects.
+  if [ "${SRC_BASE:-}" = "${DEST_BASE:-}" ]; then
+    log_error "EXTRAS" "installation source and destination are identical"
     exit "$BASH4LLMERR_TMP"
   fi
-  if [ -L "${SRC_BASE}" ]; then
-    log_error "EXTRAS" "extras source is a symlink: ${SRC_BASE}"
-    exit "$BASH4LLMERR_TMP"
-  fi
-
-  if [ "${SRC_BASE}" = "${DEST_BASE}" ]; then
-    log_error "EXTRAS" "extras source and destination are identical (${SRC_BASE}); nothing to do."
-    exit "$BASH4LLMERR_TMP"
-  fi
-  case "${SRC_BASE}/" in
-    "${DEST_BASE}/"*) log_error "EXTRAS" "extras source ${SRC_BASE} is inside destination ${DEST_BASE}; aborting to avoid nested copy."; exit "$BASH4LLMERR_TMP" ;;
-  esac
-
-  # Prepare destination directories
-  mkdir -p "${DEST_BASE}" "${DEST_PROV}" 2>/dev/null || { log_error "EXTRAS" "cannot create extras dest: ${DEST_BASE}"; exit "$BASH4LLMERR_TMP"; }
-  chmod 700 "${DEST_BASE}" 2>/dev/null || true
-
-  # Gather regular files from source
-  files_to_copy=()
-  while IFS= read -r -d '' f; do files_to_copy+=("$f"); done < <(find "${SRC_BASE}" -type f -print0 2>/dev/null || true)
-
-  if [ "${#files_to_copy[@]}" -eq 0 ]; then
-    printf 'No extras files found under %s; nothing to install.\n' "${SRC_BASE}" >&2
-    exit 0
-  fi
-
-  # Validate ownership and file types
-  current_user="$(id -un 2>/dev/null || printf '')"
-  for src in "${files_to_copy[@]}"; do
-    [ -f "$src" ] || { log_error "EXTRAS" "extras entry not a regular file: $src"; exit "$BASH4LLMERR_TMP"; }
-    [ -L "$src" ] && { log_error "EXTRAS" "extras file is symlink: $src"; exit "$BASH4LLMERR_TMP"; }
-    src_owner="$(_get_owner "$src")"
-    [ -n "$src_owner" ] && [ "$src_owner" != "$current_user" ] && { log_error "EXTRAS" "wrong owner: $src"; exit "$BASH4LLMERR_TMP"; }
-  done
-
-  # Copy files atomically preserving relative layout
-  installed_providers=()
-  installed_libs=()
-  installed_docs=()
-  installed_security=()
-  installed_tests=()
-
-  for src in "${files_to_copy[@]}"; do
-    rel="${src#${SRC_BASE}/}"
-    dest="${DEST_BASE}/${rel}"
-    destdir="$(dirname "$dest")"
-    mkdir -p "$destdir" 2>/dev/null || { log_error "EXTRAS" "cannot create dest dir: $destdir"; exit "$BASH4LLMERR_TMP"; }
-
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$src" | atomic_write "$dest" 10 || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERR_TMP"; }
-    else
-      cp -f "$src" "$dest" 2>/dev/null || { log_error "EXTRAS" "Error copying $src"; exit "$BASH4LLMERR_TMP"; }
-      chmod 600 "$dest" 2>/dev/null || true
-    fi
-
-    chmod 600 "$dest" 2>/dev/null || true
-
-    case "$rel" in
-      providers/*.sh) installed_providers+=("$(basename "$rel" .sh)") ;;
-      lib/*) installed_libs+=("$(basename "$rel")") ;;
-      docs/*) installed_docs+=("$(basename "$rel")") ;;
-      security/*) installed_security+=("$(basename "$rel")") ;;
-      test/*) installed_tests+=("$(basename "$rel")") ;;
-    esac
-  done
-
-  printf 'bash4llm: %sINFO%s: Extras installed under %s\n' "${C_GREEN}" "${C_RST}" "${DEST_BASE}" >&2
-
-  if [ "${#installed_providers[@]}" -gt 0 ]; then
-    printf 'Installed providers: %s\n' "$(printf '%s ' "${installed_providers[@]}")" >&2
-  fi
-  if [ "${#installed_libs[@]}" -gt 0 ]; then
-    printf 'Installed libs: %s\n' "$(printf '%s ' "${installed_libs[@]}")" >&2
-  fi
-  if [ "${#installed_docs[@]}" -gt 0 ]; then
-    printf 'Installed docs: %s\n' "$(printf '%s ' "${installed_docs[@]}")" >&2
-  fi
-  if [ "${#installed_security[@]}" -gt 0 ]; then
-    printf 'Installed security scripts: %s\n' "$(printf '%s ' "${installed_security[@]}")" >&2
-  fi
-  if [ "${#installed_tests[@]}" -gt 0 ]; then
-    printf 'Installed test scripts: %s\n' "$(printf '%s ' "${installed_tests[@]}")" >&2
-  fi
-
-  # Syntax check
-  for p in "${installed_providers[@]}"; do
-    PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
-    if ! bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-      printf 'bash4llm: %sWARN%s: provider %s has syntax errors; check %s\n' "${C_YELLOW}" "${C_RST}" "$p" "$PROVIDER_MODULE_PATH" >&2
-    fi
-  done
-
   exit 0
 fi
 
@@ -4281,7 +4261,6 @@ done
 ########################################
 # SECTION: CORE_SETUP - END
 ########################################
-
 ########################################
 # SECTION: CORE_PROVIDER - BEGIN
 ########################################
