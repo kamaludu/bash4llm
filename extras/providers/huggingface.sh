@@ -182,11 +182,11 @@ buildpayload_huggingface() {
   local workdir tmp_payload model_in_file model_to_use user_prompt joined
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $BASH4LLMERRTMP
+    ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  workdir="$(_get_work_tmpdir_hf)" || return $BASH4LLMERRTMP
-  tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
+  workdir="$(_get_work_tmpdir_hf)" || return "${BASH4LLM_ERR_TMP:-15}"
+  tmp_payload="$(_mktemp_in_dir_hf "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
   umask 077
 
   PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
@@ -285,6 +285,11 @@ buildpayload_huggingface() {
 # call_api_huggingface
 # -------------------------
 call_api_huggingface() {
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
   local prov_env
 
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
@@ -294,13 +299,18 @@ call_api_huggingface() {
       else
         printf 'bash4llm: ERROR: APIKEY: HF API key required to call Hugging Face.\n' >&2
       fi
-      return $BASH4LLMERRNOAPIKEY
+      [ "$_set_u_was_on" -eq 1 ] && set -u
+      return "${BASH4LLM_ERR_NO_API_KEY:-10}"
     fi
   fi
 
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "huggingface")"
-    HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+    if [ -n "$prov_env" ]; then
+      HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+    else
+      HFAPIKEY="${HUGGINGFACE_API_KEY:-${HFAPIKEY:-}}"
+    fi
   fi
 
   if [ -z "${HFAPIKEY:-}" ]; then
@@ -309,15 +319,16 @@ call_api_huggingface() {
     else
       printf 'bash4llm: ERROR: APIKEY: HF API key not set.\n' >&2
     fi
-    return $BASH4LLMERRNOAPIKEY
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $BASH4LLMERRTMP
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
   local workdir
-  workdir="$(_get_work_tmpdir_hf)" || return $BASH4LLMERRTMP
+  workdir="$(_get_work_tmpdir_hf)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
   RESP="${RESP:-${workdir}/resp.json}"
   ERRF="${ERRF:-${workdir}/curl.err}"
@@ -339,11 +350,13 @@ call_api_huggingface() {
     else
       printf 'bash4llm: ERROR: HTTP: payload file missing or empty: %s\n' "${PAYLOAD:-<unset>}" >&2
     fi
-    return $BASH4LLMERRTMP
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   if [ "${DRY_RUN:-0}" -ne 0 ]; then
     printf 'DRY-RUN: skipping HTTP call (exit 0)\n' >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
@@ -371,9 +384,9 @@ call_api_huggingface() {
   fi
 
   local tmpout tmpresp hdr_file http_result http_code time_total http_ct http_body err_text
-  tmpout="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
-  tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
-  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
+  tmpout="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  tmpresp="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
 
   : > "$tmpout" 2>/dev/null || true
   : > "$ERRF" 2>/dev/null || true
@@ -408,10 +421,11 @@ EOF
 
   rm -f "$tmpout" "$hdr_file" "$ERRF" 2>/dev/null || true
 
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+
   case "$http_code" in
     2*)
       if printf '%s' "$http_ct" | grep -q 'application/json'; then
-        # cat "${RESP}" || printf '%s' "$http_body"  <- Silenziato per evitare la duplicazione del JSON grezzo
         return 0
       else
         if [ "${DEBUG:-0}" -ne 0 ]; then
@@ -426,7 +440,7 @@ EOF
         else
           printf 'bash4llm: ERROR: HTTP: API returned non-JSON response (status %s).\n' "$http_code" >&2
         fi
-        return $BASH4LLMERRAPI
+        return "${BASH4LLM_ERR_API:-16}"
       fi
       ;;
     *)
@@ -453,7 +467,7 @@ EOF
 
       printf '{"error":"HTTP %s","message":%s}\n' "$http_code" "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
       chmod 600 "${RESP}" 2>/dev/null || true
-      return $BASH4LLMERRAPI
+      return "${BASH4LLM_ERR_API:-16}"
       ;;
   esac
 }
@@ -462,42 +476,55 @@ EOF
 # call_api_streaming_huggingface
 # -------------------------
 call_api_streaming_huggingface() {
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
   local prov_env
 
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "huggingface"; then
       log_error "APIKEY" "HF API key required to call Hugging Face."
-      return $BASH4LLMERRNOAPIKEY
+      [ "$_set_u_was_on" -eq 1 ] && set -u
+      return "${BASH4LLM_ERR_NO_API_KEY:-10}"
     fi
   fi
 
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "huggingface")"
-    HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+    if [ -n "$prov_env" ]; then
+      HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+    else
+      HFAPIKEY="${HUGGINGFACE_API_KEY:-${HFAPIKEY:-}}"
+    fi
   fi
 
   if [ -z "${HFAPIKEY:-}" ]; then
     log_error "APIKEY" "HF API key not set."
-    return $BASH4LLMERRNOAPIKEY
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
   if is_truthy "${DRY_RUN:-0}"; then
     printf 'DRY-RUN: skipping streaming HTTP call (exit 0)\n' >&2
+    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return $BASH4LLMERRTMP
+    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
-  local api_url rc RESP_RAW workdir hdr_file ERRF
-  workdir="$(_get_work_tmpdir_hf)" || return $BASH4LLMERRTMP
+  # NOTA: ERRF non deve essere dichiarato "local" per poter essere propagato globalmente al chiamante
+  local api_url rc RESP_RAW workdir hdr_file
+  workdir="$(_get_work_tmpdir_hf)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   RESP_RAW="${RESP_RAW:-${workdir}/resp.raw}"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
   ERRF="${ERRF:-${workdir}/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
-  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return $BASH4LLMERRTMP
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
 
   local endpoint_url
   endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
@@ -531,7 +558,8 @@ call_api_streaming_huggingface() {
   [ "$rc" -ne 0 ] && {
     dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
     rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
-    return $BASH4LLMERRCURL_FAILED
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return "${BASH4LLM_ERR_CURL_FAILED:-12}"
   }
 
   : > "$workdir/resp.lines" 2>/dev/null || true
@@ -558,6 +586,8 @@ call_api_streaming_huggingface() {
   fi
 
   rm -f "$hdr_file" "$ERRF" "$workdir/resp.lines" "$workdir/resp.valid.jsons" "$workdir/resp.chunks.json" 2>/dev/null || true
+  
+  [ "$_set_u_was_on" -eq 1 ] && set -u
   return 0
 }
 
@@ -570,13 +600,13 @@ refresh_models_huggingface() {
 
   if [ -z "$outpath" ]; then
     log_error "MODELREFRESH" "MODELS file path not provided."
-    return "$BASH4LLMERRTMP"
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  f="$(hf_load_endpoints)" || return "$BASH4LLMERRTMP"
+  f="$(hf_load_endpoints)" || return "${BASH4LLM_ERR_TMP:-15}"
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || return "$BASH4LLMERRTMP"
+    ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
   tmpd="$(_get_work_tmpdir_hf)" || tmpd="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}"
   tmpout="$(_mktemp_in_dir_hf "$tmpd" 2>/dev/null || true)"
