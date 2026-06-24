@@ -9,7 +9,6 @@ Bash4LLM 2.x
 
 ## 🇮🇹 Sezione Italiana
 
-
 # Contratto Provider
 
 Questo documento definisce il **contratto ufficiale** per creare o integrare provider esterni compatibili con Bash4LLM.  
@@ -18,7 +17,6 @@ Un *provider* è un modulo Bash che implementa un adattatore alternativo all’A
 I provider vengono caricati in modalità isolata dal percorso di installazione degli extra:
 
 `bash4llm.d/extras/providers/nome.sh`
-
 
 ---
 
@@ -48,7 +46,7 @@ Il nome del provider è determinato dal nome del file senza estensione (es. `gem
 
 ## 3. Interfaccia del Provider
 
-Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per essere considerato valido dal validatore d'interfaccia, un provider **deve implementare obbligatoriamente le due funzioni principali** (non-streaming), mentre le funzioni di streaming e di refresh dei modelli sono considerati moduli opzionali integrativi.
+Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per essere considerato valido dal validatore d'interfaccia, un provider **deve implementare obbligatoriamente le due funzioni principali** (non-streaming), mentre le funzioni di streaming e di refresh dei modelli sono considerate moduli opzionali integrativi.
 
 ---
 
@@ -61,7 +59,7 @@ Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per es
 - Leggere le variabili globali fornite dal CORE:
   - `MODEL` (modello attivo)
   - `CONTENT` (prompt inserito dall'utente)
-  - `TURE` (temperature)
+  - `TURE` (variabile canonica di temperatura, precedentemente validata dal CORE)
   - `MAX_TOKENS`
   - `STREAM_MODE` (indica se la generazione richiederà uno streaming)
   - `SYSTEM_PROMPT` (prompt di sistema se impostato da CLI)
@@ -70,6 +68,7 @@ Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per es
 - Se `SYSTEM_PROMPT` è impostata, il provider deve integrarla (ad esempio inserendola come messaggio con ruolo `"system"` in testa all'array dei messaggi).
 - Scrivere il payload finale **nel file `$PAYLOAD`** (sia esso in formato JSON semplice o codificato base64-staged tramite l'utility `stage_b64`).
 - Non produrre alcun output su stdout.
+- In caso di errore durante la compilazione del payload, restituire il codice di stato canonico `"${BASH4LLM_ERR_TMP:-15}"`. **Evitare l'uso di variabili non definite** (es. `BASH4LLMERRTMP` o `BASH4LLERR_TMP` senza underscore), in quanto causano crash immediati in modalità rigorosa `set -u`.
 
 ---
 
@@ -79,7 +78,7 @@ Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per es
 - Leggere il payload pre-compilato dal percorso `$PAYLOAD`.
 - Eseguire la chiamata di rete HTTP verso il rispettivo server API.
 - Salvare la risposta JSON integra (inclusi eventuali metadati di errore nativi) in `$RESP`.
-- Restituire codice di stato `0` in caso di successo, non-zero in caso di errore.
+- Restituire codice di stato `0` in caso di successo, non-zero (es. `"${BASH4LLM_ERR_API:-16}"` o `"${BASH4LLM_ERR_CURL_FAILED:-12}"`) in caso di errore.
 - La risposta JSON di successo deve rispettare lo schema OpenAI-like in modo da essere compatibile con la funzione di estrazione del core (`choices[].message.content`). In caso contrario, la funzione deve rimodellare la risposta prima di scriverla in `$RESP`.
 
 ---
@@ -104,80 +103,85 @@ Il core di Bash4LLM interagisce con i provider tramite funzioni dedicate. Per es
 - Generare la lista dei modelli e salvarla nel file dei modelli configurato per il provider.
 - Per evitare collisioni di scrittura tra diversi provider, ciascun modulo deve ridefinire localmente la variabile `MODELS_FILE` puntando a un file specifico (es. `gemini.txt` anziché il file generico condiviso `models.txt`):
   `MODELS_FILE="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/gemini.txt}"`
-- Scrivere l'URL base del provider all'interno del file restituito da canonical_provider_url_file tramite scrittura atomica, e impostare coerentemente la variabile BASH4LLM_PROVIDER_URL.
-- Rispettare i vincoli di sicurezza (umask 077, nessun uso di cartelle condivise globali come /tmp, nessun uso di eval o cd).
+- Scrivere l'URL base del provider all'interno del file restituito da `canonical_provider_url_file` tramite scrittura atomica, e impostare coerentemente la variabile `BASH4LLM_PROVIDER_URL`.
+- Rispettare i vincoli di sicurezza (umask 077, nessun uso di cartelle condivise globali come `/tmp`, nessun uso di `eval` o `cd`).
 - Restituire 0 in caso di successo.
 
-Nota sulle capacità: Il core di Bash4LLM rileva automaticamente se un provider
-supporta questa funzionalità ispezionando la presenza della funzione tramite
-type "refresh_models_${provider}". Non è richiesto l'uso di variabili di
-abilitazione esterne.
+*Nota sulle capacità: Il core di Bash4LLM rileva automaticamente se un provider supporta questa funzionalità ispezionando la presenza della funzione tramite `type "refresh_models_${provider}"`. Non è richiesto l'uso di variabili di abilitazione esterne.*
 
-4. Variabili garantite dal CORE
+---
 
-Il CORE di Bash4LLM rende disponibili e valorizza per il provider le seguenti
-variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
+## 4. Variabili garantite dal CORE
 
-  - MODEL (modello da utilizzare)
-  - CONTENT (prompt testuale dell'utente)
-  - TURE / TEMPERATURE (parametro di temperatura numerico validato)
-  - MAX_TOKENS (numero massimo di token)
-  - STREAM_MODE (1 se streaming attivo, 0 altrimenti)
-  - PAYLOAD (percorso del file del payload)
-  - RESP (percorso in cui scrivere la risposta JSON)
-  - RUN_TMPDIR (directory temporanea sicura e isolata specifica della
-    transazione corrente)
-  - CURL_BASE_OPTS (array contenente le opzioni curl di default del programma)
-  - BUILD_MESSAGES_FILE (percorso del file contenente la cronologia dei messaggi
-    della sessione corrente)
-  - SYSTEM_PROMPT (prompt di sistema se specificato)
-  - BASH4LLM_PROVIDER_URL (URL base del provider attualmente attivo)
-  - BASH4LLM_API_KEY (chiave di autenticazione generica o ereditata)
+Il CORE di Bash4LLM rende disponibili e valorizza per il provider le seguenti variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
 
-Il provider non deve in nessun caso modificare o sovrascrivere queste variabili
-nel runtime principale del core.
+- `MODEL` (modello da utilizzare)
+- `CONTENT` (prompt testuale dell'utente)
+- `TURE` (parametro di temperatura numerico validato dal CORE, alias di `TEMPERATURE`)
+- `MAX_TOKENS` (numero massimo di token)
+- `STREAM_MODE` (1 se streaming attivo, 0 altrimenti)
+- `PAYLOAD` (percorso del file del payload)
+- `RESP` (percorso in cui scrivere la risposta JSON)
+- `RUN_TMPDIR` (directory temporanea sicura e isolata specifica della transazione corrente)
+- `CURL_BASE_OPTS` (array contenente le opzioni curl di default del programma)
+- `BUILD_MESSAGES_FILE` (percorso del file contenente la cronologia dei messaggi della sessione corrente)
+- `SYSTEM_PROMPT` (prompt di sistema se specificato)
+- `BASH4LLM_PROVIDER_URL` (URL base del provider attualmente attivo)
+- `BASH4LLM_API_KEY` (chiave di autenticazione generica o ereditata)
 
-4.1. Risoluzione della API Key
+Il provider non deve in nessun caso modificare o sovrascrivere queste variabili nel runtime principale del core.
 
-Ciascun provider deve determinare ed estrarre la chiave di autenticazione
-seguendo rigorosamente questo ordine di priorità decrescente:
+---
 
-1.  PROVIDER_API_ENV_<provider> (se definita nell'ambiente, indica la variabile
-    d'ambiente personalizzata da leggere).
-2.  La chiave specifica del provider (es. GEMINI_API_KEY o HF_API_KEY).
-3.  La chiave generica globale di fallback BASH4LLM_API_KEY.
+### 4.1. Risoluzione della API Key e Compatibilità `set -u`
 
-In assenza di una chiave valida per gli endpoint che richiedono autenticazione,
-le funzioni del provider devono interrompersi in sicurezza restituendo un codice
-di stato non-zero e registrando un errore formattato in $RESP.
+Ciascun provider deve determinare ed estrarre la chiave di autenticazione seguendo rigorosamente questo ordine di priorità decrescente:
 
-5. Regole di Comportamento e Invarianti
+1. `PROVIDER_API_ENV_<provider>` (se definita nell'ambiente, indica la variabile d'ambiente personalizzata da leggere).
+2. La chiave specifica del provider (es. `GEMINI_API_KEY`, `MISTRAL_API_KEY` o `HUGGINGFACE_API_KEY`).
+3. La chiave generica globale di fallback `BASH4LLM_API_KEY`.
 
-🚫 Il provider NON deve:
+#### Sicurezza `set -u` (nounset) ed espansione indiretta:
+Se il CORE o l'ambiente dell'utente utilizzano la modalità rigorosa `set -u`, l'uso dell'espansione indiretta (es. `${!prov_env}`) su una variabile vuota o non definita causerà un blocco o un errore fatale (`invalid variable name`). 
+Per garantire la massima robustezza, ogni operazione di risoluzione della chiave deve:
+1. Verificare esplicitamente che `prov_env` non sia vuota prima di eseguire l'espansione indiretta: `[ -n "$prov_env" ]`.
+2. Utilizzare un meccanismo di salvataggio/ripristino dello stato `set -u` all'interno delle funzioni per evitare crash:
 
-  - Modificare la directory di lavoro corrente (mai usare cd).
-  - Modificare o inquinare le variabili globali dello script principale.
-  - Utilizzare la directory globale /tmp o percorsi non controllati (ogni file
-    temporaneo deve risiedere all'interno di RUN_TMPDIR).
-  - Utilizzare il comando eval.
-  - Generare output testuale spurio su stdout (ad eccezione dello streaming
-    testuale decodificato in tempo reale).
-  - Hardcodare URL fissi all'interno delle funzioni di chiamata, ma fare sempre
-    riferimento alla risoluzione di BASH4LLM_PROVIDER_URL.
+```bash
+local _set_u_was_on=0
+case "$-" in
+  *u*) _set_u_was_on=1; set +u ;;
+esac
 
-⚠️ Il provider DEVE:
+# ... operazioni di risoluzione chiave ...
 
-  - Generare file JSON validi ed esenti da errori di sintassi.
-  - Rispettare i vincoli di sicurezza dei file generati impostando permessi
-    restrittivi (umask 077).
-  - Rispettare l'opzione DRY_RUN. Se DRY_RUN=1, il core blocca automaticamente
-    le chiamate di rete a monte tramite la centrale enforce_network_policy; il
-    provider deve comunque comportarsi in modo predittivo garantendo la
-    scrittura di file $RESP o $PAYLOAD fittizi ma formalmente validi.
-  - Assicurarsi che ogni file scritto (JSON o liste testuali) si chiuda sempre
-    con un carattere di a capo (\n) finale.
+[ "$_set_u_was_on" -eq 1 ] && set -u
+```
 
-6. Esempio Minimo di Struttura
+In assenza di una chiave valida per gli endpoint che richiedono autenticazione, le funzioni del provider devono interrompersi in sicurezza restituendo il codice di stato canonico `"${BASH4LLM_ERR_NO_API_KEY:-10}"`.
+
+---
+
+## 5. Regole di Comportamento e Invarianti
+
+🚫 **Il provider NON deve:**
+- Modificare la directory di lavoro corrente (mai usare `cd`).
+- Modificare o inquinare le variabili globali dello script principale.
+- Utilizzare la directory globale `/tmp` o percorsi non controllati (ogni file temporaneo deve risiedere all'interno di `RUN_TMPDIR`).
+- Utilizzare il comando `eval`.
+- Generare output testuale spurio su stdout (ad eccezione dello streaming testuale decodificato in tempo reale).
+- Hardcodare URL fissi all'interno delle funzioni di chiamata, ma fare sempre riferimento alla risoluzione di `BASH4LLM_PROVIDER_URL`.
+- **Eseguire direttamente chiamate a `flock` di sistema:** l'uso dei lock sui descrittori di file di `flock` è instabile o non supportato su ambienti mobile e sandboxed come Termux (Android 14+), dove causa blocchi indefiniti o errori irreversibili. Il provider deve affidarsi unicamente alle funzioni di astrazione fornite dal core (`atomic_write`, `lock_exec`), le quali escludono automaticamente `flock` su Termux ed eseguono la deviazione trasparente sul meccanismo atomico di directory lock (`mkdir`).
+
+⚠️ **Il provider DEVE:**
+- Generare file JSON validi ed esenti da errori di sintassi.
+- Rispettare i vincoli di sicurezza dei file generati impostando permessi restrittivi (`umask 077`).
+- Rispettare l'opzione `DRY_RUN`. Se `DRY_RUN=1`, il core blocca automaticamente le chiamate di rete a monte tramite la centrale `enforce_network_policy`; il provider deve comunque comportarsi in modo predittivo garantendo la scrittura di file `$RESP` o `$PAYLOAD` fittizi ma formalmente validi.
+- Assicurarsi che ogni file scritto (JSON o liste testuali) si chiuda sempre con un carattere di a capo (`\n`) finale.
+
+---
+
+## 6. Esempio Minimo di Struttura Corretta e Compatibile
 
 ```sh
 # -------------------------
@@ -188,29 +192,64 @@ buildpayload_example() {
   workdir="$(_get_work_tmpdir_example)"
   tmpf="$(_mktemp_in_dir_example "$workdir")"
 
-  # Genera il payload OpenAI-like
+  # Genera il payload OpenAI-like usando la variabile di temperatura canonica TURE
   jq -n \
     --arg model "$MODEL" \
     --arg content "$CONTENT" \
-    '{model: $model, messages: [{role: "user", content: $content}]}' > "$tmpf"
+    --arg temp "${TURE:-1.0}" \
+    '{model: $model, temperature: ($temp|tonumber), messages: [{role: "user", content: $content}]}' > "$tmpf"
 
-  # Scrive in modalità atomica su PAYLOAD
-  _write_atomic "$tmpf" "$PAYLOAD"
+  # Scrive in modalità atomica su PAYLOAD usando il CORE helper
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmpf" | atomic_write "$PAYLOAD"
+  else
+    mv -f "$tmpf" "$PAYLOAD" 2>/dev/null || cp -f "$tmpf" "$PAYLOAD" 2>/dev/null || true
+  fi
+  rm -f "$tmpf" 2>/dev/null || true
 }
 
 # -------------------------
 # call_api_example
 # -------------------------
 call_api_example() {
-  local key_trim
-  key_trim="$(printf '%s' "$EXAMPLE_API_KEY" | awk '{$1=$1; print}')"
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
 
-  # Esegue la chiamata non-streaming scrivendo su RESP
-  curl "${CURL_BASE_OPTS[@]:-}" \
-       -H "x-goog-api-key: ${key_trim}" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       -o "$RESP"
+  local key_trim prov_env
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "example")"
+    if [ -n "$prov_env" ]; then
+      EXAMPLE_API_KEY="${!prov_env:-${EXAMPLE_API_KEY:-}}"
+    fi
+  fi
+
+  key_trim="$(printf '%s' "${EXAMPLE_API_KEY:-}" | awk '{$1=$1; print}')"
+
+  if [ -z "$key_trim" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
+
+  # Esegue la chiamata non-streaming scrivendo su RESP tramite array robusto
+  local -a curl_cmd=(curl -sS)
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    -H "Authorization: Bearer ${key_trim}"
+    -H "Content-Type: application/json"
+    --data-binary @"$PAYLOAD"
+    -o "$RESP"
+    "$BASH4LLM_PROVIDER_URL"
+  )
+
+  "${curl_cmd[@]}"
+  local rc=$?
+
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+  return $rc
 }
 ```
 
@@ -255,7 +294,7 @@ The provider name is determined by the filename without its extension (e.g., `ge
 
 ## 3. Provider Interface
 
-The Bash4LLM core interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while streaming and model refreshing functions are treated as optional integrations.
+The core of Bash4LLM interacts with providers through dedicated functions. To be considered valid by the interface validator, a provider **must implement the two main functions** (non-streaming), while the streaming and model refresh functions are considered optional integrations.
 
 ---
 
@@ -268,7 +307,7 @@ The Bash4LLM core interacts with providers through dedicated functions. To be co
 - Read global variables provided by the CORE:
   - `MODEL` (active model)
   - `CONTENT` (text prompt entered by the user)
-  - `TURE` (validated temperature)
+  - `TURE` (validated temperature variable from the CORE)
   - `MAX_TOKENS` (maximum tokens)
   - `STREAM_MODE` (indicates if the generation requires streaming)
   - `SYSTEM_PROMPT` (system prompt if set via CLI)
@@ -277,6 +316,7 @@ The Bash4LLM core interacts with providers through dedicated functions. To be co
 - If `SYSTEM_PROMPT` is set, the provider must integrate it (e.g., by inserting it as a message with a `"system"` role at the beginning of the messages array).
 - Write the final payload **into the `$PAYLOAD` file** (whether in raw JSON format or base64-staged via the `stage_b64` utility).
 - Produce no output on stdout.
+- On error during payload compilation, return the canonical exit code `"${BASH4LLM_ERR_TMP:-15}"`. **Avoid using unassigned variables** (e.g. typos like `BASH4LLMERRTMP` or `BASH4LLERR_TMP`), as they trigger immediate crashes in `set -u` mode.
 
 ---
 
@@ -286,7 +326,7 @@ The Bash4LLM core interacts with providers through dedicated functions. To be co
 - Read the pre-compiled payload from `$PAYLOAD`.
 - Execute the HTTP network call to the respective API server.
 - Save the complete JSON response (including any native error metadata) into `$RESP`.
-- Return exit status `0` on success, non-zero on error.
+- Return exit status `0` on success, non-zero (e.g., `"${BASH4LLM_ERR_API:-16}"` or `"${BASH4LLM_ERR_CURL_FAILED:-12}"`) on error.
 - The successful JSON response must conform to the OpenAI-like schema to be compatible with the core's extraction function (`choices[].message.content`). Otherwise, the function must reshape the response before writing it to `$RESP`.
 
 ---
@@ -325,7 +365,7 @@ The Bash4LLM CORE makes available and populates the following environment and st
 
 - `MODEL` (model to use)
 - `CONTENT` (user's text prompt)
-- `TURE` / `TEMPERATURE` (validated numerical temperature parameter)
+- `TURE` (validated numerical temperature parameter, alias of `TEMPERATURE`)
 - `MAX_TOKENS` (maximum token limit)
 - `STREAM_MODE` (`1` if streaming active, `0` otherwise)
 - `PAYLOAD` (payload file path)
@@ -341,12 +381,30 @@ The provider **must under no circumstances modify or overwrite** these variables
 
 ---
 
-### 4.1. API Key Resolution
+### 4.1. API Key Resolution and `set -u` Compatibility
+
 Each provider must determine and extract the authentication key following this strict descending order of priority:
 
 1. `PROVIDER_API_ENV_<provider>` (if defined in the environment, it indicates the custom environment variable to read).
-2. The provider-specific key (e.g., `GEMINI_API_KEY` or `HF_API_KEY`).
+2. The provider-specific key (e.g., `GEMINI_API_KEY`, `MISTRAL_API_KEY` or `HF_API_KEY`).
 3. The generic global fallback key `BASH4LLM_API_KEY`.
+
+#### `set -u` (nounset) safety and indirect expansion:
+If the CORE or user environment has `set -u` (nounset) enabled, performing indirect expansion (e.g., `${!prov_env}`) on an empty or undefined variable will trigger a fatal shell error (`invalid variable name`).
+For maximum robustness, every key resolution operation must:
+1. Explicitly verify that `prov_env` is non-empty before evaluating indirect expansion: `[ -n "$prov_env" ]`.
+2. Temporarily disable `set -u` inside key-resolving helper functions to prevent unexpected shell crashes:
+
+```bash
+local _set_u_was_on=0
+case "$-" in
+  *u*) _set_u_was_on=1; set +u ;;
+esac
+
+# ... perform dynamic/indirect expansions safely ...
+
+[ "$_set_u_was_on" -eq 1 ] && set -u
+```
 
 In the absence of a valid key for endpoints requiring authentication, the provider's functions must abort safely, returning a non-zero exit status and recording a formatted error in `$RESP`.
 
@@ -367,6 +425,7 @@ In the absence of a valid key for endpoints requiring authentication, the provid
 - Respect generated file security constraints by setting restrictive permissions (umask 077).
 - Respect the `DRY_RUN` option. If `DRY_RUN=1`, the core automatically blocks network calls upstream via the central `enforce_network_policy`; the provider must still behave predictably, ensuring that dummy but formally valid `$RESP` or `$PAYLOAD` files are written.
 - Ensure that every written file (JSON or text lists) always ends with a trailing newline (`\n`) character.
+- **Avoid calling system `flock` directly:** using lock files on file descriptors via `flock` is unstable or unsupported on sandboxed/mobile environments such as Termux (Android 14+), causing indefinite hangs or kernel deadlocks. The provider must rely solely on the core's abstract lock utilities (`atomic_write`, `lock_exec`), which automatically bypass `flock` on Termux and transparently fall back to directory lock atomicity (`mkdir`).
 
 ---
 
@@ -381,29 +440,63 @@ buildpayload_example() {
   workdir="$(_get_work_tmpdir_example)"
   tmpf="$(_mktemp_in_dir_example "$workdir")"
 
-  # Generate the OpenAI-like payload
+  # Generate the OpenAI-like payload using canonical temperature TURE
   jq -n \
     --arg model "$MODEL" \
     --arg content "$CONTENT" \
-    '{model: $model, messages: [{role: "user", content: $content}]}' > "$tmpf"
+    --arg temp "${TURE:-1.0}" \
+    '{model: $model, messages: [{role: "user", content: $content}], temperature: ($temp|tonumber)}' > "$tmpf"
 
   # Write atomically to PAYLOAD
-  _write_atomic "$tmpf" "$PAYLOAD"
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$tmpf" | atomic_write "$PAYLOAD"
+  else
+    mv -f "$tmpf" "$PAYLOAD" 2>/dev/null || cp -f "$tmpf" "$PAYLOAD" 2>/dev/null || true
+  fi
+  rm -f "$tmpf" 2>/dev/null || true
 }
 
 # -------------------------
 # call_api_example
 # -------------------------
 call_api_example() {
-  local key_trim
-  key_trim="$(printf '%s' "$EXAMPLE_API_KEY" | awk '{$1=$1; print}')"
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
+  local key_trim prov_env
+  if type provider_api_env_var_name >/dev/null 2>&1; then
+    prov_env="$(provider_api_env_var_name "example")"
+    if [ -n "$prov_env" ]; then
+      EXAMPLE_API_KEY="${!prov_env:-${EXAMPLE_API_KEY:-}}"
+    fi
+  fi
+
+  key_trim="$(printf '%s' "${EXAMPLE_API_KEY:-}" | awk '{$1=$1; print}')"
+
+  if [ -z "$key_trim" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
 
   # Execute the non-streaming call writing to RESP
-  curl "${CURL_BASE_OPTS[@]:-}" \
-       -H "x-goog-api-key: ${key_trim}" \
-       -H "Content-Type: application/json" \
-       --data-binary @"$PAYLOAD" \
-       -o "$RESP"
+  local -a curl_cmd=(curl)
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    -H "x-goog-api-key: ${key_trim}"
+    -H "Content-Type: application/json"
+    --data-binary @"$PAYLOAD"
+    -o "$RESP"
+    "$BASH4LLM_PROVIDER_URL"
+  )
+
+  "${curl_cmd[@]}"
+  local rc=$?
+
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+  return $rc
 }
 ```
----
