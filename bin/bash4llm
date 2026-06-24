@@ -22,6 +22,9 @@ SCRIPT_NAME="bash4llm"
 SCRIPT_VERSION="2.0.0"
 SCRIPT_DATE="2026-06-20"
 
+# Initialize color variables to prevent set -u (nounset) errors if referenced early
+C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
+
 # ---------------------------------------------------------------------------
 # Canonical error codes
 # ---------------------------------------------------------------------------
@@ -46,7 +49,7 @@ BASH4LLMERR_API=$BASH4LLM_ERR_API
 # ---------------------------------------------------------------------------
 for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf comm; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    printf 'bash4llm: ERROR: required command not found: %s\n' "$cmd" >&2
+    printf 'bash4llm: %sERROR%s: required command not found: %s\n' "${C_RED}" "${C_RST}" "$cmd" >&2
     exit 1
   fi
 done
@@ -54,7 +57,7 @@ done
 #--3<---[ SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 # Early Helpers 
 resolve_script_dir() {
-  local src="$0" rl dir
+  local src="${BASH_SOURCE[0]}" rl dir
   if command -v readlink >/dev/null 2>&1 && [ -L "$src" ]; then
     rl="$(readlink "$src" 2>/dev/null || true)"
     [ -n "$rl" ] && case "$rl" in /*) src="$rl" ;; *) src="$(dirname "$src")/$rl" ;; esac
@@ -131,14 +134,14 @@ ensure_api_key_for_provider() {
 
   # Non-interactive: fail fast with clear error (do not prompt)
   if [ ! -t 0 ]; then
-    printf 'bash4llm: ERROR: missing API key for provider %s (env %s) in non-interactive mode\n' "$prov" "$envvar" >&2
+    printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED}" "${C_RST}" "$prov" "$envvar" >&2
     return "$BASH4LLMERR_NO_API_KEY"
   fi
 
   # Interactive prompt (preserve previous behavior)
   printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
   if ! IFS= read -r input_key; then
-    printf '\nbash4llm: ERROR: no input received. Aborting.\n' >&2
+    printf '\nbash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED}" "${C_RST}" >&2
     return "$BASH4LLMERR_NO_API_KEY"
   fi
 
@@ -150,7 +153,7 @@ ensure_api_key_for_provider() {
   fi
 
   if [ -z "$input_key" ]; then
-    printf 'bash4llm: ERROR: API key required. Aborting.\n' >&2
+    printf 'bash4llm: %sERROR%s: API key required. Aborting.\n' "${C_RED}" "${C_RST}" >&2
     return "$BASH4LLMERR_NO_API_KEY"
   fi
 
@@ -211,20 +214,20 @@ log_prefix() { printf '%s: ' "$SCRIPT_NAME"; }
 log_info() {
   local code="${1:-INFO}" msg="${2:-}"
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf '%sINFO: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+    printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
   fi
   if [ -n "$BASH4LLM_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
 log_warn() {
   local code="${1:-WARN}" msg="${2:-}"
-  printf '%sWARN: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  printf '%s%sWARN%s: %s: %s\n' "$(log_prefix)" "${C_YELLOW}" "${C_RST}" "$code" "$msg" >&2
   if [ -n "$BASH4LLM_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
 log_error() {
   local code="${1:-ERROR}" msg="${2:-}"
-  printf '%sERROR: %s: %s\n' "$(log_prefix)" "$code" "$msg" >&2
+  printf '%s%sERROR%s: %s: %s\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$code" "$msg" >&2
   if [ -n "$BASH4LLM_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
@@ -253,7 +256,7 @@ if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
   C_BLUE=$'\e[0;34m'    # Blu standard
   C_CYAN=$'\e[0;36m'    # Celeste standard (Info)
   C_BOLD=$'\e[1m'       # Grassetto
-  C_LOGO=$'\e[1;37;42m' # Bianco Grassetto su Sfondo Verde
+  C_LOGO=$'\e[1;37;42m' # Bianco Grassetto su Sfondo Verde (riservato al banner REPL)
 fi
 
 #--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
@@ -327,7 +330,6 @@ if [ -z "$BASH4LLM_CONFIG_DIR" ]; then
 fi
 
 #--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
-
 # Helper: ensure config dir exists and is usable before any writes
 ensure_config_dir() {
   # Normalize
@@ -425,7 +427,7 @@ resolve_provider_url() {
 
 # Fail-fast if canonical_config_dir is empty for any reason
 if [ -z "$(canonical_config_dir)" ]; then
-  printf 'bash4llm: ERROR: CONFIG: canonical config dir is empty; aborting.\n' >&2
+  printf 'bash4llm: %sERROR%s: CONFIG: canonical config dir is empty; aborting.\n' "${C_RED}" "${C_RST}" >&2
   exit 1
 fi
 
@@ -626,7 +628,7 @@ lock_exec() {
       # Open FD 9 for the lockfile inside subshell to avoid leaking FDs to caller
       exec 9>"$lockfile"
       if ! flock -x -w "$timeout" 9; then
-        printf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "$lockfile" "$timeout" >&2
+        printf '%s%sERROR%s: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$lockfile" "$timeout" >&2
         exit 124
       fi
       # Execute the requested command in this subshell under lock
@@ -642,7 +644,7 @@ lock_exec() {
     while ! mkdir "$lockdir" 2>/dev/null; do
       elapsed=$(( $(date +%s) - start_time ))
       if [ "$elapsed" -ge "$timeout" ]; then
-        printf '%sERROR: LOCKTIMEOUT: could not acquire directory lock %s within %s seconds\n' "$(log_prefix)" "$lockdir" "$timeout" >&2
+        printf '%s%sERROR%s: LOCKTIMEOUT: could not acquire directory lock %s within %s seconds\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$lockdir" "$timeout" >&2
         return 124
       fi
       sleep 0.1
@@ -682,22 +684,22 @@ _mktemp_in_dir() {
 show_payload_head() {
   local path="${1:-$PAYLOAD}" lines="${2:-200}"
   if [ -z "${path:-}" ]; then
-    printf 'bash4llm: ERROR: payload file missing: %s\n' "<unset>" >&2
+    printf 'bash4llm: %sERROR%s: payload file missing: %s\n' "${C_RED}" "${C_RST}" "<unset>" >&2
     exit "$BASH4LLMERR_TMP"
   fi
   if [ ! -e "$path" ]; then
-    printf 'bash4llm: ERROR: payload file missing: %s\n' "$path" >&2
+    printf 'bash4llm: %sERROR%s: payload file missing: %s\n' "${C_RED}" "${C_RST}" "$path" >&2
     exit "$BASH4LLMERR_TMP"
   fi
   if [ ! -s "$path" ]; then
-    printf 'bash4llm: INFO: payload exists but is empty: %s\n' "$path" >&2
+    printf 'bash4llm: %sINFO%s: payload exists but is empty: %s\n' "${C_GREEN}" "${C_RST}" "$path" >&2
     return 0
   fi
 
   # Diagnostic output only when DEBUG=1
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf 'bash4llm: INFO: payload path: %s\n' "$path" >&2
-    printf 'bash4llm: INFO: payload (head %d lines):\n' "$lines" >&2
+    printf 'bash4llm: %sINFO%s: payload path: %s\n' "${C_GREEN}" "${C_RST}" "$path" >&2
+    printf 'bash4llm: %sINFO%s: payload (head %d lines):\n' "${C_GREEN}" "${C_RST}" "$lines" >&2
     if printf '%s' "$path" | grep -qE '\.b64$'; then
       b64decode < "$path" 2>/dev/null | head -n "$lines" >&2 || true
     else
@@ -926,7 +928,7 @@ ensure_run_tmpdir() {
     export RUN_TMPDIR PAYLOAD RESP ERRF
     [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
   else
-    printf '%s' "$RUN_TMPDIR"
+    printf '%s' "$print_only"
   fi
 
   return 0
@@ -1062,7 +1064,7 @@ if [ "$#" -gt 0 ]; then
           printf '%s\n' "$(canonical_model_file "$prov")"
           exit 0
         else
-          printf 'bash4llm: ERROR: usage: --print-model-file <provider>\n' >&2
+          printf 'bash4llm: %sERROR%s: usage: --print-model-file <provider>\n' "${C_RED}" "${C_RST}" >&2
           exit 2
         fi
         ;;        
@@ -1099,10 +1101,10 @@ mkdir -p "$(canonical_config_dir)" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TEMPLATES_D
 # Ensure directories are not symlinks and have strict perms
 for d in "$BASH4LLM_DIR" "$(canonical_config_dir)" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TEMPLATES_DIR" "$BASH4LLM_HISTORY_DIR" "$BASH4LLM_TMPDIR" "$BASH4LLM_EXTRAS_DIR" "$(canonical_config_dir)/providers"; do
   if [ -L "$d" ]; then
-    printf 'bash4llm: ERROR: directory is a symlink: %s\n' "$d" >&2
+    printf 'bash4llm: %sERROR%s: directory is a symlink: %s\n' "${C_RED}" "${C_RST}" "$d" >&2
     exit "$BASH4LLMERR_TMP"
   fi
-  mkdir -p "$d" 2>/dev/null || { printf 'bash4llm: ERROR: cannot create directory: %s\n' "$d" >&2; exit "$BASH4LLMERR_TMP"; }
+  mkdir -p "$d" 2>/dev/null || { printf 'bash4llm: %sERROR%s: cannot create directory: %s\n' "${C_RED}" "${C_RST}" "$d" >&2; exit "$BASH4LLMERR_TMP"; }
   chmod 700 "$d" 2>/dev/null || true
 done
 
@@ -1372,6 +1374,7 @@ jq_safe() {
 ########################################
 # SECTION: PRECORE_BOOT - END
 ########################################
+
 ########################################
 # SECTION: PRECORE_RUN - BEGIN
 ########################################
@@ -1863,6 +1866,7 @@ _tmpf() {
   fi
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
+
 #--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
 # Session helpers (MVP - Minimum Viable Product)
 # - session_validate_id <id> -> 0 if valid, 1 if invalid
@@ -2051,6 +2055,7 @@ session_append() {
   # Ensure session directory and file exist before creating marker/lock (race-safe init)
   sess_dir="$(dirname "$session_file")"
   if ! mkdir -p "$sess_dir" 2>/dev/null; then
+    printf 'bash4llm: %sERROR%s: SESSION: cannot create session directory: %s\n' "${C_RED}" "${C_RST}" "$sess_dir" >&2
     log_error "SESSION" "cannot create session directory: $sess_dir"
     return 1
   fi
@@ -2111,6 +2116,7 @@ session_append() {
     if [ "${created_marker:-0}" -eq 1 ]; then rm -rf -- "$marker_dir" 2>/dev/null || true; fi
     exec 200>&- 2>/dev/null || true
     rm -f "$tmpf" 2>/dev/null || true
+    printf 'bash4llm: %sERROR%s: SESSION: could not acquire session lock for append\n' "${C_RED}" "${C_RST}" >&2
     log_error "SESSION" "could not acquire session lock for append"
     return 1
   fi
@@ -2153,6 +2159,7 @@ session_append() {
       flock -u 200 2>/dev/null || true
       exec 200>&- 2>/dev/null || true
       rm -f "$tmpf" 2>/dev/null || true
+      printf 'bash4llm: %sERROR%s: SESSION: failed to append message to %s\n' "${C_RED}" "${C_RST}" "$session_file" >&2
       log_error "SESSION" "failed to append message to $session_file"
       return 1
     fi
@@ -2218,6 +2225,7 @@ session_append() {
 # Default parameters for session helpers (configurable via env)
 : "${LAST_CHECK_LINES:=50}"
 #--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
+
 #--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
 # =============================================================================
 # Session cache helpers (Strict-safe under set -u)
@@ -2313,6 +2321,7 @@ session_cache_invalidate() {
   return 0
 }
 #--5<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
+
 #--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
@@ -2334,9 +2343,10 @@ LIST_MODELS="${LIST_MODELS:-0}"
 FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-0}"
 OUT_PATH="${OUT_PATH:-}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-}"
-TURE="${TURE:-${TEMPERATURE:-1.0}}"
+
 TEMPERATURE="${TEMPERATURE:-${TURE:-1.0}}"
-TURE="${TURE:-$TEMPERATURE}"
+TURE="$TEMPERATURE"
+
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 MODEL="${MODEL:-}"
 AUTO_POLICY="${AUTO_POLICY:-preferred}"
@@ -2387,9 +2397,6 @@ _normalize_bool_env() {
 }
 _normalize_bool_env
 #--6<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
-########################################
-# SECTION: PRECORE_RUN - END
-########################################
 ########################################
 # SECTION: PROVIDER - BEGIN
 ########################################
@@ -2785,10 +2792,10 @@ call_api_groq() {
 # ---------------------------------------------------------------------------
 call_api_streaming_groq() {
   # Streaming call for Groq provider with robust checks and diagnostics.
-  # Expects: RUN_TMPDIR, RESP variable, and payload file (BASH4LLM_TMP_PAYLOAD or PAYLOAD).
+  # Expects: RUN_TMPDIR, RESP variable, and payload file (BASH4LL_TMP_PAYLOAD or PAYLOAD).
   local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code json content resp_size errf_size resp_text_tmp resp_json_tmp p_dir api_json ui_last
 
-  ensure_run_tmpdir || return "$BASH4LLMERR_TMP"
+  ensure_run_tmpdir || return "$BASH4LLERR_TMP"
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
@@ -3127,7 +3134,7 @@ validate_model_groq() {
   # Accepts either exact matches as stored in MODELS_FILE or normalized names
   # (stripping common prefixes like "models/" or "groq:"), and enforces textual support.
   local model="${1:-}" norm_model file_match
-  [ -n "$model" ] || { printf 'bash4llm: ERROR: validate_model_groq: model required\n' >&2; return 1; }
+  [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_groq: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
 
   # Normalize incoming model for comparison: strip leading "models/" and "groq:" and trim
   norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -3148,14 +3155,14 @@ validate_model_groq() {
     fi
 
     if [ "$file_match" -ne 1 ]; then
-      printf 'bash4llm: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
+      printf 'bash4llm: %sERROR%s: The model "%s" is not present in %s\n' "${C_RED}" "${C_RST}" "$model" "$MODELS_FILE" >&2
       return 1
     fi
   fi
 
   # Ensure the (normalized) model is text-capable
   if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: ERROR: The "%s" model is not supported by Bash4LLM (requires non-text input).\n' "$model" >&2
+    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GREEN}Bash4LLM⁺${C_RST}" >&2
     return 1
   fi
 
@@ -3188,6 +3195,7 @@ auto_select_model_groq() {
 ########################################
 # SECTION: PROVIDER - END
 ########################################
+
 ########################################
 # SECTION: CORE_SETUP - BEGIN
 ########################################
@@ -3254,7 +3262,6 @@ validate_model_dispatch() {
   return 0
 }
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
-
 # resolve_model: determines the final MODEL following priority rules and validation
 # Output: sets the global variable FINAL_MODEL (string) or empty if unresolved.
 resolve_model() {
@@ -3658,15 +3665,15 @@ perform_request_once() {
     else
       rc=$?
       if [ "$rc" -eq "$BASH4LLMERR_CURL_FAILED" ]; then
-        printf 'bash4llm: WARN: Network error (curl). Retrying...\n' >&2
+        printf 'bash4llm: %sWARN%s: Network error (curl). Retrying...\n' "${C_YELLOW}" "${C_RST}" >&2
       elif [ "$rc" -eq "$BASH4LLMERR_API" ]; then
-        printf 'bash4llm: ERROR: HTTP/API error. Not retrying.\n' >&2
+        printf 'bash4llm: %sERROR%s: HTTP/API error. Not retrying.\n' "${C_RED}" "${C_RST}" >&2
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
         return "$BASH4LLMERR_API"
       else
-        printf 'bash4llm: WARN: Unknown error (code %s). Retrying...\n' "$rc" >&2
+        printf 'bash4llm: %sWARN%s: Unknown error (code %s). Retrying...\n' "${C_YELLOW}" "${C_RST}" "$rc" >&2
       fi
     fi
 
@@ -3743,7 +3750,7 @@ list_models_cli() {
     if is_supported_model "$norm"; then
       printf '%s\n' "$norm"
     else
-      printf '%s\t[NOT SUPPORTED: Requires non-text input]\n' "$norm"
+      printf '%s\t[%sNOT SUPPORTED%s: Requires non-text input]\n' "$norm" "${C_RED}" "${C_RST}"
     fi
     if [ "$count" -ge "$MAX_MODELS" ]; then break; fi
   done < "$MODELS_FILE"
@@ -3754,7 +3761,7 @@ validate_model_core() {
   # Validate a model name against local MODELS_FILE (if present) and textual support.
   # Accepts exact matches or matches after stripping common provider prefixes like "models/".
   local model="${1:-}" norm_model file_match
-  [ -n "$model" ] || { printf 'bash4llm: ERROR: validate_model_core: model required\n' >&2; return 1; }
+  [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_core: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
 
   # Normalize incoming model for comparison
   norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -3776,14 +3783,14 @@ validate_model_core() {
     fi
 
     if [ "$file_match" -ne 1 ]; then
-      printf 'bash4llm: ERROR: The model "%s" is not present in %s\n' "$model" "$MODELS_FILE" >&2
+      printf 'bash4llm: %sERROR%s: The model "%s" is not present in %s\n' "${C_RED}" "${C_RST}" "$model" "$MODELS_FILE" >&2
       return 1
     fi
   fi
 
   # Check textual support
   if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: ERROR: The "%s" model is not supported by Bash4LLM (requires non-text input).\n' "$model" >&2
+    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GREEN}Bash4LLM⁺${C_RST}" >&2
     return 1
   fi
 
@@ -3964,7 +3971,7 @@ while [ $# -gt 0 ]; do
       help_file="$BASH4LLM_EXTRAS_DIR/docs/help.txt"
       if [ -f "$help_file" ]; then
         # If colors are not active, show the normal file
-        if [ -z "${c_title:-$C_TITLE}" ]; then
+        if [ -z "${C_TITLE:-}" ]; then
           cat "$help_file"
         else
           # Colorazione al volo ultra-portabile (funziona sia su macOS che su Linux)
@@ -3984,14 +3991,14 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --) shift; break ;;
-    -*) printf 'Unknown option: %s\n' "$1" >&2; exit "$BASH4LLMERR_TMP" ;;
+    -*) printf 'bash4llm: %sERROR%s: Unknown option: %s\n' "${C_RED}" "${C_RST}" "$1" >&2; exit "$BASH4LLMERR_TMP" ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
 #--4<---[ /SECTION: CORE_SETUP_CLI_PARSE ]--->4--
-
 #--5<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 # Session Engine: safe sourcing and robust fallback
+# ---------------------------------------------------------------------------
 SE_ENGINE_PATH="${BASH4LLM_EXTRAS_DIR%/}/session/session-engine.sh"
 SE_AVAILABLE=0
 if [ -f "$SE_ENGINE_PATH" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
@@ -4029,6 +4036,7 @@ fi
 
 #--6<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
 # Guard: prevent accidental real API calls (ALLOW_API_CALLS defaults to 1)
+# ---------------------------------------------------------------------------
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
@@ -4085,6 +4093,7 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
   fi
 fi
 #--6<---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
+
 #--7<---[ SECTION: CORE_SETUP_ACTIONS ]--->7--
 # Immediate actions: list providers/models, set-default, install-extras
 if [ "$LIST_PROVIDERS" -eq 1 ]; then
@@ -4127,7 +4136,7 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
     || { log_error "SEC" "cannot write default model for provider ${target_provider} to ${target_model_file}."; exit "$BASH4LLMERR_TMP"; }
   chmod 600 "$target_model_file" 2>/dev/null || true
 
-  printf 'bash4llm: INFO: Default model for provider %s set to: %s\n' "$target_provider" "$SET_DEFAULT_MODEL" >&2
+  printf 'bash4llm: %sINFO%s: Default model for provider %s set to: %s\n' "${C_GREEN}" "${C_RST}" "$target_provider" "$SET_DEFAULT_MODEL" >&2
   exit 0
 fi
 
@@ -4144,7 +4153,7 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     SRC_BASE="${SCRIPTDIR%/}/extras"
   fi
 
-  # Canonicalize chosen source and destination
+  # Explicit resolution
   if [ -d "${SRC_BASE}" ]; then
     SRC_BASE="$(cd "${SRC_BASE}" >/dev/null 2>&1 && pwd || printf '%s' "${SRC_BASE}")"
   else
@@ -4157,8 +4166,8 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   if [ -d "${LEGACY_EXTRAS_DIR}" ]; then
     LEGACY_REAL="$(cd "${LEGACY_EXTRAS_DIR}" >/dev/null 2>&1 && pwd || printf '%s' "${LEGACY_EXTRAS_DIR}")"
     if [ "${LEGACY_REAL}" != "${DEST_BASE}" ] && [ "${LEGACY_REAL}" != "${SRC_BASE}" ]; then
-      printf 'bash4llm: ERROR: legacy extras directory found at %s\n' "${LEGACY_REAL}" >&2
-      printf 'bash4llm: ERROR: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${DEST_BASE}" >&2
+      printf 'bash4llm: %sERROR%s: legacy extras directory found at %s\n' "${C_RED}" "${C_RST}" "${LEGACY_REAL}" >&2
+      printf 'bash4llm: %sERROR%s: only %s is supported as runtime destination. Move or remove the legacy directory and retry.\n' "${C_RED}" "${C_RST}" "${DEST_BASE}" >&2
       exit "$BASH4LLMERR_TMP"
     fi
   fi
@@ -4234,7 +4243,7 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     esac
   done
 
-  printf 'bash4llm: INFO: Extras installed under %s\n' "${DEST_BASE}" >&2
+  printf 'bash4llm: %sINFO%s: Extras installed under %s\n' "${C_GREEN}" "${C_RST}" "${DEST_BASE}" >&2
 
   if [ "${#installed_providers[@]}" -gt 0 ]; then
     printf 'Installed providers: %s\n' "$(printf '%s ' "${installed_providers[@]}")" >&2
@@ -4256,7 +4265,7 @@ if [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   for p in "${installed_providers[@]}"; do
     PROVIDER_MODULE_PATH="${DEST_PROV}/${p}.sh"
     if ! bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
-      printf 'bash4llm: WARN: provider %s has syntax errors; check %s\n' "$p" "$PROVIDER_MODULE_PATH" >&2
+      printf 'bash4llm: %sWARN%s: provider %s has syntax errors; check %s\n' "${C_YELLOW}" "${C_RST}" "$p" "$PROVIDER_MODULE_PATH" >&2
     fi
   done
 
@@ -4271,6 +4280,7 @@ done
 ########################################
 # SECTION: CORE_SETUP - END
 ########################################
+
 ########################################
 # SECTION: CORE_PROVIDER - BEGIN
 ########################################
@@ -4408,7 +4418,7 @@ EOF
   fi
 
   if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ]; then
-    printf 'bash4llm: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
+    printf 'bash4llm: %sINFO%s: Provider set to: %s\n' "${C_GREEN}" "${C_RST}" "${PROVIDER:-}" >&2
     exit 0
   fi
 fi
@@ -4502,92 +4512,32 @@ fi
 
 if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf 'Bash4LLM configuration:\n'
-  printf '  Version: %s (%s)\n' "$SCRIPT_VERSION" "$SCRIPT_DATE"
-  printf '  Provider: %s\n' "$PROVIDER"
-  printf '  Model (active): %s\n' "$MODEL"
-  printf '  Model set via CLI: %s\n' "${MODEL_CLI_SET:-0}"
-
-  if [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
-    cfg_prov="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
-    cfg_prov="$(printf '%s' "$cfg_prov" | awk '{$1=$1;print}')"
-    model_provider="${cfg_prov:-${PROVIDER:-groq}}"
-  else
-    model_provider="${PROVIDER:-groq}"
-  fi
-
-  MODEL_PROVIDER_CFG="$(canonical_model_file "${model_provider}")"
-  if [ -s "$MODEL_PROVIDER_CFG" ]; then
-    printf '  Model (default): %s\n' "$(sed -n '1p' "$MODEL_PROVIDER_CFG")"
-  else
-    printf '  Model (default): <none>\n'
-  fi
-
-  printf '  Config dir: %s\n' "$(canonical_config_dir)"
-  printf '  Models dir: %s\n' "$BASH4LLM_MODELS_DIR"
-  printf '  Tmp dir: %s\n' "$BASH4LLM_TMPDIR"
-  printf '  History dir: %s\n' "$BASH4LLM_HISTORY_DIR"
-  printf '  Quiet: %s\n' "$QUIET"
-  printf '  Debug: %s\n' "$DEBUG"
-  printf '  Dry-run: %s\n' "$DRY_RUN"
-  printf '  Whitelist models: %s\n' "$(printf '%s\n' "$ALLOWED_MODELS" | wc -l)"
+  printf '%s configuration:\n' "${C_GREEN}Bash4LLM⁺${C_RST}"
+  printf '  - Name: %s\n' "$SCRIPT_NAME"
+  printf '  - Version: %s\n' "$SCRIPT_VERSION"
+  printf '  - Date: %s\n' "$SCRIPT_DATE"
+  printf '  - Provider: %s\n' "$PROVIDER"
+  printf '  - Model: %s\n' "$MODEL"
+  printf '  - Temperature: %s\n' "$TURE"
+  printf '  - Max Tokens: %s\n' "$MAX_TOKENS"
+  printf '  - Output Format: %s\n' "$OUTPUT_MODE"
+  printf '  - Save Threshold: %sB\n' "$THRESHOLD"
   exit 0
 fi
 
 if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf 'Bash4LLM diagnostics:\n'
-
-  printf '\n[Directories]\n'
-  for d in "$BASH4LLM_CONFIG_DIR" "$BASH4LLM_MODELS_DIR" "$BASH4LLM_TMPDIR" "$BASH4LLM_EXTRAS_DIR" "$BASH4LLM_HISTORY_DIR"; do
-    if [ -d "$d" ]; then
-      printf '  OK: %s\n' "$d"
-    else
-      printf '  ERROR: missing directory %s\n' "$d"
-    fi
-  done
-
-  printf '\n[Provider]\n'
-  printf '  Active provider: %s\n' "$PROVIDER"
-  if type "buildpayload_${PROVIDER}" >/dev/null 2>&1; then
-    printf '  Provider functions: OK\n'
-  else
-    printf '  ERROR: provider functions missing\n'
-  fi
-
-  printf '\n[Model]\n'
-  printf '  Active model: %s\n' "$MODEL"
-  if printf '%s\n' "$ALLOWED_MODELS" | grep -x -F -q "$MODEL"; then
-    printf '  Model in whitelist: OK\n'
-  else
-    printf '  WARNING: model not in whitelist\n'
-  fi
-
-  printf '\n[API Key]\n'
-  prov_upper="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
-  check_var="${prov_upper}_API_KEY"
-  custom_env_var_var="PROVIDER_API_ENV_${PROVIDER}"
-  custom_env_var="${!custom_env_var_var:-}"
-  if [ -n "$custom_env_var" ]; then check_var="$custom_env_var"; fi
-
-  if [ -n "${!check_var:-}" ]; then
-    printf '  API key: present (env %s)\n' "$check_var"
-  else
-    printf '  WARNING: API key missing (expected env %s)\n' "$check_var"
-  fi
-
-  printf '\n[Tmpdir]\n'
-  if [ -d "$BASH4LLM_TMPDIR" ]; then
-    printf '  Tmpdir exists: OK\n'
-  else
-    printf '  ERROR: tmpdir missing\n'
-  fi
-
-  printf '\nDiagnostics complete.\n'
+  printf '%s diagnostics:\n' "${C_GREEN}Bash4LLM⁺${C_RST}"
+  printf '  - Config Dir: %s\n' "$(canonical_config_dir)"
+  printf '  - Provider File: %s\n' "$(canonical_provider_file)"
+  printf '  - History Dir: %s\n' "$BASH4LLM_HISTORY_DIR"
+  printf '  - Temp Dir: %s\n' "$BASH4LLM_TMPDIR"
+  printf '  - Active Temp Dir: %s\n' "${RUN_TMPDIR:-<none>}"
+  printf '  - Models File: %s\n' "$MODELS_FILE"
+  printf '  - Allowed Models Count: %d\n' "$(printf '%s\n' "$ALLOWED_MODELS" | grep -c . || echo 0)"
   exit 0
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
-
 #--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--
 # Main flow
 if [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
@@ -4681,7 +4631,7 @@ assemble_content() {
 assemble_content
 
 if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ] && [ -z "${CONTENT:-}" ]; then
-  printf 'bash4llm: INFO: Provider set to: %s\n' "${PROVIDER:-}" >&2
+  printf 'bash4llm: %sINFO%s: Provider set to: %s\n' "${C_GREEN}" "${C_RST}" "${PROVIDER:-}" >&2
   exit 0
 fi
 
@@ -4795,7 +4745,7 @@ if [ "$CHAT_MODE" -eq 1 ]; then
 
   if [ "$QUIET" -ne 1 ]; then
     printf '%s\n' '------------------------------------------' >&2
-    printf 'Starting Bash4LLM Interactive Shell (REPL)\n' >&2
+    printf 'Starting %s Interactive Shell (REPL)\n' "${C_LOGO}Bash4LLM⁺${C_RST}" >&2
     printf 'Press Ctrl+D to quit, type /? for Help\n' >&2
     printf '%s\n\n' '------------------------------------------' >&2
   fi
@@ -4879,7 +4829,7 @@ ${C_TITLE}------------------------------------------${C_RST}
                 fi
                 printf '\n\033[1;33mUndone last turn (removed last query & response from history).\033[0m\n\n' >&2
               else
-                printf 'bash4llm: ERROR: Failed to prepare temporary file for undo.\n' >&2
+                printf 'bash4llm: %sERROR%s: Failed to prepare temporary file for undo.\n' "${C_RED}" "${C_RST}" >&2
               fi
             elif [ "$total_lines" -eq 1 ]; then
               : > "$session_file" 2>/dev/null || true
@@ -4894,7 +4844,7 @@ ${C_TITLE}------------------------------------------${C_RST}
         continue
         ;;
       /status)
-        printf '\n\033[1;34mCurrent REPL Status:\033[0m\n' >&2
+        printf '\n%sCurrent REPL Status:%s\n' "${C_CYAN}" "${C_RST}" >&2
         printf '  Provider:      %s\n' "${PROVIDER:-groq}" >&2
         printf '  Model:         %s\n' "${MODEL:-default}" >&2
         printf '  Temperature:   %s\n' "${TURE:-1.0}" >&2
@@ -4936,13 +4886,13 @@ ${C_TITLE}------------------------------------------${C_RST}
         new_model="${userline#/model }"
         new_model="$(printf '%s' "$new_model" | tr -d -c 'A-Za-z0-9._/:-' | awk '{$1=$1;print}')"
         if [ -z "$new_model" ]; then
-          printf 'bash4llm: ERROR: Empty or invalid model name.\n' >&2
+          printf 'bash4llm: %sERROR%s: Empty or invalid model name.\n' "${C_RED}" "${C_RST}" >&2
         else
           if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
             MODEL="$new_model"
-            printf '\n\033[1;32mModel successfully set to: %s\033[0m\n' "$MODEL" >&2
+            printf '\n%sModel successfully set to: %s%s\n' "${C_GREEN}" "$MODEL" "${C_RST}" >&2
           else
-            printf 'bash4llm: ERROR: Model "%s" is not supported or registered.\n' "$new_model" >&2
+            printf 'bash4llm: %sERROR%s: Model "%s" is not supported or registered.\n' "${C_RED}" "${C_RST}" "$new_model" >&2
           fi
         fi
         continue
@@ -4955,7 +4905,7 @@ ${C_TITLE}------------------------------------------${C_RST}
         file_cmd_args="$(printf '%s' "$file_cmd_args" | awk '{$1=$1;print}')"
         
         if [ -z "$file_cmd_args" ]; then
-          printf 'bash4llm: ERROR: Usage: /file <path> [optional prompt...]\n' >&2
+          printf 'bash4llm: %sERROR%s: Usage: /file <path> [optional prompt...]\n' "${C_RED}" "${C_RST}" >&2
           continue
         fi
         
@@ -4968,15 +4918,15 @@ ${C_TITLE}------------------------------------------${C_RST}
         
         # Reusing existing helper to validate file safely in interactive mode
         if ! file_readable "$file_path"; then
-          printf 'bash4llm: ERROR: File does not exist or is not readable: %s\n' "$file_path" >&2
+          printf 'bash4llm: %sERROR%s: File does not exist or is not readable: %s\n' "${C_RED}" "${C_RST}" "$file_path" >&2
           continue
         fi
         
         # Enforce size limit (100 KB) to protect memory and context window
         file_size="$(file_size "$file_path" 2>/dev/null || echo 0)"
-        if [ "$file_size" -gt 102400 ]; then
-          printf 'bash4llm: ERROR: File exceeds max attach limit of 100 KB: %s (%s KB)\n' \
-            "$file_path" "$((file_size / 1024))" >&2
+        if [ "$file_size" -gt 102400 ] 2>/dev/null; then
+          printf 'bash4llm: %sERROR%s: File exceeds max attach limit of 100 KB: %s (%s KB)\n' \
+            "${C_RED}" "${C_RST}" "$file_path" "$((file_size / 1024))" >&2
           continue
         fi
         
@@ -4999,7 +4949,7 @@ ${C_TITLE}------------------------------------------${C_RST}
         unset file_cmd_args file_path file_prompt file_content file_size combined_prompt
         ;;
       /*)
-        printf 'bash4llm: ERROR: Unknown command. Type /help or /? to list available commands.\n' >&2
+        printf 'bash4llm: %sERROR%s: Unknown command. Type /help or /? to list available commands.\n' "${C_RED}" "${C_RST}" >&2
         continue
         ;;
     esac
