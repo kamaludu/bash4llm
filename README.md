@@ -7,12 +7,12 @@
 
 # Bash4LLM⁺ 🇮🇹 [🇬🇧](README-en.md)
 
-**Bash4LLM⁺** — wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq.
+**Bash4LLM⁺** — wrapper CLI sicuro, Bash‑first e completamente auditabile per l’API Chat Completions compatibile OpenAI di Groq (ed estendibile ad altri provider).
 
-Bash4LLM è un singolo script Bash, auto‑contenuto, leggibile e verificabile.  
+Bash4LLM⁺ è un singolo script Bash, auto‑contenuto, leggibile e verificabile.  
 Scaricalo, rendilo eseguibile, esporta la tua API key e inizia subito a usarlo.
 
-Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Cygwin, Termux, BSD.
+Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Cygwin, Termux (Android), BSD.
 
 ---
 
@@ -26,10 +26,10 @@ Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Cygwin, Termux, BSD.
   → nessun uso di `/tmp`, nessun `eval`, permessi restrittivi, validazione provider avanzata.
 
 - **Struttura modulare a sezioni**  
-  → PRECORE_BOOT, PRECORE_RUN, PROVIDER, CORE_SETUP, CORE_PROVIDER .
+  → PRECORE_BOOT, PRECORE_RUN, PROVIDER, CORE_SETUP, CORE_PROVIDER.
   
 - **Sistema di Stato UI (ui_state)**  
-  → il CORE espone metadati per GUI/strumenti esterni tramite file JSON atomici.
+  → il CORE espone costantemente metadati in formato JSON atomico per l'integrazione con GUI o strumenti esterni (es. Home Assistant).
 
 - **Streaming e non‑streaming**  
   → output in tempo reale o completo a fine risposta.
@@ -41,15 +41,18 @@ Compatibile con ambienti Unix‑like: Linux, macOS, WSL, Cygwin, Termux, BSD.
   → refresh, lista, default persistente, whitelist dinamica, auto‑selezione.
 
 - **Extras opzionali**  
-  → provider aggiuntivi, template, documentazione, strumenti di sicurezza.
+  → provider aggiuntivi (come Gemini, Hugging Face, Mistral), template, documentazione, strumenti di sicurezza.
+
+- **Pronto per Termux / Android**  
+  → rileva automaticamente l'ambiente Termux bypassando `flock` (spesso instabile o limitato a livello kernel/SELinux su Android) e devia trasparentemente la gestione della concorrenza sul robusto meccanismo di directory lock (`mkdir` atomico).
 
 ---
 
 ## Modello di minaccia (versione breve)
 
-Bash4LLM è progettato per ambienti single‑user (PC/laptop, server personali).
+Bash4LLM⁺ è progettato per ambienti single‑user (PC/laptop, server personali).
 
-- I provider sono codice eseguito nella tua shell: devono risiedere in directory sicure.  
+- I provider sono codice eseguito nella tua shell: devono risiedere in directory sicure di tua proprietà.  
 - Variabili come `BASH4LLM_EXTRAS_DIR` e `BASH4LLM_TMPDIR` sono considerate configurazione fidata.  
 - Lo script non esegue mai l’output del modello.  
 - I rischi TOCTOU e i limiti del parsing JSON/SSE sono mitigati e documentati.
@@ -60,7 +63,7 @@ Dettagli completi in **[SECURITY](SECURITY.md)**.
 
 ## Requisiti
 
-Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
+Bash4LLM⁺ richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
 
 - ***bash***
 - coreutils
@@ -77,7 +80,7 @@ Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 > [!TIP]
 > **⏩ Installazione Rapida (Fast-Forward)**
 > 
-> Eegui questi comandi nel tuo terminale per avviare subito **Bash4LLM**:
+> Esegui questi comandi nel tuo terminale per avviare subito **Bash4LLM⁺**:
 > 
 > ```sh
 > # 1. Clona il repository (solo l'ultimo commit per massima velocità)
@@ -188,7 +191,7 @@ Provider esterno (se installato):
 | `--list-models-raw` | no | Stampa lista modelli in formato raw (una riga per modello). |
 | `--list-providers` | no | Stampa lista provider. |
 | `--list-providers-raw` | no | Stampa provider in formato raw. |
-| `--set-default <model>` | sì | Imposta modello di default persistente. |
+| `--set-default <model>` | sì | Imposta modello di default persistente per il provider attivo. |
 | `-m <model>`, `--model <model>` | sì | Imposta modello per questa esecuzione. |
 | `--provider <name>` | sì | Imposta provider da CLI. |
 | `--provider` | no | Se senza argomento → apre selezione interattiva. |
@@ -198,7 +201,7 @@ Provider esterno (se installato):
 | Flag | Argomento | Effetto |
 |------|-----------|---------|
 | `-f <file>` | sì | Aggiunge file a `FILE_INPUTS`. |
-| `--json-input <json>` | sì | Imposta input JSON. |
+| `--json-input <json>` | sì | Imposta input JSON (formato OpenAI-like). |
 | `--template <name>` | sì | Applica template da `BASH4LLM_TEMPLATES_DIR`. |
 | `--batch <file>` | sì | Esegue richieste batch (una riga = un prompt). |
 
@@ -214,7 +217,7 @@ Provider esterno (se installato):
 | Flag | Argomento | Effetto |
 |------|-----------|---------|
 | `--system <text>` | sì | Imposta system prompt. |
-| `--ture <n>` | sì | Imposta temperatura (alias interno). |
+| `--ture <n>` | sì | Imposta parametro temperatura (da 0.0 a 2.0, alias canonico). |
 | `--temperature <n>` | sì | Alias di `--ture`. |
 | `--max <n>` | sì | Imposta max token. |
 
@@ -225,38 +228,38 @@ Provider esterno (se installato):
 | `--save` | no | Forza salvataggio output. |
 | `--nosave` | no | Disabilita salvataggio. |
 | `--out <path>` | sì | Percorso file/directory output. |
-| `--threshold <n>` | sì | Soglia dimensione per salvataggio. |
-| `--json` | no | Output JSON. |
+| `--threshold <n>` | sì | Soglia dimensione in byte per salvataggio automatico (default: 1000). |
+| `--json` | no | Output JSON raw integro. |
 | `--pretty` | no | Output JSON formattato. |
-| `--text` | no | Output testuale. |
-| `--raw` | no | Output grezzo. |
+| `--text` | no | Output testuale standard estratto (comportamento predefinito). |
+| `--raw` | no | Output testuale grezzo escludendo separazioni finali. |
 
 
 ### Modalità operative
 | Flag | Argomento | Effetto |
 |------|-----------|---------|
-| `--dry-run` | no | Nessuna chiamata API. |
-| `--quiet` | no | Riduce output. |
-| `--stream` | no | Streaming attivo. |
-| `--no-stream` | no | Disattiva streaming. |
-| `--chat` | no | Modalità chat interattiva. |
-| `--bootstrap-only` | no | Esegue solo bootstrap e termina. |
+| `--dry-run` | no | Nessuna chiamata API reale (comportamento simulato). |
+| `--quiet` | no | Riduce l'output non necessario e sopprime i titoli su TTY. |
+| `--stream` | no | Streaming asincrono attivo. |
+| `--no-stream` | no | Disattiva streaming asincrono. |
+| `--chat` | no | Modalità chat interattiva REPL. |
+| `--bootstrap-only` | no | Esegue solo validazione percorsi/lock e termina. |
 
 
 ### Configurazione e diagnostica
 | Flag | Argomento | Effetto |
 |------|-----------|---------|
-| `--show-config` | no | Mostra configurazione completa. |
-| `--diagnostics` | no | Esegue diagnostica completa. |
-| `--version` | no | Stampa versione e termina. |
-| `-h`, `--help` | no | Mostra help da file. |
+| `--show-config` | no | Mostra configurazione completa attiva. |
+| `--diagnostics` | no | Esegue diagnostica completa del sistema. |
+| `--version` | no | Stampa versione dello script e termina. |
+| `-h`, `--help` | no | Mostra help interattivo formattato da file. |
 
 
 ### Installazione extras
 | Flag | Argomento | Effetto |
 |------|-----------|---------|
-| `--install-extras` | opzionale | Installa extras; può accettare directory. |
-| `--install-extras=<dir>` | sì | Installa extras da directory specifica. |
+| `--install-extras` | opzionale | Installa extras; può accettare directory sorgente. |
+| `--install-extras=<dir>` | sì | Installa extras da directory sorgente specifica. |
 
 
 ### Terminazione parsing
@@ -286,24 +289,24 @@ Provider esterno (se installato):
 
 1. `-m/--model`  
 2. `model.$PROVIDER`  
-3. `config`  
-4. auto‑selezione provider  
-5. prima voce della whitelist
+3. auto‑selezione provider (`auto_select_model_<provider>`)
+4. prima voce della whitelist (`models.txt`)
+5. configurazione globale legacy `config` (`MODEL=...`)
 
 ---
 
 ## File temporanei e output
 
-- Nessun uso di `/tmp`.  
-- Temporanei in directory dedicata con permessi 700.  
-- File salvati con permessi 600.  
-- Con `--out` Bash4LLM crea la directory se possibile.
+- Nessun uso di `/tmp` a livello di sistema operativo condiviso.  
+- File temporanei isolati in directory `$RUN_TMPDIR` con permessi `700` (`umask 077`).  
+- File salvati con permessi `600`.  
+- Con `--out` Bash4LLM⁺ crea la directory se possibile.
 
 ---
 
 # 📁 Sistema di Stato UI (ui_state)
 
-Bash4LLM espone metadati operativi destinati a GUI/strumenti esterni tramite file JSON atomici in:
+Bash4LLM⁺ espone metadati operativi destinati a GUI/strumenti esterni tramite file JSON atomici in:
 
 ```
 $BASH4LLM_CONFIG_DIR/ui_state
@@ -313,18 +316,17 @@ Contiene:
 
 - `sessions/<id>.json` → stato sessione (active, msg_count, last_ts)  
 - `sessions/index.json` → elenco sessioni  
-- `last_api.json` → ultimo risultato API  
+- `last_api.json` → ultimo risultato API (http_status, req_id, edgecase_detected, ecc.)  
 - `last_history.json` → ultimo salvataggio history  
-- `provider_capabilities.json` → capacità provider attivo  
+- `provider_capabilities.json` → capacità provider attivo (streaming, refresh_models)  
 
-La GUI (extra opzionale) legge **solo** questi file per i placeholder CGI (20–23).  
-La semantica dei placeholder è definita nella *Fonte di Verità Unificata dei Placeholder (GUI + CGI)*.
+La GUI (extra opzionale) legge **solo** questi file per i placeholder CGI.
 
 ---
 
-# 📘 Memoria contestuale in Bash4LLM
+# 📘 Memoria contestuale in Bash4LLM⁺
 
-Bash4LLM **non mantiene memoria da solo**.  
+Bash4LLM⁺ **non mantiene memoria da solo**.  
 La memoria esiste **solo se attivi una sessione** tramite `--session`.
 
 Ogni sessione crea un file NDJSON persistente:
@@ -333,7 +335,7 @@ Ogni sessione crea un file NDJSON persistente:
 $BASH4LLM_HISTORY_DIR/sessions/<session_id>.ndjson
 ```
 
-E Bash4LLM mantiene metadati della sessione in:
+E Bash4LLM⁺ mantiene i metadati della sessione in:
 
 ```
 $BASH4LLM_CONFIG_DIR/ui_state/sessions/<session_id>.json
@@ -374,16 +376,15 @@ Per avere memoria contestuale **devi sempre** includere `--session <id>`.
 
 ## Codici di uscita
 
-| Codice | Significato |
-|--------|-------------|
-| 0 | Successo |
-| `BASH4LLMERRTMP` | Errore generico / temporanei |
-| `BASH4LLMERRCURL_FAILED` | Errore rete/curl |
-| `BASH4LLMERRAPI` | Errore HTTP/API |
-| `BASH4LLMERRBAD_MODEL` | Modello non valido |
-| `BASH4LLMERRNO_PROMPT` | Nessun prompt fornito |
-| `BASH4LLMERRNOAPIKEY` | API key mancante |
-| `BASH4LLMERRINSTALL` | Errore installer extras |
+| Codice | Variabile | Significato |
+|:---:|:---|:---|
+| **0** | - | Successo |
+| **10** | `BASH4LLM_ERR_NO_API_KEY` | API key mancante |
+| **11** | `BASH4LLM_ERR_BAD_MODEL` | Modello non valido o non in whitelist |
+| **12** | `BASH4LLM_ERR_CURL_FAILED` | Errore rete/curl |
+| **14** | `BASH4LLM_ERR_NO_PROMPT` | Nessun prompt fornito |
+| **15** | `BASH4LLM_ERR_TMP` | Errore generico filesystem / temporanei |
+| **16** | `BASH4LLM_ERR_API` | Errore HTTP/API del fornitore |
 
 ---
 
@@ -391,20 +392,20 @@ Per avere memoria contestuale **devi sempre** includere `--session <id>`.
 
 | Variabile | Necessaria | Descrizione |
 |-----------|------------|-------------|
-| `GROQ_API_KEY` | sì per chiamate API | API key provider. |
+| `GROQ_API_KEY` | sì per chiamate API | API key provider Groq. |
 | `BASH4LLM_CONFIG_DIR` | consigliata | Directory configurazione. |
 | `BASH4LLM_MODELS_DIR` | consigliata | Directory modelli. |
 | `BASH4LLM_TMPDIR` | sì | Directory temporanea. |
-| `BASH4LLM_HISTORY_DIR` | consigliata | Directory sessioni. |
+| `BASH4LLM_HISTORY_DIR` | consigliata | Directory sessioni e cronologia. |
 | `MODEL` | no | Modello attivo. |
 | `PROVIDER` | no | Provider attivo. |
-| `ALLOWED_MODELS` | no | Whitelist modelli. |
+| `ALLOWED_MODELS` | no | Whitelist modelli ammessi. |
 
 ---
 
 ## Licenza
 
-Bash4LLM è distribuito sotto licenza GPL v3.  
+Bash4LLM⁺ è distribuito sotto licenza GPL v3.  
 Vedi `LICENSE`.
 
 ---
