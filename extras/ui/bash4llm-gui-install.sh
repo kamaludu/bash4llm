@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Minimal, robust installer for Bash4LLM GUI (Apache CGI)
+# Bash4LLM+ — Bash-first wrapper for the LLM
 # File: extras/ui/bash4llm-gui-install.sh
+# Extra: GUI-CGI Minimal, robust installer (Apache CGI)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/bash4llm
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
+
 set -euo pipefail
 umask 007 # Conforme al modello di condivisione Unix Group Access (770/660)
 
