@@ -7,7 +7,7 @@
 # License: GPL-3.0-or-later
 # =============================================================================
 # Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
-# Single file, Idempotent
+# Single file, Idempotent, Transparent, Optional Extras
 ########################################
 # SECTION: PRECORE_BOOT - BEGIN
 ########################################
