@@ -32,6 +32,34 @@ Bash4LLM works on:
 
 ## 2. Basic installation
 
+> [!TIP]
+> **⏩ Quick Installation (Fast-Forward)**
+> 
+> Run these commands in your terminal to get **Bash4LLM** up and running immediately:
+> 
+> ```sh
+> # 1. Clone the repository (shallow clone for maximum speed)
+> git clone --depth 1 --branch main https://github.com/kamaludu/bash4llm.git repo-bash4llm  
+> 
+> # 2. Create a working directory and extract the executable
+> mkdir -p bash4llm
+> cp repo-bash4llm/bin/bash4llm bash4llm/
+> chmod +x bash4llm/bash4llm
+> 
+> # 3. Enter the directory and refresh the models 
+> cd bash4llm 
+> ./bash4llm --refresh-models
+> ```
+> 
+> The script will prompt you to enter your API key:
+> `Enter API key for provider groq (env GROQ_API_KEY):`
+> 
+> Enter your API key, then export it to avoid entering it again during your current session:
+> 
+> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
+> 
+> Enjoy Bash4LLM! ⚡
+
 ### 2.1 Clone or download Bash4LLM
 
 `git clone https://github.com/<your-repo>/bash4llm.git`  
