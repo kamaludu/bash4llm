@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM⁺ — Bash-first wrapper for the Groq API
-# File: gemini.sh
-# Version: 2.0.3
+# Bash4LLM+ — Bash-first wrapper for the LLM
+# File: extras/providers/gemini.sh
+# Extra: Provider Gemini
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
 # Provider: Gemini (extras/providers/gemini.sh)
 # Purpose: Bash4LLM provider adapter for Gemini-style APIs (compat shim)
-# =============================================================================
 
 # -------------------------
 # Helpers

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Optional Session Engine for Bash4LLM
-# File: session-engine.sh
+# Bash4LLM+ — Bash-first wrapper for the LLM
+# File: extras/session/session-engine.sh
+# Extra: Additional Session engine
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/bash4llm
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
 # Contract: exposes session_engine_enabled, session_engine_build_window,
 #           session_engine_append, session_engine_snapshot

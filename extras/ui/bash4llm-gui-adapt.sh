@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Adapt Bash4LLM GUI for the current environment (Termux-specific shebang fixes)
-# File: bash4llm-gui-adapt.sh
+# Bash4LLM+ — Bash-first wrapper for the LLM
+# File: extras/ui/bash4llm-gui-adapt.sh
+# Extra: GUI-CGI Adapt for the current environment (Termux-specific fixes)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/bash4llm
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
 # Constraints: only depends on bash, coreutils, findutils, util-linux, gawk, curl, jq.
 # No use of system /tmp; no eval; idempotent; confined writes under UI_ROOT.
