@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM — Bash-first wrapper for the Groq API
+# Bash4LLM+ — Bash-first wrapper for the LLM
 # File: extras/lib/debug.sh
+# Extra: Debug helper
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/bash4llm
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
 # Purpose: Optional debug and diagnostics helpers for bash4llm.
 # Source this file to enable richer diagnostics. The core does not require it.
