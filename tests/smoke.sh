@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM — Bash-first wrapper for the Groq API
+# Bash4LLM+ — Bash-first wrapper for the LLM
 # File: tests/smoke.sh
-# Robust smoke test for Bash4LLM --dry-run
+# Tests: smoke test
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Source: https://github.com/kamaludu/bash4llm
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
 set -euo pipefail
 
