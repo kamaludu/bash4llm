@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Bash4LLM⁺b — Bash-first wrapper for the Groq API
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: bash4llm
 # Version: 2.1.0
 # Copyright (C) 2026 Cristian Evangelisti
