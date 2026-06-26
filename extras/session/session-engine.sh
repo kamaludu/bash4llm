@@ -65,6 +65,39 @@ _se_log() {
   fi
 }
 
+# Reverse a stream or file portably (macOS and Linux compatible)
+_se_reverse() {
+  local f="${1:-}"
+  if [ -n "$f" ]; then
+    if command -v tac >/dev/null 2>&1; then
+      tac "$f"
+    elif type tac_fallback >/dev/null 2>&1; then
+      tac_fallback "$f"
+    else
+      awk '{lines[NR]=$0} END{for(i=NR;i>0;i--) print lines[i]}' "$f"
+    fi
+  else
+    if command -v tac >/dev/null 2>&1; then
+      tac
+    else
+      awk '{lines[NR]=$0} END{for(i=NR;i>0;i--) print lines[i]}'
+    fi
+  fi
+}
+
+# Portable mtime extraction (macOS and Linux compatible)
+_se_file_mtime() {
+  local f="$1"
+  if type _file_mtime >/dev/null 2>&1; then
+    _file_mtime "$f"
+  else
+    case "$(uname 2>/dev/null || echo Linux)" in
+      Darwin) stat -f %m "$f" 2>/dev/null || true ;;
+      *) stat -c %Y "$f" 2>/dev/null || true ;;
+    esac
+  fi
+}
+
 # safe tmp file in RUN_TMPDIR (creates file and returns path)
 _se_tmpf() {
   local base="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}"
@@ -72,7 +105,8 @@ _se_tmpf() {
   mkdir -p "$base" 2>/dev/null || return 1
   if command -v mktemp >/dev/null 2>&1; then
     local f
-    f="$(mktemp -p "$base" se.XXXX 2>/dev/null)" || return 1
+    # Portable mktemp format (works on both Linux and macOS)
+    f="$(mktemp "$base/se.XXXXXX" 2>/dev/null)" || return 1
     chmod 600 "$f" 2>/dev/null || true
     printf '%s' "$f"
   else
@@ -171,8 +205,8 @@ _se_segment_rotate_if_needed() {
   if [ "$sz" -le "$max_bytes" ]; then return 0; fi
 
   local lockfile="${session_file}.lock"
-  # perform rotation inside lock_exec critical section
-  lock_exec "$lockfile" 5 -- sh -c '
+  # perform rotation inside lock_exec critical section using bash to support 10# evaluation
+  lock_exec "$lockfile" 5 -- bash -c '
     set -e
     session_file="$1"
     dir="$(dirname "$session_file")"
@@ -181,9 +215,9 @@ _se_segment_rotate_if_needed() {
     max=0
     for p in "$dir/${base}."*.ndjson "$dir/${base}."*.ndjson.gz; do
       [ -e "$p" ] || continue
-      idx="$(basename "$p" | sed -E "s/^'"$base"'\.([0-9]{3})\.ndjson(\.gz)?$/\1/")"
+      idx="$(basename "$p" | sed -E "s/^$base\.([0-9]{3})\.ndjson(\.gz)?$/\1/")"
       case "$idx" in
-        ''|"$p") continue ;;
+        ""|"$p") continue ;;
       esac
       if printf "%s\n" "$idx" | grep -qE "^[0-9]+$"; then
         if [ "$idx" -gt "$max" ]; then max="$idx"; fi
@@ -333,7 +367,7 @@ session_engine_append() {
   fi
 
   # 5) Append under lock (atomic)
-  if ! lock_exec "$lockfile" 5 -- sh -c '
+  if ! lock_exec "$lockfile" 5 -- bash -c '
     set -e
     session_file="$1"
     line="$2"
@@ -396,7 +430,7 @@ session_engine_build_window() {
   # Use cache if available, fresh and TTL not expired
   if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
     local cached_mtime stored_ts now
-    cached_mtime="$(stat -c %Y "$session_file" 2>/dev/null || true)"
+    cached_mtime="$(_se_file_mtime "$session_file")"
     stored_ts="${SE_CACHE_STORED_TS[$cache_key]:-}"
     now="$(date +%s)"
     if [ -n "${SE_CACHE_MTIME[$cache_key]:-}" ] && [ "${SE_CACHE_MTIME[$cache_key]}" = "$cached_mtime" ] && [ -n "${SE_CACHE_WINDOW[$cache_key]:-}" ]; then
@@ -417,7 +451,7 @@ session_engine_build_window() {
 
   # Build list of segments newest-first
   local segments
-  segments="$(_se_list_segments "$sid" | tac 2>/dev/null || true)"
+  segments="$(_se_list_segments "$sid" | _se_reverse 2>/dev/null || true)"
   if [ -z "$segments" ]; then
     printf '%s' '{"messages":[]}' > "$out" 2>/dev/null || true
     rm -f "$tmpf" 2>/dev/null || true
@@ -444,7 +478,7 @@ session_engine_build_window() {
         printf '%s\n' "$line" >> "$collect_tmp"
         remaining=$((remaining - 1))
         if [ "$remaining" -le 0 ]; then break; fi
-      done < <(tac "$seg" 2>/dev/null)
+      done < <(_se_reverse "$seg" 2>/dev/null)
       if [ "$remaining" -le 0 ]; then break; fi
     done
 
@@ -456,13 +490,15 @@ session_engine_build_window() {
     fi
 
     # collect_tmp is newest-first; reverse to oldest->newest
-    tac "$collect_tmp" > "$tmpf" 2>/dev/null || cp -f "$collect_tmp" "$tmpf" 2>/dev/null || true
+    _se_reverse "$collect_tmp" > "$tmpf" 2>/dev/null || cp -f "$collect_tmp" "$tmpf" 2>/dev/null || true
 
     # Build messages[] JSON using jq, preserving only role and content for compatibility
     if jq -s '{messages: map({role:.role, content:.content})}' "$tmpf" > "$out" 2>/dev/null; then
       # update cache
       if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-        SE_CACHE_MTIME["$cache_key"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
+        local mt
+        mt="$(_se_file_mtime "$session_file")"
+        SE_CACHE_MTIME["$cache_key"]="${mt:-$(date +%s)}"
         SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
         SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
       fi
@@ -511,14 +547,16 @@ session_engine_build_window() {
           break 2
         fi
       fi
-    done < <(tac "$seg" 2>/dev/null)
+    done < <(_se_reverse "$seg" 2>/dev/null)
   done
 
   if [ -s "$msgs_tmp" ]; then
-    tac "$msgs_tmp" > "$tmpf" 2>/dev/null || cp -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
+    _se_reverse "$msgs_tmp" > "$tmpf" 2>/dev/null || cp -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
     if jq -s '{messages: map({role:.role, content:.content})}' "$tmpf" > "$out" 2>/dev/null; then
       if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-        SE_CACHE_MTIME["$cache_key"]="$(stat -c %Y "$session_file" 2>/dev/null || date +%s)"
+        local mt
+        mt="$(_se_file_mtime "$session_file")"
+        SE_CACHE_MTIME["$cache_key"]="${mt:-$(date +%s)}"
         SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
         SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
       fi
@@ -597,7 +635,7 @@ session_engine_snapshot() {
     --argjson total_size "$total_size" \
     --slurpfile last "${last_tmp}.tail" \
     --slurpfile sums "$summaries_tmp" \
-    '{session_id:$sid, stats:{message_count:$message_count, segments:$segments, total_size_bytes:$total_size}, last_messages:($last|map(.)), summaries:($sums|map(.))}' > "$out" 2>/dev/null || {
+    '{session_id:$sid, stats:{message_count:$message_count, segments:$seg_count, total_size_bytes:$total_size}, last_messages:($last|map(.)), summaries:($sums|map(.))}' > "$out" 2>/dev/null || {
       _se_log err "snapshot: failed to assemble JSON"
       rm -f "$tmp" "$last_tmp" "${last_tmp}.tail" "$summaries_tmp" 2>/dev/null || true
       return 1
