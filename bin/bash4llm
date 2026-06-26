@@ -1570,7 +1570,7 @@ save_to_history() {
   lockfile="$HISTORY_LOCK"
 
   # --- atomic move only ---
-  if ! lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_HISTORY" -- sh -c '
+  if ! lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_HISTORY" -- bash -c '
       set -e
       mv -f -- "$1" "$2"
       chmod 600 "$2" 2>/dev/null || true
@@ -1627,7 +1627,7 @@ manifest_create() {
   local manifest="${1:-}"
   local timeout="${2:-$BASH4LLM_LOCK_TIMEOUT_MODELS}"
   safe_mkdir "$(dirname "$manifest")" 700
-  lock_exec "${manifest}.lock" "$timeout" -- sh -c '
+  lock_exec "${manifest}.lock" "$timeout" -- bash -c '
    set -e
    manifest="$1"
    tmp="$(mktemp "$(dirname "$manifest")/manifest.tmp.XXXXXX")"
@@ -1673,7 +1673,7 @@ manifest_add_part() {
   chmod 600 "$part_b64" 2>/dev/null || true
 
   # Now update manifest atomically under lock using jq --arg
-  lock_exec "$lockfile" "$timeout" -- sh -c '
+  lock_exec "$lockfile" "$timeout" -- bash -c '
     set -e
     manifest="$1"
     part_b64="$2"
@@ -1977,7 +1977,7 @@ session_read_window() {
   # Extract last N records robustly (records separated by blank line)
   if [ -f "$session_file" ]; then
     # Acquire a short lock on the session file to avoid partial reads during concurrent append
-    lock_exec "${session_file}.lock" 5 -- sh -c '
+    lock_exec "${session_file}.lock" 5 -- bash -c '
       set -e
       session_file="$1"
       n="$2"
