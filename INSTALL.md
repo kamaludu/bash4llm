@@ -33,7 +33,7 @@ Bash4LLM funziona su:
 ## 2. Installazione di base
 
 > [!TIP]
-> **⏩ Installazione Rapida (Fast-Forward)**
+> **⏩ FAST FORWARD (Installazione Rapida)**
 > 
 > Esegui questi comandi nel tuo terminale per avviare subito **Bash4LLM⁺**:
 > 
@@ -51,14 +51,20 @@ Bash4LLM funziona su:
 > ./bash4llm --refresh-models
 > ```
 > 
-> Lo script ti chiederà l'inserimento della chiave API:
+> Lo script ti chiederà l'inserimento della tua chiave API per il provider di default (Groq):
 > `Enter API key for provider groq (env GROQ_API_KEY):`
 > 
 > Inserisci la tua API key, poi esportala per non doverla più inserire durante la sessione:
 > 
 > `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
 > 
-> Usa Groqbash ⚡
+> Consigliato: ***installa gli Extras opzionali***:
+> ```sh
+> # 4. Installazione degli Extras
+> ./bash4llm --install-extras ../repo-bash4llm/extras/
+> ```
+> 
+> Usa Bash4llm ⚡
 > 
 
 ### 2.1 Clonare o scaricare Bash4LLM

@@ -58,7 +58,7 @@ Bash4LLM⁺ is designed for single‑user environments (PC/laptop, personal serv
 - The script never executes model output.  
 - TOCTOU risks and JSON/SSE parsing limits are mitigated and documented.
 
-Full details in **SECURITY.md**.
+Full details in **[SECURITY](SECURITY-en.md)**.
 
 ---
 
@@ -78,7 +78,8 @@ Bash4LLM⁺ requires the following packages (or equivalents) to be available in 
 
 ## Installation
 
-> **TIP — Fast‑Forward Installation**  
+> [!TIP]
+> **⏩ FAST FORWARD (Quick Install)**  
 > Run these commands in your terminal to start using **Bash4LLM⁺** immediately:
 >
 > ```sh
@@ -95,15 +96,22 @@ Bash4LLM⁺ requires the following packages (or equivalents) to be available in 
 > ./bash4llm --refresh-models
 > ```
 >
-> The script will ask for the API key:
+> The script will ask you to enter your API key for the default provider (Groq):
 > `Enter API key for provider groq (env GROQ_API_KEY):`
 >
 > Enter your API key, then export it to avoid retyping during the session:
 > `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
 >
-> Use Groqbash ⚡
+> Recommended: ***Install Optional Extras***:
+> ```sh
+> # 4. Installing Extras
+> ./bash4llm --install-extras ../repo-bash4llm/extras/
+> ```
+> 
+> Use Bash4llm ⚡
+> 
 
-Detailed instructions: **INSTALL.md**
+Detailed instructions: **[INSTALL](INSTALL-en.md)**
 
 Quick summary:
 ```sh
@@ -369,7 +377,7 @@ To have contextual memory **you must always** include `--session <id>`.
 
 ## License
 
-Bash4LLM⁺ is distributed under **GPL v3**. See `LICENSE`.
+Bash4LLM⁺ is distributed under **GPL v3**. See **[LICENSE](LICENSE)**.
 
 ---
 
