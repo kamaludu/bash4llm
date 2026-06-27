@@ -412,7 +412,7 @@ Per avere memoria contestuale **devi sempre** includere `--session <id>`.
 ## Licenza
 
 Bash4LLM⁺ è distribuito sotto licenza GPL v3.  
-Vedi `LICENSE`.
+Vedi **[LICENSE](LICENSE)**.
 
 ---
 
