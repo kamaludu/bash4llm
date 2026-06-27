@@ -78,7 +78,7 @@ Bash4LLM⁺ richiede che i seguenti pacchetti (o equivalenti) siano disponibili 
 ## Installazione
 
 > [!TIP]
-> **⏩ Installazione Rapida (Fast-Forward)**
+> **⏩ FAST FORWARD (Installazione Rapida)**
 > 
 > Esegui questi comandi nel tuo terminale per avviare subito **Bash4LLM⁺**:
 > 
@@ -103,7 +103,13 @@ Bash4LLM⁺ richiede che i seguenti pacchetti (o equivalenti) siano disponibili 
 > 
 > `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
 > 
-> Usa Groqbash ⚡
+> Consigliato: ***installa gli Extras opzionali***:
+> ```sh
+> # 4. Installazione degli Extras
+> ./bash4llm --install-extras ../repo-bash4llm/extras/
+> ```
+> 
+> Usa Bash4llm ⚡
 > 
 
 Istruzioni dettagliate in: **[INSTALL](INSTALL.md)**
