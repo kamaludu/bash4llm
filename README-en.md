@@ -58,8 +58,7 @@ Bash4LLM⁺ is designed for single‑user environments (PC/laptop, personal serv
 - The script never executes model output.  
 - TOCTOU risks and JSON/SSE parsing limits are mitigated and documented.
 
-Full details in **SECURITY.md**.
-
+Full details in **[SECURITY](SECURITY.md)**.
 ---
 
 ## Requirements
@@ -377,7 +376,7 @@ To have contextual memory **you must always** include `--session <id>`.
 
 ## License
 
-Bash4LLM⁺ is distributed under **GPL v3**. See `LICENSE`.
+Bash4LLM⁺ is distributed under **GPL v3**. See **[LICENSE](LICENSE)**.
 
 ---
 
