@@ -110,7 +110,7 @@ Bash4LLM⁺ requires the following packages (or equivalents) to be available in 
 > Use Bash4llm ⚡
 > 
 
-Detailed instructions: **INSTALL.md**
+Detailed instructions: **[INSTALL](INSTALL-en.md)**
 
 Quick summary:
 ```sh
