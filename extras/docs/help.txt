@@ -1,5 +1,5 @@
 --------------------------------------
-Bash4LLM 2.x — Bash-first wrapper for the Groq API
+Bash4LLM 2.x — Bash-first wrapper for the LLM
 --------------------------------------
   --version            Bash4LLM version
   -h, --help           This Help

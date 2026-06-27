@@ -279,6 +279,9 @@ process_target() {
 # Acquire a global adapt lock to serialize multi-step operations.
 # Uses a dynamic FD (ADAPT_LOCK_FD) and exports ADAPT_LOCK_FILE for other code to inspect.
 _global_adapt_lock_init() {
+  if [ -n "${ADAPT_LOCK_FD:-}" ]; then
+    return 0
+  fi
   : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
 
   # canonicalize TMP_DIR and lock path

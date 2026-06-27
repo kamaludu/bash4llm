@@ -140,6 +140,10 @@ ensure_provider_cache_fresh() {
     return 0
   fi
 
+  if declare -f export_api_key_for_provider >/dev/null 2>&1 && declare -f get_default_provider >/dev/null 2>&1; then
+    export_api_key_for_provider "$(get_default_provider)" || true
+  fi
+
   tmpf="$(portable_mktemp "$TMP_DIR" "providers.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
     "${BASH4LLM_CMD}" --list-providers-raw 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
@@ -188,6 +192,10 @@ ensure_model_cache_fresh() {
     exec {lockfd}>&- 2>/dev/null || true
     log_warn "MODEL" "ensure_model_cache_fresh: bash4llm not available"
     return 0
+  fi
+
+  if declare -f export_api_key_for_provider >/dev/null 2>&1; then
+    export_api_key_for_provider "$provider" || true
   fi
 
   tmpf="$(portable_mktemp "$TMP_DIR" "models.${provider}.XXXXXX")" || tmpf=""

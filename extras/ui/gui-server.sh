@@ -448,6 +448,31 @@ handle_post_main() {
   esac
 
   body="$(read_post_body)"
+  local post_select_conv post_action post_new_conv
+  post_select_conv="$(printf '%s' "$body" | parse_form_field "select_conv" || printf '')"
+  post_select_conv="$(sanitize_param "$post_select_conv")"
+  post_action="$(printf '%s' "$body" | parse_form_field "action" || printf '')"
+  post_action="$(sanitize_param "$post_action")"
+  post_new_conv="$(printf '%s' "$body" | parse_form_field "new_conv" || printf '')"
+
+  if [[ "$post_action" == "new_conv" || "$post_action" == "new" || "$post_select_conv" == "new" || -n "$post_new_conv" ]]; then
+    local next_id=1
+    while [[ -f "$CONV_DIR/conv-${next_id}.txt" ]]; do
+      next_id=$((next_id + 1))
+    done
+    local new_conv_name="conv-${next_id}.txt"
+    atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
+    atomic_write "$CONV_DIR/$new_conv_name" ""
+    return 0
+  elif [[ -n "$post_select_conv" ]]; then
+    if validate_name "$post_select_conv"; then
+      atomic_write "$CURRENT_CONV_FILE" "$post_select_conv"
+      if [[ ! -f "$CONV_DIR/$post_select_conv" ]]; then
+        atomic_write "$CONV_DIR/$post_select_conv" ""
+      fi
+      return 0
+    fi
+  fi
   lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   prompt="$(printf '%s' "$body" | parse_form_field "prompt" || printf '')"
   model_raw="$(printf '%s' "$body" | parse_form_field "model" || true)"
@@ -500,7 +525,7 @@ handle_post_main() {
     return 0
   fi
 
-  if ! (declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"); then
+  if ! { declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"; }; then
     log_error "GUIIO" "API key missing for provider $provider"
     acquire_lock || true
     atomic_append_conv "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
@@ -533,6 +558,12 @@ handle_post_main() {
   local safe_args=()
   if [[ -n "$provider" ]]; then safe_args+=( --provider "$provider" ); fi
   if [[ -n "$model" ]]; then safe_args+=( --model "$model" ); fi
+
+  local session_id
+  session_id="$(basename -- "$conv_file" 2>/dev/null || printf '')"
+  if [[ -n "$session_id" ]]; then
+    safe_args+=( --session "$session_id" )
+  fi
 
   if ! output="$(printf '%s' "$prompt" | call_bash4llm_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
     log_error "GUIIO" "bash4llm invocation failed"
@@ -705,6 +736,34 @@ main() {
     run_if_func fix_termux_perms || true
   fi
   run_if_func ensure_config_defaults
+
+  local select_conv action_conv new_conv_param
+  select_conv="$(get_query_param "select_conv" 2>/dev/null || get_query_param "conv" 2>/dev/null || printf '')"
+  select_conv="$(sanitize_param "$select_conv")"
+  action_conv="$(get_query_param "action" 2>/dev/null || printf '')"
+  new_conv_param="$(get_query_param "new_conv" 2>/dev/null || get_query_param "new-conv" 2>/dev/null || printf '')"
+
+  if [[ "$action_conv" == "new_conv" || "$action_conv" == "new" || "$select_conv" == "new" || -n "$new_conv_param" ]]; then
+    local next_id=1
+    while [[ -f "$CONV_DIR/conv-${next_id}.txt" ]]; do
+      next_id=$((next_id + 1))
+    done
+    local new_conv_name="conv-${next_id}.txt"
+    atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
+    atomic_write "$CONV_DIR/$new_conv_name" ""
+    print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=main"
+    return 0
+  elif [[ -n "$select_conv" ]]; then
+    if validate_name "$select_conv"; then
+      atomic_write "$CURRENT_CONV_FILE" "$select_conv"
+      if [[ ! -f "$CONV_DIR/$select_conv" ]]; then
+        atomic_write "$CONV_DIR/$select_conv" ""
+      fi
+      print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=main"
+      return 0
+    fi
+  fi
+
   run_if_func log_rotate_if_needed "${SERVER_LOG:-/dev/null}" 1048576 || true
   run_if_func log_rotate_if_needed "${ERROR_LOG:-/dev/null}" 1048576 || true
 

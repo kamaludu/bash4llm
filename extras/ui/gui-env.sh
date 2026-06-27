@@ -249,7 +249,6 @@ html_escape() {
   s="${s//</&lt;}"
   s="${s//>/&gt;}"
   s="${s//\"/&quot;}"
-  s="${s//\'/&#39;}"
   printf '%s' "$s"
 }
 
@@ -1461,11 +1460,11 @@ build_current_conv_block() {
     while IFS= read -r line || [[ -n "$line" ]]; do
       escaped_line="$(html_escape "$line")"
       if [[ "$escaped_line" == "USER: "* ]]; then
-        CURRENT_CONV+="<div class=\"message user-message\"><strong>User:</strong> ${escaped_line#USER: }</div>\n"
+        CURRENT_CONV+="<div class=\"message user-message\"><strong>User:</strong> ${escaped_line#USER: }</div>"$'\n'
       elif [[ "$escaped_line" == "AI: "* ]]; then
-        CURRENT_CONV+="<div class=\"message ai-message\"><strong>Assistant:</strong> ${escaped_line#AI: }</div>\n"
+        CURRENT_CONV+="<div class=\"message ai-message\"><strong>Assistant:</strong> ${escaped_line#AI: }</div>"$'\n'
       else
-        CURRENT_CONV+="<div class=\"message system-message\">${escaped_line}</div>\n"
+        CURRENT_CONV+="<div class=\"message system-message\">${escaped_line}</div>"$'\n'
       fi
     done < "$file"
   fi
