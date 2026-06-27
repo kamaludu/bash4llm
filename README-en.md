@@ -58,7 +58,7 @@ Bash4LLM⁺ is designed for single‑user environments (PC/laptop, personal serv
 - The script never executes model output.  
 - TOCTOU risks and JSON/SSE parsing limits are mitigated and documented.
 
-Full details in **[SECURITY](SECURITY.md)**.
+Full details in **[SECURITY](SECURITY-en.md)**.
 ---
 
 ## Requirements
