@@ -203,6 +203,8 @@ echo "explain relativity" | ./bash4llm
 |------|----------|--------|
 | `--session <id>` | yes | Enable session with specific ID. |
 | `--session-window [n]` | optional | Set session window (default 10 if not provided). |
+| `--init-session` | yes | Safely initializes an empty session (creating the NDJSON and metadata files) and registers it in the global session index, without making API calls. Requires joint use with --session <id>. |
+
 
 ### Model / generation parameters
 | Flag | Argument | Effect |
