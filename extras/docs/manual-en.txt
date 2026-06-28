@@ -100,6 +100,19 @@ OPTIONS
         than or equal to 20 are recommended; for values greater than 20, the 
         runtime emits a diagnostic warning.
 
+    --init-session (Requires --session <id>)
+        Allows external components (such as the CGI web interface) or automation
+        scripts to pre-register a new session in the system before sending the 
+        first prompt. This option performs the following local operations:
+        - Creates the empty history file (<id>.ndjson) with restrictive 
+          permissions.
+        - Generates the session metadata file (<id>.json) with a temporary 
+          title and zero message count.
+        - Updates the global index (index.json) under an exclusive lock to 
+          prevent race conditions.
+        - Terminates execution immediately (exit 0) without making network 
+          connections or requiring API keys.
+
   Section 4: Output and Formatting
     --json
         Disables text extraction and displays the raw JSON response payload 
