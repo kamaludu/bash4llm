@@ -105,6 +105,20 @@ OPZIONI
         uguali a 20; impostando valori superiori a 20, il runtime emette un 
         avviso diagnostico di avvertimento.
 
+    --init-session (Richiede --session <id>)
+        Consente a componenti esterni (come l'interfaccia grafica CGI) o script 
+        di automazione di pre-registrare una nuova sessione nel sistema prima 
+        dell'invio del primo prompt. Questa opzione esegue le seguenti 
+        operazioni in locale:
+        - Crea il file vuoto della cronologia (<id>.ndjson) con permessi 
+          restrittivi.
+        - Genera il file di metadati della sessione (<id>.json) con titolo 
+          provvisorio e conteggio messaggi a zero.
+        - Aggiorna l'indice globale (index.json) sotto lock esclusivo per 
+          prevenire race condition.
+        - Termina l'esecuzione immediatamente (exit 0) senza effettuare 
+          connessioni di rete o richiedere chiavi API.
+
   Sezione 4: Output e Formattazione
     --json
         Disabilita l'estrazione testuale e visualizza a schermo il payload JSON 

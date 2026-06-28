@@ -217,6 +217,7 @@ Provider esterno (se installato):
 |------|-----------|---------|
 | `--session <id>` | sì | Abilita sessione con ID specifico. |
 | `--session-window [n]` | opzionale | Imposta finestra sessione (default 10 se non fornito). |
+| `--init-session` | si | Inizializza in sicurezza una sessione vuota (creando i file NDJSON e i metadati) e la registra nell'indice globale delle sessioni, senza effettuare chiamate API. Richiede l'uso congiunto di `--session <id>`. |
 
 
 ### Parametri modello / generazione

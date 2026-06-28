@@ -234,75 +234,8 @@ enforce_network_policy() {
 
   return 0
 }
-
-# ---------------------------------------------------------------------------
-# acquire_session_lock & release_session_lock
-# - Centralized mechanism to prevent parallel/concurrent requests on the same session.
-# - Safe on macOS/Linux. Supports automatic stale lock protection.
-# ---------------------------------------------------------------------------
-acquire_session_lock() {
-  local sid="${SESSION_ID:-}"
-  # If no active session, instances are isolated and secure by default
-  [ -n "$sid" ] || return 0
-
-  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
-  local lockfile="${session_file}.concurrency.lock"
-  local lockdir="${lockfile}dir"
-
-  if [ "${DRY_RUN:-0}" -eq 1 ] || [ "${BASH4LLM_SKIP_NETWORK:-0}" -eq 1 ]; then
-    return 0
-  fi
-
-  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
-    # Opens File Descriptor 8 on the session-specific lock file
-    exec 8>"$lockfile"
-    if ! flock -x -n 8; then
-      log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-      return 15
-    fi
-  else
-    # POSIX fallback for systems without flock
-    if ! mkdir "$lockdir" 2>/dev/null; then
-      if [ -f "$lockdir/pid" ]; then
-        local lp
-        lp="$(cat "$lockdir/pid" 2>/dev/null || true)"
-        if [ -n "$lp" ] && ! kill -0 "$lp" 2>/dev/null; then
-          # The original process is dead; safely remove obsolete lock
-          rm -rf "$lockdir" 2>/dev/null || true
-          mkdir "$lockdir" 2>/dev/null || {
-            log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-            return 15
-          }
-        else
-          log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-          return 15
-        fi
-      else
-        log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-        return 15
-      fi
-    fi
-    # Write current PID to lock directory to allow stale lock verification
-    printf '%s\n' "$$" > "$lockdir/pid" 2>/dev/null || true
-  fi
-  return 0
-}
-
-release_session_lock() {
-  local sid="${SESSION_ID:-}"
-  [ -n "$sid" ] || return 0
-
-  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
-  local lockfile="${session_file}.concurrency.lock"
-  local lockdir="${lockfile}dir"
-
-  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
-    exec 8>&- 2>/dev/null || true
-  else
-    rm -rf "$lockdir" 2>/dev/null || true
-  fi
-}
 #--3<---[ /SUBSECTION: API_NET ]--->3--
+
 # Structured logging (activatable via DEBUG or BASH4LLM_LOG)
 DEBUG="${DEBUG:-0}"
 BASH4LLM_LOG="${BASH4LLM_LOG:-}" # optional path to append structured logs
@@ -1944,6 +1877,108 @@ session_sanitize_cmd() {
   printf '%s' "$(printf '%s' "$sanitized" | cut -c1-256)"
 }
 
+# Internal helper to update the session index under a global lock
+_update_session_index() {
+  local sid="${1:-}"
+  [ -n "$sid" ] || return 0
+  local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
+  if [ -f "$idx_file" ]; then
+    if jq -e --arg sid "$sid" '(.sessions // []) | index($sid) // empty' "$idx_file" >/dev/null 2>&1; then
+      : # Already present in the index
+    else
+      # Append session ID
+      local tmp_idx
+      tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" uiidx 2>/dev/null)" || true
+      if [ -n "$tmp_idx" ]; then
+        if jq --arg sid "$sid" '.sessions = ((.sessions // []) + [$sid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null; then
+          mv -f "${tmp_idx}.new" "$tmp_idx"
+          ui_state_write "sessions/index.json" "$(cat "$tmp_idx")" || true
+        fi
+        rm -f "$tmp_idx" 2>/dev/null || true
+      fi
+    fi
+  else
+    # Create a new index and register the initial session (removed redundant jq flag)
+    ui_state_write "sessions/index.json" "{\"sessions\":[]}" >/dev/null 2>&1 || true
+    ui_state_write "sessions/index.json" "$(jq -c -n --arg sid "$sid" '{sessions:[$sid]}')" >/dev/null 2>&1 || true
+  fi
+}
+
+acquire_session_lock() {
+  local sid="${SESSION_ID:-}"
+  # If no active session, instances are isolated and secure by default
+  [ -n "$sid" ] || return 0
+
+  # Preventive security validation
+  if ! session_validate_id "$sid"; then
+    log_error "SESSION" "invalid session id: $sid"
+    return 15
+  fi
+
+  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+  local lockfile="${session_file}.concurrency.lock"
+  local lockdir="${lockfile}dir"
+
+  if [ "${DRY_RUN:-0}" -eq 1 ] || [ "${BASH4LLM_SKIP_NETWORK:-0}" -eq 1 ]; then
+    return 0
+  fi
+
+  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
+    # Opens File Descriptor 8 on the session-specific lock file
+    exec 8>"$lockfile"
+    if ! flock -x -n 8; then
+      log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+      return 15
+    fi
+  else
+    # POSIX fallback for systems without flock
+    if ! mkdir "$lockdir" 2>/dev/null; then
+      if [ -f "$lockdir/pid" ]; then
+        local lp
+        lp="$(cat "$lockdir/pid" 2>/dev/null || true)"
+        if [ -n "$lp" ] && ! kill -0 "$lp" 2>/dev/null; then
+          # The original process is dead; safely remove obsolete lock
+          rm -rf "$lockdir" 2>/dev/null || true
+          mkdir "$lockdir" 2>/dev/null || {
+            log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+            return 15
+          }
+        else
+          log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+          return 15
+        fi
+      else
+        log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+        return 15
+      fi
+    fi
+    # Write current PID to lock directory to allow stale lock verification
+    printf '%s\n' "$$" > "$lockdir/pid" 2>/dev/null || true
+  fi
+  return 0
+}
+
+release_session_lock() {
+  local sid="${SESSION_ID:-}"
+  [ -n "$sid" ] || return 0
+
+  # Preventive security validation
+  if ! session_validate_id "$sid"; then
+    log_error "SESSION" "invalid session id: $sid"
+    return 15
+  fi
+
+  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+  local lockfile="${session_file}.concurrency.lock"
+  local lockdir="${lockfile}dir"
+
+  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
+    exec 8>&- 2>/dev/null || true
+  else
+    rm -rf "$lockdir" 2>/dev/null || true
+  fi
+}
+
 session_read_window() {
   # Usage: session_read_window <session_id> <N> <out_file>
   local sid="${1:-}" n="${2:-10}" out="${3:-}"
@@ -1954,6 +1989,12 @@ session_read_window() {
 
   [ -n "$sid" ] || return 1
   [ -n "$out" ] || return 1
+
+  # Preventive security validation
+  if ! session_validate_id "$sid"; then
+    log_error "SESSION" "invalid session id: $sid"
+    return 1
+  fi
 
   safe_mkdir "${history_dir%/}/sessions" 700
 
@@ -2077,6 +2118,15 @@ session_append() {
   local lockfile="${session_file}.lock"
   local invocation_ts message_id marker normalized rand tmpf found=0 role_norm line timeout
   local marker_dir created_marker=0 sess_dir tmp_init msg_count last_ts last_line idx_file tmp_idx
+  local meta_file current_title first_content
+
+  [ -n "$sid" ] || return 1
+
+  # Preventive security validation
+  if ! session_validate_id "$sid"; then
+    log_error "SESSION" "invalid session id: $sid"
+    return 1
+  fi
 
   invocation_ts="$(session_now_ts)"
   message_id="$(printf '%s' "$meta_json" | jq -r '.id // empty' 2>/dev/null || true)"
@@ -2225,30 +2275,30 @@ session_append() {
       fi
     fi
 
-    meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" \
-      '{id:$id, active:true, msg_count:$msg_count, last_ts:$last_ts}')"
+    # Auto-generate title based on first user message if missing
+    meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${sid}.json"
+    current_title=""
+    if [ -f "$meta_file" ]; then
+      current_title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
+    fi
+
+    if [ -z "$current_title" ] && [ "$msg_count" -ge 1 ]; then
+      first_content=""
+      if [ -f "$session_file" ]; then
+        first_content="$(jq -r 'select(.role=="user") | .content' "$session_file" | head -n 1 | tr -d '\n\r' | cut -c 1-35)"
+      fi
+      [ -z "$first_content" ] && first_content="Session ${sid:0:8}"
+      current_title="$first_content"
+    fi
+
+    meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" --arg title "${current_title:-}" \
+      '{id:$id, active:true, msg_count:$msg_count, last_ts:$last_ts, title:$title}')"
 
     # Write canonical ui_state session file
     ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to write session meta for $sid"
-    # Update sessions index (best-effort): read existing index, add sid if missing
-    idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
-    if [ -f "$idx_file" ]; then
-      if jq -e --arg sid "$sid" '(.sessions // []) | index($sid) // empty' "$idx_file" >/dev/null 2>&1; then
-        : # already present
-      else
-        # append sid
-        tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" uiidx 2>/dev/null)" || true
-        if [ -n "$tmp_idx" ]; then
-          jq --arg sid "$sid" '.sessions = ((.sessions // []) + [$sid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null && mv -f "${tmp_idx}.new" "$tmp_idx" && ui_state_write "sessions/index.json" "$(cat "$tmp_idx")" || true
-          rm -f "$tmp_idx" 2>/dev/null || true
-        fi
-      fi
-    else
-      # create new index
-      ui_state_write "sessions/index.json" "$(jq -c -n --argjson arr '[]' '{sessions:[]}' )" >/dev/null 2>&1 || true
-      # then append sid
-      ui_state_write "sessions/index.json" "$(jq -c -n --arg sid "$sid" '{sessions:[$sid]}' )" >/dev/null 2>&1 || true
-    fi
+
+    # Update session index under global HISTORY_LOCK to avoid race conditions
+    lock_exec "$HISTORY_LOCK" 10 -- _update_session_index "$sid"
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2260,7 +2310,6 @@ session_append() {
 # Default parameters for session helpers (configurable via env)
 : "${LAST_CHECK_LINES:=50}"
 #--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
-
 #--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
 # =============================================================================
 # Session cache helpers (Strict-safe under set -u)
@@ -3801,9 +3850,11 @@ FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
 MODEL_CLI_SET="${MODEL_CLI_SET:-0}"
 INSTALL_EXTRAS_SRC=""
 BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
+INIT_SESSION="${INIT_SESSION:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --init-session) INIT_SESSION=1; shift ;;
     --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;
     --list-models) LIST_MODELS=1; shift ;;
     --list-providers) LIST_PROVIDERS=1; shift ;;
@@ -3845,7 +3896,7 @@ while [ $# -gt 0 ]; do
       SESSION_ID="$2"
       if [ "${SESSION_ID:0:1}" = "-" ]; then
         log_error "ARGS" "--session requires a valid session ID argument"
-        exit "$BASH4LLMERR_TMP"
+        exit "$BASH4LLM_ERR_TMP"
       fi
       shift 2
       ;;
@@ -4048,7 +4099,6 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
   fi
 fi
 #--6<---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
-
 #--7<---[ SECTION: CORE_SETUP_ACTIONS ]--->7--
 # Immediate actions: list providers/models, set-default, install-extras
 if [ "$LIST_PROVIDERS" -eq 1 ]; then
@@ -4148,6 +4198,38 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     log_error "EXTRAS" "Error copying extras files."
     exit "$BASH4LLMERR_TMP"
   fi
+  exit 0
+fi
+
+# --- Handle CLI Session Initialization ---
+if [ "${INIT_SESSION:-0}" -eq 1 ]; then
+  if [ -z "${SESSION_ID:-}" ]; then
+    log_error "SESSION" "--init-session requires a valid session ID via --session"
+    exit "$BASH4LLMERR_TMP"
+  fi
+  if ! session_validate_id "$SESSION_ID"; then
+    log_error "SESSION" "invalid session id: $SESSION_ID"
+    exit "$BASH4LLMERR_TMP"
+  fi
+
+  # Create empty session directory and file
+  safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
+  session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
+  if [ ! -f "$session_file" ]; then
+    : > "$session_file"
+    chmod 600 "$session_file"
+  fi
+
+  # Establish metadata structure and title configuration
+  meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${SESSION_ID}.json"
+  meta_json="$(jq -c -n --arg id "$SESSION_ID" --arg title "Session ${SESSION_ID:0:8}" \
+    '{id:$id, active:true, msg_count:0, last_ts:"", title:$title}')"
+  ui_state_write "sessions/${SESSION_ID}.json" "$meta_json"
+
+  # Register session entry under global lock
+  lock_exec "$HISTORY_LOCK" 10 -- _update_session_index "$SESSION_ID"
+
+  log_info_user "SESSION" "Session initialized: $SESSION_ID"
   exit 0
 fi
 

@@ -46,7 +46,10 @@ Provider & Model:
 Sessions:
   --session <id>       Enable persistent session
   --session-window [n] Session window size (default 10 if omitted)
-
+  --init-session       Safely initializes an empty session (creating NDJSON and metadata)
+                       and registers it in global session index, without making API calls
+                       Requires joint use with --session <id>
+                      
 Generation parameters:
   --system <text>      System prompt
   --temperature <n>    Temperature (alias: --ture)
