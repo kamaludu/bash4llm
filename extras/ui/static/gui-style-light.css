@@ -44,7 +44,7 @@ body {
 
 button, input[type="submit"] {
   background: #a1e600;
-  color: #fff;
+  color: #ffffff;
   border: none;
   padding: 6px 10px;
   border-radius: 4px;
@@ -63,7 +63,7 @@ main {
   box-sizing: border-box;
 }
 
-/* Layout sections */
+/* Sezioni del Layout */
 .conversation-list,
 .conversation-current,
 .prompt-input,
@@ -73,42 +73,52 @@ main {
   background: #fffff0;
   border: 1px solid #e6e6e6;
   border-radius: 6px;
+  box-sizing: border-box;
 }
 
-/* Conversation list */
+/* Titoli delle sezioni */
 .conversation-list h2,
 .conversation-current h2,
 .prompt-input h2,
 .settings-block h2 {
   margin: 0 0 8px 0;
   font-size: 1.05rem;
+  color: #000000;
 }
 
-/* Preformatted conversation list */
-.conversation-list pre {
-  white-space: pre-wrap;
-  background: #fffff0;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin: 0;
-  max-height: 320px;
-  overflow: auto;
-}
-
-/* Current conversation area */
-.conversation-current pre {
-  white-space: pre-wrap;
-  background: #fffff0;
+/* Vista del blocco chat (NDJSON) */
+.chat-viewport {
+  background: #fdfdf9;
   padding: 10px;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
-  margin: 0;
   max-height: 480px;
-  overflow: auto;
+  overflow-y: auto;
+  color: #333333;
 }
 
-/* Form controls */
+.chat-viewport .message {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.chat-viewport .user-message {
+  background: #f1fbe7;
+  border-left: 3px solid #7cb305;
+}
+
+.chat-viewport .ai-message {
+  background: #edf6ff;
+  border-left: 3px solid #1a73e8;
+}
+
+.chat-viewport .system-message {
+  background: #fffbe6;
+  border-left: 3px solid #ffc107;
+}
+
+/* Controlli dei Moduli */
 textarea, input[type="text"], input[type="password"], select {
   width: 100%;
   max-width: 100%;
@@ -125,7 +135,22 @@ textarea { min-height: 96px; resize: vertical; }
 
 label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
 
-.prompt-input form > * + * { margin-top: 8px; }
+.form-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.form-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.form-actions {
+  margin-top: 12px;
+  text-align: right;
+}
 
 /* Footer */
 .footer {
@@ -145,15 +170,7 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
 
 .footer a:hover { text-decoration: underline; }
 
-/* Responsive */
-@media (min-width: 900px) {
-  .conversation-list { width: 28%; float: left; margin-right: 4%; }
-  .conversation-current { width: 68%; float: left; }
-  .prompt-input, .settings-block { clear: both; width: 100%; /* Forza l'elemento a prendersi tutta la riga sotto */ }
-  main::after { content: ""; display: table; clear: both; }
-}
-
-/* Bash4LLM⁺ Logo */
+/* Loghi e badge grafici */
 .glogo {
   font-weight: bold;
   padding: 0 10px;
@@ -162,11 +179,176 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; }
   color: #ffffff;
 }
 
-/* GUI Logo */
 .uilogo {
   font-weight: bold;
   padding: 0 3px;
   background: #ffffff;
   border: 1px solid #ffffff;
   color: #429e15;
+}
+
+/* =============================================================================
+   MENU CONVERSAZIONI E RINOMINA (Puro CSS - No JavaScript)
+   ============================================================================= */
+
+.session-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.session-item {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border-left: 4px solid transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fbfbfb;
+  border: 1px solid #eaeaea;
+  box-sizing: border-box;
+}
+
+.session-item.active {
+  background: #f7fbf0;
+  border-left-color: #5baa33;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.conv-link {
+  text-decoration: none;
+  color: #444;
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.session-item.active .conv-link {
+  color: #39aa00;
+  font-weight: bold;
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.session-item.active .session-actions {
+  justify-content: space-between;
+}
+
+.rename-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  flex-grow: 1;
+  width: 80%;
+}
+
+.input-rename {
+  flex-grow: 1;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  height: 28px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #000;
+  box-sizing: border-box;
+}
+
+.btn-save {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  background: #39aa00;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-save:hover {
+  background: #2e8500;
+}
+
+.btn-delete {
+  color: #f44336;
+  font-size: 1.1rem;
+  text-decoration: none;
+  font-weight: bold;
+  padding: 2px 6px;
+}
+
+.btn-delete:hover {
+  color: #b71c1c;
+}
+
+#status {
+  color: #ffc107;
+  font-size: 1.0rem;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.btn-edit {
+  color: #e0a800;
+  font-size: 1.0rem;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.no-sessions {
+  color: #777;
+  font-style: italic;
+  padding: 10px;
+}
+
+/* =============================================================================
+   LAYOUT STRUTTURALE RESPONSIVE (Mobile-First e Browser Testuali)
+   ============================================================================= */
+
+/* Visualizzazione sequenziale dall'alto in basso (Chat -> Input -> Sidebar) */
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.conversation-current,
+.prompt-input,
+.conversation-list {
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .content-wrapper {
+    display: grid;
+    grid-template-columns: 28% 68%;
+    grid-template-rows: auto auto;
+    gap: 4%;
+  }
+
+  .conversation-list {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .conversation-current {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .prompt-input {
+    grid-column: 2;
+    grid-row: 2;
+  }
 }
