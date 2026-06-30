@@ -1872,6 +1872,103 @@ _update_session_index() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Core Session Management Mutators (Source of Truth)
+# ---------------------------------------------------------------------------
+_session_delete_locked() {
+  local sid="$1" sfile="$2" mfile="$3" ifile="$4" t_idx="$5"
+  rm -f -- "$sfile" 2>/dev/null || true
+  rm -f -- "${sfile}.concurrency.lock" 2>/dev/null || true
+  rm -rf -- "${sfile}.concurrency.lockdir" 2>/dev/null || true
+  rm -f -- "$mfile" 2>/dev/null || true
+
+  if [ -f "$ifile" ]; then
+    if jq --arg sid "$sid" ".sessions = (.sessions - [\$sid])" "$ifile" > "$t_idx" 2>/dev/null; then
+      mv -f "$t_idx" "$ifile" 2>/dev/null
+      chmod 600 "$ifile" 2>/dev/null || true
+    else
+      rm -f "$t_idx" 2>/dev/null || true
+    fi
+  fi
+}
+
+session_delete_core() {
+  local sid="${1:-}"
+  [ -n "$sid" ] || return 1
+  if ! session_validate_id "$sid"; then
+    log_error "SESSION" "invalid session id for deletion: $sid"
+    return "$BASH4LLM_ERR_TMP"
+  fi
+
+  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+  local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${sid}.json"
+  local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
+  local tmp_idx
+
+  tmp_idx="${BASH4LLM_TMPDIR%/}/idx_del.$$.tmp"
+
+  lock_exec "$HISTORY_LOCK" 10 -- _session_delete_locked "$sid" "$session_file" "$meta_file" "$idx_file" "$tmp_idx"
+  rm -f "$tmp_idx" 2>/dev/null || true
+
+  if type session_cache_invalidate >/dev/null 2>&1; then
+    session_cache_invalidate "$sid" >/dev/null 2>&1 || true
+  fi
+
+  log_info "SESSION" "deleted session $sid"
+  return 0
+}
+
+_session_rename_locked() {
+  local mfile="$1" t_meta="$2" sid="$3" title="$4" m_count="$5" l_ts="$6"
+  if [ -f "$mfile" ] && jq -e . "$mfile" >/dev/null 2>&1; then
+    jq --arg title "$title" \
+       --argjson msg_count "$m_count" \
+       --arg last_ts "$l_ts" \
+       ".title = \$title | .msg_count = \$msg_count | .last_ts = \$last_ts" "$mfile" > "$t_meta"
+  else
+    jq -n --arg id "$sid" --arg title "$title" \
+          --argjson msg_count "$m_count" --arg last_ts "$l_ts" \
+          "{id:\$id, title:\$title, active:true, msg_count:\$msg_count, last_ts:\$last_ts}" > "$t_meta"
+  fi
+  mv -f "$t_meta" "$mfile"
+  chmod 600 "$mfile"
+}
+
+session_rename_core() {
+  local sid="${1:-}" title="${2:-}"
+  [ -n "$sid" ] || return 1
+  if ! session_validate_id "$sid"; then
+    log_error "SESSION" "invalid session id for rename: $sid"
+    return "$BASH4LLM_ERR_TMP"
+  fi
+
+  title="$(printf '%s' "$title" | tr -d '\r\n' | awk '{$1=$1;print}')"
+  [ -n "$title" ] || title="Session ${sid:0:8}"
+
+  local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${sid}.json"
+  local tmp_meta msg_count last_ts
+  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+
+  tmp_meta="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" meta_ren 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
+
+  msg_count=0
+  last_ts=""
+  if [ -f "$session_file" ]; then
+    msg_count="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
+    local last_line
+    last_line="$(tail -n 1 "$session_file" 2>/dev/null || true)"
+    if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
+      last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
+    fi
+  fi
+
+  lock_exec "$HISTORY_LOCK" 10 -- _session_rename_locked "$meta_file" "$tmp_meta" "$sid" "$title" "$msg_count" "$last_ts"
+  rm -f "$tmp_meta" 2>/dev/null || true
+
+  log_info "SESSION" "renamed session $sid to '$title'"
+  return 0
+}
+
 acquire_session_lock() {
   local sid="${SESSION_ID:-}"
   # If no active session, instances are isolated and secure by default
@@ -3814,9 +3911,33 @@ INSTALL_EXTRAS_SRC=""
 BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 INIT_SESSION="${INIT_SESSION:-0}"
 
+# Session Lifecycle CLI extensions initialized to avoid nounset (set -u) issues
+DELETE_SESSION=0
+DELETE_SESSION_ID=""
+RENAME_SESSION=0
+RENAME_SESSION_ID=""
+RENAME_TITLE=""
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --init-session) INIT_SESSION=1; shift ;;
+    --delete-session)
+      check_required_arg "--delete-session" "$#"
+      DELETE_SESSION_ID="$2"
+      DELETE_SESSION=1
+      shift 2
+      ;;
+    --rename-session)
+      check_required_arg "--rename-session" "$#"
+      RENAME_SESSION_ID="$2"
+      RENAME_SESSION=1
+      shift 2
+      ;;
+    --title)
+      check_required_arg "--title" "$#"
+      RENAME_TITLE="$2"
+      shift 2
+      ;;
     --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;
     --list-models) LIST_MODELS=1; shift ;;
     --list-providers) LIST_PROVIDERS=1; shift ;;
@@ -4063,7 +4184,28 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
 fi
 #--6<---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
 #--7<---[ SECTION: CORE_SETUP_ACTIONS ]--->7--
-# Immediate actions: list providers/models, set-default, install-extras
+# Immediate actions: list providers/models, set-default, install-extras, session management actions (with Early Exit safety)
+
+# 1. Early-exit intercept for Session Deletion
+if [ "${DELETE_SESSION:-0}" -eq 1 ]; then
+  if [ -z "${DELETE_SESSION_ID:-}" ]; then
+    log_error "SESSION" "--delete-session requires a valid session ID"
+    exit "$BASH4LLM_ERR_TMP"
+  fi
+  session_delete_core "$DELETE_SESSION_ID"
+  exit 0
+fi
+
+# 2. Early-exit intercept for Session Renaming
+if [ "${RENAME_SESSION:-0}" -eq 1 ]; then
+  if [ -z "${RENAME_SESSION_ID:-}" ]; then
+    log_error "SESSION" "--rename-session requires a valid session ID"
+    exit "$BASH4LLM_ERR_TMP"
+  fi
+  session_rename_core "$RENAME_SESSION_ID" "${RENAME_TITLE:-}"
+  exit 0
+fi
+
 if [ "$LIST_PROVIDERS" -eq 1 ]; then
   printf 'Available providers:\n' >&2
   printf '  - groq (embedded)\n' >&2
