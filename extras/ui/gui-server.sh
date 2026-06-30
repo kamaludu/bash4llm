@@ -9,95 +9,35 @@
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
-set -euo pipefail
-umask 077
+# CGI mini-server and page controller for the graphic web interface.
+#
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-
-# Deriva UI_ROOT in ambienti CGI/minimali se non fornito
-: "${UI_ROOT:=${UI_ROOT:-}}"
-if [[ -z "${UI_ROOT:-}" ]]; then
-  if [[ "$(basename "$SCRIPT_DIR")" == "cgi-bin" ]]; then
-    UI_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P || printf '%s' "$PWD")"
-  else
-    UI_ROOT="$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P || printf '%s' "$PWD")"
-  fi
-fi
-export UI_ROOT
-
-# Source central environment (logging, traps, canonicalize, gui_env_init)
-if [[ -f "${UI_ROOT%/}/gui-env.sh" ]]; then
-  # shellcheck source=/dev/null
-  source "${UI_ROOT%/}/gui-env.sh"
-  gui_env_init cgi
-elif [[ -f "$SCRIPT_DIR/gui-env.sh" ]]; then
-  # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/gui-env.sh"
-  gui_env_init cgi
-else
-  printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nMissing gui-env.sh: %s\n' "${UI_ROOT%/}/gui-env.sh"
-  exit 1
-fi
-
-# Source bootstrap helpers (functions not centralized in gui-env)
-BOOTSTRAP="$SCRIPT_DIR/gui-bootstrap.sh"
-if [[ ! -f "$BOOTSTRAP" ]]; then
-  cgi_fatal 1 "Bootstrap missing: $BOOTSTRAP"
-fi
-# shellcheck source=/dev/null
-source "$BOOTSTRAP"
-
-# -------------------------
-# Small helper: call function if exists (avoid set -u crashes)
-# -------------------------
 run_if_func() {
-  local fn="$1"; shift
-  if declare -f "$fn" >/dev/null 2>&1; then
-    "$fn" "$@"
+  local fn="${1:-}" shift_args=("${@:2}")
+  if type "$fn" >/dev/null 2>&1; then
+    "$fn" "${shift_args[@]}"
     return $?
-  else
-    if declare -f log_warn >/dev/null 2>&1; then
-      log_warn "INIT" "Function $fn not defined; skipping"
-    fi
-    return 0
   fi
+  return 127
 }
 
-# -------------------------
-# Environment normalization and wrapper enforcement
-# -------------------------
-: "${BASH4LLM_CONFIG_DIR:=${BASH4LLM_CONFIG_DIR:-}}"
-if [[ -z "${CFG_DIR:-}" ]]; then
-  if [[ -n "${BASH4LLM_CONFIG_DIR:-}" ]]; then
-    CFG_DIR="$BASH4LLM_CONFIG_DIR"
-  elif [[ -n "${UI_ROOT:-}" ]]; then
-    CFG_DIR="${UI_ROOT%/}/config"
-  else
-    CFG_DIR="${PWD%/}/config"
-  fi
+# ---------------------------------------------------------------------------
+# Sourcing Environment and Lifecycle Bootstrap
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+if [[ -f "$SCRIPT_DIR/gui-bootstrap.sh" ]]; then
+  # shellcheck source=extras/ui/gui-bootstrap.sh
+  . "$SCRIPT_DIR/gui-bootstrap.sh"
 fi
-export CFG_DIR
 
-: "${PROVIDER_CACHE_FILE:=${CFG_DIR%/}/providers.txt}"
-: "${PROVIDER_MODELS_DIR:=${CFG_DIR%/}/models}"
-export PROVIDER_CACHE_FILE PROVIDER_MODELS_DIR
+# Force absolute synchronization of BASH4LLM_DIR across CLI/CGI context
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd -P)"
+BASH4LLM_DIR="${REPO_ROOT}/bash4llm.d"
+export BASH4LLM_DIR
 
-if [[ -z "${BASH4LLM_ROOT:-}" && -n "${UI_ROOT:-}" ]]; then
-  BASH4LLM_ROOT="$(cd "$UI_ROOT/../../.." 2>/dev/null && pwd -P || true)"
-  if [[ "${BASH4LLM_ROOT##*/}" == "bash4llm.d" ]]; then
-    BASH4LLM_ROOT="$(cd "$BASH4LLM_ROOT/.." 2>/dev/null && pwd -P || true)"
-  fi
-fi
-: "${BASH4LLM_ROOT:=${BASH4LLM_ROOT:-}}"
-: "${BASH4LLM_DIR:=${BASH4LLM_DIR:-${BASH4LLM_ROOT%/}/bash4llm.d}}"
-export BASH4LLM_ROOT BASH4LLM_DIR
-
-: "${PROVIDERS_DIR:=${PROVIDERS_DIR:-${BASH4LLM_DIR%/}/extras/providers}}"
-export PROVIDERS_DIR
-
-# -------------------------
-# Helpers (small, focused)
-# -------------------------
+# ---------------------------------------------------------------------------
+# Core Helpers & State Delegation to bash4llm
+# ---------------------------------------------------------------------------
 is_configured() {
   local prov model models_file entries
   prov="$(get_default_provider)"
@@ -148,6 +88,14 @@ call_bash4llm_with_args() {
         ;;
       --prompt-from-stdin)
         stdin_payload="${1:-}"; shift || true
+        ;;
+      --init-session)
+        argv+=( "--init-session" )
+        ;;
+      --delete-session|--rename-session|--session|--title)
+        val="${1:-}"; shift || true
+        val="$(sanitize_param "$val")"
+        argv+=( "$key" "$val" )
         ;;
       --*)
         val="${1:-}"; shift || true
@@ -231,10 +179,10 @@ get_title_file_for_conv() {
 }
 
 read_conv_title() {
-  local conv_path="$1" title_file
-  title_file="$(get_title_file_for_conv "$conv_path")"
-  if [[ -r "$title_file" ]]; then
-    sed -n '1p' "$title_file" 2>/dev/null || printf ''
+  local session_id="$1" title_file
+  title_file="${BASH4LLM_DIR}/config/ui_state/sessions/${session_id}.json"
+  if [[ -f "$title_file" ]]; then
+    jq -r '.title // empty' "$title_file" 2>/dev/null || printf ''
   else
     printf ''
   fi
@@ -284,9 +232,10 @@ build_provider_options() {
       out+=$'\n'
     done < <(awk 'NF{print}' "$providers_file" 2>/dev/null || true)
   else
-    log_warn "PROV" "providers cache missing; provider list empty"
+    out='<option value="groq" selected>groq</option>'
   fi
   PROVIDER_OPTIONS="$out"
+  export PROVIDER_OPTIONS
   return 0
 }
 
@@ -308,6 +257,12 @@ build_model_list_and_select() {
   else
     models_file="$(get_models_file)"
   fi
+
+  if [[ ! -f "$models_file" || ! -s "$models_file" ]]; then
+    mkdir -p "$(dirname "$models_file")" 2>/dev/null || true
+    printf '%s\n' "llama3-8b-8192" "llama3-70b-8192" "mixtral-8x7b-32768" "gemma2-9b-it" > "$models_file" 2>/dev/null || true
+  fi
+
   if [[ -f "$models_file" ]]; then
     while IFS= read -r m; do
       m="$(sanitize_param "$m")"
@@ -320,24 +275,23 @@ build_model_list_and_select() {
       fi
       out_opts+=$'\n'
     done < <(awk 'NF{print}' "$models_file" 2>/dev/null || true)
-  else
-    log_warn "MODEL" "models file missing for provider '$provider'"
   fi
   MODEL_LIST_SCROLL="$out_list"
   MODEL_SELECT_OPTIONS="$out_opts"
+  export MODEL_LIST_SCROLL MODEL_SELECT_OPTIONS
   return 0
 }
 
-# -------------------------
+# ---------------------------------------------------------------------------
 # POST handlers and rendering
-# -------------------------
+# ---------------------------------------------------------------------------
 handle_post_settings() {
   if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
     log_error "GUILOCK" "Failed to acquire lock in handle_post_settings"
     cgi_fatal 1 "Server busy"
   fi
 
-  local body model provider lang api_key action theme ct
+  local body model provider lang api_key action theme use_sessions ct
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
   case "$ct" in
     application/x-www-form-urlencoded*|multipart/form-data*) ;;
@@ -355,12 +309,15 @@ handle_post_settings() {
   lang="$(printf '%s' "$body" | parse_form_field "lang" || read_config_or_default "$LANG_CURRENT_FILE" "en")"
   api_key="$(printf '%s' "$body" | parse_form_field "api_key" || printf '')"
   action="$(printf '%s' "$body" | parse_form_field "action" || printf '')"
+  theme="$(printf '%s' "$body" | parse_form_field "theme" || printf '')"
+  use_sessions="$(printf '%s' "$body" | parse_form_field "use_sessions" || printf 'enabled')"
+  
   model="$(sanitize_param "$model")"
   provider="$(sanitize_param "$provider")"
   lang="$(sanitize_param "$lang")"
   api_key="$(sanitize_param "$api_key")"
-  theme="$(printf '%s' "$body" | parse_form_field "theme" || printf '')"
   theme="$(sanitize_param "$theme")"
+  use_sessions="$(sanitize_param "$use_sessions")"
   
   if [[ -n "$theme" ]]; then
     if [[ "$theme" == "light" || "$theme" == "dark" ]]; then
@@ -369,6 +326,11 @@ handle_post_settings() {
       log_warn "GUIIO" "Invalid theme value attempted: $theme"
     fi
   fi
+  
+  if [[ "$use_sessions" == "enabled" || "$use_sessions" == "disabled" ]]; then
+    atomic_write "${CFG_DIR%/}/use-sessions" "$use_sessions" || log_warn "GUIIO" "Failed to write use-sessions configuration"
+  fi
+
   if [[ "$action" == "refresh_models" ]]; then
     provider="$(printf '%s' "$body" | parse_form_field "provider" || printf '')"
     provider="$(sanitize_param "$provider")"
@@ -384,6 +346,7 @@ handle_post_settings() {
       fi
     fi
   fi
+  
   if [[ "$action" == "set_model" ]]; then
     model="$(printf '%s' "$body" | parse_form_field "model" || printf '')"
     model="$(sanitize_param "$model")"
@@ -448,6 +411,20 @@ handle_post_main() {
   esac
 
   body="$(read_post_body)"
+  
+  local post_rename_conv post_new_title
+  post_rename_conv="$(printf '%s' "$body" | parse_form_field "rename_conv" || printf '')"
+  post_rename_conv="$(sanitize_param "$post_rename_conv")"
+  post_new_title="$(printf '%s' "$body" | parse_form_field "new_title" || printf '')"
+  post_new_title="$(sanitize_param "$post_new_title")"
+
+  # Rinomina delegata interamente a bash4llm (Fonte di Verità)
+  if [[ -n "$post_rename_conv" ]] && validate_name "$post_rename_conv" && [[ -n "$post_new_title" ]]; then
+    release_lock
+    call_bash4llm_with_args --rename-session "$post_rename_conv" --title "$post_new_title" >/dev/null 2>/dev/null
+    return 0
+  fi
+
   local post_select_conv post_action post_new_conv
   post_select_conv="$(printf '%s' "$body" | parse_form_field "select_conv" || printf '')"
   post_select_conv="$(sanitize_param "$post_select_conv")"
@@ -455,35 +432,36 @@ handle_post_main() {
   post_action="$(sanitize_param "$post_action")"
   post_new_conv="$(printf '%s' "$body" | parse_form_field "new_conv" || printf '')"
 
+  # Creazione delegata interamente a bash4llm (Fonte di Verità)
   if [[ "$post_action" == "new_conv" || "$post_action" == "new" || "$post_select_conv" == "new" || -n "$post_new_conv" ]]; then
-    local next_id=1
-    while [[ -f "$CONV_DIR/conv-${next_id}.txt" ]]; do
-      next_id=$((next_id + 1))
-    done
-    local new_conv_name="conv-${next_id}.txt"
+    local rand_part new_conv_name
+    rand_part="$(printf '%04x' $((RANDOM & 0xFFFF)))"
+    new_conv_name="session-$(date +%Y%m%d-%H%M%S)-${rand_part}"
     atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
-    atomic_write "$CONV_DIR/$new_conv_name" ""
+    release_lock
+    
+    # Inizializza la conversazione tramite il core per renderla persistente nell'indice
+    call_bash4llm_with_args --session "$new_conv_name" --init-session >/dev/null 2>/dev/null || true
     return 0
   elif [[ -n "$post_select_conv" ]]; then
     if validate_name "$post_select_conv"; then
       atomic_write "$CURRENT_CONV_FILE" "$post_select_conv"
-      if [[ ! -f "$CONV_DIR/$post_select_conv" ]]; then
-        atomic_write "$CONV_DIR/$post_select_conv" ""
-      fi
+      release_lock
       return 0
     fi
   fi
+
   lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   prompt="$(printf '%s' "$body" | parse_form_field "prompt" || printf '')"
   model_raw="$(printf '%s' "$body" | parse_form_field "model" || true)"
   provider_raw="$(printf '%s' "$body" | parse_form_field "provider" || true)"
   model="${model_raw:-$(get_default_model)}"
   provider="${provider_raw:-$(get_default_provider)}"
-  conv_title_raw="$(printf '%s' "$body" | parse_form_field "conv_title" || true)"
-  conv_title="$(sanitize_param "$conv_title_raw")"
+  
   prompt="$(sanitize_param "$prompt")"
   model="$(sanitize_param "$model")"
   provider="$(sanitize_param "$provider")"
+  
   _max_prompt=${MAX_PROMPT_CHARS:-4096}
   if (( ${#prompt} > _max_prompt )); then
     log_warn "GUIIO" "Prompt truncated from ${#prompt} to ${_max_prompt} chars"
@@ -491,46 +469,42 @@ handle_post_main() {
   fi
   unset _max_prompt
 
-  if [[ -n "$model" ]]; then
-    if ! validate_name "$model"; then
-      log_error "GUIIO" "Invalid model name attempted: $model"
-      model=""
-    fi
+  if [[ -n "$model" ]] && ! validate_name "$model"; then
+    log_error "GUIIO" "Invalid model name attempted: $model"
+    model=""
   fi
-  if [[ -n "$provider" ]]; then
-    if ! validate_name "$provider"; then
-      log_error "GUIIO" "Invalid provider name attempted: $provider"
-      provider=""
-    fi
+  if [[ -n "$provider" ]] && ! validate_name "$provider"; then
+    log_error "GUIIO" "Invalid provider name attempted: $provider"
+    provider=""
   fi
 
   if ! [[ "$lang" =~ ^[A-Za-z_-]+$ ]]; then
     lang="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
   fi
 
-  conv_file="$(get_current_conversation_file)"
-  if [[ -n "$conv_title" ]]; then
-    title_file="$(get_title_file_for_conv "$conv_file")"
-    atomic_write "$title_file" "$conv_title" || log_warn "GUIIO" "Failed to write conversation title"
+  local active_conv
+  active_conv="$(read_config_or_default "$CURRENT_CONV_FILE" "")"
+  active_conv="$(sanitize_param "$active_conv")"
+  if ! validate_name "$active_conv"; then
+    local rand_part
+    rand_part="$(printf '%04x' $((RANDOM & 0xFFFF)))"
+    active_conv="session-$(date +%Y%m%d-%H%M%S)-${rand_part}"
+    atomic_write "$CURRENT_CONV_FILE" "$active_conv"
+    call_bash4llm_with_args --session "$active_conv" --init-session >/dev/null 2>/dev/null || true
   fi
 
-  atomic_append_conv "$conv_file" "USER: $prompt" || log_error "GUIIO" "Failed to append USER to conversation"
-  release_lock
-
-  if ! is_configured; then
-    log_error "GUIIO" "Attempt to call bash4llm while GUI not configured"
-    acquire_lock || true
-    atomic_append_conv "$conv_file" "AI: ERROR: GUI not configured. Please set provider, API key and model in Settings." || true
-    release_lock
-    return 0
-  fi
+  conv_file="${BASH4LLM_DIR}/history/sessions/${active_conv}.ndjson"
 
   if ! { declare -f export_api_key_for_provider >/dev/null 2>&1 && export_api_key_for_provider "$provider"; }; then
     log_error "GUIIO" "API key missing for provider $provider"
-    acquire_lock || true
-    atomic_append_conv "$conv_file" "AI: ERROR: API key missing for provider $provider. Set it in Settings." || true
     release_lock
-    return 0
+    cgi_fatal 1 "API key missing. Set it in Settings."
+  fi
+
+  if ! is_configured; then
+    log_error "GUIIO" "Attempt to call bash4llm while GUI not configured"
+    release_lock
+    cgi_fatal 1 "GUI not configured. Please set provider, API key and model in Settings."
   fi
 
   models_file="$(get_models_file)"
@@ -538,56 +512,36 @@ handle_post_main() {
     if [[ -n "$model" ]]; then
       if ! grep -Fxq "$model" "$models_file" 2>/dev/null; then
         log_error "GUIIO" "Model $model not in whitelist"
-        acquire_lock || true
-        atomic_append_conv "$conv_file" "AI: ERROR: Selected model not in whitelist. Please refresh models or choose another model." || true
         release_lock
-        return 0
+        cgi_fatal 1 "Selected model not whitelisted."
       fi
     else
       model="$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)"
       model="$(sanitize_param "$model")"
       if [[ -z "$model" ]]; then
-        acquire_lock || true
-        atomic_append_conv "$conv_file" "AI: ERROR: No model selected and whitelist empty. Please refresh models in Settings." || true
         release_lock
-        return 0
+        cgi_fatal 1 "No models found in whitelist."
       fi
     fi
   fi
 
-  local safe_args=()
+  release_lock
+
+  local -a safe_args=()
   if [[ -n "$provider" ]]; then safe_args+=( --provider "$provider" ); fi
   if [[ -n "$model" ]]; then safe_args+=( --model "$model" ); fi
 
-  local session_id
-  session_id="$(basename -- "$conv_file" 2>/dev/null || printf '')"
-  if [[ -n "$session_id" ]]; then
-    safe_args+=( --session "$session_id" )
+  local use_sessions_val
+  use_sessions_val="$(read_config_or_default "${CFG_DIR}/use-sessions" "enabled")"
+  if [[ "$use_sessions_val" == "enabled" ]]; then
+    safe_args+=( --session "$active_conv" )
   fi
 
   if ! output="$(printf '%s' "$prompt" | call_bash4llm_with_args "${safe_args[@]}" 2>>"${ERROR_LOG:-/dev/null}" || true)"; then
     log_error "GUIIO" "bash4llm invocation failed"
-    acquire_lock || true
-    atomic_append_conv "$conv_file" "AI: ERROR: bash4llm invocation failed. Check server logs." || true
-    release_lock
-    return 0
+    cgi_fatal 1 "bash4llm invocation failed."
   fi
 
-  if type html_unescape >/dev/null 2>&1; then
-    output="$(html_unescape "$output")"
-  fi
-
-  sanitized_output="$(sanitize_model_output "$output")"
-
-  if ! (declare -f acquire_lock >/dev/null 2>&1 && acquire_lock); then
-    log_error "GUILOCK" "Failed to acquire lock for AI response writing; falling back to direct stream"
-    printf 'AI: %s\n' "$sanitized_output" >>"$conv_file" || true
-    return 0
-  fi
-
-  atomic_append_conv "$conv_file" "AI: $sanitized_output" || log_error "GUIIO" "Failed to append AI to conversation"
-  
-  release_lock
   return 0
 }
 
@@ -611,18 +565,121 @@ build_model_options() {
   printf '%s' "$out"
 }
 
+# ---------------------------------------------------------------------------
+# Global Session Index List Builder (Source of truth: ui_state/index.json)
+# ---------------------------------------------------------------------------
+# Versione refactoring: nessuna formattazione estetica in linea, solo classi semantiche
 build_conv_list() {
-  local out f bn title
+  local out=""
+  local ui_state_dir="${BASH4LLM_DIR}/config/ui_state"
+  local idx_file="${ui_state_dir}/sessions/index.json"
+  local lang_code
+  lang_code="$(read_config_or_default "$LANG_CURRENT_FILE" "en")"
+
+  local active_conv
+  active_conv="$(read_config_or_default "$CURRENT_CONV_FILE" "")"
+  active_conv="$(sanitize_param "$active_conv")"
+
+  local listed_active=0
+
+  reverse_lines() {
+    if command -v tac >/dev/null 2>&1; then
+      tac 2>/dev/null
+    else
+      awk '{a[NR]=$0} END {for(i=NR; i>0; i--) print a[i]}'
+    fi
+  }
+
+  if [[ -n "$active_conv" ]]; then
+    local in_index=0
+    if [[ -f "$idx_file" ]]; then
+      if jq -e --arg sid "$active_conv" '.sessions[] | select(. == $sid)' "$idx_file" >/dev/null 2>&1; then
+        in_index=1
+      fi
+    fi
+    if [[ "$in_index" -eq 0 ]]; then
+      local title="New Conversation"
+      out+="<ul class=\"session-menu\"><li class=\"session-item draft-item\">"
+      out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$active_conv")&lang=$(html_escape "$lang_code")\">✨ <em>$(html_escape "$title")</em></a>"
+      out+="</li></ul>"$'\n'
+      listed_active=1
+    fi
+  fi
+
+  if [[ -f "$idx_file" ]]; then
+    local sids sid meta_file title msg_count
+    sids="$(jq -r '.sessions[] // empty' "$idx_file" 2>/dev/null | reverse_lines)"
+    
+    out+="<ul class=\"session-menu\">"
+    while read -r sid; do
+      [[ -z "$sid" ]] && continue
+      if validate_name "$sid"; then
+        meta_file="${ui_state_dir}/sessions/${sid}.json"
+        title=""
+        msg_count=0
+        if [[ -f "$meta_file" ]]; then
+          title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
+          msg_count="$(jq -r '.msg_count // 0' "$meta_file" 2>/dev/null || echo 0)"
+        fi
+        
+        # Parsing data e ora dall'ID sessione (Part 1)
+        if [[ -z "$title" ]]; then
+          if [[ "$sid" =~ ^session-([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2}) ]]; then
+            title="Chat: ${BASH_REMATCH[3]}/${BASH_REMATCH[2]}/${BASH_REMATCH[1]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]}"
+          else
+            title="Chat: ${sid}"
+          fi
+        fi
+        
+        if [[ "$sid" == "$active_conv" ]]; then
+          # Item Attivo: contiene il form semantico per la rinomina
+          out+="<li class=\"session-item active\">"
+          out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
+          out+="<div class=\"session-actions\">"
+          out+="<form method=\"POST\" class=\"rename-form\" action=\"?page=main&lang=$(html_escape "$lang_code")\">"
+          out+="<input type=\"hidden\" name=\"rename_conv\" value=\"$(html_escape "$sid")\">"
+          out+="<input type=\"text\" name=\"new_title\" class=\"input-rename\" value=\"$(html_escape "$title")\" required>"
+          out+="<button type=\"submit\" class=\"btn-save\">Save</button>"
+          out+="</form>"
+          out+="<a href=\"?page=deleteconv&delete_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\" class=\"btn-delete\" title=\"Delete chat\">✕</a>"
+          out+="</div>"
+          out+="</li>"
+          listed_active=1
+        else
+          # Item Standard
+          out+="<li class=\"session-item\">"
+          out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
+          out+="<div class=\"session-actions\">"
+          out+="<a href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\" class=\"btn-edit\" title=\"Select chat\">✎</a>"
+          out+="<a href=\"?page=deleteconv&delete_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\" class=\"btn-delete\" title=\"Delete chat\">✕</a>"
+          out+="</div>"
+          out+="</li>"
+        fi
+        
+      fi
+    done <<< "$sids"
+    out+="</ul>"
+  fi
+
+  if [[ -z "$out" ]]; then
+    out="<div class=\"no-sessions\">No conversations yet</div>"
+  fi
+  printf '%s' "$out"
+}
+
+build_conv_list_raw() {
+  local out f bn title sid
   out=''
   if [[ -d "$CONV_DIR" ]]; then
     for f in "$CONV_DIR"/conv-*.txt; do
       [ -e "$f" ] || continue
       bn="$(basename -- "$f")"
-      title="$(read_conv_title "$f")"
+      sid="${bn%.txt}"
+      title="$(read_conv_title "$sid")"
       if [[ -n "$title" ]]; then
-        out+="$(html_escape "$bn") — $(html_escape "$title")"$'\n'
+        out+="$(html_escape "$sid") — $(html_escape "$title")"$'\n'
       else
-        out+="$(html_escape "$bn")"$'\n'
+        out+="$(html_escape "$sid")"$'\n'
       fi
     done
   fi
@@ -633,103 +690,122 @@ render_page_main() {
   local lang="$1" theme model_cur prov_cur conv_file configured
   model_cur="$(get_default_model)"
   prov_cur="$(get_default_provider)"
-  conv_file="$(get_current_conversation_file)"
+  
+  local active_conv
+  active_conv="$(read_config_or_default "$CURRENT_CONV_FILE" "")"
+  active_conv="$(sanitize_param "$active_conv")"
+  if ! validate_name "$active_conv"; then
+    local rand_part
+    rand_part="$(printf '%04x' $((RANDOM & 0xFFFF)))"
+    active_conv="session-$(date +%Y%m%d-%H%M%S)-${rand_part}"
+    atomic_write "$CURRENT_CONV_FILE" "$active_conv"
+    call_bash4llm_with_args --session "$active_conv" --init-session >/dev/null 2>/dev/null || true
+  fi
+
+  conv_file="${BASH4LLM_DIR}/history/sessions/${active_conv}.ndjson"
+
   theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
-  if is_configured; then configured="true"; else configured="false"; fi
-  MODEL_OPTIONS="$(build_model_options "$model_cur")"
+  configured=0
+  if is_configured; then configured=1; fi
+
   CONV_LIST="$(build_conv_list)"
+  export CONV_LIST
+
   build_current_conv_block "$conv_file"
-  LANG_CODE="$(sanitize_param "$lang")"
-  THEME="$(sanitize_param "$theme")"
-  PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
-  MODEL_CURRENT="$(sanitize_param "$model_cur")"
-  API_KEY_FIELD="$(html_escape "$(read_api_key_file)")"
-  LANG_OPTIONS="$(build_lang_options "$LANG_CODE")"
-  if [[ "$THEME" == "light" ]]; then
-    THEME_IS_light="selected"; THEME_IS_dark=""
+
+  : "${TXT_USE_SESSIONS:=Conversation Memory (Sessions)}"
+  : "${TXT_SESSIONS_ENABLED:=Enabled}"
+  : "${TXT_SESSIONS_DISABLED:=Disabled}"
+  export TXT_USE_SESSIONS TXT_SESSIONS_ENABLED TXT_SESSIONS_DISABLED
+
+  local html_current_title
+  html_current_title="$(read_conv_title "$active_conv")"
+  if [[ -z "$html_current_title" ]]; then
+    html_current_title="Session: $active_conv"
+  fi
+  export html_current_title
+
+  LANG_OPTIONS="$(build_lang_options "$lang")"
+  export LANG_OPTIONS
+
+  if [[ "$theme" == "dark" ]]; then
+    THEME_IS_dark="selected"
+    THEME_IS_light=""
   else
-    THEME_IS_light=""; THEME_IS_dark="selected"
+    THEME_IS_dark=""
+    THEME_IS_light="selected"
   fi
-  local models_file
-  models_file="$(get_models_file)"
-  if [[ -f "$models_file" && -n "$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)" ]]; then
-    MODEL_WHITELIST_PRESENT="true"
-  else
-    MODEL_WHITELIST_PRESENT="false"
-  fi
-  CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
-  : "${GUI_CGI_BASE:=/bash4llm-gui/cgi/}"
-  GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
-  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
-  export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED="$configured"
-  export GUI_CGI_BASE
-  local esc_lang esc_theme esc_model esc_provider esc_conv esc_cgi_base
-  esc_lang="$(html_escape "$LANG_CODE")"
-  esc_theme="$(html_escape "$THEME")"
-  esc_model="$(html_escape "$MODEL_CURRENT")"
-  esc_provider="$(html_escape "$PROVIDER_CURRENT")"
-  esc_conv="$(html_escape "$CURRENT_CONV_FILE")"
-  esc_cgi_base="$(html_escape "$GUI_CGI_BASE")"
-  [[ -f "$TEMPLATES_DIR/header.html" ]] && render_template "$TEMPLATES_DIR/header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  if [[ "$configured" != "true" ]]; then
-    printf '<div class="alert alert-danger">Configuration required: please set provider, API key and model in Settings.</div>\n'
-  fi
-  [[ -f "$TEMPLATES_DIR/content.html" ]] && render_template "$TEMPLATES_DIR/content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  return 0
+  export THEME_IS_dark THEME_IS_light
+
+  CURRENT_MODEL="$model_cur"
+  CURRENT_PROVIDER="$prov_cur"
+  MODEL_CURRENT="$model_cur"
+  PROVIDER_CURRENT="$prov_cur"
+  LANG_CODE="$lang"
+  THEME="$theme"
+  export CURRENT_MODEL CURRENT_PROVIDER MODEL_CURRENT PROVIDER_CURRENT LANG_CODE THEME
+
+  API_KEY_FIELD="$(read_api_key_file)"
+  export API_KEY_FIELD
+
+  build_provider_options "$prov_cur"
+  build_model_list_and_select "$model_cur" "$prov_cur"
+
+  render_template "${TEMPLATES_DIR}/header.html"
+  render_template "${TEMPLATES_DIR}/content.html"
+  render_template "${TEMPLATES_DIR}/footer.html"
 }
 
 render_page_settings() {
-  local lang="$1" theme model_cur prov_cur conv_file configured models_file
+  local lang="$1" theme model_cur prov_cur
   model_cur="$(get_default_model)"
   prov_cur="$(get_default_provider)"
-  conv_file="$(get_current_conversation_file)"
   theme="$(read_config_or_default "$THEME_CURRENT_FILE" "light")"
-  if is_configured; then configured="true"; else configured="false"; fi
-  MODEL_OPTIONS="$(build_model_options "$model_cur")"
-  CONV_LIST="$(build_conv_list)"
-  build_current_conv_block "$conv_file"
-  LANG_CODE="$(sanitize_param "$lang")"
-  THEME="$(sanitize_param "$theme")"
-  PROVIDER_CURRENT="$(sanitize_param "$prov_cur")"
-  MODEL_CURRENT="$(sanitize_param "$model_cur")"
-  API_KEY_FIELD="$(html_escape "$(read_api_key_file)")"
-  LANG_OPTIONS="$(build_lang_options "$LANG_CODE")"
-  if [[ "$THEME" == "light" ]]; then
-    THEME_IS_light="selected"; THEME_IS_dark=""
+
+  local use_sessions_val
+  use_sessions_val="$(read_config_or_default "${CFG_DIR}/use-sessions" "enabled")"
+  if [[ "$use_sessions_val" == "enabled" ]]; then
+    USE_SESSIONS_enabled="selected"
+    USE_SESSIONS_disabled=""
   else
-    THEME_IS_light=""; THEME_IS_dark="selected"
+    USE_SESSIONS_enabled=""
+    USE_SESSIONS_disabled="selected"
   fi
-  models_file="$(get_models_file)"
-  if [[ -f "$models_file" && -n "$(awk 'NF{print; exit}' "$models_file" 2>/dev/null || true)" ]]; then
-    MODEL_WHITELIST_PRESENT="true"
+  export USE_SESSIONS_enabled USE_SESSIONS_disabled
+
+  : "${TXT_USE_SESSIONS:=Conversation Memory (Sessions)}"
+  : "${TXT_SESSIONS_ENABLED:=Enabled}"
+  : "${TXT_SESSIONS_DISABLED:=Disabled}"
+  export TXT_USE_SESSIONS TXT_SESSIONS_ENABLED TXT_SESSIONS_DISABLED
+
+  LANG_OPTIONS="$(build_lang_options "$lang")"
+  export LANG_OPTIONS
+
+  if [[ "$theme" == "dark" ]]; then
+    THEME_IS_dark="selected"
+    THEME_IS_light=""
   else
-    MODEL_WHITELIST_PRESENT="false"
+    THEME_IS_dark=""
+    THEME_IS_light="selected"
   fi
-  CURRENT_CONV_FILE="$(basename -- "$conv_file" 2>/dev/null || printf '')"
-  : "${GUI_CGI_BASE:=/bash4llm-gui/cgi/}"
-  GUI_CGI_BASE="${GUI_CGI_BASE%/}/"
+  export THEME_IS_dark THEME_IS_light
+
+  API_KEY_FIELD="$(read_api_key_file)"
+  LANG_CODE="$lang"
+  THEME="$theme"
+  export API_KEY_FIELD LANG_CODE THEME
+
   build_provider_options "$prov_cur"
   build_model_list_and_select "$model_cur" "$prov_cur"
-  export PROVIDER_OPTIONS MODEL_LIST_SCROLL MODEL_SELECT_OPTIONS
-  export MODEL_OPTIONS CONV_LIST CURRENT_CONV
-  export LANG_CODE THEME PROVIDER_CURRENT MODEL_CURRENT LANG_OPTIONS THEME_IS_light THEME_IS_dark API_KEY_FIELD MODEL_WHITELIST_PRESENT CURRENT_CONV_FILE CONFIGURED GUI_CGI_BASE
-  local esc_lang esc_theme esc_model esc_provider esc_conv esc_cgi_base
-  esc_lang="$(html_escape "$LANG_CODE")"
-  esc_theme="$(html_escape "$THEME")"
-  esc_model="$(html_escape "$MODEL_CURRENT")"
-  esc_provider="$(html_escape "$PROVIDER_CURRENT")"
-  esc_conv="$(html_escape "$CURRENT_CONV_FILE")"
-  esc_cgi_base="$(html_escape "$GUI_CGI_BASE")"
-  [[ -f "$TEMPLATES_DIR/settings-header.html" ]] && render_template "$TEMPLATES_DIR/settings-header.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  [[ -f "$TEMPLATES_DIR/settings-content.html" ]] && render_template "$TEMPLATES_DIR/settings-content.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  [[ -f "$TEMPLATES_DIR/footer.html" ]] && render_template "$TEMPLATES_DIR/footer.html" "$esc_lang" "$esc_theme" "$esc_model" "$esc_provider" "$esc_conv" "$esc_cgi_base"
-  return 0
+
+  render_template "${TEMPLATES_DIR}/settings-header.html"
+  render_template "${TEMPLATES_DIR}/settings-content.html"
+  render_template "${TEMPLATES_DIR}/footer.html"
 }
 
-# -------------------------
-# Main router
-# -------------------------
+# ---------------------------------------------------------------------------
+# Main controller router
+# ---------------------------------------------------------------------------
 main() {
   run_if_func ensure_dirs
   if [[ "${IS_TERMUX:-0}" = "1" ]]; then
@@ -737,31 +813,65 @@ main() {
   fi
   run_if_func ensure_config_defaults
 
-  local select_conv action_conv new_conv_param
-  select_conv="$(get_query_param "select_conv" 2>/dev/null || get_query_param "conv" 2>/dev/null || printf '')"
+  local select_conv
+  select_conv="$(get_query_param "select_conv" 2>/dev/null || printf '')"
   select_conv="$(sanitize_param "$select_conv")"
-  action_conv="$(get_query_param "action" 2>/dev/null || printf '')"
-  new_conv_param="$(get_query_param "new_conv" 2>/dev/null || get_query_param "new-conv" 2>/dev/null || printf '')"
-
-  if [[ "$action_conv" == "new_conv" || "$action_conv" == "new" || "$select_conv" == "new" || -n "$new_conv_param" ]]; then
-    local next_id=1
-    while [[ -f "$CONV_DIR/conv-${next_id}.txt" ]]; do
-      next_id=$((next_id + 1))
-    done
-    local new_conv_name="conv-${next_id}.txt"
-    atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
-    atomic_write "$CONV_DIR/$new_conv_name" ""
-    print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=main"
-    return 0
-  elif [[ -n "$select_conv" ]]; then
+  if [[ -n "$select_conv" ]]; then
     if validate_name "$select_conv"; then
       atomic_write "$CURRENT_CONV_FILE" "$select_conv"
-      if [[ ! -f "$CONV_DIR/$select_conv" ]]; then
-        atomic_write "$CONV_DIR/$select_conv" ""
-      fi
-      print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=main"
+      print_http_redirect "?page=main"
       return 0
     fi
+  fi
+
+  # Cancellazione delegata interamente a bash4llm (Fonte di Verità)
+  local delete_conv
+  delete_conv="$(get_query_param "delete_conv" 2>/dev/null || printf '')"
+  delete_conv="$(sanitize_param "$delete_conv")"
+  if [[ -n "$delete_conv" ]] && validate_name "$delete_conv"; then
+    if acquire_lock; then
+      # Rilascia temporaneamente il lock durante l'esecuzione del core per evitare deadlock
+      release_lock
+      call_bash4llm_with_args --delete-session "$delete_conv" >/dev/null 2>/dev/null
+      acquire_lock || true
+
+      local active_conv state_dir idx_file
+      active_conv="$(read_config_or_default "$CURRENT_CONV_FILE" "")"
+      if [[ "$active_conv" == "$delete_conv" ]]; then
+        state_dir="${BASH4LLM_DIR}/config/ui_state"
+        idx_file="${state_dir}/sessions/index.json"
+        local fallback_sid=""
+        if [[ -f "$idx_file" ]]; then
+          fallback_sid="$(jq -r '.sessions[0] // empty' "$idx_file" 2>/dev/null || true)"
+        fi
+        if [[ -z "$fallback_sid" || ! "$fallback_sid" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          local rand_part
+          rand_part="$(printf '%04x' $((RANDOM & 0xFFFF)))"
+          fallback_sid="session-$(date +%Y%m%d-%H%M%S)-${rand_part}"
+        fi
+        atomic_write "$CURRENT_CONV_FILE" "$fallback_sid"
+      fi
+      release_lock
+    fi
+    print_http_redirect "?page=main"
+    return 0
+  fi
+
+  # Nuova conversazione delegata interamente a bash4llm (Fonte di Verità)
+  local action_conv new_conv_param page_param
+  action_conv="$(get_query_param "action" 2>/dev/null || printf '')"
+  new_conv_param="$(get_query_param "new_conv" 2>/dev/null || printf '')"
+  page_param="$(get_query_param "page" 2>/dev/null || printf '')"
+  if [[ "$action_conv" == "new_conv" || "$action_conv" == "new" || "$new_conv_param" == "1" || "$page_param" == "newconv" ]]; then
+    local rand_part new_conv_name
+    rand_part="$(printf '%04x' $((RANDOM & 0xFFFF)))"
+    new_conv_name="session-$(date +%Y%m%d-%H%M%S)-${rand_part}"
+    atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
+    
+    # Inizializza la conversazione tramite il core per renderla persistente nell'indice
+    call_bash4llm_with_args --session "$new_conv_name" --init-session >/dev/null 2>/dev/null || true
+    print_http_redirect "?page=main"
+    return 0
   fi
 
   run_if_func log_rotate_if_needed "${SERVER_LOG:-/dev/null}" 1048576 || true
@@ -819,7 +929,7 @@ main() {
     *page=settings*|*page=settings\&*|*page=settings\?*)
       if [[ "$method" == "POST" ]]; then
         if handle_post_settings; then
-          print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=settings"
+          print_http_redirect "?page=settings"
         else
           cgi_fatal 1 "settings handler failed"
         fi
@@ -831,7 +941,7 @@ main() {
     *page=main*|*page=main\&*|*page=main\?*|*page=*)
       if [[ "$method" == "POST" ]]; then
         if handle_post_main; then
-          print_http_redirect "${GUI_CGI_BASE:-/bash4llm-gui/cgi/}?page=main"
+          print_http_redirect "?page=main"
         else
           cgi_fatal 1 "main handler failed"
         fi
