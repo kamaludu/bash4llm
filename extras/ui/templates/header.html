@@ -3,6 +3,7 @@
 <html lang="{{LANG_CODE}}">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bash4LLM Graphic User Interface</title>
   <link rel="stylesheet" href="/bash4llm-gui/static/gui-style-{{THEME}}.css">
 </head>
@@ -16,14 +17,18 @@
   </nav>
 
   <div class="lang-theme">
-    <form method="get">
-      <select name="lang">
+    <form method="get" action="">
+      <label for="lang-select" style="display:none;">{{TXT_LANGUAGE}}</label>
+      <select id="lang-select" name="lang">
         {{LANG_OPTIONS}}
       </select>
-      <select name="theme">
+      
+      <label for="theme-select" style="display:none;">{{TXT_THEME}}</label>
+      <select id="theme-select" name="theme">
         <option value="light" {{THEME_IS_light}}>{{TXT_THEME_LIGHT}}</option>
         <option value="dark" {{THEME_IS_dark}}>{{TXT_THEME_DARK}}</option>
       </select>
+      
       <input type="hidden" name="page" value="main">
       <button type="submit">{{TXT_APPLY}}</button>
     </form>
