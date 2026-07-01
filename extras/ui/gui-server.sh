@@ -36,7 +36,7 @@ BASH4LLM_DIR="${REPO_ROOT}/bash4llm.d"
 export BASH4LLM_DIR
 
 # ---------------------------------------------------------------------------
-# Core Helpers & State Delegation to bash4llm
+# Core Helpers & State Delegation to bash4llm (Enforcing SSOT)
 # ---------------------------------------------------------------------------
 is_configured() {
   local prov model models_file entries
@@ -61,6 +61,7 @@ is_configured() {
   return 1
 }
 
+# Rigidly whitelist arguments to fully prevent Argument Injection attacks
 call_bash4llm_with_args() {
   if [[ -z "${BASH4LLM_CMD:-}" || ! -x "${BASH4LLM_CMD}" ]]; then
     log_error "GUIIO" "BASH4LLM_CMD not set or not executable: ${BASH4LLM_CMD:-<unset>}"
@@ -92,18 +93,35 @@ call_bash4llm_with_args() {
       --init-session)
         argv+=( "--init-session" )
         ;;
-      --delete-session|--rename-session|--session|--title)
+      --delete-session)
         val="${1:-}"; shift || true
         val="$(sanitize_param "$val")"
-        argv+=( "$key" "$val" )
+        if ! validate_name "$val"; then log_error "GUIIO" "Invalid session for deletion: $val"; return 1; fi
+        argv+=( "--delete-session" "$val" )
         ;;
-      --*)
+      --rename-session)
         val="${1:-}"; shift || true
         val="$(sanitize_param "$val")"
-        argv+=( "$key" "$val" )
+        if ! validate_name "$val"; then log_error "GUIIO" "Invalid session for rename: $val"; return 1; fi
+        argv+=( "--rename-session" "$val" )
+        ;;
+      --session)
+        val="${1:-}"; shift || true
+        val="$(sanitize_param "$val")"
+        if ! validate_name "$val"; then log_error "GUIIO" "Invalid session ID: $val"; return 1; fi
+        argv+=( "--session" "$val" )
+        ;;
+      --title)
+        val="${1:-}"; shift || true
+        val="$(sanitize_param "$val" 256)"
+        argv+=( "--title" "$val" )
+        ;;
+      --refresh-models)
+        argv+=( "--refresh-models" )
         ;;
       *)
-        log_error "GUIIO" "call_bash4llm_with_args: unexpected positional arg: $key"
+        # Reject any other arguments
+        log_error "GUIIO" "call_bash4llm_with_args: blocked unsafe/unexpected arg: $key"
         return 1
         ;;
     esac
@@ -122,25 +140,11 @@ call_bash4llm_with_args() {
 }
 
 get_models_file() {
-  local candidate groq_dir provider models_candidate
-  if [[ -n "${BASH4LLM_CMD:-}" && "${BASH4LLM_CMD}" = /* ]]; then
-    groq_dir="$(cd "$(dirname -- "$BASH4LLM_CMD")" 2>/dev/null && pwd -P || printf '%s' ".")"
-    candidate="$groq_dir/bash4llm.d/models/models.txt"
-    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+  if [[ -n "${BASH4LLM_DIR:-}" ]]; then
+    printf '%s' "${BASH4LLM_DIR}/models/models.txt"
+  else
+    printf '%s' "${UI_ROOT}/../bash4llm.d/models/models.txt"
   fi
-  provider="$(get_default_provider 2>/dev/null || true)"
-  if [[ -n "${CFG_DIR:-}" && -n "$provider" ]]; then
-    models_candidate="${CFG_DIR%/}/models.${provider}.txt"
-    [[ -f "$models_candidate" ]] && { printf '%s' "$models_candidate"; return 0; }
-  fi
-  if [[ -n "${UI_ROOT:-}" ]]; then
-    candidate="$UI_ROOT/../bash4llm.d/models/models.txt"
-    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
-    candidate="$UI_ROOT/models/models.txt"
-    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
-  fi
-  candidate="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)/bash4llm.d/models/models.txt"
-  printf '%s' "${candidate:-models/models.txt}"
   return 0
 }
 
@@ -161,14 +165,12 @@ refresh_models_via_bash4llm() {
 
   export_api_key_for_provider "$prov" || true
 
-  out="$(call_bash4llm_with_args --provider "$prov" --refresh-models </dev/null 2>>"${ERROR_LOG:-/dev/null}" || true)"
-  out="$(printf '%s\n' "$out" | sed -n '/\S/ p' | sed -e 's/[[:space:]]\+$//')"
-  if [[ -n "$out" ]]; then
-    atomic_write "$models_file" "$out" || { log_error "GUIIO" "Failed to write models file"; return 1; }
-    log_info "GUIIO" "Models refreshed for provider $prov"
+  # Delegate entirely to core commands to refresh models securely (Single Source of Truth)
+  if call_bash4llm_with_args --provider "$prov" --refresh-models >/dev/null 2>>"${ERROR_LOG:-/dev/null}"; then
+    log_info "GUIIO" "Models refreshed for provider $prov via core"
     return 0
   else
-    log_warn "GUIIO" "Refresh returned empty list for provider $prov"
+    log_warn "GUIIO" "Core failed to refresh models for provider $prov"
     return 1
   fi
 }
@@ -398,7 +400,7 @@ handle_post_main() {
     cgi_fatal 1 "Server busy"
   fi
 
-  local body prompt model provider conv_file output sanitized_output models_file lang model_raw provider_raw conv_title_raw conv_title _max_prompt ct
+  local body prompt model provider conv_file output sanitized_output models_file lang model_raw provider_raw conv_title_raw conv_title max_prompt ct
   ct="${CONTENT_TYPE:-application/x-www-form-urlencoded}"
   case "$ct" in
     application/x-www-form-urlencoded*|multipart/form-data*) ;;
@@ -418,10 +420,14 @@ handle_post_main() {
   post_new_title="$(printf '%s' "$body" | parse_form_field "new_title" || printf '')"
   post_new_title="$(sanitize_param "$post_new_title")"
 
-  # Rinomina delegata interamente a bash4llm (Fonte di Verità)
+  # Session rename handled via core functions to preserve SSOT
   if [[ -n "$post_rename_conv" ]] && validate_name "$post_rename_conv" && [[ -n "$post_new_title" ]]; then
     release_lock
-    call_bash4llm_with_args --rename-session "$post_rename_conv" --title "$post_new_title" >/dev/null 2>/dev/null
+    if declare -f session_rename_core >/dev/null 2>&1; then
+      session_rename_core "$post_rename_conv" "$post_new_title" >/dev/null 2>/dev/null
+    else
+      call_bash4llm_with_args --rename-session "$post_rename_conv" --title "$post_new_title" >/dev/null 2>/dev/null
+    fi
     return 0
   fi
 
@@ -432,7 +438,7 @@ handle_post_main() {
   post_action="$(sanitize_param "$post_action")"
   post_new_conv="$(printf '%s' "$body" | parse_form_field "new_conv" || printf '')"
 
-  # Creazione delegata interamente a bash4llm (Fonte di Verità)
+  # New session initialization routed directly via core mechanisms (SSOT)
   if [[ "$post_action" == "new_conv" || "$post_action" == "new" || "$post_select_conv" == "new" || -n "$post_new_conv" ]]; then
     local rand_part new_conv_name
     rand_part="$(printf '%04x' $((RANDOM & 0xFFFF)))"
@@ -440,7 +446,6 @@ handle_post_main() {
     atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
     release_lock
     
-    # Inizializza la conversazione tramite il core per renderla persistente nell'indice
     call_bash4llm_with_args --session "$new_conv_name" --init-session >/dev/null 2>/dev/null || true
     return 0
   elif [[ -n "$post_select_conv" ]]; then
@@ -462,12 +467,11 @@ handle_post_main() {
   model="$(sanitize_param "$model")"
   provider="$(sanitize_param "$provider")"
   
-  _max_prompt=${MAX_PROMPT_CHARS:-4096}
-  if (( ${#prompt} > _max_prompt )); then
-    log_warn "GUIIO" "Prompt truncated from ${#prompt} to ${_max_prompt} chars"
-    prompt="${prompt:0:_max_prompt}"
+  max_prompt="${MAX_PROMPT_CHARS:-4096}"
+  if [[ ${#prompt} -gt $max_prompt ]]; then
+    log_warn "GUIIO" "Prompt truncated from ${#prompt} to ${max_prompt} chars"
+    prompt="${prompt:0:max_prompt}"
   fi
-  unset _max_prompt
 
   if [[ -n "$model" ]] && ! validate_name "$model"; then
     log_error "GUIIO" "Invalid model name attempted: $model"
@@ -566,9 +570,8 @@ build_model_options() {
 }
 
 # ---------------------------------------------------------------------------
-# Global Session Index List Builder (Source of truth: ui_state/index.json)
+# Global Session Index List Builder (SSOT Compliant)
 # ---------------------------------------------------------------------------
-# Versione refactoring: nessuna formattazione estetica in linea, solo classi semantiche
 build_conv_list() {
   local out=""
   local ui_state_dir="${BASH4LLM_DIR}/config/ui_state"
@@ -622,7 +625,6 @@ build_conv_list() {
           msg_count="$(jq -r '.msg_count // 0' "$meta_file" 2>/dev/null || echo 0)"
         fi
         
-        # Parsing data e ora dall'ID sessione (Part 1)
         if [[ -z "$title" ]]; then
           if [[ "$sid" =~ ^session-([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2}) ]]; then
             title="Chat: ${BASH_REMATCH[3]}/${BASH_REMATCH[2]}/${BASH_REMATCH[1]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]}"
@@ -632,7 +634,6 @@ build_conv_list() {
         fi
         
         if [[ "$sid" == "$active_conv" ]]; then
-          # Item Attivo: contiene il form semantico per la rinomina
           out+="<li class=\"session-item active\">"
           out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
           out+="<div class=\"session-actions\">"
@@ -646,7 +647,6 @@ build_conv_list() {
           out+="</li>"
           listed_active=1
         else
-          # Item Standard
           out+="<li class=\"session-item\">"
           out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
           out+="<div class=\"session-actions\">"
@@ -824,15 +824,20 @@ main() {
     fi
   fi
 
-  # Cancellazione delegata interamente a bash4llm (Fonte di Verità)
+  # Session deletion delegated cleanly to core (SSOT)
   local delete_conv
   delete_conv="$(get_query_param "delete_conv" 2>/dev/null || printf '')"
   delete_conv="$(sanitize_param "$delete_conv")"
   if [[ -n "$delete_conv" ]] && validate_name "$delete_conv"; then
     if acquire_lock; then
-      # Rilascia temporaneamente il lock durante l'esecuzione del core per evitare deadlock
       release_lock
-      call_bash4llm_with_args --delete-session "$delete_conv" >/dev/null 2>/dev/null
+      
+      if declare -f session_delete_core >/dev/null 2>&1; then
+        session_delete_core "$delete_conv" >/dev/null 2>/dev/null
+      else
+        call_bash4llm_with_args --delete-session "$delete_conv" >/dev/null 2>/dev/null
+      fi
+      
       acquire_lock || true
 
       local active_conv state_dir idx_file
@@ -857,7 +862,7 @@ main() {
     return 0
   fi
 
-  # Nuova conversazione delegata interamente a bash4llm (Fonte di Verità)
+  # Session initialization delegated to core (SSOT)
   local action_conv new_conv_param page_param
   action_conv="$(get_query_param "action" 2>/dev/null || printf '')"
   new_conv_param="$(get_query_param "new_conv" 2>/dev/null || printf '')"
@@ -868,7 +873,6 @@ main() {
     new_conv_name="session-$(date +%Y%m%d-%H%M%S)-${rand_part}"
     atomic_write "$CURRENT_CONV_FILE" "$new_conv_name"
     
-    # Inizializza la conversazione tramite il core per renderla persistente nell'indice
     call_bash4llm_with_args --session "$new_conv_name" --init-session >/dev/null 2>/dev/null || true
     print_http_redirect "?page=main"
     return 0
