@@ -1,24 +1,35 @@
 <!-- extras/ui/templates/settings-content.html -->
 <section class="settings-block">
 
-  <!-- FORM 1: provider + refresh (invia solo provider e action=refresh_models) -->
+  <!-- FORM 1: provider + refresh -->
   <form method="post" action="?page=settings&lang={{LANG_CODE}}">
     <h2>{{TXT_PROVIDER}}</h2>
-    <select name="provider">
+    <label for="provider-select">Select Active Provider</label>
+    <select id="provider-select" name="provider">
       {{PROVIDER_OPTIONS}}
     </select>
     <button type="submit" name="action" value="refresh_models">{{TXT_REFRESH}}</button>
   </form>
 
-  <!-- FORM 2: API key, modelli, lingua, tema, salvataggio generale -->
+  <!-- FORM 2: API key, models, memory, general saving -->
   <form method="post" action="?page=settings&lang={{LANG_CODE}}">
     <h2>{{TXT_API_KEY}}</h2>
-    <input type="password" name="api_key" autocomplete="new-password" value="{{API_KEY_FIELD}}">
+    <label for="api_key">Provider API Key</label>
+    <input type="password" id="api_key" name="api_key" autocomplete="new-password" value="{{API_KEY_FIELD}}">
 
     <h2>{{TXT_MODEL}}</h2>
-    <select name="model" size="5" required>
+    <label for="model-select">Select Default Model</label>
+    <select id="model-select" name="model" size="5" required>
         {{MODEL_SELECT_OPTIONS}}
     </select>
+    
+    <h2>{{TXT_USE_SESSIONS}}</h2>
+    <label for="use-sessions-select">Session Memory Mode</label>
+    <select id="use-sessions-select" name="use_sessions">
+      <option value="enabled" {{USE_SESSIONS_enabled}}>{{TXT_SESSIONS_ENABLED}}</option>
+      <option value="disabled" {{USE_SESSIONS_disabled}}>{{TXT_SESSIONS_DISABLED}}</option>
+    </select>
+
     <button type="submit" name="action" value="set_model">{{TXT_SET_MODEL}}</button>
   </form>
 
