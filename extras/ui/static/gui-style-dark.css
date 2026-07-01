@@ -1,4 +1,4 @@
-/* extras/ui/gui-style-dark.css */
+/* extras/ui/static/gui-style-dark.css */
 body {
   background: #0f0f10;
   color: #e6e6e6;
@@ -325,6 +325,7 @@ label { display: block; margin: 8px 0 4px 0; font-weight: 600; color: #e6e6e6; }
     gap: 4%;
   }
 
+  /* Riposizionamento visivo tramite griglia (indipendentemente dall'ordine DOM lineare) */
   .conversation-list {
     grid-column: 1;
     grid-row: 1 / span 2;
