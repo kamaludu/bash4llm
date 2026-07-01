@@ -31,6 +31,14 @@ BASH4LLM_DIR="$(cd "${BOOTSTRAP_DIR}/../.." >/dev/null 2>&1 && pwd -P)"
 export BASH4LLM_DIR
 
 # ---------------------------------------------------------------------------
+# CGI/Web-Server Environment Isolation (Zero conflict, standard writeable path)
+# ---------------------------------------------------------------------------
+export HOME="${TMP_DIR}/home"
+export XDG_CONFIG_HOME="${CFG_DIR}/xdg"
+mkdir -p "$HOME" "$XDG_CONFIG_HOME" 2>/dev/null || true
+chmod 700 "$HOME" "$XDG_CONFIG_HOME" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
 # Ensure bash4llm is available (DETERMINISTIC: discovery-only)
 # ---------------------------------------------------------------------------
 ensure_bash4llm_available() {
@@ -272,6 +280,15 @@ if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
     log_error "INIT" "bash4llm binary not found in allowed locations; aborting"
     printf 'bash4llm: ERROR: bash4llm binary not found; aborting\n' >&2
     return 1 2>/dev/null || exit 1
+  fi
+
+  # ---------------------------------------------------------------------------
+  # Source Core Core Functions directly inside Shell Context (Enforce SSOT)
+  # ---------------------------------------------------------------------------
+  if [[ -n "${BASH4LLM_CMD:-}" && -f "${BASH4LLM_CMD}" ]]; then
+    export BASH4LLM_SOURCE_ONLY=1
+    # shellcheck source=/dev/null
+    source "${BASH4LLM_CMD}" 2>/dev/null || true
   fi
 
   env_after_bash4llm_resolved || log_warn "ENV" "env_after_bash4llm_resolved returned non-zero"
