@@ -233,7 +233,12 @@ validate_name() {
   local maxlen="${2:-128}"
   if [[ -z "$name" ]]; then return 1; fi
   if (( ${#name} > maxlen )); then return 1; fi
-  if [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then return 0; else return 1; fi
+  # Strictly alphanumeric, dashes, and underscores. Rejects all folder navigation, LFI, and Path Traversal.
+  if [[ "$name" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)?$ ]]; then
+    return 0
+  else
+    return 1
+  fi
 }
 
 read_post_body() {
@@ -1304,42 +1309,63 @@ sanitize_model_output() {
 }
 
 # ---------------------------------------------------------------------------
-# NDJSON-based Session Conversation Block Builder
+# NDJSON-based Session Conversation Block Builder (SSOT Compliant)
 # ---------------------------------------------------------------------------
 build_current_conv_block() {
   local file="$1"
   CURRENT_CONV=""
+  local active_conv
+  active_conv="$(basename "$file" .ndjson)"
   
-  if [[ -f "$file" && -r "$file" ]]; then
-    local temp_history_file
-    ensure_tmpdir || return 1
-    temp_history_file="$(portable_mktemp "$TMP_DIR" "hconv.XXXXXX")" || return 1
+  if [[ -z "$active_conv" ]]; then
+    return 1
+  fi
+  
+  local temp_json
+  ensure_tmpdir || return 1
+  temp_json="$(portable_mktemp "$TMP_DIR" "hconv.XXXXXX")" || return 1
 
-    local is_full
-    is_full="$(get_query_param "full_history" 2>/dev/null || printf '0')"
-    
-    if [[ "$is_full" == "1" ]]; then
-      cat "$file" > "$temp_history_file" 2>/dev/null || true
-    else
-      # Default: Truncate and render only the last 20 messages for speed
-      tail -n 20 "$file" > "$temp_history_file" 2>/dev/null || true
+  local is_full
+  is_full="$(get_query_param "full_history" 2>/dev/null || printf '0')"
+  local window_size=20
+  if [[ "$is_full" == "1" ]]; then
+    window_size=99999
+  fi
+  
+  # Delegate directly to core's session retrieval logic (SSOT)
+  if declare -f session_read_window >/dev/null 2>&1; then
+    session_read_window "$active_conv" "$window_size" "$temp_json" >/dev/null 2>&1
+  else
+    # Perfect isolated fallback mapping of NDJSON records directly with jq
+    local session_file="${BASH4LLM_DIR}/history/sessions/${active_conv}.ndjson"
+    if [[ -f "$session_file" ]]; then
+      printf '{"messages":[' > "$temp_json"
+      local first=1 line role content r_json c_json
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        if printf '%s\n' "$line" | jq -e . >/dev/null 2>&1; then
+          role="$(printf '%s\n' "$line" | jq -r '.role // "user"')"
+          content="$(printf '%s\n' "$line" | jq -r '.content // ""')"
+          r_json="$(jq -R -c . <<< "$role")"
+          c_json="$(jq -R -s . <<< "$content")"
+          c_json="${c_json%$'\n'}"
+          if [[ "$first" -eq 0 ]]; then printf ',' >> "$temp_json"; fi
+          printf '{"role":%s,"content":%s}' "$r_json" "$c_json" >> "$temp_json"
+          first=0
+        fi
+      done < <(tail -n "$window_size" "$session_file" 2>/dev/null)
+      printf ']}' >> "$temp_json"
     fi
+  fi
 
-    local line role content escaped_role escaped_content
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      [[ -z "$line" ]] && continue
-      if ! printf '%s\n' "$line" | jq -e . >/dev/null 2>&1; then
-        continue
-      fi
-      
-      role="$(printf '%s\n' "$line" | jq -r '.role // "user"')"
-      content="$(printf '%s\n' "$line" | jq -r '.content // ""')"
-
+  if [[ -f "$temp_json" && -s "$temp_json" ]]; then
+    local idx=0 role content escaped_role escaped_content
+    while read -r role; do
+      content="$(jq -r ".messages[$idx].content // \"\"" "$temp_json" 2>/dev/null)"
       escaped_role="$(html_escape "$role")"
       escaped_content="$(html_escape "$content")"
       
-      # Convert actual newlines to HTML line breaks safely
       escaped_content="${escaped_content//$'\n'/<br>}"
+      escaped_content="${escaped_content//$'\r'/}"
 
       if [[ "$escaped_role" == "user" ]]; then
         CURRENT_CONV+="<div class=\"message user-message\"><strong>User:</strong> ${escaped_content}</div>"$'\n'
@@ -1348,19 +1374,23 @@ build_current_conv_block() {
       else
         CURRENT_CONV+="<div class=\"message system-message\"><strong>System:</strong> ${escaped_content}</div>"$'\n'
       fi
-    done < "$temp_history_file"
+      idx=$((idx + 1))
+    done < <(jq -r '.messages[]?.role // empty' "$temp_json" 2>/dev/null)
+  fi
 
-    rm -f -- "$temp_history_file" 2>/dev/null || true
+  rm -f -- "$temp_json" 2>/dev/null || true
 
-    local total_lines
-    total_lines="$(wc -l < "$file" 2>/dev/null || echo 0)"
-    if [[ "$is_full" != "1" && "$total_lines" -gt 20 ]]; then
-      local current_page current_conv_name
-      current_page="$(get_query_param "page" 2>/dev/null || printf 'main')"
-      current_conv_name="$(read_config_or_default "${CURRENT_CONV_FILE:-${CFG_DIR}/current-conv}" "conv-1.txt")"
-      current_conv_name="$(sanitize_param "$current_conv_name")"
-      CURRENT_CONV+="<div class=\"load-more-container\" style=\"margin: 1.5rem 0; text-align: center;\"><a class=\"btn btn-secondary\" href=\"?page=${current_page}&select_conv=${current_conv_name}&full_history=1\">Load full history (${total_lines} turns)</a></div>"$'\n'
-    fi
+  local total_lines=0
+  local session_file="${BASH4LLM_DIR}/history/sessions/${active_conv}.ndjson"
+  if [[ -f "$session_file" ]]; then
+    total_lines="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
+  fi
+  if [[ "$is_full" != "1" && "$total_lines" -gt 20 ]]; then
+    local current_page current_conv_name
+    current_page="$(get_query_param "page" 2>/dev/null || printf 'main')"
+    current_conv_name="$(read_config_or_default "${CURRENT_CONV_FILE:-${CFG_DIR}/current-conv}" "conv-1.txt")"
+    current_conv_name="$(sanitize_param "$current_conv_name")"
+    CURRENT_CONV+="<div class=\"load-more-container\" style=\"margin: 1.5rem 0; text-align: center;\"><a class=\"btn btn-secondary\" href=\"?page=${current_page}&select_conv=${current_conv_name}&full_history=1\">Load full history (${total_lines} turns)</a></div>"$'\n'
   fi
   export CURRENT_CONV
 }
@@ -1415,17 +1445,16 @@ render_template() {
 }
 
 # ---------------------------------------------------------------------------
-# Cooperative Locking System (flock + mkdir directory lock fallback)
+# Cooperative Locking System (flock + directory lock fallback, no /tmp leaks)
 # ---------------------------------------------------------------------------
 acquire_lock() {
-  local lockfile="${LOCK_FILE:-/tmp/gui.lock}"
+  local lockfile="${LOCK_FILE:-${TMP_DIR}/gui.lock}"
   local timeout=3
   local lockdir="${lockfile}.dir"
   local pidfile="${lockdir}/pid"
-  # Use BASHPID to correctly identify test subshells and background processes
   local current_pid="${BASHPID:-$$}"
 
-  # Exclude Termux from flock to align with bash4llm core security policies
+  # Exclude Termux from flock to align with core security policies
   if command -v flock >/dev/null 2>&1 && [[ -z "${TERMUX_VERSION:-}" ]]; then
     exec 8>"$lockfile" 2>/dev/null || return 1
     if flock -x -w "$timeout" 8 2>/dev/null; then
@@ -1434,7 +1463,7 @@ acquire_lock() {
     fi
   fi
 
-  # Directory fallback (atomic cooperative)
+  # Safe atomic folder cooperative fallback
   local i=0
   while (( i < 30 )); do
     if mkdir "$lockdir" 2>/dev/null; then
@@ -1442,7 +1471,7 @@ acquire_lock() {
       return 0
     fi
 
-    # Stale lock verification
+    # Stale lock cleanup verification
     if [[ -f "$pidfile" ]]; then
       local lp
       lp="$(cat "$pidfile" 2>/dev/null || true)"
@@ -1459,7 +1488,7 @@ acquire_lock() {
 }
 
 release_lock() {
-  local lockfile="${LOCK_FILE:-/tmp/gui.lock}"
+  local lockfile="${LOCK_FILE:-${TMP_DIR}/gui.lock}"
   local lockdir="${lockfile}.dir"
   if command -v flock >/dev/null 2>&1; then
     flock -u 8 2>/dev/null || true
