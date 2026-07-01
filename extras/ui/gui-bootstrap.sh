@@ -16,9 +16,6 @@
 # ---------------------------------------------------------------------------
 # Core Environment Sourcing (Conditional and Safe)
 # ---------------------------------------------------------------------------
-# Sourcing the centralized environment layer if not already loaded in memory.
-# This prevents unbound variable crashes under set -u and ensures essential
-# disk, permission, and configuration functions are fully available.
 if ! declare -f gui_env_init >/dev/null 2>&1; then
   if [[ -f "$(dirname "${BASH_SOURCE[0]:-$0}")/gui-env.sh" ]]; then
     # shellcheck source=/dev/null
@@ -26,21 +23,44 @@ if ! declare -f gui_env_init >/dev/null 2>&1; then
   fi
 fi
 
+# Define the absolute canonical path of BASH4LLM_DIR based on the directory containing this script.
+# Since gui-bootstrap.sh is located at BASH4LLM_DIR/extras/ui/gui-bootstrap.sh,
+# BASH4LLM_DIR is exactly two levels up.
+BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
+BASH4LLM_DIR="$(cd "${BOOTSTRAP_DIR}/../.." >/dev/null 2>&1 && pwd -P)"
+export BASH4LLM_DIR
+
+# ---------------------------------------------------------------------------
+# CGI/Web-Server Environment Isolation (Zero conflict, standard writeable path)
+# ---------------------------------------------------------------------------
+export HOME="${TMP_DIR}/home"
+export XDG_CONFIG_HOME="${CFG_DIR}/xdg"
+mkdir -p "$HOME" "$XDG_CONFIG_HOME" 2>/dev/null || true
+chmod 700 "$HOME" "$XDG_CONFIG_HOME" 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Ensure bash4llm is available (DETERMINISTIC: discovery-only)
 # ---------------------------------------------------------------------------
 ensure_bash4llm_available() {
-  # 1. Absolute priority: check if the local wrapper is present and executable
   if [[ -n "${UI_ROOT:-}" ]]; then
     local wrapper_path="${UI_ROOT%/}/bin/bash4llm-wrapper"
     if [[ -x "$wrapper_path" ]]; then
       BASH4LLM_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
       export BASH4LLM_CMD
+      
+      # Dynamically export BASH4LLM_DIR based on the location of the found executable
+      local cmd_dir
+      cmd_dir="$(dirname "$BASH4LLM_CMD")"
+      if [[ -d "$cmd_dir/bash4llm.d" ]]; then
+        BASH4LLM_DIR="$(cd "$cmd_dir/bash4llm.d" >/dev/null 2>&1 && pwd -P)"
+        export BASH4LLM_DIR
+      fi
+      
+      log_info "GUIIO" "Discovered bash4llm at $BASH4LLM_CMD"
       return 0
     fi
   fi
 
-  # 2. Check the persisted path config
   if [[ -n "${UI_ROOT:-}" && -n "${CFG_DIR:-}" ]]; then
     local cfg="${CFG_DIR%/}/bash4llm-path"
     if [[ -f "$cfg" ]]; then
@@ -63,14 +83,12 @@ ensure_bash4llm_available() {
     fi
   fi
 
-  # 3. Check BASH4LLM_CMD if set by environment and is absolute
   if [[ -n "${BASH4LLM_CMD:-}" && "${BASH4LLM_CMD}" = /* && -x "${BASH4LLM_CMD}" ]]; then
     BASH4LLM_CMD="$(readlink -f "$BASH4LLM_CMD" 2>/dev/null || printf '%s' "$BASH4LLM_CMD")"
     export BASH4LLM_CMD
     return 0
   fi
 
-  # 4. Discovery candidates list
   local candidates=(
     "$UI_ROOT/../../../bash4llm"
     "${PREFIX:-/data/data/com.termux/files/usr}/bin/bash4llm"
@@ -118,6 +136,30 @@ fix_termux_perms() {
 }
 
 # ---------------------------------------------------------------------------
+# Automatic Security Sandboxing (.htaccess protection)
+# ---------------------------------------------------------------------------
+ensure_htaccess_protection() {
+  local d htaccess_file content
+  content="Require all denied"$'\n'"<IfModule !mod_authz_core.c>"$'\n'"  Order deny,allow"$'\n'"  Deny from all"$'\n'"</IfModule>"
+  
+  local target_dirs=(
+    "$CFG_DIR"
+    "$TMP_DIR"
+    "$CONV_DIR"
+    "${BASH4LLM_DIR}/history"
+  )
+
+  for d in "${target_dirs[@]}"; do
+    if [[ -d "$d" ]]; then
+      htaccess_file="${d%/}/.htaccess"
+      if [[ ! -f "$htaccess_file" ]]; then
+        atomic_write "$htaccess_file" "$content" 2>/dev/null || true
+      fi
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Cache refresh helpers (deterministic, single-shot per invocation)
 # ---------------------------------------------------------------------------
 ensure_provider_cache_fresh() {
@@ -140,6 +182,7 @@ ensure_provider_cache_fresh() {
     return 0
   fi
 
+  # Ensure API key is exported before cache queries
   if declare -f export_api_key_for_provider >/dev/null 2>&1 && declare -f get_default_provider >/dev/null 2>&1; then
     export_api_key_for_provider "$(get_default_provider)" || true
   fi
@@ -194,6 +237,7 @@ ensure_model_cache_fresh() {
     return 0
   fi
 
+  # Ensure API key is exported before cache queries
   if declare -f export_api_key_for_provider >/dev/null 2>&1; then
     export_api_key_for_provider "$provider" || true
   fi
@@ -225,11 +269,11 @@ if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
   env_detect || log_warn "ENV" "env_detect returned non-zero"
   ensure_dirs || { log_error "INIT" "ensure_dirs failed"; return 1 2>/dev/null || exit 1; }
   
-  # Execute foundational setups now cleanly decoupled in gui-env.sh
   ensure_sh_executables "$UI_ROOT" || true
   remove_unnecessary_symlinks "$UI_ROOT" || true
   ensure_config_defaults || true
   fix_termux_perms || true
+  ensure_htaccess_protection || true
   env_prepare_runtime || log_warn "ENV" "env_prepare_runtime returned non-zero"
 
   if ! ensure_bash4llm_available; then
@@ -238,11 +282,20 @@ if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
     return 1 2>/dev/null || exit 1
   fi
 
+  # ---------------------------------------------------------------------------
+  # Source Core Core Functions directly inside Shell Context (Enforce SSOT)
+  # ---------------------------------------------------------------------------
+  if [[ -n "${BASH4LLM_CMD:-}" && -f "${BASH4LLM_CMD}" ]]; then
+    export BASH4LLM_SOURCE_ONLY=1
+    # shellcheck source=/dev/null
+    source "${BASH4LLM_CMD}" 2>/dev/null || true
+  fi
+
   env_after_bash4llm_resolved || log_warn "ENV" "env_after_bash4llm_resolved returned non-zero"
 fi
 
 export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
        LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
-       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE BASH4LLM_CMD
+       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE BASH4LLM_CMD BASH4LLM_DIR
 
 return 0 2>/dev/null || true

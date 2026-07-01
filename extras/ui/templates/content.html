@@ -1,29 +1,41 @@
 <!-- extras/ui/templates/content.html -->
-<section class="conversation-list">
-  <h2>{{TXT_CONVERSATIONS}}</h2>
-  <pre>
-{{CONV_LIST}}
-  </pre>
-</section>
+<div class="content-wrapper">
+  <!-- Spostata in cima per il rendering lineare nativo nei browser testuali -->
+  <section class="conversation-current">
+    <h2>{{TXT_CURRENT_CONVERSATION}}</h2>
+    <div class="chat-viewport">
+      {{CURRENT_CONV}}
+    </div>
+  </section>
 
-<section class="conversation-current">
-  <h2>{{TXT_CURRENT_CONVERSATION}}</h2>
-  {{CURRENT_CONV}}
-</section>
+  <section class="prompt-input">
+    <h2>{{TXT_SEND_PROMPT}}</h2>
+    <form method="post" action="?page=main&lang={{LANG_CODE}}">
+      <label for="prompt">{{TXT_PROMPT}}</label>
+      <textarea id="prompt" name="prompt" rows="4" cols="60" placeholder="Type your message here..."></textarea>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="provider">{{TXT_PROVIDER}}</label>
+          <input type="text" id="provider" name="provider" value="{{PROVIDER_CURRENT}}" readonly>
+        </div>
+        <div class="form-group">
+          <label for="model">{{TXT_MODEL}}</label>
+          <input type="text" id="model" name="model" value="{{MODEL_CURRENT}}" readonly>
+        </div>
+      </div>
 
-<section class="prompt-input">
-  <h2>{{TXT_SEND_PROMPT}}</h2>
+      <div class="form-actions">
+        <button type="submit">{{TXT_SEND}}</button>
+      </div>
+    </form>
+  </section>
 
-  <form method="post" action="?page=main&lang={{LANG_CODE}}">
-    <label>{{TXT_PROMPT}}</label><br>
-    <textarea name="prompt" rows="4" cols="60"></textarea><br>
-
-    <label>{{TXT_PROVIDER}}</label><br>
-    <input type="text" name="provider" value="{{PROVIDER_CURRENT}}"><br>
-
-    <label>{{TXT_MODEL}}</label><br>
-    <input type="text" name="model" value="{{MODEL_CURRENT}}"><br>
-
-    <button type="submit">{{TXT_SEND}}</button>
-  </form>
-</section>
+  <!-- At the bottom to avoid having to scroll through chats in text browsers -->
+  <section class="conversation-list">
+    <h2>{{TXT_CONVERSATIONS}}</h2>
+    <div class="conv-list-container">
+      {{CONV_LIST}}
+    </div>
+  </section>
+</div>

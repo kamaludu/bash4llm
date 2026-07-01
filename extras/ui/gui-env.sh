@@ -11,22 +11,6 @@
 # =============================================================================
 # Centralized error / logging / diagnostics layer and runtime environment.
 # This file is intended to be sourced by all GUI scripts (CGI and CLI).
-#
-# Contract (short):
-# - Callers should `set -euo pipefail` before sourcing this file.
-# - Caller must set UI_ROOT (absolute) before calling canonicalize_ui_root()
-#   or use gui_env_init MODE which will canonicalize and prepare logs.
-# - All logs are written under $UI_ROOT/logs (dir perms 700, file perms 600).
-# - Use log_debug|log_info|log_warn|log_error for structured logs.
-# - Use fatal (CLI) or cgi_fatal (CGI) for unrecoverable errors.
-#
-# Security constraints:
-# - No writes outside UI_ROOT except when INSTALL_MODE=1 and explicitly allowed.
-# - No secrets printed to HTTP responses; detailed diagnostics only in logs.
-#
-# Portability:
-# - Avoids GNU-only flags where possible; relies on coreutils commonly available.
-# - Designed to run on Termux/Android, Linux, macOS, WSL.
 
 # Prevent double-sourcing robustly by checking function declaration
 if declare -f gui_env_init >/dev/null 2>&1; then
@@ -37,7 +21,6 @@ fi
 # Basic helpers (timestamp, safe printf)
 # ---------------------------------------------------------------------------
 _now_iso() {
-  # ISO-8601 UTC timestamp (fallbacks kept minimal)
   if command -v date >/dev/null 2>&1; then
     date -u +"%Y-%m-%dT%H:%M:%SZ"
   else
@@ -53,10 +36,8 @@ _safe_printf() {
 # Robust PS4: include timestamp and script name; avoid unbound-variable with set -u
 # ---------------------------------------------------------------------------
 {
-  # Derive a safe script-name fallback
   _ps4_src="${BASH_SOURCE[0]:-$0}"
   _ps4_name="${_ps4_src##*/}"
-  # Use an escaped LINENO so it expands at trace time, not now
   export PS4='+[$(_now_iso)] '"${_ps4_name}"':${LINENO}: '
   unset _ps4_src _ps4_name
 } 2>/dev/null || true
@@ -64,7 +45,11 @@ _safe_printf() {
 # ---------------------------------------------------------------------------
 # UI_ROOT placeholder (caller may set before sourcing)
 # ---------------------------------------------------------------------------
-: "${UI_ROOT:=${UI_ROOT:-$PWD}}"
+if [[ -z "${UI_ROOT:-}" ]]; then
+  # Safe autoresolution based on the real path of gui-env.sh
+  UI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
+  export UI_ROOT
+fi
 
 # Centralized Single Source of Truth for runtime variables and safe fallbacks
 : "${TMP_DIR:=${UI_ROOT}/tmp}"
@@ -88,10 +73,7 @@ _safe_printf() {
 # ---------------------------------------------------------------------------
 # Structured logging primitives (server vs error logs)
 # ---------------------------------------------------------------------------
-# Log format:
-#   TIMESTAMP bash4llm: LEVEL: TAG: pid=PID: MESSAGE
 _log_common() {
-  # _log_common LEVEL TAG MSG...
   local level="$1"; shift
   local tag="$1"; shift
   local msg="$*"
@@ -100,7 +82,6 @@ _log_common() {
   pid="$$"
   out="${ts} bash4llm: ${level}: ${tag}: pid=${pid}: ${msg}"
 
-  # Decide destination: ERROR -> ERROR_LOG, others -> SERVER_LOG
   if [[ "${level}" == "ERROR" || "${level}" == "FATAL" || "${level}" == "CGI_FATAL" ]]; then
     target_file="${ERROR_LOG:-}"
   else
@@ -111,13 +92,11 @@ _log_common() {
     target_dir="$(dirname -- "$target_file" 2>/dev/null || true)"
     if [[ -n "$target_dir" ]]; then
       mkdir -p -- "$target_dir" 2>/dev/null || true
-      # Append safely; best-effort (do not fail caller)
       printf '%s\n' "$out" >>"$target_file" 2>/dev/null || printf '%s\n' "$out" >&2 || true
       return 0
     fi
   fi
 
-  # Fallback to stderr if no log path available
   printf '%s\n' "$out" >&2 || true
   return 0
 }
@@ -127,9 +106,7 @@ log_info()  { _log_common "INFO"  "${1:-INFO}"  "${@:2}"; }
 log_warn()  { _log_common "WARN"  "${1:-WARN}"  "${@:2}"; }
 log_error() { _log_common "ERROR" "${1:-ERROR}" "${@:2}"; }
 
-# Safe append helper for other modules
 safe_append_log() {
-  # safe_append_log <file> <line...>
   local file="$1"; shift
   local line="$*"
   if [[ -z "$file" ]]; then return 1; fi
@@ -142,7 +119,6 @@ safe_append_log() {
 # Log rotation helper (centralized)
 # ---------------------------------------------------------------------------
 log_rotate_if_needed() {
-  # log_rotate_if_needed <file> <max_bytes>
   local file="$1" max_bytes="${2:-1048576}"
   if [[ -z "$file" ]]; then return 1; fi
   if [[ -f "$file" ]]; then
@@ -160,22 +136,18 @@ log_rotate_if_needed() {
 # Fatal helpers
 # ---------------------------------------------------------------------------
 fatal() {
-  # fatal RC MSG  -- CLI context
   local rc="${1:-1}"; shift || true
   local msg="${*:-Fatal error}"
   log_error "FATAL" "$msg"
-  # Ensure stderr flushed
   exec 2>&2 || true
   exit "$rc"
 }
 
 cgi_fatal() {
-  # cgi_fatal RC MSG  -- CGI context: log and emit minimal HTTP 500
   local rc="${1:-1}"; shift || true
   local msg="${*:-Server error}"
   log_error "CGI_FATAL" "$msg"
 
-  # Emit minimal safe HTTP 500 response (no sensitive details)
   printf 'Status: 500 Internal Server Error\r\n'
   printf 'Content-Type: text/html; charset=utf-8\r\n'
   printf 'Cache-Control: no-store\r\n'
@@ -185,7 +157,6 @@ cgi_fatal() {
   printf '<h1>500 Internal Server Error</h1>'
   printf '<p>An internal server error occurred. The administrator has been notified.</p>'
   printf '</body></html>\n'
-  # Ensure logs flushed
   exec 2>&2 || true
   exit "$rc"
 }
@@ -211,9 +182,6 @@ _canonical_path() {
   fi
 }
 
-# path_within_ui_root <path>
-# Returns 0 if <path> is inside UI_ROOT; if UI_ROOT is not set, allows everything.
-# Always preemptively resolves symlinks (sandbox validation) to prevent Directory Traversal.
 path_within_ui_root() {
   local p="$1"
   if [[ -z "${UI_ROOT:-}" ]]; then
@@ -232,94 +200,78 @@ path_within_ui_root() {
 # ---------------------------------------------------------------------------
 # Sanitization and parsing helpers (central)
 # ---------------------------------------------------------------------------
-
-# url_decode: percent-decode, safe (returns decoded string)
 url_decode() {
   local s="$1"
-  # replace + with space, then decode %HH
   s="${s//+/ }"
-  # Safely decodes percent-encoded characters using the native b-format functionality of printf
   printf '%b\n' "${s//%/\\x}" 2>/dev/null || printf '%s\n' "$s"
 }
 
-# html_escape: escape <>&"'
 html_escape() {
   local s="$1"
   s="${s//&/&amp;}"
   s="${s//</&lt;}"
   s="${s//>/&gt;}"
   s="${s//\"/&quot;}"
+  s="${s//\'/&#x27;}"
   printf '%s' "$s"
 }
 
-# sanitize_param: trim, remove control chars, collapse whitespace, limit length
 sanitize_param() {
   local s="$1"
   local maxlen="${2:-256}"
-  # remove NUL and control chars except tab/newline/space
   s="$(printf '%s' "$s" | tr -d '\000' | sed -E 's/[\x00-\x1F\x7F]+/ /g')"
-  # trim
   s="$(printf '%s' "$s" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-  # collapse internal whitespace
   s="$(printf '%s' "$s" | tr -s '[:space:]' ' ')"
-  # enforce max length
   if [ "${#s}" -gt "$maxlen" ]; then
     s="${s:0:$maxlen}"
   fi
   printf '%s' "$s"
 }
 
-# validate_name: whitelist characters for names (providers, models, conv ids)
-# Accepts only letters, digits, underscore, hyphen, dot; no slashes, no spaces, length limits
 validate_name() {
   local name="$1"
   local maxlen="${2:-128}"
   if [[ -z "$name" ]]; then return 1; fi
   if (( ${#name} > maxlen )); then return 1; fi
-  if [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then return 0; else return 1; fi
+  # Strictly alphanumeric, dashes, and underscores. Rejects all folder navigation, LFI, and Path Traversal.
+  if [[ "$name" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)?$ ]]; then
+    return 0
+  else
+    return 1
+  fi
 }
 
-# safe_read_post_body: read up to a limit (protect from huge POSTs)
 read_post_body() {
-  local max="${1:-65536}"   # default 64 KiB
+  local max="${1:-65536}"
   local ctlen="${CONTENT_LENGTH:-0}"
   if [[ -n "$ctlen" && "$ctlen" -gt "$max" ]]; then
     log_warn "CGI" "POST body too large: ${ctlen} > ${max}"
-    # read and discard to avoid broken pipe
     dd bs=1 count="$max" 2>/dev/null || true
     return 1
   fi
-  # read safely from stdin
   if [ -n "${CONTENT_LENGTH:-}" ]; then
     dd bs=1 count="${CONTENT_LENGTH}" 2>/dev/null || true
   else
-    # fallback: read until EOF but limit
     head -c "$max"
   fi
 }
 
-# parse_form_field: extract single field from application/x-www-form-urlencoded body
-# Usage: parse_form_field "fieldname" < <(printf '%s' "$body")
 parse_form_field() {
   local key="$1"
-  # read from stdin
   local body
   body="$(cat -)"
-  # find key=... (first occurrence), decode
   local kv
   kv="$(printf '%s' "$body" | tr '&' '\n' | awk -F= -v k="$key" '$1==k{print substr($0, index($0,"=")+1); exit}')"
   if [[ -z "$kv" ]]; then
     printf ''
     return 0
   fi
-  # percent-decode safely and sanitize
   local decoded
   decoded="$(url_decode "$kv" 2>/dev/null || printf '%s' "$kv")"
   decoded="$(sanitize_param "$decoded")"
   printf '%s' "$decoded"
 }
 
-# json_escape for safe JSON embedding (simple)
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -362,20 +314,16 @@ print_http_redirect() {
 # Mode detection helpers
 # ---------------------------------------------------------------------------
 is_cgi_mode() {
-  # Heuristic: presence of REQUEST_METHOD or GATEWAY_INTERFACE
   if [[ -n "${REQUEST_METHOD:-}" || -n "${GATEWAY_INTERFACE:-}" ]]; then
     return 0
   fi
   return 1
 }
+
 # ---------------------------------------------------------------------------
 # Canonicalize and validate UI_ROOT
 # ---------------------------------------------------------------------------
 canonicalize_ui_root() {
-  # Ensures UI_ROOT is set, exists, is a directory, and is nested inside a trusted
-  # base directory derived dynamically from this sourced script's position.
-  # On success: sets UI_ROOT to canonical path and exports it.
-  # On failure: logs and returns non-zero.
   local orig ui_real env_script env_dir
 
   orig="${UI_ROOT:-}"
@@ -384,20 +332,15 @@ canonicalize_ui_root() {
     return 1
   fi
 
-  # Resolve UI_ROOT to its absolute canonical path (following symlinks to their real target)
   ui_real="$(_canonical_path "$orig")"
   if [[ -z "$ui_real" || ! -d "$ui_real" ]]; then
     log_error "INIT" "UI_ROOT invalid or not a directory: ${orig:-<unset>}"
     return 1
   fi
 
-  # Define a trusted root base derived from the actual location of this environment script (gui-env.sh)
-  # This replaces the unstable $HOME constraint
   env_script="${BASH_SOURCE[0]:-$0}"
   env_dir="$(dirname -- "$(_canonical_path "$env_script")")"
 
-  # Ensure the resolved UI_ROOT is nested within our trusted base directory or vice versa
-  # to allow flexible environments while preventing Directory Traversal attacks.
   case "$ui_real" in
     "$env_dir"/*|"$env_dir") ;;
     *)
@@ -414,7 +357,6 @@ canonicalize_ui_root() {
   UI_ROOT="$ui_real"
   export UI_ROOT
 
-  # Derived paths
   CGI_DIR="${UI_ROOT%/}/cgi-bin"
   LOG_DIR="${UI_ROOT%/}/logs"
   SERVER_LOG="${LOG_DIR%/}/server.log"
@@ -428,7 +370,6 @@ canonicalize_ui_root() {
 # Ensure logs directory and error log exist with safe perms
 # ---------------------------------------------------------------------------
 ensure_logs_dir() {
-  # Create LOG_DIR and log files with strict perms (dir 700, files 600).
   if [[ -z "${UI_ROOT:-}" ]]; then
     log_error "INIT" "UI_ROOT not set; cannot create logs"
     return 1
@@ -437,7 +378,6 @@ ensure_logs_dir() {
   mkdir -p -- "$LOG_DIR" 2>/dev/null || true
   chmod 700 -- "$LOG_DIR" 2>/dev/null || true
 
-  # Ensure SERVER_LOG exists
   if [[ ! -f "$SERVER_LOG" ]]; then
     : >"$SERVER_LOG" 2>/dev/null || {
       log_error "INIT" "cannot create SERVER_LOG: $SERVER_LOG"
@@ -446,7 +386,6 @@ ensure_logs_dir() {
   fi
   chmod 600 -- "$SERVER_LOG" 2>/dev/null || true
 
-  # Ensure ERROR_LOG exists
   if [[ ! -f "$ERROR_LOG" ]]; then
     : >"$ERROR_LOG" 2>/dev/null || {
       log_error "INIT" "cannot create ERROR_LOG: $ERROR_LOG"
@@ -464,7 +403,6 @@ ensure_logs_dir() {
 _GUI_ENV_EXIT_HOOKS=()
 
 gui_env_register_exit_hook() {
-  # gui_env_register_exit_hook function_name
   local fn="$1"
   if [[ -z "$fn" ]]; then return 1; fi
   if declare -f "$fn" >/dev/null 2>&1; then
@@ -475,7 +413,6 @@ gui_env_register_exit_hook() {
 }
 
 gui_env_on_exit() {
-  # Run registered hooks in LIFO order, best-effort
   local i
   for (( i=${#_GUI_ENV_EXIT_HOOKS[@]}-1; i>=0; i-- )); do
     local h="${_GUI_ENV_EXIT_HOOKS[i]}"
@@ -483,7 +420,6 @@ gui_env_on_exit() {
       "$h" || true
     fi
   done
-  # Write a brief exit diagnostic
   log_info "EXIT" "gui_env_on_exit executed"
   return 0
 }
@@ -492,25 +428,17 @@ gui_env_on_exit() {
 # Trap installation (safe, idempotent)
 # ---------------------------------------------------------------------------
 install_default_traps() {
-  # install_default_traps MODE
-  # MODE: "cgi" or "cli"
   local mode="${1:-}"
   if [[ -z "$mode" ]]; then
     mode="cli"
   fi
 
-  # Export a stable trap-mode variable for use inside trap handlers.
-  # Trap handlers run later, after this function returns, so they must not
-  # reference a local variable that will go out of scope.
   _GUI_ENV_TRAP_MODE="${mode}"
 
-  # Guard to avoid double-install
   if [[ "${_GUI_ENV_TRAPS_INSTALLED:-}" == "1" ]]; then
     return 0
   fi
   _GUI_ENV_TRAPS_INSTALLED=1
-
-  # Prevent recursion in trap handlers
   _GUI_ENV_TRAP_INVOKED=0
 
   _gui_env_err_trap() {
@@ -519,7 +447,6 @@ install_default_traps() {
       return 0
     fi
     _GUI_ENV_TRAP_INVOKED=1
-    # Run exit hooks first (best-effort)
     gui_env_on_exit || true
     if [[ "${_GUI_ENV_TRAP_MODE:-cli}" == "cgi" ]]; then
       cgi_fatal "$rc" "Uncaught error in CGI"
@@ -534,7 +461,6 @@ install_default_traps() {
       return 0
     fi
     _GUI_ENV_TRAP_INVOKED=1
-    # Run exit hooks
     gui_env_on_exit || true
     if [[ "$rc" -ne 0 ]]; then
       if [[ "${_GUI_ENV_TRAP_MODE:-cli}" == "cgi" ]]; then
@@ -556,23 +482,20 @@ install_default_traps() {
 # Convenience initializer
 # ---------------------------------------------------------------------------
 gui_env_init() {
-  # gui_env_init MODE
-  # MODE: "cgi" or "cli"
   local mode="${1:-cli}"
   canonicalize_ui_root || return 1
   ensure_logs_dir || return 1
 
-  # Rotate logs at init to avoid unbounded growth
+  local target_umask="${BASH4LLM_UMASK:-077}"
+  umask "$target_umask"
+
   log_rotate_if_needed "${SERVER_LOG:-/dev/null}" 1048576 || true
   log_rotate_if_needed "${ERROR_LOG:-/dev/null}" 1048576 || true
 
   install_default_traps "$mode" || return 1
 
-  # Redirect stderr to ERROR_LOG for diagnostics if writable and not already redirected
   if [[ -n "${ERROR_LOG:-}" && -w "$(dirname -- "$ERROR_LOG")" ]]; then
-    # Avoid double-redirect if already redirected
     if ! { exec 2>>"$ERROR_LOG"; } 2>/dev/null; then
-      # best-effort: if redirect fails, log and continue
       log_warn "INIT" "Failed to redirect stderr to $ERROR_LOG"
     fi
   fi
@@ -582,7 +505,6 @@ gui_env_init() {
 
 # ---------------------------------------------------------------------------
 # env_detect
-# - sets flags: IS_TERMUX, IS_LINUX, IS_MAC, IS_WSL, IS_CYGWIN
 # ---------------------------------------------------------------------------
 env_detect() {
   IS_TERMUX=0
@@ -614,9 +536,6 @@ env_detect() {
 
 # ---------------------------------------------------------------------------
 # env_prepare_runtime
-# - performs environment-specific runtime preparation BEFORE ensure_bash4llm_available
-# - IMPORTANT: runtime must be read-only for shadow/wrapper persistence unless
-#   INSTALL_MODE=1 (explicit install/adapt invocation).
 # ---------------------------------------------------------------------------
 env_prepare_runtime() {
   : "${UI_ROOT:=${PWD}}"
@@ -624,15 +543,14 @@ env_prepare_runtime() {
   : "${CFG_DIR:=${UI_ROOT%/}/config}"
   : "${BOOTSTRAP_LOCK:=${TMP_DIR%/}/bootstrap.lock}"
   : "${BASH_PATH:=$(command -v bash 2>/dev/null || true)}"
-  : "${INSTALL_MODE:=0}"   # 0 = normal runtime (no writes), 1 = install/adapt (allowed writes)
+  : "${INSTALL_MODE:=0}"
 
-  # Ensure TMP_DIR exists and is writable
   mkdir -p "$TMP_DIR" 2>/dev/null || {
     log_error "GUIIO" "Cannot create TMP_DIR: $TMP_DIR"
     return 1
   }
 
-  # Health check: portable_mktemp must work here
+  local tmp_test
   if ! tmp_test="$(portable_mktemp "${TMP_DIR%/}" ".tmp.XXXXXX" 2>/dev/null || true)"; then
     log_error "GUIIO" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; aborting env_prepare_runtime"
     return 1
@@ -640,27 +558,22 @@ env_prepare_runtime() {
     rm -f -- "$tmp_test" 2>/dev/null || true
   fi
   
-  # --- Safe defaults for GUI runtime (single source of truth) ---
   : "${MAX_PROMPT_CHARS:=4096}"
   : "${MAX_RESPONSE_CHARS:=8192}"
   : "${MAX_TOKENS:=2048}"
   : "${PROVIDER_CACHE_FILE:=${CFG_DIR%/}/providers.txt}"
   : "${PROVIDER_MODELS_DIR:=${CFG_DIR%/}/models}"
   export MAX_PROMPT_CHARS MAX_RESPONSE_CHARS MAX_TOKENS PROVIDER_CACHE_FILE PROVIDER_MODELS_DIR
-  # ----------------------------------------------------------------
 
-  # Ensure runtime dirs exist and safe perms (idempotent)
   mkdir -p "${TMP_DIR%/}" "${CFG_DIR%/}" "${UI_ROOT%/}/bin" 2>/dev/null || true
   chmod 700 "${TMP_DIR%/}" "${CFG_DIR%/}" "${UI_ROOT%/}/bin" 2>/dev/null || true
 
-  # Log ownership for debugging if CGI runs as different user
   if command -v stat >/dev/null 2>&1; then
     _tmp_owner="$(stat -c '%U:%G' "${TMP_DIR%/}" 2>/dev/null || true)"
     _cfg_owner="$(stat -c '%U:%G' "${CFG_DIR%/}" 2>/dev/null || true)"
     log_info "ENV" "TMP_DIR owner: ${_tmp_owner:-<unknown>}, CFG_DIR owner: ${_cfg_owner:-<unknown>}"
   fi
 
-  # Determine deterministic real binary locations (robust list)
   local bash4llm_real bash4llm_shadow BIN_DIR wrapper tmp_shadow rc real_hash shadow_hash
   bash4llm_shadow="/data/data/com.termux/files/usr/bin/bash4llm"
 
@@ -681,9 +594,7 @@ env_prepare_runtime() {
     fi
   done
 
-  # RUNTIME-ONLY behavior (no persistent writes)
   if [[ "${INSTALL_MODE:-0}" -ne 1 ]]; then
-    # Prefer persisted bash4llm-path if present and valid
     if [[ -f "${CFG_DIR%/}/bash4llm-path" ]]; then
       local persisted
       persisted="$(sed -n '1p' "${CFG_DIR%/}/bash4llm-path" 2>/dev/null || true)"
@@ -699,7 +610,6 @@ env_prepare_runtime() {
       fi
     fi
 
-    # If Termux, prefer wrapper/shadow only if already present and executable
     if [[ "${IS_TERMUX:-0}" -eq 1 ]]; then
       BIN_DIR="${UI_ROOT%/}/bin"
       wrapper="$BIN_DIR/bash4llm-wrapper"
@@ -711,7 +621,6 @@ env_prepare_runtime() {
         log_info "ENV" "Runtime mode (Termux): using existing wrapper $wrapper"
         return 0
       fi
-      # If no wrapper, prefer bash4llm_real if available
       if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
         BASH4LLM_CMD="$bash4llm_real"
         export BASH4LLM_CMD
@@ -722,7 +631,6 @@ env_prepare_runtime() {
       return 0
     fi
 
-    # Non-Termux runtime: prefer local repo binary if present
     if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
       BASH4LLM_CMD="$bash4llm_real"
       export BASH4LLM_CMD
@@ -730,22 +638,15 @@ env_prepare_runtime() {
       return 0
     fi
 
-    # Nothing resolved; leave defaults
     log_warn "ENV" "Runtime mode: no bash4llm resolved (no persisted path, no wrapper, no local binary)"
     return 0
   fi
 
-  # ---------------------------
-  # INSTALL_MODE=1 (install/adapt)
-  # Allowed to create/update shadow/wrapper/persist bash4llm-path
-  # ---------------------------
-
-  # If not Termux, do not create a shadow; persist bash4llm_real into bash4llm-path
   if [[ "${IS_TERMUX:-0}" -ne 1 ]]; then
     if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
-      # Persist bash4llm_real into CFG_DIR/bash4llm-path atomically
       mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
       if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" ]]; then
+        local tmp_path line_count
         tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/bash4llm-path.tmp"
         if printf '%s\n' "$bash4llm_real" >"$tmp_path" 2>/dev/null; then
           line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
@@ -776,15 +677,12 @@ env_prepare_runtime() {
     fi
   fi
 
-  # From here: IS_TERMUX=1 and INSTALL_MODE=1 -> perform Termux shadow/wrapper update
-  # Ensure TMP_DIR usable and flock available; bail gracefully if not
   ensure_tmpdir || { log_warn "ENV" "ensure_tmpdir failed; skipping Termux shadow/wrapper update"; return 0; }
   if ! command -v flock >/dev/null 2>&1; then
     log_warn "ENV" "flock not available; skipping Termux shadow/wrapper update"
     return 0
   fi
 
-  # Acquire bootstrap lock (fd 9)
   exec 9>"${BOOTSTRAP_LOCK}" 2>/dev/null || { log_warn "ENV" "cannot open BOOTSTRAP_LOCK"; return 0; }
   if ! flock -x -w 5 9; then
     exec 9>&- 2>/dev/null || true
@@ -792,17 +690,13 @@ env_prepare_runtime() {
     return 0
   fi
 
-  # Helper to release lock before any early return
   _release_lock() {
     flock -u 9 2>/dev/null || true
     exec 9>&- 2>/dev/null || true
   }
 
-  # Compute hashes once to decide whether to update shadow
   real_hash="$(compute_hash "$bash4llm_real" 2>/dev/null || true)"
   shadow_hash="$(compute_hash "$bash4llm_shadow" 2>/dev/null || true)"
-
-  # Initialize rc defensively
   rc=1
 
   if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
@@ -815,7 +709,6 @@ env_prepare_runtime() {
         return 0
       fi
 
-      # Patch shebang defensively if BASH_PATH resolved and executable
       if [[ -n "${BASH_PATH:-}" && -x "$BASH_PATH" ]]; then
         if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
           sed -i '1s|^#!.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
@@ -830,7 +723,6 @@ env_prepare_runtime() {
       fi
       rc=0
     else
-      # portable_mktemp failed: log explicit reason and do NOT perform unsafe direct copy
       log_warn "ENV" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to perform direct copy to $bash4llm_shadow in INSTALL_MODE"
       _release_lock
       return 0
@@ -849,20 +741,17 @@ env_prepare_runtime() {
     log_info "ENV" "INSTALL_MODE: bash4llm shadow already up-to-date"
   fi
 
-  # Ensure BASH_PATH resolved and executable before creating wrapper
   if [[ -z "${BASH_PATH:-}" || ! -x "$BASH_PATH" ]]; then
     _release_lock
     log_warn "ENV" "BASH_PATH not resolved or not executable; skipping wrapper creation"
     return 0
   fi
 
-  # Create wrapper in UI_ROOT/bin pointing to shadow using resolved BASH_PATH
   BIN_DIR="${UI_ROOT%/}/bin"
   mkdir -p "$BIN_DIR" 2>/dev/null || true
   chmod 700 "$BIN_DIR" 2>/dev/null || true
   wrapper="$BIN_DIR/bash4llm-wrapper"
 
-  # Write wrapper atomically into TMP_DIR, then move only if different
   local tmp_wrapper new_wrapper_hash existing_wrapper_hash wrapper_hash
   tmp_wrapper="$(portable_mktemp "$TMP_DIR" "wrapper.XXXXXX")" || tmp_wrapper=""
   if [[ -n "$tmp_wrapper" ]]; then
@@ -873,7 +762,6 @@ env_prepare_runtime() {
       return 0
     }
 
-    # If wrapper exists, compare hashes and avoid unnecessary mv
     if [[ -f "$wrapper" ]]; then
       new_wrapper_hash="$(compute_hash "$tmp_wrapper" 2>/dev/null || true)"
       existing_wrapper_hash="$(compute_hash "$wrapper" 2>/dev/null || true)"
@@ -899,21 +787,15 @@ env_prepare_runtime() {
       rc=0
     fi
   else
-    # fallback: do NOT perform unsafe direct write in INSTALL_MODE; require mktemp
     log_warn "ENV" "portable_mktemp failed for TMP_DIR=${TMP_DIR:-<unset>}; refusing to write wrapper directly in INSTALL_MODE"
     _release_lock
     return 0
   fi
 
   chmod 750 "$wrapper" 2>/dev/null || true
-
-  # compute wrapper hash once for later use
   wrapper_hash="$(compute_hash "$wrapper" 2>/dev/null || true)"
-
-  # release lock
   _release_lock
 
-  # Export wrapper preference for runtime if executable
   if [[ -x "$wrapper" ]]; then
     BASH4LLM_CMD="$wrapper"
     export BASH4LLM_CMD
@@ -924,14 +806,12 @@ env_prepare_runtime() {
     log_warn "ENV" "Wrapper not executable; BASH4LLM_CMD not set to wrapper"
   fi
 
-  # Persist bash4llm-path into CFG_DIR atomically; ensure CFG_DIR exists
   if [[ -n "${CFG_DIR:-}" ]]; then
     mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
     if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" && -x "$wrapper" ]]; then
-      # write into a temp file inside CFG_DIR and validate it contains exactly one non-empty line
+      local tmp_path line_count
       tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/bash4llm-path.tmp"
       if printf '%s\n' "$wrapper" >"$tmp_path" 2>/dev/null; then
-        # normalize and count non-empty lines
         line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
         if [[ "$line_count" -eq 1 ]]; then
           mv -f -- "$tmp_path" "${CFG_DIR%/}/bash4llm-path"
@@ -955,11 +835,9 @@ env_prepare_runtime() {
 
 # ---------------------------------------------------------------------------
 # env_after_bash4llm_resolved
-# - operations that require BASH4LLM_CMD already resolved
 # ---------------------------------------------------------------------------
 env_after_bash4llm_resolved() {
   if [[ -n "${BASH4LLM_CMD:-}" && -x "${BASH4LLM_CMD}" ]]; then
-    # Lightweight diagnostic: count providers if possible (best-effort)
     local prov_count
     prov_count="$("${BASH4LLM_CMD}" --list-providers-raw 2>/dev/null | wc -l 2>/dev/null || true)"
     log_info "ENV" "bash4llm resolved: ${BASH4LLM_CMD} (providers: ${prov_count:-0})"
@@ -970,8 +848,7 @@ env_after_bash4llm_resolved() {
 }
 
 # ---------------------------------------------------------------------------
-# Utility: ensure_tmpdir, portable_mktemp, portable_mktemp alias,
-# atomic_write, atomic_append_conv, compute_hash, same_filesystem
+# Utility: ensure_tmpdir, portable_mktemp, atomic_write, compute_hash, same_filesystem
 # ---------------------------------------------------------------------------
 ensure_tmpdir() {
   if [[ -e "$TMP_DIR" && ! -d "$TMP_DIR" ]]; then
@@ -989,7 +866,6 @@ ensure_tmpdir() {
   return 0
 }
 
-# Canonical portable_mktemp: portable_mktemp <dir> [template]
 portable_mktemp() {
   local dir="${1:-}" template="${2:-.tmp.XXXXXX}"
   local dir_real tmp candidate base i rand
@@ -999,7 +875,6 @@ portable_mktemp() {
     return 1
   fi
 
-  # Ensure directory exists and is writable
   mkdir -p -- "$dir" 2>/dev/null || { log_error "GUIIO" "portable_mktemp: cannot create dir: $dir"; return 1; }
   dir_real="$(cd -- "$dir" 2>/dev/null && pwd -P || true)"
   if [[ -z "$dir_real" || ! -d "$dir_real" || ! -w "$dir_real" ]]; then
@@ -1007,7 +882,6 @@ portable_mktemp() {
     return 1
   fi
 
-  # Optional confinement: prefer TMP_DIR if set, otherwise allow UI_ROOT/tmp
   if [[ -n "${TMP_DIR:-}" ]]; then
     case "$dir_real" in
       "$TMP_DIR"/*|"$TMP_DIR") ;;
@@ -1018,7 +892,6 @@ portable_mktemp() {
     esac
   fi
 
-  # Try mktemp -p if available (portable systems)
   if command -v mktemp >/dev/null 2>&1; then
     if tmp="$(mktemp -p "$dir_real" "$template" 2>/dev/null)"; then
       chmod 600 -- "$tmp" 2>/dev/null || true
@@ -1032,7 +905,6 @@ portable_mktemp() {
     fi
   fi
 
-  # Fallback deterministic loop (avoid collisions)
   base="$(date +%s%N 2>/dev/null || printf '%s' "$$")"
   i=0
   while (( i < 200 )); do
@@ -1051,9 +923,6 @@ portable_mktemp() {
   return 1
 }
 
-# Atomic write: atomic_write <dest> <content>
-# - umask 077, chmod 600 on the final file
-# - if path_within_ui_root is defined, refuses writing outside UI_ROOT
 atomic_write() {
   local dest="$1" content="${2:-}" dest_dir tmp
 
@@ -1064,7 +933,6 @@ atomic_write() {
 
   dest_dir="$(dirname -- "$dest")"
 
-  # Optional confinement: if helper path_within_ui_root exists, enforce it
   if declare -f path_within_ui_root >/dev/null 2>&1 && [[ -n "${UI_ROOT:-}" ]]; then
     if ! path_within_ui_root "$dest"; then
       log_error "GUIIO" "atomic_write: refusing to write outside UI_ROOT: $dest"
@@ -1074,7 +942,6 @@ atomic_write() {
 
   ensure_tmpdir || return 1
 
-  # Prefer tmp on same filesystem as destination when possible
   if same_filesystem "$TMP_DIR" "$dest_dir" && tmp="$(portable_mktemp "$TMP_DIR" "atomic.XXXXXX")"; then
     :
   else
@@ -1097,14 +964,12 @@ atomic_write() {
   return 0
 }
 
-# Atomic append for conversation files: atomic_append_conv <conv_file> <line...>
 atomic_append_conv() {
   local conv_file="$1" append_text="$2" tmp dest_dir lockfile lockfd
   if [[ -z "$conv_file" ]]; then return 1; fi
   dest_dir="$(dirname -- "$conv_file")"
   mkdir -p -- "$dest_dir" 2>/dev/null || true
 
-  # Prefer to use a lockfile to serialize appends if flock available
   lockfile="${conv_file}.lock"
   if command -v flock >/dev/null 2>&1; then
     exec {lockfd}>"$lockfile" 2>/dev/null || lockfd=""
@@ -1134,15 +999,13 @@ atomic_append_conv() {
   return 0
 }
 
-# Atomic append variant that reads from stdin and appends into convfile
 atomic_append_conv_in_uiroot() {
   local convfile="$1"
   if [[ -z "$convfile" ]]; then return 1; fi
-  local dir tmpf lockfile lockfd
+  local dir tmpf
   dir="$(dirname -- "$convfile")"
   mkdir -p -- "$dir" 2>/dev/null || true
 
-  # Use portable_mktemp only; if it fails, fail the function
   tmpf="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" "conv.XXXXXX")" || return 1
 
   if [[ -f "$convfile" ]]; then
@@ -1151,7 +1014,6 @@ atomic_append_conv_in_uiroot() {
     : >"$tmpf"
   fi
 
-  # Append stdin to tmpf
   cat >> "$tmpf"
 
   mv -f -- "$tmpf" "$convfile" || { rm -f -- "$tmpf" 2>/dev/null || true; return 1; }
@@ -1188,7 +1050,6 @@ same_filesystem() {
 # Health and diagnostics helpers
 # ---------------------------------------------------------------------------
 gui_env_health_check() {
-  # Returns 0 if basic health checks pass, non-zero otherwise.
   local ok=0
   if ! ensure_tmpdir; then
     log_warn "HEALTH" "TMP_DIR check failed: ${TMP_DIR:-<unset>}"
@@ -1210,7 +1071,6 @@ gui_env_health_check() {
 }
 
 gui_env_dump_diag() {
-  # Dump compact diagnostics: last N lines of logs and key vars
   local lines="${1:-50}"
   printf '--- DIAGNOSTIC DUMP (%s lines) ---\n' "$lines"
   printf 'UI_ROOT=%s\n' "${UI_ROOT:-<unset>}"
@@ -1228,9 +1088,9 @@ gui_env_dump_diag() {
   return 0
 }
 
-# =============================================================================
-# Read first line of a config file, returning default if file is missing/empty
-# =============================================================================
+# ---------------------------------------------------------------------------
+# Configuration Getters/Setters and Shared State Getters
+# ---------------------------------------------------------------------------
 read_config_or_default() {
   local file="$1" default="${2:-}"
   if [[ -f "$file" && -r "$file" ]]; then
@@ -1246,9 +1106,6 @@ read_config_or_default() {
   return 0
 }
 
-# =============================================================================
-# Ensure all runtime directories exist with safe permissions (Upstream Bugfix)
-# =============================================================================
 ensure_dirs() {
   : "${UI_ROOT:=${UI_ROOT:-$PWD}}"
   : "${TMP_DIR:=${UI_ROOT}/tmp}"
@@ -1267,7 +1124,6 @@ ensure_dirs() {
     chmod 700 -- "$d" 2>/dev/null || true
   done
 
-  # Safe fallbacks for config files
   : "${DEFAULT_MODEL_FILE:=${CFG_DIR}/default-model}"
   : "${DEFAULT_PROVIDER_FILE:=${CFG_DIR}/default-provider}"
   : "${CURRENT_CONV_FILE:=${CFG_DIR}/current-conv}"
@@ -1278,9 +1134,6 @@ ensure_dirs() {
   return 0
 }
 
-# =============================================================================
-# Sandbox file permissions and directory security setups
-# =============================================================================
 ensure_sh_executables() {
   local target_dir="${1:-}"
   if [[ -z "$target_dir" || ! -d "$target_dir" ]]; then
@@ -1288,7 +1141,6 @@ ensure_sh_executables() {
     return 1
   fi
   
-  # Confinements execution within the GUI directory for security
   if declare -f path_within_ui_root >/dev/null 2>&1; then
     if ! path_within_ui_root "$target_dir"; then
       log_error "ENV" "ensure_sh_executables: attempt to access external path"
@@ -1296,7 +1148,6 @@ ensure_sh_executables() {
     fi
   fi
 
-  # Non-blocking configuration of appropriate permissions
   find "$target_dir" -type f -name "*.sh" -exec chmod 750 {} + 2>/dev/null || true
   return 0
 }
@@ -1315,11 +1166,13 @@ remove_unnecessary_symlinks() {
     fi
   fi
 
-  # Removes broken symlinks to prevent security misalignment (best-effort)
   find "$target_dir" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# Global Config default loader / setter
+# ---------------------------------------------------------------------------
 ensure_config_defaults() {
   : "${CFG_DIR:=${UI_ROOT}/config}"
   : "${CONV_DIR:=${UI_ROOT}/conversations}"
@@ -1329,9 +1182,9 @@ ensure_config_defaults() {
   local current_conv_file="${CFG_DIR}/current-conv"
   local lang_current_file="${CFG_DIR}/current-lang"
   local theme_current_file="${CFG_DIR}/current-theme"
+  local use_sessions_file="${CFG_DIR}/use-sessions"
   local conv_default="conv-1.txt"
 
-  # 1. Secure initialization of fallback configuration files
   if [[ ! -f "$default_model_file" ]]; then
     mkdir -p "$(dirname "$default_model_file")" 2>/dev/null || true
     : > "$default_model_file"
@@ -1356,7 +1209,13 @@ ensure_config_defaults() {
     chmod 600 "$theme_current_file" 2>/dev/null || true
   fi
 
-  # 2. Initialization and validation of the current conversation state
+  # Seed the default use-sessions configuration as "enabled" to ensure immediate log writes
+  if [[ ! -f "$use_sessions_file" ]]; then
+    mkdir -p "$(dirname "$use_sessions_file")" 2>/dev/null || true
+    printf 'enabled\n' > "$use_sessions_file" 2>/dev/null || true
+    chmod 600 "$use_sessions_file" 2>/dev/null || true
+  fi
+
   local conv
   conv="$(read_config_or_default "$current_conv_file" "$conv_default")"
   conv="$(sanitize_param "$conv")"
@@ -1366,16 +1225,13 @@ ensure_config_defaults() {
     atomic_write "$current_conv_file" "$conv" || true
   fi
 
+  # conversations/ folder is deprecated but initialized for backward compatibility
   if [[ ! -f "$CONV_DIR/$conv" ]]; then
     atomic_write "$CONV_DIR/$conv" "" || true
   fi
 
   return 0
 }
-
-# =============================================================================
-# Architectural State Getters / Setters and Runtime Configuration Helpers
-# =============================================================================
 
 get_default_provider() {
   read_config_or_default "${DEFAULT_PROVIDER_FILE:-${CFG_DIR}/default-provider}" "groq"
@@ -1452,33 +1308,99 @@ sanitize_model_output() {
   printf '%s' "$s" | tr -d '\000' | sed -E 's/\r$//g'
 }
 
+# ---------------------------------------------------------------------------
+# NDJSON-based Session Conversation Block Builder (SSOT Compliant)
+# ---------------------------------------------------------------------------
 build_current_conv_block() {
   local file="$1"
   CURRENT_CONV=""
-  if [[ -f "$file" && -r "$file" ]]; then
-    local line escaped_line
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      escaped_line="$(html_escape "$line")"
-      if [[ "$escaped_line" == "USER: "* ]]; then
-        CURRENT_CONV+="<div class=\"message user-message\"><strong>User:</strong> ${escaped_line#USER: }</div>"$'\n'
-      elif [[ "$escaped_line" == "AI: "* ]]; then
-        CURRENT_CONV+="<div class=\"message ai-message\"><strong>Assistant:</strong> ${escaped_line#AI: }</div>"$'\n'
+  local active_conv
+  active_conv="$(basename "$file" .ndjson)"
+  
+  if [[ -z "$active_conv" ]]; then
+    return 1
+  fi
+  
+  local temp_json
+  ensure_tmpdir || return 1
+  temp_json="$(portable_mktemp "$TMP_DIR" "hconv.XXXXXX")" || return 1
+
+  local is_full
+  is_full="$(get_query_param "full_history" 2>/dev/null || printf '0')"
+  local window_size=20
+  if [[ "$is_full" == "1" ]]; then
+    window_size=99999
+  fi
+  
+  # Delegate directly to core's session retrieval logic (SSOT)
+  if declare -f session_read_window >/dev/null 2>&1; then
+    session_read_window "$active_conv" "$window_size" "$temp_json" >/dev/null 2>&1
+  else
+    # Perfect isolated fallback mapping of NDJSON records directly with jq
+    local session_file="${BASH4LLM_DIR}/history/sessions/${active_conv}.ndjson"
+    if [[ -f "$session_file" ]]; then
+      printf '{"messages":[' > "$temp_json"
+      local first=1 line role content r_json c_json
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        if printf '%s\n' "$line" | jq -e . >/dev/null 2>&1; then
+          role="$(printf '%s\n' "$line" | jq -r '.role // "user"')"
+          content="$(printf '%s\n' "$line" | jq -r '.content // ""')"
+          r_json="$(jq -R -c . <<< "$role")"
+          c_json="$(jq -R -s . <<< "$content")"
+          c_json="${c_json%$'\n'}"
+          if [[ "$first" -eq 0 ]]; then printf ',' >> "$temp_json"; fi
+          printf '{"role":%s,"content":%s}' "$r_json" "$c_json" >> "$temp_json"
+          first=0
+        fi
+      done < <(tail -n "$window_size" "$session_file" 2>/dev/null)
+      printf ']}' >> "$temp_json"
+    fi
+  fi
+
+  if [[ -f "$temp_json" && -s "$temp_json" ]]; then
+    local idx=0 role content escaped_role escaped_content
+    while read -r role; do
+      content="$(jq -r ".messages[$idx].content // \"\"" "$temp_json" 2>/dev/null)"
+      escaped_role="$(html_escape "$role")"
+      escaped_content="$(html_escape "$content")"
+      
+      escaped_content="${escaped_content//$'\n'/<br>}"
+      escaped_content="${escaped_content//$'\r'/}"
+
+      if [[ "$escaped_role" == "user" ]]; then
+        CURRENT_CONV+="<div class=\"message user-message\"><strong>User:</strong> ${escaped_content}</div>"$'\n'
+      elif [[ "$escaped_role" == "assistant" ]]; then
+        CURRENT_CONV+="<div class=\"message ai-message\"><strong>Assistant:</strong> ${escaped_content}</div>"$'\n'
       else
-        CURRENT_CONV+="<div class=\"message system-message\">${escaped_line}</div>"$'\n'
+        CURRENT_CONV+="<div class=\"message system-message\"><strong>System:</strong> ${escaped_content}</div>"$'\n'
       fi
-    done < "$file"
+      idx=$((idx + 1))
+    done < <(jq -r '.messages[]?.role // empty' "$temp_json" 2>/dev/null)
+  fi
+
+  rm -f -- "$temp_json" 2>/dev/null || true
+
+  local total_lines=0
+  local session_file="${BASH4LLM_DIR}/history/sessions/${active_conv}.ndjson"
+  if [[ -f "$session_file" ]]; then
+    total_lines="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
+  fi
+  if [[ "$is_full" != "1" && "$total_lines" -gt 20 ]]; then
+    local current_page current_conv_name
+    current_page="$(get_query_param "page" 2>/dev/null || printf 'main')"
+    current_conv_name="$(read_config_or_default "${CURRENT_CONV_FILE:-${CFG_DIR}/current-conv}" "conv-1.txt")"
+    current_conv_name="$(sanitize_param "$current_conv_name")"
+    CURRENT_CONV+="<div class=\"load-more-container\" style=\"margin: 1.5rem 0; text-align: center;\"><a class=\"btn btn-secondary\" href=\"?page=${current_page}&select_conv=${current_conv_name}&full_history=1\">Load full history (${total_lines} turns)</a></div>"$'\n'
   fi
   export CURRENT_CONV
 }
 
 load_translations() {
   local lang_code="${1:-en}"
-  local lang_conf line key_lang val key code
+  local lang_conf key_lang val key code
   lang_conf="$(find_lang_conf || true)"
   if [[ -n "$lang_conf" && -f "$lang_conf" ]]; then
-    # Normalizza le righe multi-colonna separando le definizioni con awk
     while IFS="=" read -r key_lang val || [[ -n "$key_lang" ]]; do
-      # Rimuove spazi vuoti iniziali e finali
       key_lang="${key_lang#"${key_lang%%[![:space:]]*}"}"
       key_lang="${key_lang%"${key_lang##*[![:space:]]}"}"
       val="${val#"${val%%[![:space:]]*}"}"
@@ -1491,7 +1413,6 @@ load_translations() {
       key="${key_lang%%.*}"
       code="${key_lang#*.}"
       
-      # Rimuove spazi vuoti interni
       key="${key//[[:space:]]/}"
       code="${code//[[:space:]]/}"
       
@@ -1505,18 +1426,14 @@ load_translations() {
 render_template() {
   local file="$1"
   if [[ ! -f "$file" ]]; then return 1; fi
-  
-  # Supporta ed elabora in modo sicuro sia {{VAR}} che ${VAR}
   awk '
   {
-    # 1. Elabora i segnaposto nel formato {{VAR}}
     while (match($0, /[{][{][A-Za-z0-9_]+[}][}]/)) {
       target = substr($0, RSTART, RLENGTH)
       varname = substr(target, 3, length(target) - 4)
       val = ENVIRON[varname]
       $0 = substr($0, 1, RSTART - 1) val substr($0, RSTART + RLENGTH)
     }
-    # 2. Elabora i segnaposto nel formato ${VAR}
     while (match($0, /[$][{][A-Za-z0-9_]+[}]/)) {
       target = substr($0, RSTART, RLENGTH)
       varname = substr(target, 3, length(target) - 3)
@@ -1527,20 +1444,43 @@ render_template() {
   }' "$file"
 }
 
+# ---------------------------------------------------------------------------
+# Cooperative Locking System (flock + directory lock fallback, no /tmp leaks)
+# ---------------------------------------------------------------------------
 acquire_lock() {
-  local lockfile="${LOCK_FILE:-/tmp/gui.lock}"
-  if command -v flock >/dev/null 2>&1; then
-    exec 8>"$lockfile" 2>/dev/null || return 1
-    flock -x -w 5 8
-    return $?
-  fi
+  local lockfile="${LOCK_FILE:-${TMP_DIR}/gui.lock}"
+  local timeout=3
   local lockdir="${lockfile}.dir"
-  local i=0
-  while (( i < 50 )); do
-    if mkdir "$lockdir" 2>/dev/null; then
-      echo "$$" > "$lockdir/pid" 2>/dev/null || true
+  local pidfile="${lockdir}/pid"
+  local current_pid="${BASHPID:-$$}"
+
+  # Exclude Termux from flock to align with core security policies
+  if command -v flock >/dev/null 2>&1 && [[ -z "${TERMUX_VERSION:-}" ]]; then
+    exec 8>"$lockfile" 2>/dev/null || return 1
+    if flock -x -w "$timeout" 8 2>/dev/null; then
+      printf '%s\n' "$current_pid" >"$lockfile" 2>/dev/null || true
       return 0
     fi
+  fi
+
+  # Safe atomic folder cooperative fallback
+  local i=0
+  while (( i < 30 )); do
+    if mkdir "$lockdir" 2>/dev/null; then
+      printf '%s\n' "$current_pid" > "$pidfile" 2>/dev/null || true
+      return 0
+    fi
+
+    # Stale lock cleanup verification
+    if [[ -f "$pidfile" ]]; then
+      local lp
+      lp="$(cat "$pidfile" 2>/dev/null || true)"
+      if [[ -n "$lp" ]] && ! kill -0 "$lp" 2>/dev/null; then
+        rm -rf "$lockdir" 2>/dev/null || true
+        continue
+      fi
+    fi
+
     sleep 0.1
     i=$((i+1))
   done
@@ -1548,13 +1488,12 @@ acquire_lock() {
 }
 
 release_lock() {
-  local lockfile="${LOCK_FILE:-/tmp/gui.lock}"
+  local lockfile="${LOCK_FILE:-${TMP_DIR}/gui.lock}"
+  local lockdir="${lockfile}.dir"
   if command -v flock >/dev/null 2>&1; then
     flock -u 8 2>/dev/null || true
     exec 8>&- 2>/dev/null || true
-    return 0
   fi
-  local lockdir="${lockfile}.dir"
   rm -rf "$lockdir" 2>/dev/null || true
   return 0
 }
