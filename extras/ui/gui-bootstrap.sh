@@ -11,36 +11,38 @@
 # =============================================================================
 # This script is sourced during runtime to verify the environment,
 # discover the location of the bash4llm executable, and maintain caches.
-#
 
-# ---------------------------------------------------------------------------
-# Core Environment Sourcing (Conditional and Safe)
-# ---------------------------------------------------------------------------
-if ! declare -f gui_env_init >/dev/null 2>&1; then
-  if [[ -f "$(dirname "${BASH_SOURCE[0]:-$0}")/gui-env.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "$(dirname "${BASH_SOURCE[0]:-$0}")/gui-env.sh"
+# Resolve the absolute canonical path of BASH4LLM_DIR (Isolated for GUI environment)
+BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
+
+# Isolation of BASH4LLM_DIR for GUI: points to a dedicated subpath internal to the GUI
+BASH4LLM_DIR="${BOOTSTRAP_DIR}/tmp/gui-runtime.d"
+export BASH4LLM_DIR
+
+# Safe and secure initialization of isolated subdirectory structure
+mkdir -p "$BASH4LLM_DIR" "$BASH4LLM_DIR/config" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" "$BASH4LLM_DIR/tmp" "$BASH4LLM_DIR/config/ui_state" "$BASH4LLM_DIR/config/ui_state/sessions" 2>/dev/null || true
+chmod 700 "$BASH4LLM_DIR" "$BASH4LLM_DIR/config" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" "$BASH4LLM_DIR/tmp" "$BASH4LLM_DIR/config/ui_state" "$BASH4LLM_DIR/config/ui_state/sessions" 2>/dev/null || true
+
+# Clean environment initialization layer load
+if [[ -f "${BOOTSTRAP_DIR}/gui-env.sh" ]]; then
+  source "${BOOTSTRAP_DIR}/gui-env.sh"
+fi
+
+if declare -f gui_env_init >/dev/null 2>&1; then
+  if declare -f is_cgi_mode >/dev/null 2>&1 && is_cgi_mode; then
+    gui_env_init "cgi" || true
+  else
+    gui_env_init "cli" || true
   fi
 fi
 
-# Define the absolute canonical path of BASH4LLM_DIR based on the directory containing this script.
-# Since gui-bootstrap.sh is located at BASH4LLM_DIR/extras/ui/gui-bootstrap.sh,
-# BASH4LLM_DIR is exactly two levels up.
-BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
-BASH4LLM_DIR="$(cd "${BOOTSTRAP_DIR}/../.." >/dev/null 2>&1 && pwd -P)"
-export BASH4LLM_DIR
-
-# ---------------------------------------------------------------------------
 # CGI/Web-Server Environment Isolation (Zero conflict, standard writeable path)
-# ---------------------------------------------------------------------------
 export HOME="${TMP_DIR}/home"
 export XDG_CONFIG_HOME="${CFG_DIR}/xdg"
 mkdir -p "$HOME" "$XDG_CONFIG_HOME" 2>/dev/null || true
 chmod 700 "$HOME" "$XDG_CONFIG_HOME" 2>/dev/null || true
 
-# ---------------------------------------------------------------------------
-# Ensure bash4llm is available (DETERMINISTIC: discovery-only)
-# ---------------------------------------------------------------------------
+# Securely locate the active bash4llm executable
 ensure_bash4llm_available() {
   if [[ -n "${UI_ROOT:-}" ]]; then
     local wrapper_path="${UI_ROOT%/}/bin/bash4llm-wrapper"
@@ -48,12 +50,14 @@ ensure_bash4llm_available() {
       BASH4LLM_CMD="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s' "$wrapper_path")"
       export BASH4LLM_CMD
       
-      # Dynamically export BASH4LLM_DIR based on the location of the found executable
       local cmd_dir
       cmd_dir="$(dirname "$BASH4LLM_CMD")"
       if [[ -d "$cmd_dir/bash4llm.d" ]]; then
-        BASH4LLM_DIR="$(cd "$cmd_dir/bash4llm.d" >/dev/null 2>&1 && pwd -P)"
-        export BASH4LLM_DIR
+        # PROTEZIONE MULTI-TENANT: Evita di sovrascrivere il percorso se la GUI ha già impostato la directory isolata
+        if [[ "${BASH4LLM_DIR:-}" != *"gui-runtime.d"* ]]; then
+          BASH4LLM_DIR="$(cd "$cmd_dir/bash4llm.d" >/dev/null 2>&1 && pwd -P)"
+          export BASH4LLM_DIR
+        fi
       fi
       
       log_info "GUIIO" "Discovered bash4llm at $BASH4LLM_CMD"
@@ -114,17 +118,13 @@ ensure_bash4llm_available() {
   return 1
 }
 
-# ---------------------------------------------------------------------------
 # Resolve BASH_PATH once (deterministic for wrapper creation)
-# ---------------------------------------------------------------------------
 BASH_PATH="$(command -v bash 2>/dev/null || true)"
 if [[ -n "$BASH_PATH" && ! -x "$BASH_PATH" ]]; then
   BASH_PATH=""
 fi
 
-# ---------------------------------------------------------------------------
 # Best-effort permissions adjustments for Termux
-# ---------------------------------------------------------------------------
 fix_termux_perms() {
   if [[ -d "/data/data/com.termux/files/usr" ]]; then
     chmod 700 "$TMP_DIR" 2>/dev/null || true
@@ -135,9 +135,7 @@ fix_termux_perms() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# Automatic Security Sandboxing (.htaccess protection)
-# ---------------------------------------------------------------------------
+# Automatic Security Sandboxing - Systematic .htaccess protection
 ensure_htaccess_protection() {
   local d htaccess_file content
   content="Require all denied"$'\n'"<IfModule !mod_authz_core.c>"$'\n'"  Order deny,allow"$'\n'"  Deny from all"$'\n'"</IfModule>"
@@ -153,21 +151,28 @@ ensure_htaccess_protection() {
     if [[ -d "$d" ]]; then
       htaccess_file="${d%/}/.htaccess"
       if [[ ! -f "$htaccess_file" ]]; then
-        atomic_write "$htaccess_file" "$content" 2>/dev/null || true
+        gui_atomic_write "$htaccess_file" "$content" 2>/dev/null || true
       fi
     fi
   done
 }
 
-# ---------------------------------------------------------------------------
-# Cache refresh helpers (deterministic, single-shot per invocation)
-# ---------------------------------------------------------------------------
+# Secure provider cache refresh exporting API key dynamically
 ensure_provider_cache_fresh() {
-  local providers_file="${CFG_DIR%/}/providers.txt"
-  local lockfd tmpf rc
-  local lockfile="${BOOTSTRAP_LOCK:-$TMP_DIR/bootstrap.lock}"
+  # Safe fallback if the environment is not fully initialized (e.g. SKIP_INIT during install)
+  local l_cfg_dir="${CFG_DIR:-${BASH4LLM_DIR:-$BOOTSTRAP_DIR/tmp/gui-runtime.d}/config}"
+  local l_tmp_dir="${TMP_DIR:-${BASH4LLM_DIR:-$BOOTSTRAP_DIR/tmp/gui-runtime.d}/tmp}"
+  local providers_file="${l_cfg_dir%/}/providers.txt"
+  local lockfd tmpf rc=0
+  local lockfile="${BOOTSTRAP_LOCK:-$l_tmp_dir/bootstrap.lock}"
+
+  # Optimization: Avoid regeneration if a non-empty cache already exists
+  if [[ -s "$providers_file" ]]; then
+    return 0
+  fi
 
   mkdir -p "$(dirname -- "$providers_file")" 2>/dev/null || true
+  mkdir -p "$l_tmp_dir" 2>/dev/null || true
 
   exec {lockfd}>"$lockfile" 2>/dev/null || return 1
   if ! flock -x -w 5 "$lockfd"; then
@@ -182,24 +187,24 @@ ensure_provider_cache_fresh() {
     return 0
   fi
 
-  # Ensure API key is exported before cache queries
+  # Pre-loading the API Key for the active provider
   if declare -f export_api_key_for_provider >/dev/null 2>&1 && declare -f get_default_provider >/dev/null 2>&1; then
     export_api_key_for_provider "$(get_default_provider)" || true
   fi
 
-  tmpf="$(portable_mktemp "$TMP_DIR" "providers.XXXXXX")" || tmpf=""
+  tmpf="$(gui_portable_mktemp "$l_tmp_dir" "providers.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
     "${BASH4LLM_CMD}" --list-providers-raw 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
     if [[ -s "$tmpf" ]]; then
-      atomic_write "$providers_file" "$(cat "$tmpf")" || true
+      gui_atomic_write "$providers_file" "$(cat "$tmpf")" || true
       chmod 644 "$providers_file" 2>/dev/null || true
       log_info "PROV" "Providers cache refreshed: $providers_file"
     else
       rm -f -- "$tmpf" 2>/dev/null || true
-      log_warn "PROV" "Providers refresh produced no data; keeping existing cache"
+      log_warn "PROV" "Provider regeneration did not produce any data; keeping previous cache"
     fi
   else
-    log_warn "PROV" "Could not create tmp file for providers refresh"
+    log_warn "PROV" "Unable to create temporary file for provider cache"
   fi
 
   flock -u "$lockfd" 2>/dev/null || true
@@ -207,10 +212,11 @@ ensure_provider_cache_fresh() {
   return 0
 }
 
+# Secure models list cache refresh exporting API key dynamically
 ensure_model_cache_fresh() {
   local provider="$1"
   if [[ -z "$provider" ]]; then
-    log_warn "MODEL" "ensure_model_cache_fresh called without provider"
+    log_warn "MODEL" "ensure_model_cache_fresh called without specifying the provider"
     return 1
   fi
   if ! validate_name "$provider"; then
@@ -218,11 +224,20 @@ ensure_model_cache_fresh() {
     return 1
   fi
 
-  local models_file="${CFG_DIR%/}/models.${provider}.txt"
-  local lockfd tmpf rc
-  local lockfile="${BOOTSTRAP_LOCK:-$TMP_DIR/bootstrap.lock}"
+  # Safe fallback if the environment is not fully initialized (e.g. SKIP_INIT during install)
+  local l_cfg_dir="${CFG_DIR:-${BASH4LLM_DIR:-$BOOTSTRAP_DIR/tmp/gui-runtime.d}/config}"
+  local l_tmp_dir="${TMP_DIR:-${BASH4LLM_DIR:-$BOOTSTRAP_DIR/tmp/gui-runtime.d}/tmp}"
+  local models_file="${l_cfg_dir%/}/models.${provider}.txt"
+  local lockfd tmpf rc=0
+  local lockfile="${BOOTSTRAP_LOCK:-$l_tmp_dir/bootstrap.lock}"
+
+  # Optimization: Avoid regeneration if a non-empty cache already exists
+  if [[ -s "$models_file" ]]; then
+    return 0
+  fi
 
   mkdir -p "$(dirname -- "$models_file")" 2>/dev/null || true
+  mkdir -p "$l_tmp_dir" 2>/dev/null || true
 
   exec {lockfd}>"$lockfile" 2>/dev/null || return 1
   if ! flock -x -w 5 "$lockfd"; then
@@ -237,24 +252,24 @@ ensure_model_cache_fresh() {
     return 0
   fi
 
-  # Ensure API key is exported before cache queries
+  # Pre-load API Key for target provider
   if declare -f export_api_key_for_provider >/dev/null 2>&1; then
     export_api_key_for_provider "$provider" || true
   fi
 
-  tmpf="$(portable_mktemp "$TMP_DIR" "models.${provider}.XXXXXX")" || tmpf=""
+  tmpf="$(gui_portable_mktemp "$l_tmp_dir" "models.${provider}.XXXXXX")" || tmpf=""
   if [[ -n "$tmpf" ]]; then
     "${BASH4LLM_CMD}" --list-models-raw --provider "$provider" 2>/dev/null | awk 'NF' >"$tmpf" 2>/dev/null || rc=$?
     if [[ -s "$tmpf" ]]; then
-      atomic_write "$models_file" "$(cat "$tmpf")" || true
+      gui_atomic_write "$models_file" "$(cat "$tmpf")" || true
       chmod 644 "$models_file" 2>/dev/null || true
-      log_info "MODEL" "Models cache refreshed for provider '$provider': $models_file"
+      log_info "MODEL" "Models cache refreshed for the provider '$provider': $models_file"
     else
       rm -f -- "$tmpf" 2>/dev/null || true
-      log_warn "MODEL" "Models refresh for '$provider' produced no data; keeping existing cache"
+      log_warn "MODEL" "Regenerating templates for '$provider' produced no data; maintaining cache"
     fi
   else
-    log_warn "MODEL" "Could not create tmp file for models refresh for '$provider'"
+    log_warn "MODEL" "Unable to create temporary file for template cache for '$provider'"
   fi
 
   flock -u "$lockfd" 2>/dev/null || true
@@ -262,9 +277,7 @@ ensure_model_cache_fresh() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # Final initialization sequence (strict order)
-# ---------------------------------------------------------------------------
 if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
   env_detect || log_warn "ENV" "env_detect returned non-zero"
   ensure_dirs || { log_error "INIT" "ensure_dirs failed"; return 1 2>/dev/null || exit 1; }
@@ -282,20 +295,40 @@ if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
     return 1 2>/dev/null || exit 1
   fi
 
-  # ---------------------------------------------------------------------------
-  # Source Core Core Functions directly inside Shell Context (Enforce SSOT)
-  # ---------------------------------------------------------------------------
-  if [[ -n "${BASH4LLM_CMD:-}" && -f "${BASH4LLM_CMD}" ]]; then
-    export BASH4LLM_SOURCE_ONLY=1
-    # shellcheck source=/dev/null
-    source "${BASH4LLM_CMD}" 2>/dev/null || true
+  # Sourcing Core functions inside Shell Context (Skip in CGI mode to prevent trap conflicts)
+  if declare -f is_cgi_mode >/dev/null 2>&1 && is_cgi_mode; then
+    # CGI mode: leverage isolated subprocesses and native fallback parsers for absolute robustness
+    true
+  else
+    # CLI mode: source core functions directly for in-process acceleration
+    if [[ -n "${BASH4LLM_CMD:-}" && -f "${BASH4LLM_CMD}" ]]; then
+      export BASH4LLM_SOURCE_ONLY=1
+      source_target="${BASH4LLM_CMD}"
+
+      # If the target is a wrapper containing 'exec', do NOT source it directly
+      # to prevent replacing and terminating the calling CGI shell process.
+      if grep -q "exec " "$source_target" 2>/dev/null; then
+        local real_script
+        # Attempt to extract the absolute path of the real script from the wrapper.
+        # We append "|| true" to prevent any grep exit code 1 from triggering the global ERR trap.
+        real_script="$(grep -o -E '/[A-Za-z0-9._/-]+/bash4llm' "$source_target" 2>/dev/null | head -n1 || true)"
+        if [[ -f "$real_script" && ! "$real_script" =~ wrapper ]]; then
+          source_target="$real_script"
+        else
+          # Fallback to the standard repository path
+          local repo_script="${BASH4LLM_DIR%/}/../bash4llm"
+          if [[ -f "$repo_script" ]]; then
+            source_target="$repo_script"
+          else
+            source_target=""
+          fi
+        fi
+      fi
+
+      # Execute sourcing only if we have a valid and secure target
+      if [[ -n "$source_target" && -f "$source_target" ]]; then
+        source "$source_target" 2>/dev/null || true
+      fi
+    fi
   fi
-
-  env_after_bash4llm_resolved || log_warn "ENV" "env_after_bash4llm_resolved returned non-zero"
 fi
-
-export UI_ROOT TMP_DIR LOG_DIR CFG_DIR CONV_DIR FILES_DIR TEMPLATES_DIR \
-       LOCK_FILE SERVER_LOG ERROR_LOG CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE \
-       DEFAULT_MODEL_FILE DEFAULT_PROVIDER_FILE API_KEY_FILE BASH4LLM_CMD BASH4LLM_DIR
-
-return 0 2>/dev/null || true
