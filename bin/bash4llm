@@ -21,6 +21,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
 fi
 
+# Disable writing of core dumps to prevent leaking API keys in RAM to disk in the event of a crash
+ulimit -c 0 2>/dev/null || true
+
 SCRIPT_NAME="bash4llm"
 SCRIPT_VERSION="2.1.0"
 SCRIPT_DATE="2026-06-24"
@@ -609,10 +612,11 @@ stage_b64() {
 # lock_exec: acquire exclusive flock or folder-based lock on a lockfile with timeout (improved fallback for macOS compatibility)
 # Usage: lock_exec <lockfile> <timeout> -- <command> [args...]
 # Guarantees: acquires lock, runs command in subshell, always releases lock.
+# lock_exec: acquire exclusive flock on a lockfile with timeout (CGI sourcing safe)
 lock_exec() {
   local lockfile="${1:-}"
   local timeout="${2:-10}"
-  local rc
+  local rc e_state
   shift 2
   if [ "$1" != "--" ]; then
     log_error "USAGE" "lock_exec <lockfile> <timeout> -- <cmd> [args...]"
@@ -620,45 +624,34 @@ lock_exec() {
   fi
   shift
 
-  local lockdir="${lockfile}.lockdir"
+  # Prevention Symlink Poisoning
+  if [ -L "$lockfile" ]; then
+    log_error "SEC" "lockfile is a symlink: $lockfile. Aborting."
+    exit 15
+  fi
+
   safe_mkdir "$(dirname "$lockfile")" 700
 
-  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
-    # Use flock if available (Linux and macOS with homebrew/util-linux)
-    (
-      # Open FD 9 for the lockfile inside subshell to avoid leaking FDs to caller
-      exec 9>"$lockfile"
-      if ! flock -x -w "$timeout" 9; then
-        printf '%s%sERROR%s: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$lockfile" "$timeout" >&2
-        exit 124
-      fi
-      # Execute the requested command in this subshell under lock
-      set -e
-      "$@"
-    )
+  # Determines and stores the current state of 'errexit' to avoid polluting the calling shell.
+  if [ "${BASH_VERSION%%.*}" -ge 4 ] 2>/dev/null; then
+    if [[ -o errexit ]]; then e_state="set -e"; else e_state="set +e"; fi
+  else
+    case "$-" in *e*) e_state="set -e" ;; *) e_state="set +e" ;; esac
+  fi
+
+  # Exclusive association with file descriptor 9 for flock acquisition
+  exec 9>"$lockfile"
+  if flock -x -w "$timeout" 9; then
+    set +e
+    "$@"
     rc=$?
+    $e_state  # Ripristina l'esatta configurazione originale di errexit
+    exec 9>&- 2>/dev/null || true
     return "$rc"
   else
-    # Fallback to mkdir lock (POSIX atomicity compliant, works natively on standard macOS/Darwin)
-    local start_time elapsed
-    start_time=$(date +%s)
-    while ! mkdir "$lockdir" 2>/dev/null; do
-      elapsed=$(( $(date +%s) - start_time ))
-      if [ "$elapsed" -ge "$timeout" ]; then
-        printf '%s%sERROR%s: LOCKTIMEOUT: could not acquire directory lock %s within %s seconds\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$lockdir" "$timeout" >&2
-        return 124
-      fi
-      sleep 0.1
-    done
-
-    # Run inside fallback block
-    (
-      set +e
-      "$@"
-    )
-    rc=$?
-    rmdir "$lockdir" 2>/dev/null || true
-    return "$rc"
+    log_error "LOCKTIMEOUT" "could not acquire lock on $lockfile within $timeout seconds"
+    exec 9>&- 2>/dev/null || true
+    return 124
   fi
 }
 
@@ -1971,10 +1964,8 @@ session_rename_core() {
 
 acquire_session_lock() {
   local sid="${SESSION_ID:-}"
-  # If no active session, instances are isolated and secure by default
   [ -n "$sid" ] || return 0
 
-  # Preventive security validation
   if ! session_validate_id "$sid"; then
     log_error "SESSION" "invalid session id: $sid"
     return 15
@@ -1982,43 +1973,25 @@ acquire_session_lock() {
 
   local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
   local lockfile="${session_file}.concurrency.lock"
-  local lockdir="${lockfile}dir"
 
   if [ "${DRY_RUN:-0}" -eq 1 ] || [ "${BASH4LLM_SKIP_NETWORK:-0}" -eq 1 ]; then
     return 0
   fi
 
-  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
-    # Opens File Descriptor 8 on the session-specific lock file
-    exec 8>"$lockfile"
-    if ! flock -x -n 8; then
-      log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-      return 15
-    fi
-  else
-    # POSIX fallback for systems without flock
-    if ! mkdir "$lockdir" 2>/dev/null; then
-      if [ -f "$lockdir/pid" ]; then
-        local lp
-        lp="$(cat "$lockdir/pid" 2>/dev/null || true)"
-        if [ -n "$lp" ] && ! kill -0 "$lp" 2>/dev/null; then
-          # The original process is dead; safely remove obsolete lock
-          rm -rf "$lockdir" 2>/dev/null || true
-          mkdir "$lockdir" 2>/dev/null || {
-            log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-            return 15
-          }
-        else
-          log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-          return 15
-        fi
-      else
-        log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
-        return 15
-      fi
-    fi
-    # Write current PID to lock directory to allow stale lock verification
-    printf '%s\n' "$$" > "$lockdir/pid" 2>/dev/null || true
+  # Prevenzione Symlink Poisoning
+  if [ -L "$lockfile" ]; then
+    log_error "SEC" "session lockfile is a symlink: $lockfile. Aborting."
+    return 15
+  fi
+
+  safe_mkdir "$(dirname "$lockfile")" 700
+
+  # Associazione esclusiva al descrittore di file 8 per il lock di sessione
+  exec 8>"$lockfile"
+  if ! flock -x -n 8; then
+    log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+    exec 8>&- 2>/dev/null || true
+    return 15
   fi
   return 0
 }
@@ -2027,7 +2000,6 @@ release_session_lock() {
   local sid="${SESSION_ID:-}"
   [ -n "$sid" ] || return 0
 
-  # Preventive security validation
   if ! session_validate_id "$sid"; then
     log_error "SESSION" "invalid session id: $sid"
     return 15
@@ -2035,13 +2007,14 @@ release_session_lock() {
 
   local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
   local lockfile="${session_file}.concurrency.lock"
-  local lockdir="${lockfile}dir"
 
-  if command -v flock >/dev/null 2>&1 && [ -z "${TERMUX_VERSION:-}" ]; then
-    exec 8>&- 2>/dev/null || true
-  else
-    rm -rf "$lockdir" 2>/dev/null || true
+  if [ -L "$lockfile" ]; then
+    log_error "SEC" "session lockfile is a symlink during release: $lockfile. Aborting."
+    return 15
   fi
+
+  # Chiusura sicura del descrittore di file 8 per il rilascio automatico del lock
+  exec 8>&- 2>/dev/null || true
 }
 
 session_read_window() {
@@ -4622,8 +4595,45 @@ fi
 MODEL="$FINAL_MODEL"
 
 STDIN_CONTENT=""
-if [ -z "${JSON_INPUT:-}" ] && [ ! -t 0 ]; then
-  STDIN_CONTENT="$(cat - 2>/dev/null || true)"
+if [ ! -t 0 ]; then
+  # Reading the standard input stream
+  stdin_buffer="$(cat - 2>/dev/null || true)"
+
+  # Formally verifying JSON payload using jq to extract API key
+  if [ -n "$stdin_buffer" ] && printf '%s' "$stdin_buffer" | jq -e 'has("api_key")' >/dev/null 2>&1; then
+    local extracted_key extracted_prompt extracted_json_input
+    extracted_key="$(printf '%s' "$stdin_buffer" | jq -r '.api_key // empty' 2>/dev/null || true)"
+    extracted_prompt="$(printf '%s' "$stdin_buffer" | jq -r '.prompt // empty' 2>/dev/null || true)"
+    extracted_json_input="$(printf '%s' "$stdin_buffer" | jq -c '.json_input // empty' 2>/dev/null || true)"
+
+    # Overwrite and immediately clear the RAM buffer for security reasons
+    stdin_buffer="CLEARED_AND_OVERWRITTEN_$(printf '%08x' $((RANDOM & 0xFFFF)))"
+
+    # If present, dynamically injects the API key into the current context
+    if [ -n "$extracted_key" ]; then
+      local prov_var
+      prov_var="$(provider_api_env_var_name "${PROVIDER:-groq}")"
+      export "$prov_var"="$extracted_key"
+      export BASH4LLM_API_KEY="$extracted_key"
+      if [ "${PROVIDER:-groq}" = "groq" ]; then
+        export GROQ_API_KEY="$extracted_key"
+      fi
+      extracted_key=""
+    fi
+
+    # Wrap the JSON prompt or configuration into operational variables
+    if [ -n "$extracted_json_input" ]; then
+      JSON_INPUT="$extracted_json_input"
+      extracted_json_input=""
+    elif [ -n "$extracted_prompt" ]; then
+      CONTENT="$extracted_prompt"
+      extracted_prompt=""
+    fi
+  else
+    # Compatibility with unstructured standard input (traditional CLI)
+    STDIN_CONTENT="$stdin_buffer"
+    stdin_buffer=""
+  fi
 fi
 
 assemble_content() {
