@@ -16,12 +16,12 @@
   </nav>
   <div class="lang-theme">
     <form method="get" action="">
-      <label for="lang-select" style="display:none;">{{TXT_LANGUAGE}}</label>
+      <label for="lang-select" class="sr-only">{{TXT_LANGUAGE}}</label>
       <select id="lang-select" name="lang">
         {{LANG_OPTIONS}}
       </select>
       
-      <label for="theme-select" style="display:none;">{{TXT_THEME}}</label>
+      <label for="theme-select" class="sr-only">{{TXT_THEME}}</label>
       <select id="theme-select" name="theme">
         <option value="light" {{THEME_IS_light}}>{{TXT_THEME_LIGHT}}</option>
         <option value="dark" {{THEME_IS_dark}}>{{TXT_THEME_DARK}}</option>
