@@ -145,7 +145,7 @@ atomic_write_in_uiroot() {
   destdir="$(dirname -- "$dest")"
   mkdir -p -- "$destdir"
   chmod 770 -- "$destdir" || true
-  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  tmp="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "gui_portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   chmod 660 -- "$tmp" || true
   cat >"$tmp"
   mv -f -- "$tmp" "$dest"
@@ -161,7 +161,7 @@ atomic_append_conv_in_uiroot() {
   destdir="$(dirname -- "$dest")"
   mkdir -p -- "$destdir"
   chmod 770 -- "$destdir" || true
-  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  tmp="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "gui_portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   chmod 660 -- "$tmp" || true
   if [ -e "$dest" ]; then cat -- "$dest" >"$tmp"; fi
   cat >>"$tmp"
@@ -222,7 +222,7 @@ atomic_replace_first_line_in_uiroot() {
   local file="$1" new_shebang="$2"
   if ! path_within_ui_root "$file"; then err "Refusing to modify outside UI_ROOT: $file"; fi
   local tmp
-  tmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  tmp="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "gui_portable_mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   {
     printf '%s\n' "$new_shebang"
     tail -n +2 -- "$file" | sed -e 's/\r$//'
@@ -240,7 +240,7 @@ process_target() {
   if ! is_regular_file "$file"; then info "Skipping non-regular file: $file"; return 0; fi
 
   local tmpnorm
-  tmpnorm="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
+  tmpnorm="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for ${TMP_DIR:-${UI_ROOT%/}/tmp}"
   sed -e 's/\r$//' "$file" >"$tmpnorm"
   mv -f -- "$tmpnorm" "$file"
   if ! path_within_ui_root "$file"; then err "Post-normalize check failed: $file is outside UI_ROOT"; fi
@@ -345,7 +345,7 @@ generate_termux_apache_config() {
   )
 
   local tmpheader loaded_mods name path
-  tmpheader="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for header"
+  tmpheader="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for header"
   loaded_mods=""
   for m in "${modules_to_try[@]}"; do
     name="${m%%:*}"; path="${m#*:}"
@@ -358,7 +358,7 @@ generate_termux_apache_config() {
   info "Will include LoadModule for:${loaded_mods}"
 
   local tmpconf finaltmp
-  tmpconf="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for apache conf"
+  tmpconf="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for apache conf"
   
   # Replacing Option +FollowSymLinks with +SymLinksIfOwnerMatch for Apache Hardening
   cat >"$tmpconf" <<'EOF'
@@ -403,7 +403,7 @@ EOF
   esc_log="$(sed_escape_replacement "$logs_dir")"
   esc_uiroot="$(sed_escape_replacement "$UI_ROOT")"
 
-  finaltmp="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for final HTML"
+  finaltmp="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "mktemp failed for final HTML"
   cat "$tmpheader" "$tmpconf" | sed -e "s|__WWW_DIR__|${esc_www}|g" -e "s|__CGI_DIR__|${esc_cgi}|g" -e "s|__LOG_DIR__|${esc_log}|g" -e "s|__UI_ROOT__|${esc_uiroot}|g" -e "s|__PORT__|${DEFAULT_PORT}|g" >"$finaltmp"
 
   atomic_write_in_uiroot "$conf" <"$finaltmp"
@@ -445,7 +445,7 @@ generate_termux_launcher() {
   if [ -z "$httpd_path" ]; then err "No httpd or apachectl found in PATH"; fi
 
   local tmplaunch
-  tmplaunch="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for launcher"
+  tmplaunch="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || err "Failed to create temp for launcher"
 
   cat >"$tmplaunch" <<'EOF'
 #!__TERMUX_BASH__
@@ -603,7 +603,7 @@ install_termux_shadow_wrapper() {
   mkdir -p -- "$tmpdir" 2>/dev/null || true
   chmod 770 -- "$tmpdir" 2>/dev/null || true
 
-  portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "portable_mktemp unavailable; aborting"
+  gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "gui_portable_mktemp unavailable; aborting"
   # Acquire global adapt lock to serialize multi-step operations
   _global_adapt_lock_init
   local lockfile="$tmpdir/bootstrap.lock"
@@ -657,7 +657,7 @@ install_termux_shadow_wrapper() {
   fi
 
   local tmp_shadow
-  tmp_shadow="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_shadow=""
+  tmp_shadow="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_shadow=""
   [ -n "$tmp_shadow" ] || { _release_lock_and_restore; err "Failed to create tmp shadow"; }
 
   if ! cp -f -- "$bash4llm_real" "$tmp_shadow"; then
@@ -687,7 +687,7 @@ install_termux_shadow_wrapper() {
   chmod 750 -- "$BIN_DIR" 2>/dev/null || true
   local wrapper="$BIN_DIR/bash4llm-wrapper"
   local tmp_wrapper
-  tmp_wrapper="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
+  tmp_wrapper="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
   [ -n "$tmp_wrapper" ] || { _release_lock_and_restore; err "Failed to create tmp wrapper"; }
 
   # Write robust, autosufficient wrapper template
@@ -822,7 +822,7 @@ EOF
   mkdir -p -- "$cfg_dir" 2>/dev/null || true
   chmod 770 -- "$cfg_dir" 2>/dev/null || true
   local tmp_path
-  tmp_path="$(portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${cfg_dir}/bash4llm-path.tmp"
+  tmp_path="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${cfg_dir}/bash4llm-path.tmp"
   if printf '%s\n' "$wrapper" >"$tmp_path"; then
     local line_count
     line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
@@ -867,8 +867,8 @@ main() {
     info "Warning: bootstrap not found at $BOOTSTRAP; continuing"
   fi
 
-  if ! declare -f portable_mktemp >/dev/null 2>&1; then
-    err "portable_mktemp not defined after sourcing bootstrap; aborting adapt."
+  if ! declare -f gui_portable_mktemp >/dev/null 2>&1; then
+    err "gui_portable_mktemp not defined after sourcing bootstrap; aborting adapt."
   fi
 
   : "${TMP_DIR:=${UI_ROOT%/}/tmp}"
