@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: bash4llm
 # Component: Core
 # Copyright (C) 2026 Cristian Evangelisti
@@ -25,8 +25,8 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.1.0"
-SCRIPT_DATE="2026-06-24"
+SCRIPT_VERSION="2.2.0"
+SCRIPT_DATE="2026-07-05"
 
 # =============================================================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
