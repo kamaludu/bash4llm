@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM⁺ — Bash-first wrapper for the LLM
+# Bash4LLM+ — Bash-first wrapper for the LLM
 # File: bash4llm
 # Component: Core
 # Copyright (C) 2026 Cristian Evangelisti
@@ -25,8 +25,8 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.2.0"
-SCRIPT_DATE="2026-07-05"
+SCRIPT_VERSION="2.1.0"
+SCRIPT_DATE="2026-06-24"
 
 # =============================================================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -4920,6 +4920,10 @@ ${C_TITLE}Interactive Shell Commands:${C_RST}
   ${C_CMD}/file${C_RST} ${C_ARG}<path>${C_RST} [${C_ARG}prompt${C_RST}]- Read a file, append an optional prompt, and send to model
   ${C_CMD}/block${C_RST}               - Enter block input mode (type ${C_YELLOW}/end${C_RST} on a new line to send)
   ${C_CMD}/edit${C_RST}                - Edit prompt using the system default editor (\$EDITOR)
+  
+  ${C_TITLE}Keyboard Shortcuts:${C_RST}
+  ${C_ARG}Ctrl+C${C_RST}               - Interrupt active generation or abort block/input
+  ${C_ARG}Ctrl+D${C_RST}               - Exit the interactive shell cleanly (at You: prompt)
 ${C_TITLE}------------------------------------------${C_RST}
 
 " >&2
