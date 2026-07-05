@@ -2529,17 +2529,18 @@ session_cache_set() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# session_cache_invalidate
+# ---------------------------------------------------------------------------
 session_cache_invalidate() {
-  local sid="${1:-}" params="${2:-}" key pattern
+  local sid="${1:-}" params="${2:-}" key f
   if [ -z "$sid" ]; then return 1; fi
   if [ -n "$params" ]; then
     key="$(session_cache_key "$sid" "$params")" || return 1
     rm -f "${SESSION_CACHE_DIR%/}/${key}.cache" 2>/dev/null || true
   else
-    # remove all entries for sid
-    pattern="${SESSION_CACHE_DIR%/}/${sid}|*.cache"
-    # shell globbing safe removal
-    for f in ${pattern}; do
+    # Secure globbing expansion preventing word splitting in paths with spaces
+    for f in "${SESSION_CACHE_DIR%/}/${sid}|"*.cache; do
       [ -e "$f" ] && rm -f -- "$f" 2>/dev/null || true
     done
   fi
@@ -3208,35 +3209,10 @@ refresh_models_groq() {
 # validate_model_groq
 # ---------------------------------------------------------------------------
 validate_model_groq() {
-  local model="${1:-}" norm_model file_match
-  [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_groq: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
-
-  norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-
-  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
-    if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
-      file_match=1
-    else
-      if awk '{g=$0; sub(/^models\//,"",g); sub(/^groq[:\/ -]*/,"",g); print g}' "$MODELS_FILE" \
-           | grep -x -F -q "$norm_model" 2>/dev/null; then
-        file_match=1
-      else
-        file_match=0
-      fi
-    fi
-
-    if [ "$file_match" -ne 1 ]; then
-      printf 'bash4llm: %sERROR%s: The model "%s" is not present in %s\n' "${C_RED}" "${C_RST}" "$model" "$MODELS_FILE" >&2
-      return 1
-    fi
-  fi
-
-  if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GBOLD}Bash4LLM⁺${C_RST}" >&2
-    return 1
-  fi
-
-  return 0
+  local model="${1:-}"
+  # Delegate verification to the core validation logic to prevent duplication
+  validate_model_core "$model"
+  return $?
 }
 
 # ---------------------------------------------------------------------------
@@ -3615,11 +3591,11 @@ detect_empty_edge_case() {
 #--2<---[ /SECTION: CORE_SETUP_API_CALL ]--->2--
 
 # ---------------------------------------------------------------------------
-# Finalize and output
+# finalize_and_output
 # ---------------------------------------------------------------------------
 finalize_and_output() {
   local mode="${1:-}" text="${2:-}"
-  local resp_file tmp_copy len do_save dest_dir dest_path
+  local resp_file tmp_copy len do_save dest_dir dest_path tmp_save
 
   # Always read from atomic copy of RESP
   resp_file="${RESP:-}"
