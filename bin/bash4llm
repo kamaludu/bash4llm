@@ -175,6 +175,13 @@ canonical_provider_url_file() {
   printf '%s' "${cfgdir%/}/provider-url"
 }
 
+# Normalize model name by removing 'models/', the active provider prefix, and surrounding whitespace.
+_normalize_model_name() {
+  local prov="${PROVIDER:-groq}"
+  # Dynamically strip the active provider's prefix (e.g., 'groq', 'gemini') and generic 'models/'
+  printf '%s' "$1" | sed -e 's#^models/##' -e "s#^${prov}[:/ -]*##" -e 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 #--3<---[ SUBSECTION: API_NET ]--->3--
 # ensure_api_key_for_provider (robust, non-interactive safe)
 # - Ensures that the API key for the provider is present.
@@ -488,7 +495,6 @@ fi
 
 # Canonical PROVIDER_FILE path built only from BASH4LLM_CONFIG_DIR
 PROVIDER_FILE="$(canonical_provider_file)"
-
 #--5<---[ SECTION: PRECORE_BOOT_HELPERS ]--->5--
 # Provider API key helpers (available early)
 # - provider_api_env_var_name <prov> -> prints canonical env var name (e.g., GROQ_API_KEY)
@@ -625,17 +631,10 @@ stage_b64() {
 
   # Atomic move into final dst
   lockfile="${workdir%/}/.bash4llm.lock"
-  if type lock_exec >/dev/null 2>&1; then
-    lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" || {
-      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
-      return 1
-    }
-  else
-    mv -f "$tmp_b64" "$dst" 2>/dev/null || {
-      rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
-      return 1
-    }
-  fi
+  lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" || {
+    rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
+    return 1
+  }
   chmod 600 "$dst" 2>/dev/null || true
 
   [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
@@ -781,11 +780,9 @@ show_payload_head() {
   return 0
 }
 
-# Atomic raw write helper
-# - atomic_write <dest> <timeout> -- (reads stdin)
+# Atomic raw write helper. Reads from stdin and replaces the target file atomically under lock.
+# Usage: atomic_write <dest> [timeout_seconds]
 atomic_write() {
-  # Atomic write with optional lock support.
-  # Usage: atomic_write /path/to/target [timeout_seconds]
   local dest="$1"
   local timeout="${2:-10}"
   [ -n "$dest" ] || return "$BASH4LLM_ERR_TMP"
@@ -795,8 +792,12 @@ atomic_write() {
   safe_mkdir "$destdir" 700
   lockfile="${destdir}/.bash4llm.lock"
 
-  tmp="$(mktemp "$destdir/.groq-atomic.XXXXXX" 2>/dev/null || true)"
-  [ -n "$tmp" ] || tmp="$destdir/.groq-atomic.$$.$RANDOM"
+  # Fail fast if mktemp fails to allocate a secure file path
+  tmp="$(mktemp "$destdir/.groq-atomic.XXXXXX" 2>/dev/null)"
+  if [ -z "$tmp" ]; then
+    log_error "ATOMICFAIL" "failed to create secure temporary file"
+    return "$BASH4LLM_ERR_TMP"
+  fi
 
   if ! cat - > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
@@ -805,21 +806,13 @@ atomic_write() {
   fi
   chmod 600 "$tmp" 2>/dev/null || true
 
-  # If lock_exec available, use it to perform the mv under lock; otherwise mv directly
-  if type lock_exec >/dev/null 2>&1; then
-    lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" \
-      || { rc=$?; rm -f -- "$tmp" 2>/dev/null || true; return "$rc"; }
-    chmod 600 "$dest" 2>/dev/null || true
-  else
-    if mv -f -- "$tmp" "$dest" 2>/dev/null; then
-      chmod 600 "$dest" 2>/dev/null || true
-    else
-      rc=$?
-      rm -f -- "$tmp" 2>/dev/null || true
-      log_error "ATOMICFAIL" "mv failed with rc $rc"
-      return "$rc"
-    fi
-  fi
+  # Perform atomic replace under exclusive lock context
+  lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" || {
+    rc=$?
+    rm -f -- "$tmp" 2>/dev/null || true
+    return "$rc"
+  }
+  chmod 600 "$dest" 2>/dev/null || true
 
   return 0
 }
@@ -1002,47 +995,36 @@ ensure_run_tmpdir() {
   return 0
 }
 
-# Atomic base64 write/read helpers (use for payloads, manifests, staging)
-# - b64_atomic_write <dest.b64> <timeout> -- (reads stdin)
-# - b64_atomic_read <src.b64> (writes decoded to stdout)
+# Base64 atomic write helper. Reads from stdin, encodes, and writes atomically.
+# Usage: b64_atomic_write /path/to/target [timeout_seconds]
 b64_atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
-  local destdir tmp lockfile rc
-  shift 2 || true
-
   [ -n "$dest" ] || {
     log_error "B64FAIL" "b64_atomic_write: dest required"
     return "$BASH4LLM_ERR_TMP"
   }
 
-  destdir="$(dirname -- "$dest")"
-  safe_mkdir "$destdir" 700
-
-  lockfile="${destdir%/}/.bash4llm.lock"
-
-  # Allocate tmp inside BASH4LLM_TMPDIR (safe), not inside destdir
+  local tmp
+  # Allocate temporary file using the secure internal helper
   tmp="$(_tmpf file "$BASH4LLM_TMPDIR" .groq-b64 2>/dev/null)" || {
     log_error "B64FAIL" "failed to allocate tmp for b64_atomic_write"
     return "$BASH4LLM_ERR_TMP"
   }
 
+  # If encoding fails, abort immediately without touching the destination file
   if ! b64encode > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "B64FAIL" "base64 encoding failed"
     return "$BASH4LLM_ERR_TMP"
   fi
-  chmod 600 "$tmp" 2>/dev/null || true
 
-  # Atomic move into final destination
-  lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" || {
-    rc=$?
-    rm -f -- "$tmp" 2>/dev/null || true
-    return "$rc"
-  }
+  # Delegate atomic write, permissions, and locking to atomic_write via stdin redirection
+  atomic_write "$dest" "$timeout" < "$tmp"
+  local rc=$?
 
-  chmod 600 "$dest" 2>/dev/null || true
-  return 0
+  rm -f -- "$tmp" 2>/dev/null || true
+  return "$rc"
 }
 
 b64_atomic_read() {
@@ -2344,7 +2326,7 @@ session_append() {
   local write_success=0
 
   if [ "$use_flock" -eq 1 ]; then
-    # Solution 2: Lock and append are executed inside a subshell local context.
+    # Lock and append are executed inside a subshell local context.
     # This automatically destroys file descriptor 200 upon subshell exit, preventing global leaks.
     (
       exec 200>"$lockfile"
@@ -2627,6 +2609,9 @@ _normalize_bool_env() {
 _normalize_bool_env
 #--6<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 ########################################
+# SECTION: PRECORE_RUN - END
+########################################
+########################################
 # SECTION: PROVIDER - BEGIN
 ########################################
 # Provider embedded: groq (full implementations)
@@ -2699,7 +2684,7 @@ buildpayload_groq() {
     fi
   fi
 
-  if [ -z "$VALID_MESSAGES_JSON" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${MESSAGES_JSON:-}" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
     VALID_MESSAGES_JSON="${MESSAGES_JSON}"
   fi
 
@@ -3223,7 +3208,7 @@ auto_select_model_groq() {
   if [ -f "$file" ] && [ -s "$file" ]; then
     relative_mfile="$(canonical_model_file "groq")"
     if [ -f "$relative_mfile" ] && [ -s "$relative_mfile" ]; then
-      norm="$(cat "$relative_mfile" 2>/dev/null | head -n1 | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      norm="$(_normalize_model_name "$(head -n1 "$relative_mfile" 2>/dev/null)")"
       if [ -n "$norm" ] && is_supported_model "$norm"; then
         printf '%s' "$norm"
         return 0
@@ -3232,7 +3217,7 @@ auto_select_model_groq() {
     while IFS= read -r line || [ -n "$line" ]; do
       [ -z "$line" ] && continue
       cnt=$((cnt+1))
-      norm="$(printf '%s' "$line" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      norm="$(_normalize_model_name "$line")"
       if is_supported_model "$norm"; then
         printf '%s' "$norm"
         return 0
@@ -3363,7 +3348,7 @@ resolve_model() {
       candidate="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
       candidate="$(printf '%s' "$candidate" | awk '{$1=$1;print}')"
 
-      norm="$(printf '%s' "$candidate" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+      norm="$(_normalize_model_name "$candidate")"
 
       if [ -n "$norm" ] && is_supported_model "$norm"; then
         if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
@@ -3377,7 +3362,7 @@ resolve_model() {
   # 3) provider auto-select
   candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
   if [ -n "$candidate" ]; then
-    norm="$(printf '%s' "$candidate" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+    norm="$(_normalize_model_name "$candidate")"
     if is_supported_model "$norm"; then
       if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
         FINAL_MODEL="$norm"
@@ -3393,7 +3378,7 @@ resolve_model() {
       [ -z "$m" ] && continue
       cnt=$((cnt+1))
 
-      norm="$(printf '%s' "$m" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+      norm="$(_normalize_model_name "$m")"
 
       if is_supported_model "$norm"; then
         if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
@@ -3411,7 +3396,7 @@ resolve_model() {
     cfg_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "${BASH4LLM_CONFIG_DIR%/}/config" 2>/dev/null || true)"
     cfg_model="$(printf '%s' "$cfg_model" | awk '{$1=$1;print}')"
 
-    norm="$(printf '%s' "$cfg_model" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+    norm="$(_normalize_model_name "$cfg_model")"
 
     if [ -n "$norm" ] && is_supported_model "$norm"; then
       if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
@@ -3428,7 +3413,7 @@ resolve_model() {
       [ -z "$m" ] && continue
       cnt=$((cnt+1))
 
-      norm="$(printf '%s' "$m" | sed -e 's#^models/##' -e 's#^groq[:/ -]*##')"
+      norm="$(_normalize_model_name "$m")"
 
       if is_supported_model "$norm"; then
         if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
@@ -3652,11 +3637,8 @@ finalize_and_output() {
       tmp_save="$(_tmpf file "$RUN_TMPDIR" save.tmp 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
       printf '%s\n' "$text" > "$tmp_save" 2>/dev/null || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
 
-      if type lock_exec >/dev/null 2>&1; then
-        lock_exec "$HISTORY_LOCK" 10 -- mv -f "$tmp_save" "$dest_path" || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
-      else
-        mv -f "$tmp_save" "$dest_path" 2>/dev/null || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
-      fi
+      # Directly invoke lock_exec without redundant check wrapper
+      lock_exec "$HISTORY_LOCK" 10 -- mv -f "$tmp_save" "$dest_path" || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
       chmod 600 "$dest_path" 2>/dev/null || true
     fi
   fi
@@ -3829,7 +3811,7 @@ list_models_cli() {
   while IFS= read -r model || [ -n "$model" ]; do
     [ -z "$model" ] && continue
     count=$((count+1))
-    norm="$(printf '%s' "$model" | sed -e 's/^models\///' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    norm="$(_normalize_model_name "$model")"
     if is_supported_model "$norm"; then
       printf '%s\n' "$norm"
     else
@@ -3847,8 +3829,7 @@ validate_model_core() {
   [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_core: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
 
   # Normalize incoming model for comparison
-  norm_model="$(printf '%s' "$model" | sed -e 's#^models/##' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  norm_model="$(printf '%s' "$norm_model" | sed -e 's#^groq[:/ -]*##')"
+  norm_model="$(_normalize_model_name "$model")"
 
   # If MODELS_FILE exists and non-empty, require presence
   if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
@@ -3856,13 +3837,15 @@ validate_model_core() {
     if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
       file_match=1
     else
-      # Check normalized match (strip leading models/ and groq prefixes in file entries and compare)
-      if awk '{g=$0; sub(/^models\//,"",g); sub(/^groq[:\/ -]*/,"",g); print g}' "$MODELS_FILE" \
-           | grep -x -F -q "$norm_model" 2>/dev/null; then
-        file_match=1
-      else
-        file_match=0
-      fi
+      # Check normalized match (strip leading models/ and provider prefixes in file entries and compare)
+      file_match=0
+      while IFS= read -r m || [ -n "$m" ]; do
+        [ -z "$m" ] && continue
+        if [ "$(_normalize_model_name "$m")" = "$norm_model" ]; then
+          file_match=1
+          break
+        fi
+      done < "$MODELS_FILE"
     fi
 
     if [ "$file_match" -ne 1 ]; then
@@ -3903,7 +3886,11 @@ load_local_config() {
 load_whitelist() {
   ALLOWED_MODELS=""
   if [ -f "$MODELS_FILE" ] && [ -s "$MODELS_FILE" ]; then
-    ALLOWED_MODELS="$(awk '{ gsub(/^models\//,""); sub(/^[[:space:]]+/,""); sub(/[[:space:]]+$/,""); if (NF) print }' "$MODELS_FILE" 2>/dev/null || true)"
+    while IFS= read -r m || [ -n "$m" ]; do
+      [ -z "$m" ] && continue
+      norm="$(_normalize_model_name "$m")"
+      [ -n "$norm" ] && ALLOWED_MODELS="${ALLOWED_MODELS}${norm}"$'\n'
+    done < "$MODELS_FILE"
   fi
 }
 
@@ -4191,14 +4178,11 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
   fi
 
   if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
-    awk '{
-      g=$0
-      sub(/^models\//,"",g)
-      sub(/^groq[:\/ -]*/,"",g)
-      sub(/^[[:space:]]+/,"",g)
-      sub(/[[:space:]]+$/,"",g)
-      if (g != "") print g
-    }' "$MODELS_FILE"
+    while IFS= read -r m || [ -n "$m" ]; do
+      [ -z "$m" ] && continue
+      norm="$(_normalize_model_name "$m")"
+      [ -n "$norm" ] && printf '%s\n' "$norm"
+    done < "$MODELS_FILE"
     exit 0
   else
     exit 2
