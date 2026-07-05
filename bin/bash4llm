@@ -3491,19 +3491,26 @@ call_api_streaming() {
     release_session_lock
     return 0
   fi
-  if call_provider "$fn"; then
-    release_session_lock
-    return 0
+
+  # Save active trap for SIGINT to prevent shell disruption
+  local prev_trap
+  prev_trap="$(trap -p INT)"
+
+  # Intercept SIGINT during the active API request to allow graceful recovery
+  trap 'printf "\n[Streaming request interrupted by user]\n" >&2; return 130' INT
+
+  call_provider "$fn"
+  rc=$?
+
+  # Restore original trap configuration
+  if [ -n "$prev_trap" ]; then
+    eval "$prev_trap"
   else
-    rc=$?
-    release_session_lock
-    if [ "$rc" -eq 127 ]; then
-      log_error "PROVIDER" "Provider '$PROVIDER' does not provide $fn()."
-      exit "$BASH4LLM_ERR_API"
-    else
-      return "$rc"
-    fi
+    trap - INT
   fi
+
+  release_session_lock
+  return "$rc"
 }
 
 extract_api_error() {
@@ -3652,8 +3659,32 @@ perform_request_once() {
   acquire_session_lock || return $?
 
   local attempt=1 rc text api_err ui_last finish_reason req_id edgecase now_ts http_code_fallback api_json
+  local prev_trap
+
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
-    if call_api_once; then
+    # Save active trap for SIGINT to prevent shell disruption
+    prev_trap="$(trap -p INT)"
+
+    # Intercept SIGINT during the active API request to allow graceful recovery
+    trap 'printf "\n[Request interrupted by user]\n" >&2; return 130' INT
+
+    call_api_once
+    rc=$?
+
+    # Restore original trap configuration
+    if [ -n "$prev_trap" ]; then
+      eval "$prev_trap"
+    else
+      trap - INT
+    fi
+
+    # Handle immediate user interruption
+    if [ "$rc" -eq 130 ]; then
+      release_session_lock
+      return 130
+    fi
+
+    if [ "$rc" -eq 0 ]; then
       if [ "${DRY_RUN:-0}" -eq 1 ]; then
         if [ "${DEBUG:-0}" -eq 1 ]; then
           log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
@@ -4838,15 +4869,18 @@ if [ "$CHAT_MODE" -eq 1 ]; then
     # Do not manually call stty echo here to avoid race conditions with background processes
     # and Readline initialization. Readline (read -e) manages the TTY state.
 
-    PROMPT="You (model: ${MODEL:-default}) > "
-    if [ -n "$C_CMD" ] && [ -t 1 ] && [ "$QUIET" -ne 1 ]; then
-      # Wrap color escape sequences in \001 and \002 so readline calculates prompt width correctly
-      PROMPT=$'\001'"$C_CMD"$'\002'"You (model: ${MODEL:-default}) > "$'\001'"$C_RST"$'\002'
+    # Print static header "You:" on its own line
+    if [ "$QUIET" -ne 1 ]; then
+      if [ -n "$C_CMD" ] && [ -t 1 ]; then
+        printf '\n%sYou:%s\n' "${C_CMD}" "${C_RST}" >&2
+      else
+        printf '\nYou:\n' >&2
+      fi
     fi
 
-    # Read the user line directly without negation to capture the true exit code
+    # Read user line with empty prompt
     userline=""
-    IFS= read -r -e -p "$PROMPT" userline
+    IFS= read -r -e -p "" userline
     read_rc=$?
 
     # Handle read failures or termination signals (like Ctrl+D or Ctrl+C)
@@ -4884,6 +4918,8 @@ ${C_TITLE}Interactive Shell Commands:${C_RST}
   ${C_CMD}/system${C_RST} [${C_ARG}<prompt>${C_RST}]   - View or update the current system prompt instructions
   ${C_CMD}/model${C_RST} ${C_ARG}<name>${C_RST}        - Switch the active LLM model
   ${C_CMD}/file${C_RST} ${C_ARG}<path>${C_RST} [${C_ARG}prompt${C_RST}]- Read a file, append an optional prompt, and send to model
+  ${C_CMD}/block${C_RST}               - Enter block input mode (type ${C_YELLOW}/end${C_RST} on a new line to send)
+  ${C_CMD}/edit${C_RST}                - Edit prompt using the system default editor (\$EDITOR)
 ${C_TITLE}------------------------------------------${C_RST}
 
 " >&2
@@ -5029,6 +5065,74 @@ ${C_TITLE}------------------------------------------${C_RST}
         CONTENT="$combined_prompt"
         unset file_cmd_args file_path file_prompt file_content file_size combined_prompt
         ;;
+      /block)
+        # Inform the user about the block mode activation with colors
+        printf '%sEntering block input mode.%s Type "%s/end%s" on a new line to send.\n' "${C_GREEN}" "${C_RST}" "${C_YELLOW}" "${C_RST}" >&2
+        block_content=""
+        block_line=""
+        read_block_rc=0
+        while true; do
+          block_line=""
+          # Use indent prompt for multiline block input
+          IFS= read -r -e -p "  | " block_line
+          read_block_rc=$?
+          if [ "$read_block_rc" -ne 0 ]; then
+            printf '\n[Block input aborted]\n' >&2
+            block_content=""
+            break
+          fi
+          if [ "$block_line" = "/end" ]; then
+            break
+          fi
+          if [ -z "$block_content" ]; then
+            block_content="$block_line"
+          else
+            block_content="${block_content}"$'\n'"$block_line"
+          fi
+        done
+        if [ -n "$block_content" ]; then
+          CONTENT="$block_content"
+        else
+          continue
+        fi
+        ;;
+      /edit)
+        # Detect default system editor, fallback to nano or vi
+        editor="${EDITOR:-}"
+        if [ -z "$editor" ]; then
+          if command -v nano >/dev/null 2>&1; then
+            editor="nano"
+          elif command -v vi >/dev/null 2>&1; then
+            editor="vi"
+          else
+            printf 'bash4llm: %sERROR%s: No suitable editor found (set $EDITOR or install nano/vi).\n' "${C_RED}" "${C_RST}" >&2
+            continue
+          fi
+        fi
+
+        # Allocate secure temporary file under RUN_TMPDIR using internal _tmpf helper
+        tmp_edit_file=""
+        tmp_edit_file="$(_tmpf file "$RUN_TMPDIR" edit 2>/dev/null)"
+        if [ -z "$tmp_edit_file" ] || [ ! -f "$tmp_edit_file" ]; then
+          printf 'bash4llm: %sERROR%s: Failed to create temporary file for editing.\n' "${C_RED}" "${C_RST}" >&2
+          continue
+        fi
+
+        # Open system editor
+        "$editor" "$tmp_edit_file"
+
+        # Read final content and verify size
+        if [ -s "$tmp_edit_file" ]; then
+          CONTENT="$(cat "$tmp_edit_file")"
+        else
+          printf 'No text entered. Editing session discarded.\n' >&2
+          rm -f "$tmp_edit_file" 2>/dev/null
+          continue
+        fi
+
+        # Secure cleanup of temporary files
+        rm -f "$tmp_edit_file" 2>/dev/null
+        ;;
       /*)
         printf 'bash4llm: %sERROR%s: Unknown command. Type /help or /? to list available commands.\n' "${C_RED}" "${C_RST}" >&2
         continue
@@ -5071,7 +5175,12 @@ ${C_TITLE}------------------------------------------${C_RST}
         fi
       else
         if [ -t 1 ] && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
-          printf '\n%s\n' "${C_CMD}Assistant:${C_RST}" >&2
+          # Protect against format string vulnerabilities with %s format specifier
+          if [ -n "$C_CMD" ]; then
+            printf '\n%s%s:%s\n' "${C_CMD}" "${MODEL:-default}" "${C_RST}" >&2
+          else
+            printf '\n%s:\n' "${MODEL:-default}" >&2
+          fi
         fi
         if ! perform_request_once; then
           log_error "CALL" "API request failed."
@@ -5222,7 +5331,13 @@ fi
 
 # Non-streaming single request path
 if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
-  printf '%s\n' "${C_TITLE}You:${C_RST}" >&2
+  # Print static header "You:" on its own line
+  if [ -n "$C_TITLE" ]; then
+    printf '%sYou:%s\n' "${C_TITLE}" "${C_RST}" >&2
+  else
+    printf 'You:\n' >&2
+  fi
+
   if [ "${#ARGS[@]}" -gt 0 ]; then
     anyfile=0
     for a in "${ARGS[@]}"; do [ -r "$a" ] && [ -f "$a" ] && { anyfile=1; break; }; done
@@ -5230,7 +5345,13 @@ if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTP
   else
     printf '%s\n' "$CONTENT" >&2
   fi
-  printf '%s\n' "${C_CMD}Provider ($PROVIDER, model: $MODEL):${C_RST}" >&2
+
+  # Protect against format string vulnerabilities with %s format specifier
+  if [ -n "$C_CMD" ]; then
+    printf '\n%s%s:%s\n' "${C_CMD}" "${MODEL:-default}" "${C_RST}" >&2
+  else
+    printf '\n%s:\n' "${MODEL:-default}" >&2
+  fi
 fi
 
 if [ -n "${SESSION_ID:-}" ]; then
