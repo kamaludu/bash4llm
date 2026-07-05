@@ -3748,10 +3748,6 @@ perform_request_once() {
           return "$BASH4LLM_ERR_API"
         fi
       fi
-      # Ensure separation between JSON and assistant text
-      if [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; then
-        printf '\n'  # <-- newline separator
-      fi
 
       finalize_and_output "$OUTPUT_MODE" "$text"
       release_session_lock
@@ -4871,8 +4867,8 @@ if [ "$CHAT_MODE" -eq 1 ]; then
 
     # Print static header "You:" on its own line
     if [ "$QUIET" -ne 1 ]; then
-      if [ -n "$C_CMD" ] && [ -t 1 ]; then
-        printf '\n%sYou:%s\n' "${C_CMD}" "${C_RST}" >&2
+      if [ -n "$C_TITLE" ] && [ -t 1 ]; then
+        printf '\n%sYou:%s\n' "${C_TITLE}" "${C_RST}" >&2
       else
         printf '\nYou:\n' >&2
       fi
