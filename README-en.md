@@ -7,9 +7,6 @@
 
 # Bash4LLM⁺ [🇮🇹](README.md) 🇬🇧
 
-
-### Bash4LLM⁺ — secure, Bash‑first, fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API
-
 **Bash4LLM⁺** — a secure, Bash‑first, fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API (and extendable to other providers).
 
 Bash4LLM⁺ is a single, self‑contained Bash script that is readable and verifiable. Download it, make it executable, export your API key, and start using it.
