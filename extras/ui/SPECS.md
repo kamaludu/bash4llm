@@ -1,6 +1,3 @@
-Ecco la quarta e ultima parte della risposta, costituita dal documento tecnico che descrive nel dettaglio il funzionamento, l'architettura e i vantaggi della **Strategia di URL Rewriting Stateless** introdotta nel sistema.
-
----
 
 # STRATEGIA DI URL REWRITING STATELESS (SENZA COOKIE)
 ## Documento di Architettura e Flusso Dati per Bash4LLM⁺ GUI
