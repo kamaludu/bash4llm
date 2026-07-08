@@ -574,9 +574,8 @@ env_detect() {
 }
 
 env_prepare_runtime() {
-  local bash4llm_real bash4llm_shadow BIN_DIR wrapper tmp_shadow rc real_hash shadow_hash
-  bash4llm_shadow="/data/data/com.termux/files/usr/bin/bash4llm"
-
+  local bash4llm_real BIN_DIR wrapper tmp_wrapper rc real_hash wrapper_hash
+  
   local candidates=(
     "${UI_ROOT%/}/../bash4llm/bash4llm"
     "${UI_ROOT%/}/../../bash4llm/bash4llm"
@@ -632,6 +631,7 @@ env_prepare_runtime() {
     return 0
   fi
 
+  # Se non siamo su Termux, persiste semplicemente il percorso reale ed esce
   if [[ "${IS_TERMUX:-0}" -ne 1 ]]; then
     if [[ -n "$bash4llm_real" && -x "$bash4llm_real" ]]; then
       mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
@@ -662,6 +662,7 @@ env_prepare_runtime() {
     fi
   fi
 
+  # --- LOGICA SOLO PER TERMUX (Generazione del Wrapper diretto) ---
   ensure_tmpdir || return 0
   if ! command -v flock >/dev/null 2>&1; then
     return 0
@@ -678,85 +679,32 @@ env_prepare_runtime() {
     exec 9>&- 2>/dev/null || true
   }
 
-  real_hash="$(compute_hash "$bash4llm_real" 2>/dev/null || true)"
-  shadow_hash="$(compute_hash "$bash4llm_shadow" 2>/dev/null || true)"
-  rc=1
-
-  if [[ -z "$shadow_hash" || "$real_hash" != "$shadow_hash" ]]; then
-    tmp_shadow="$(gui_portable_mktemp "$TMP_DIR" "bash4llm-shadow.XXXXXX")" || tmp_shadow=""
-    if [[ -n "$tmp_shadow" ]]; then
-      if ! cp -f -- "$bash4llm_real" "$tmp_shadow" 2>/dev/null; then
-        rm -f -- "$tmp_shadow" 2>/dev/null || true
-        _release_lock
-        return 0
-      fi
-
-      if [[ -n "${BASH_PATH:-}" && -x "$BASH_PATH" ]]; then
-        if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
-          sed -i '1s|^#!.*|#!'"$BASH_PATH"'|' "$tmp_shadow" 2>/dev/null || true
-        fi
-      fi
-
-      if ! mv -f -- "$tmp_shadow" "$bash4llm_shadow" 2>/dev/null; then
-        rm -f -- "$tmp_shadow" 2>/dev/null || true
-        _release_lock
-        return 0
-      fi
-      rc=0
-    else
-      _release_lock
-      return 0
-    fi
-
-    if (( rc != 0 )); then
-      _release_lock
-      return 0
-    fi
-
-    chmod 750 "$bash4llm_shadow" 2>/dev/null || true
-    shadow_hash="$(compute_hash "$bash4llm_shadow" 2>/dev/null || true)"
-  fi
-
-  if [[ -z "${BASH_PATH:-}" || ! -x "$BASH_PATH" ]]; then
+  if [[ -z "$bash4llm_real" ]]; then
     _release_lock
     return 0
   fi
 
-  BIN_DIR="${UI_ROOT%/}/bin"
-  mkdir -p "$BIN_DIR" 2>/dev/null || true
-  chmod 700 "$BIN_DIR" 2>/dev/null || true
+  local termux_bash
+  termux_bash="$(command -v bash 2>/dev/null || echo "/data/data/com.termux/files/usr/bin/bash")"
+
+  local BIN_DIR="$UI_ROOT/bin"
+  mkdir -p -- "$BIN_DIR" 2>/dev/null || true
+  chmod 750 -- "$BIN_DIR" 2>/dev/null || true
   wrapper="$BIN_DIR/bash4llm-wrapper"
 
-  local tmp_wrapper new_wrapper_hash existing_wrapper_hash wrapper_hash
-  tmp_wrapper="$(gui_portable_mktemp "$TMP_DIR" "wrapper.XXXXXX")" || tmp_wrapper=""
+  tmp_wrapper="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
   if [[ -n "$tmp_wrapper" ]]; then
-    printf '%s\n' "#!$BASH_PATH" "exec \"$BASH_PATH\" \"$bash4llm_shadow\" \"\$@\"" >"$tmp_wrapper" 2>/dev/null || {
+    # Il wrapper ora chiama direttamente l'interprete passandogli il file reale
+    printf '%s\n' "#!$termux_bash" "exec \"$termux_bash\" \"$bash4llm_real\" \"\$@\"" >"$tmp_wrapper" 2>/dev/null || {
       rm -f -- "$tmp_wrapper" 2>/dev/null || true
       _release_lock
       return 0
     }
 
-    if [[ -f "$wrapper" ]]; then
-      new_wrapper_hash="$(compute_hash "$tmp_wrapper" 2>/dev/null || true)"
-      existing_wrapper_hash="$(compute_hash "$wrapper" 2>/dev/null || true)"
-      if [[ -n "$new_wrapper_hash" && -n "$existing_wrapper_hash" && "$new_wrapper_hash" == "$existing_wrapper_hash" ]]; then
-        rm -f -- "$tmp_wrapper" 2>/dev/null || true
-        rc=0
-      else
-        if ! mv -f -- "$tmp_wrapper" "$wrapper" 2>/dev/null; then
-          rm -f -- "$tmp_wrapper" 2>/dev/null || true
-          _release_lock
-          return 0
-        fi
-        rc=0
-      fi
-    else
-      if ! mv -f -- "$tmp_wrapper" "$wrapper" 2>/dev/null; then
-        rm -f -- "$tmp_wrapper" 2>/dev/null || true
-        _release_lock
-        return 0
-      fi
-      rc=0
+    if ! mv -f -- "$tmp_wrapper" "$wrapper" 2>/dev/null; then
+      rm -f -- "$tmp_wrapper" 2>/dev/null || true
+      _release_lock
+      return 0
     fi
   else
     _release_lock
@@ -764,33 +712,22 @@ env_prepare_runtime() {
   fi
 
   chmod 750 "$wrapper" 2>/dev/null || true
-  wrapper_hash="$(compute_hash "$wrapper" 2>/dev/null || true)"
   _release_lock
 
-  if [[ -x "$wrapper" ]]; then
-    BASH4LLM_CMD="$wrapper"
-    export BASH4LLM_CMD
-    PATH="$BIN_DIR:${PATH:-}"
-    export PATH
-  fi
+  BASH4LLM_CMD="$wrapper"
+  export BASH4LLM_CMD
+  PATH="$BIN_DIR:${PATH:-}"
+  export PATH
 
-  if [[ -n "${CFG_DIR:-}" ]]; then
-    mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
-    if [[ -d "${CFG_DIR%/}" && -w "${CFG_DIR%/}" && -n "${wrapper:-}" && -x "$wrapper" ]]; then
-      local tmp_path line_count
-      tmp_path="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/bash4llm-path.tmp"
-      if printf '%s\n' "$wrapper" >"$tmp_path" 2>/dev/null; then
-        line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
-        if [[ "$line_count" -eq 1 ]]; then
-          mv -f -- "$tmp_path" "${CFG_DIR%/}/bash4llm-path"
-          chmod 600 "${CFG_DIR%/}/bash4llm-path" 2>/dev/null || true
-        else
-          rm -f -- "$tmp_path" 2>/dev/null || true
-        fi
-      else
-        rm -f -- "$tmp_path" 2>/dev/null || true
-      fi
-    fi
+  # Persiste la configurazione del percorso
+  mkdir -p "${CFG_DIR%/}" 2>/dev/null || true
+  local tmp_path line_count
+  tmp_path="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${CFG_DIR%/}/bash4llm-path.tmp"
+  if printf '%s\n' "$wrapper" >"$tmp_path" 2>/dev/null; then
+    mv -f -- "$tmp_path" "${CFG_DIR%/}/bash4llm-path" 2>/dev/null
+    chmod 600 "${CFG_DIR%/}/bash4llm-path" 2>/dev/null || true
+  else
+    rm -f -- "$tmp_path" 2>/dev/null || true
   fi
 
   return 0
