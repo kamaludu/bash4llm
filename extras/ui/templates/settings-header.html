@@ -1,4 +1,5 @@
 <!-- extras/ui/templates/settings-header.html -->
+
 <!DOCTYPE html>
 <html lang="{{LANG_CODE}}">
 <head>
@@ -11,11 +12,12 @@
 <body>
 <header class="topbar">
   <nav>
-    <a href="?page=main&lang={{LANG_CODE}}"><span class="glogo">Bash4LLM⁺</span><span class="uilogo">GUI</span> &nbsp; {{TXT_HOME}}</a> |
-    <a href="?page=settings&lang={{LANG_CODE}}">{{TXT_SETTINGS}}</a>
+    <a href="?page=main&lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}"><span class="glogo">Bash4LLM⁺</span><span class="uilogo">GUI</span> &nbsp; {{TXT_HOME}}</a> |
+    <a href="?page=settings&lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}">{{TXT_SETTINGS}}</a>
   </nav>
   <div class="lang-theme">
     <form method="get" action="">
+      {{TENANT_INPUT_HTML}}
       <label for="lang-select" class="sr-only">{{TXT_LANGUAGE}}</label>
       <select id="lang-select" name="lang">
         {{LANG_OPTIONS}}
