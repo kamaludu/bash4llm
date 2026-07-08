@@ -1,10 +1,12 @@
 <!-- extras/ui/templates/settings-content.html -->
+
 <section class="settings-block">
 
   <!-- Step 1, 2, 3: Configure Provider & API Key -->
   <div class="form-section">
     <h2>1, 2, 3: {{TXT_PROVIDER}} &amp; {{TXT_API_KEY}}</h2>
-    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}">
+    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}">
+      {{TENANT_INPUT_HTML}}
       <input type="hidden" name="action" value="save_api">
       
       <label for="provider-select">1. {{TXT_SELECT}} {{TXT_PROVIDER}}</label>
@@ -26,7 +28,8 @@
   <!-- Step 4 & 5: Fetch & List Supported Models -->
   <div class="form-section">
     <h2>4, 5: {{TXT_REFRESH_MODELS}}</h2>
-    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}">
+    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}">
+      {{TENANT_INPUT_HTML}}
       <input type="hidden" name="action" value="refresh_models">
       <input type="hidden" name="provider" value="{{PROVIDER_CURRENT}}">
       <p class="section-desc">4. {{TXT_REFRESH_MODELS}} ({{PROVIDER_CURRENT}})</p>
@@ -39,7 +42,8 @@
   <!-- Step 6: Select and Set Default Model -->
   <div class="form-section">
     <h2>6: {{TXT_SET_MODEL}}</h2>
-    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}">
+    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}">
+      {{TENANT_INPUT_HTML}}
       <input type="hidden" name="action" value="set_model">
       <input type="hidden" name="provider" value="{{PROVIDER_CURRENT}}">
       
@@ -57,7 +61,8 @@
   <!-- Contextual Conversation Settings -->
   <div class="form-section">
     <h2>{{TXT_SESSION}} &amp; {{TXT_MEMORY}}</h2>
-    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}">
+    <form method="post" action="?page=settings&amp;lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}">
+      {{TENANT_INPUT_HTML}}
       <input type="hidden" name="action" value="save_memory">
 
       <label for="use-sessions-select">{{TXT_USE_SESSIONS}}</label>
