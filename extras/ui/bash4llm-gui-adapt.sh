@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/ui/bash4llm-gui-adapt.sh
 # Extra: GUI-CGI Adapt for the current environment (Termux-specific fixes)
 # Copyright (C) 2026 Cristian Evangelisti
@@ -585,7 +585,7 @@ cleanup_global_stale_pid() {
 
 # -------- Install/update shadow + wrapper (idempotent) --------
 install_termux_shadow_wrapper() {
-  if [ "${INSTALL_MODE:-0}" -ne 1 ]; then info "INSTALL_MODE != 1; skipping Termux shadow/wrapper installation"; return 0; fi
+  if [ "${INSTALL_MODE:-0}" -ne 1 ]; then info "INSTALL_MODE != 1; skipping Termux wrapper installation"; return 0; fi
 
   local candidates=(
     "${UI_ROOT%/}/../bash4llm/bash4llm"
@@ -596,206 +596,103 @@ install_termux_shadow_wrapper() {
   )
   local bash4llm_real=""
   for cand in "${candidates[@]}"; do [ -x "$cand" ] && { bash4llm_real="$cand"; break; }; done
-  if [ -z "$bash4llm_real" ]; then info "No local bash4llm binary found among candidates; cannot install Termux shadow/wrapper"; return 0; fi
+  if [ -z "$bash4llm_real" ]; then info "No local bash4llm binary found among candidates; cannot install Termux wrapper"; return 0; fi
 
-  local bash4llm_shadow="/data/data/com.termux/files/usr/bin/bash4llm"
   local tmpdir="$UI_ROOT/tmp"
   mkdir -p -- "$tmpdir" 2>/dev/null || true
   chmod 770 -- "$tmpdir" 2>/dev/null || true
 
-  gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}" >/dev/null 2>&1 || err "gui_portable_mktemp unavailable; aborting"
-  # Acquire global adapt lock to serialize multi-step operations
   _global_adapt_lock_init
   local lockfile="$tmpdir/bootstrap.lock"
 
-  # Open bootstrap lock on a dynamic FD to avoid collisions with fixed FDs
   exec {BOOTSTRAP_LOCK_FD}>"$lockfile" 2>/dev/null || {
-    _release_lock_and_restore 2>/dev/null || true
     err "Cannot open lockfile $lockfile"
   }
 
-  # Save existing traps and install local cleanup trap
-  _old_trap_return="$(trap -p RETURN 2>/dev/null || true)"
   _old_trap_exit="$(trap -p EXIT 2>/dev/null || true)"
   _old_trap_int="$(trap -p INT 2>/dev/null || true)"
   _old_trap_term="$(trap -p TERM 2>/dev/null || true)"
 
   _release_lock_and_restore() {
-    # Release bootstrap lock and close dynamic FD
     flock -u "$BOOTSTRAP_LOCK_FD" 2>/dev/null || true
     exec {BOOTSTRAP_LOCK_FD}>&- 2>/dev/null || true
 
-    # Safe restore of previously saved traps without using eval.
     _restore_trap_from_trapp() {
       local tr="$1"
       [ -z "${tr:-}" ] && return 0
-
-      # Extract command between the first and last single quote
-      local cmd
+      local cmd sig
       cmd="$(printf '%s' "$tr" | sed -n "s/^trap -- '\(.*\)' \([^ ]*\)$/\1/p")"
-      local sig
       sig="$(printf '%s' "$tr" | awk '{print $NF}')"
-      if [[ -n "${cmd:-}" ]]; then
-        trap -- "$cmd" "$sig" 2>/dev/null || true
-      fi
+      if [[ -n "${cmd:-}" ]]; then trap -- "$cmd" "$sig" 2>/dev/null || true; fi
     }
 
-    # restore previous traps if any
-    if [ -n "${_old_trap_return:-}" ]; then _restore_trap_from_trapp "$_old_trap_return"; fi
     if [ -n "${_old_trap_exit:-}" ]; then _restore_trap_from_trapp "$_old_trap_exit"; fi
     if [ -n "${_old_trap_int:-}" ]; then _restore_trap_from_trapp "$_old_trap_int"; fi
     if [ -n "${_old_trap_term:-}" ]; then _restore_trap_from_trapp "$_old_trap_term"; fi
-
-    unset _old_trap_return _old_trap_exit _old_trap_int _old_trap_term
   }
 
-  trap '_release_lock_and_restore' RETURN EXIT INT TERM
+  trap '_release_lock_and_restore' EXIT INT TERM
 
   if ! flock -x -w 5 "$BOOTSTRAP_LOCK_FD"; then
     _release_lock_and_restore
     err "Could not acquire lock"
   fi
 
-  local tmp_shadow
-  tmp_shadow="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_shadow=""
-  [ -n "$tmp_shadow" ] || { _release_lock_and_restore; err "Failed to create tmp shadow"; }
-
-  if ! cp -f -- "$bash4llm_real" "$tmp_shadow"; then
-    rm -f -- "$tmp_shadow" 2>/dev/null || true
-    _release_lock_and_restore
-    err "Failed to copy bash4llm_real to tmp shadow"
-  fi
-
   local termux_bash
   termux_bash="$(find_termux_bash || true)"
-  if [ -n "$termux_bash" ] && [ -x "$termux_bash" ]; then
-    if head -n1 "$tmp_shadow" 2>/dev/null | grep -qE '^#!'; then
-      sed -i '1s|^#!.*|#!'"$termux_bash"'|' "$tmp_shadow" 2>/dev/null || true
-    fi
-  fi
-
-  if ! mv -f -- "$tmp_shadow" "$bash4llm_shadow"; then
-    rm -f -- "$tmp_shadow" 2>/dev/null || true
-    _release_lock_and_restore
-    err "Failed to move tmp shadow into place"
-  fi
-  chmod 750 -- "$bash4llm_shadow" 2>/dev/null || true
-  info "Installed Termux shadow: $bash4llm_shadow"
+  if [ -z "$termux_bash" ]; then termux_bash="/data/data/com.termux/files/usr/bin/bash"; fi
 
   local BIN_DIR="$UI_ROOT/bin"
   mkdir -p -- "$BIN_DIR" 2>/dev/null || true
   chmod 750 -- "$BIN_DIR" 2>/dev/null || true
   local wrapper="$BIN_DIR/bash4llm-wrapper"
+  
   local tmp_wrapper
   tmp_wrapper="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_wrapper=""
   [ -n "$tmp_wrapper" ] || { _release_lock_and_restore; err "Failed to create tmp wrapper"; }
 
-  # Write robust, autosufficient wrapper template
+  # Genera il wrapper che esegue direttamente l'interprete sul file reale
   cat >"$tmp_wrapper" <<'EOF'
 #!__TERMUX_BASH__
 set -euo pipefail
 umask 007
 
-# Resolve wrapper path robustly
 _wrpsrc="${BASH_SOURCE[0]:-$0}"
 if command -v readlink >/dev/null 2>&1; then
   _wrpsrc="$(readlink -f -- "$_wrpsrc" 2>/dev/null || printf '%s' "$_wrpsrc")"
 fi
 _wrppath="$(cd "$(dirname -- "$_wrpsrc")" 2>/dev/null && pwd -P || true)"
 
-# Derive UI_ROOT from wrapper location if not provided
-if [ -z "${UI_ROOT:-}" ]; then
-  if [ -n "$_wrppath" ]; then
-    UI_ROOT="$(cd "$_wrppath/.." 2>/dev/null && pwd -P || true)"
-  fi
+if [ -z "${UI_ROOT:-}" ] && [ -n "$_wrppath" ]; then
+  UI_ROOT="$(cd "$_wrppath/.." 2>/dev/null && pwd -P || true)"
 fi
 : "${UI_ROOT:=__UI_ROOT__}"
 
-# BASH4LLM_ROOT fallback
-if [ -z "${BASH4LLM_ROOT:-}" ]; then
-  if [ -n "$_wrppath" ]; then
-    BASH4LLM_ROOT="$(cd "$_wrppath/../../../.." 2>/dev/null && pwd -P || true)"
-  fi
+if [ -z "${BASH4LLM_ROOT:-}" ] && [ -n "$_wrppath" ]; then
+  BASH4LLM_ROOT="$(cd "$_wrppath/../../../.." 2>/dev/null && pwd -P || true)"
 fi
-
-if [ -n "${BASH4LLM_ROOT:-}" ]; then
-  case "${BASH4LLM_ROOT##*/}" in
-    bash4llm.d)
-      BASH4LLM_ROOT="$(cd "$BASH4LLM_ROOT/.." 2>/dev/null && pwd -P || true)"
-      ;;
-  esac
-fi
-
 : "${BASH4LLM_ROOT:=__BASH4LLM_ROOT__}"
 
-# BASH4LLM_DIR and extras/providers
 : "${BASH4LLM_DIR:=${BASH4LLM_ROOT%/}/bash4llm.d}"
 : "${BASH4LLM_EXTRAS_DIR:=${BASH4LLM_DIR%/}/extras}"
 : "${PROVIDERS_DIR:=${BASH4LLM_EXTRAS_DIR%/}/providers}"
-
-# BIN_DIR fallback
 : "${BIN_DIR:=__BIN_DIR__}"
-if [ -z "${BIN_DIR:-}" ]; then BIN_DIR="${UI_ROOT%/}/bin"; fi
-mkdir -p -- "${UI_ROOT%/}/bin" 2>/dev/null || true
-[ -d "$BIN_DIR" ] || mkdir -p -- "$BIN_DIR" 2>/dev/null || true
 
 export UI_ROOT BASH4LLM_ROOT BASH4LLM_DIR BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BIN_DIR
 
-# Build PATH deterministically
 _newpath="${UI_ROOT%/}/bin"
 case ":$PATH:" in *":${_newpath}:"*) :;; *) _newpath="${_newpath}:$PATH";; esac
-if [ -n "$BIN_DIR" ] && [ "$BIN_DIR" != "${UI_ROOT%/}/bin" ]; then
-  case ":$_newpath:" in *":${BIN_DIR}:"*) :;; *) _newpath="${BIN_DIR}:$_newpath";; esac
-fi
-
 case ":$_newpath:" in *":/data/data/com.termux/files/usr/bin:"*) :;; *) _newpath="${_newpath}:/data/data/com.termux/files/usr/bin";; esac
-case ":$_newpath:" in *":/bin:"*) :;; *) _newpath="${_newpath}:/bin";; esac
-
-_newpath="${_newpath#:}"
-_newpath="${_newpath%:}"
-
 export PATH="$_newpath"
 
-: "${BASH4LLM_TMPDIR:="${BASH4LLM_DIR%/}/tmp"}"
-: "${BASH4LLM_HISTORY_DIR:="${BASH4LLM_DIR%/}/history"}"
-: "${BASH4LLM_CONFIG_DIR:="${BASH4LLM_DIR%/}/config"}"
-: "${BASH4LLM_MODELS_DIR:="${BASH4LLM_DIR%/}/models"}"
-export BASH4LLM_TMPDIR BASH4LLM_HISTORY_DIR BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR
-
-if [ "${BASH4LLM_DEBUG:-0}" = "1" ]; then
-  printf '%s\n' "INFO: UI_ROOT=$UI_ROOT" >&2
-  printf '%s\n' "INFO: BASH4LLM_ROOT=$BASH4LLM_ROOT" >&2
-  printf '%s\n' "INFO: BASH4LLM_DIR=$BASH4LLM_DIR" >&2
-  printf '%s\n' "INFO: PROVIDERS_DIR=$PROVIDERS_DIR" >&2
-  printf '%s\n' "INFO: PATH=$PATH" >&2
-fi
-
-if [ -n "${BASH4LLM_DIR:-}" ] && [ ! -d "${BASH4LLM_DIR}" ]; then
-  printf '%s\n' "ERROR: BASH4LLM_DIR does not exist: $BASH4LLM_DIR" >&2
-  exit 1
-fi
-
-if [ -n "${PROVIDERS_DIR:-}" ] && [ ! -d "${PROVIDERS_DIR}" ]; then
-  [ "${BASH4LLM_DEBUG:-0}" = "1" ] && printf '%s\n' "DEBUG: PROVIDERS_DIR not found: $PROVIDERS_DIR" >&2
-fi
-
-BASH4LLM_SHADOW="__BASH4LLM_SHADOW__"
+BASH4LLM_REAL="__BASH4LLM_REAL__"
 TERMUX_BASH="__TERMUX_BASH__"
 
-if [ -z "$TERMUX_BASH" ] || [ ! -x "$TERMUX_BASH" ]; then
-  TERMUX_BASH="/bin/bash"
-fi
-
-if [ ! -x "$BASH4LLM_SHADOW" ]; then
-  printf '%s\n' "ERROR: bash4llm shadow not executable or missing: $BASH4LLM_SHADOW" >&2
-  exit 1
-fi
-
-exec "$TERMUX_BASH" "$BASH4LLM_SHADOW" "$@"
+exec "$TERMUX_BASH" "$BASH4LLM_REAL" "$@"
 EOF
 
   sed -e "s|__TERMUX_BASH__|$(sed_escape_replacement "$termux_bash")|g" \
-      -e "s|__BASH4LLM_SHADOW__|$(sed_escape_replacement "$bash4llm_shadow")|g" \
+      -e "s|__BASH4LLM_REAL__|$(sed_escape_replacement "$bash4llm_real")|g" \
       -e "s|__BASH4LLM_ROOT__|$(sed_escape_replacement "${BASH4LLM_ROOT:-}")|g" \
       -e "s|__BASH4LLM_DIR__|$(sed_escape_replacement "${BASH4LLM_DIR:-}")|g" \
       -e "s|__BASH4LLM_EXTRAS_DIR__|$(sed_escape_replacement "${BASH4LLM_EXTRAS_DIR:-}")|g" \
@@ -808,40 +705,28 @@ EOF
 
   if [ -f "$wrapper" ]; then
     if ! cmp -s "$tmp_wrapper" "$wrapper"; then
-      mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move new wrapper into place"; }
+      mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move new wrapper"; }
     else
       rm -f -- "$tmp_wrapper" 2>/dev/null || true
     fi
   else
-    mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to move wrapper into place"; }
+    mv -f -- "$tmp_wrapper" "$wrapper" || { rm -f -- "$tmp_wrapper" 2>/dev/null || true; _release_lock_and_restore; err "Failed to install wrapper"; }
   fi
   chmod 750 -- "$wrapper" 2>/dev/null || true
-  info "Installed Termux wrapper: $wrapper"
+  info "Installed Termux wrapper (pointing to real file): $wrapper"
 
   local cfg_dir="$UI_ROOT/config"
   mkdir -p -- "$cfg_dir" 2>/dev/null || true
-  chmod 770 -- "$cfg_dir" 2>/dev/null || true
   local tmp_path
   tmp_path="$(gui_portable_mktemp "${TMP_DIR:-${UI_ROOT%/}/tmp}")" || tmp_path="${cfg_dir}/bash4llm-path.tmp"
   if printf '%s\n' "$wrapper" >"$tmp_path"; then
-    local line_count
-    line_count="$(sed -n '/./p' "$tmp_path" | wc -l 2>/dev/null || echo 0)"
-    if [ "$line_count" -eq 1 ]; then
-      mv -f -- "$tmp_path" "${cfg_dir%/}/bash4llm-path"
-      chmod 660 -- "${cfg_dir%/}/bash4llm-path" 2>/dev/null || true
-      info "Persisted bash4llm-path -> ${cfg_dir%/}/bash4llm-path -> $wrapper"
-    else
-      rm -f -- "$tmp_path" 2>/dev/null || true
-      info "Refusing to persist bash4llm-path: temp file contains ${line_count} non-empty lines"
-    fi
+    mv -f -- "$tmp_path" "${cfg_dir%/}/bash4llm-path"
+    chmod 660 -- "${cfg_dir%/}/bash4llm-path" 2>/dev/null || true
   else
     rm -f -- "$tmp_path" 2>/dev/null || true
-    info "Failed to write temporary bash4llm-path; skipping persist"
   fi
 
-  # release lock and restore traps
   _release_lock_and_restore
-
   return 0
 }
 
