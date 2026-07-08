@@ -1,4 +1,5 @@
 <!-- extras/ui/templates/content.html -->
+
 <div class="content-wrapper">
   
   <section class="conversation-current">
@@ -11,7 +12,8 @@
 
   <section class="prompt-input">
     <h2>{{TXT_SEND_PROMPT}}</h2>
-    <form method="post" action="?page=main&lang={{LANG_CODE}}">
+    <form method="post" action="?page=main&lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}">
+      {{TENANT_INPUT_HTML}}
       <label for="prompt">{{TXT_PROMPT}}</label>
       <textarea id="prompt" name="prompt" rows="4" cols="60" placeholder="Type your message here..."></textarea>
       
@@ -35,7 +37,7 @@
   <section class="conversation-list">
     <div class="conversation-list-header">
       <h2>{{TXT_CONVERSATIONS}}</h2>
-      <a href="?page=newconv&lang={{LANG_CODE}}" class="btn-success">➕ {{TXT_NEW_CONVERSATION}}</a>
+      <a href="?page=newconv&lang={{LANG_CODE}}{{TENANT_QUERY_VAR}}" class="btn-success">➕ {{TXT_NEW_CONVERSATION}}</a>
     </div>
     <div class="conv-list-container">
       {{CONV_LIST}}
