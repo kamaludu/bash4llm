@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/ui/gui-server.sh
 # Extra: GUI-CGI Router 
 # Copyright (C) 2026 Cristian Evangelisti
@@ -36,8 +36,107 @@ fi
 
 # Set absolute repository directories
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd -P)"
-BASH4LLM_DIR="${REPO_ROOT}/bash4llm.d"
-export BASH4LLM_DIR
+if [[ -z "${BASH4LLM_DIR:-}" || "${BASH4LLM_DIR}" != *"tenant_"* ]]; then
+  BASH4LLM_DIR="${REPO_ROOT}/bash4llm.d"
+  export BASH4LLM_DIR
+fi
+
+render_login_page() {
+  local rand_token
+  rand_token="$(generate_secure_token 2>/dev/null || printf '%08x%08x' "$RANDOM" "$RANDOM")"
+  
+  print_http_header
+  
+  cat <<EOF
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bash4LLM⁺ GUI — Access</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #FFFFF0;
+      color: #293137;
+      max-width: 400px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      color: #4eaa25;
+      margin-bottom: 8px;
+    }
+    p {
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #293137;
+      background-color: #FFFFFF;
+      color: #293137;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #4eaa25;
+      color: #FFFFF0;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 16px;
+    }
+    a {
+      display: block;
+      text-align: center;
+      color: #4eaa25;
+      font-weight: bold;
+      text-decoration: underline;
+    }
+    ul {
+      font-size: 0.9rem;
+      line-height: 1.4;
+      margin-top: 0;
+      margin-bottom: 24px;
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Bash4LLM⁺ GUI</h1>
+  <p>Enter your session identifier to access your workspace.</p>
+  <ul>
+    <li>Your Session ID is like a private key to your chat history.</li>
+    <li><strong>To start fresh:</strong> type any unique word or click the random link below.</li>
+    <li><strong>To resume a previous chat:</strong> enter your existing session name.</li>
+  </ul>
+  <form method="GET" action="">
+    <label for="tenant">Session ID / Tenant Key</label>
+    <input type="text" id="tenant" name="tenant" placeholder="e.g., my-secure-session" required autocomplete="off" pattern="[A-Za-z0-9_-]+">
+    <button type="submit">Access Workspace</button>
+  </form>
+  <a href="?tenant=${rand_token}">Generate Random Session</a>
+</body>
+</html>
+EOF
+  return 0
+}
 
 # Get active models cache file path based on current provider setting
 get_models_file() {
@@ -450,12 +549,11 @@ handle_post_main_submit() {
   body="$(cat -)"
   prompt="$(printf '%s' "$body" | parse_form_field "prompt" || printf '')"
   prompt="$(sanitize_param "$prompt")"
-  
+
   if [[ -z "$prompt" ]]; then
     return 0
   fi
 
-  # Anti-DoS: Prevents multiple background instances from starting if there is an active process
   if is_generation_in_progress; then
     log_warn "CGI" "Submission blocked: generation already active for this session."
     return 0
@@ -472,7 +570,6 @@ handle_post_main_submit() {
     call_bash4llm_with_args --session "$active_conv" --init-session >/dev/null 2>/dev/null || true
   fi
 
-  # Atomic writing of the .pending marker before process decoupling
   pending_file="${TMP_DIR}/session-${active_conv}.pending"
   : > "$pending_file"
   chmod 600 "$pending_file" 2>/dev/null || true
@@ -489,22 +586,37 @@ handle_post_main_submit() {
     safe_args+=( --session "$active_conv" --session-window 1 )
   fi
 
-  # Generate secure JSON payload for injection via stdin
-  local api_key_val secure_json_payload
+  local api_key_val
   api_key_val="$(read_api_key_file "$provider")"
-  secure_json_payload="$(jq -n \
-    --arg api_key "$api_key_val" \
-    --arg prompt "$prompt" \
-    '{api_key: $api_key, prompt: $prompt}')"
 
-  # PROCESS DECOUPLING: Background core startup decoupled from web server timeout.
-  # At the end of the background execution, the .pending marker is automatically cleared.
+  # Sotto-processo disaccoppiato in background con completo disaccoppiamento I/O
   (
+    # Ripristino prioritario del PATH di Termux ed esportazione delle librerie
+    export PATH="${UI_ROOT%/}/bin:/data/data/com.termux/files/usr/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+
+    if [[ -d "/data/data/com.termux/files/usr/lib" ]]; then
+      export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib:${LD_LIBRARY_PATH:-}"
+      export PREFIX="/data/data/com.termux/files/usr"
+      export SSL_CERT_FILE="/data/data/com.termux/files/usr/etc/tls/cert.pem"
+      export CURL_CA_BUNDLE="/data/data/com.termux/files/usr/etc/tls/cert.pem"
+    fi
+
+    # Configurazione della chiave API e delle directory ereditate
+    export BASH4LLM_API_KEY="$api_key_val"
+    prov_env_var="$(printf '%s_API_KEY' "$provider" | tr '[:lower:]' '[:upper:]')"
+    export "$prov_env_var"="$api_key_val"
+
+    # Generazione sicura del payload JSON all'interno della subshell (dove jq è ora disponibile)
+    secure_json_payload="$(jq -n \
+      --arg api_key "$api_key_val" \
+      --arg prompt "$prompt" \
+      '{api_key: $api_key, prompt: $prompt}')"
+
+    # Invocazione del core wrapper passandogli il payload strutturato e scollegando lo stdin
     printf '%s' "$secure_json_payload" | "${BASH4LLM_CMD}" "${safe_args[@]}" >/dev/null 2>>"${ERROR_LOG:-/dev/null}"
     rm -f "$pending_file" 2>/dev/null || true
-  ) >/dev/null 2>&1 &
-
-  return 0
+  ) </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null || true
 }
 
 handle_post_main_rename() {
@@ -621,7 +733,7 @@ build_conv_list() {
     if [[ "$in_index" -eq 0 ]]; then
       local title="New Conversation"
       out+="<ul class=\"session-menu\"><li class=\"session-item active\">"
-      out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$active_conv")&lang=$(html_escape "$lang_code")\">📄 ✨ <em>$(html_escape "$title")</em></a>"
+      out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$active_conv")&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\">📄 ✨ <em>$(html_escape "$title")</em></a>"
       out+="</li></ul>"$'\n'
       listed_active=1
     fi
@@ -653,23 +765,23 @@ build_conv_list() {
         
         if [[ "$sid" == "$active_conv" ]]; then
           out+="<li class=\"session-item active\">"
-          out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
+          out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
           out+="<div class=\"session-actions\">"
-          out+="<form method=\"POST\" class=\"rename-form\" action=\"?page=main&lang=$(html_escape "$lang_code")\">"
+          out+="<form method=\"POST\" class=\"rename-form\" action=\"?page=main&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\">"
           out+="<input type=\"hidden\" name=\"rename_conv\" value=\"$(html_escape "$sid")\">"
           out+="<input type=\"text\" name=\"new_title\" class=\"input-rename\" value=\"$(html_escape "$title")\" required>"
           out+="<button type=\"submit\" class=\"btn-save\">Save</button>"
           out+="</form>"
-          out+="<a href=\"?page=deleteconv&delete_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\" class=\"btn-delete\" title=\"Delete chat\">✕</a>"
+          out+="<a href=\"?page=deleteconv&delete_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\" class=\"btn-delete\" title=\"Delete chat\">✕</a>"
           out+="</div>"
           out+="</li>"
           listed_active=1
         else
           out+="<li class=\"session-item\">"
-          out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
+          out+="<a class=\"conv-link\" href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\">📄 $(html_escape "$title") <span class=\"msg-count\">(${msg_count})</span></a>"
           out+="<div class=\"session-actions\">"
-          out+="<a href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\" class=\"btn-edit\" title=\"Select chat\">✎</a>"
-          out+="<a href=\"?page=deleteconv&delete_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")\" class=\"btn-delete\" title=\"Delete chat\">✕</a>"
+          out+="<a href=\"?page=main&select_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\" class=\"btn-edit\" title=\"Select chat\">✎</a>"
+          out+="<a href=\"?page=deleteconv&delete_conv=$(html_escape "$sid")&lang=$(html_escape "$lang_code")&tenant=$(html_escape "$TENANT_HASH")\" class=\"btn-delete\" title=\"Delete chat\">✕</a>"
           out+="</div>"
           out+="</li>"
         fi
@@ -761,6 +873,12 @@ render_page_main() {
   build_provider_options "$prov_cur"
   build_model_list_and_select "$model_cur" "$prov_cur"
 
+  # Export placeholders to ensure automatic rewriting of links and HTML forms
+  TENANT_INPUT_HTML="<input type=\"hidden\" name=\"tenant\" value=\"$(html_escape "$TENANT_HASH")\">"
+  TENANT_QUERY_VAR="&amp;tenant=$(html_escape "$TENANT_HASH")"
+  TENANT_QUERY_VAR_RAW="&tenant=$(html_escape "$TENANT_HASH")"
+  export TENANT_INPUT_HTML TENANT_QUERY_VAR TENANT_QUERY_VAR_RAW
+
   render_template "${TEMPLATES_DIR}/header.html"
   render_template "${TEMPLATES_DIR}/content.html"
   render_template "${TEMPLATES_DIR}/footer.html"
@@ -828,49 +946,71 @@ render_page_settings() {
   build_provider_options "$prov_cur"
   build_model_list_and_select "$model_cur" "$prov_cur"
 
+  # Export placeholders to ensure automatic rewriting of links and HTML forms
+  TENANT_INPUT_HTML="<input type=\"hidden\" name=\"tenant\" value=\"$(html_escape "$TENANT_HASH")\">"
+  TENANT_QUERY_VAR="&amp;tenant=$(html_escape "$TENANT_HASH")"
+  TENANT_QUERY_VAR_RAW="&tenant=$(html_escape "$TENANT_HASH")"
+  export TENANT_INPUT_HTML TENANT_QUERY_VAR TENANT_QUERY_VAR_RAW
+
   render_template "${TEMPLATES_DIR}/settings-header.html"
   render_template "${TEMPLATES_DIR}/settings-content.html"
   render_template "${TEMPLATES_DIR}/footer.html"
 }
 
 main() {
-  # Safe browser session cookie extraction
-  local tenant_cookie=""
-  if [[ -n "${HTTP_COOKIE:-}" ]]; then
-    tenant_cookie="$(printf '%s' "$HTTP_COOKIE" | tr ';' '\n' | awk -F= '$1 ~ /BASH4LLM_TENANT/ {print $2}' | tr -d '[:space:]' || true)"
-    tenant_cookie="${tenant_cookie:0:32}"
-    if [[ ! "$tenant_cookie" =~ ^[a-f0-9]{32}$ ]]; then
-      tenant_cookie=""
+  # 1. Se l'ID tenant non è valorizzato, mostra la schermata d'accesso stateless
+  if [[ -z "${TENANT_HASH:-}" ]]; then
+    render_login_page
+    return 0
+  fi
+
+  # 2. Risoluzione dei percorsi sorgenti all'interno del repository
+  local extras_src="" templates_src=""
+  if [[ -n "${REPO_ROOT:-}" ]]; then
+    if [[ -d "${REPO_ROOT}/bash4llm.d/extras" ]]; then
+      extras_src="${REPO_ROOT}/bash4llm.d/extras"
+    elif [[ -d "${REPO_ROOT}/extras" ]]; then
+      extras_src="${REPO_ROOT}/extras"
+    fi
+    
+    if [[ -d "${REPO_ROOT}/bash4llm.d/templates" ]]; then
+      templates_src="${REPO_ROOT}/bash4llm.d/templates"
+    elif [[ -d "${REPO_ROOT}/templates" ]]; then
+      templates_src="${REPO_ROOT}/templates"
     fi
   fi
 
-  # Generate a new cookie if absent or invalid
-  NEW_TENANT_COOKIE=""
-  if [[ -z "$tenant_cookie" ]]; then
-    tenant_cookie="$(generate_secure_token)"
-    NEW_TENANT_COOKIE="$tenant_cookie"
+  # 3. Copia delle risorse extras e templates nella cartella fisica del tenant se mancanti
+  if [[ -n "$extras_src" && ! -d "$BASH4LLM_DIR/extras/providers" ]]; then
+    mkdir -p "$BASH4LLM_DIR/extras" 2>/dev/null || true
+    cp -R "$extras_src/." "$BASH4LLM_DIR/extras/" 2>/dev/null || true
+    find "$BASH4LLM_DIR/extras" -type d -exec chmod 700 {} + 2>/dev/null || true
+    find "$BASH4LLM_DIR/extras" -type f -exec chmod 600 {} + 2>/dev/null || true
   fi
-  TENANT_HASH="$tenant_cookie"
-  export TENANT_HASH
 
-  # ABSOLUTE MULTI-TENANT ISOLATION: Confinement of history, configuration and locks for each client
-  BASH4LLM_DIR="${UI_ROOT}/tmp/gui-runtime.d/tenant_${TENANT_HASH}"
-  CFG_DIR="${BASH4LLM_DIR}/config"
-  TMP_DIR="${BASH4LLM_DIR}/tmp"
-  CONV_DIR="${BASH4LLM_DIR}/conversations"
-  LOCK_FILE="${TMP_DIR}/gui.lock"
-  CURRENT_CONV_FILE="${CFG_DIR}/current-conv"
-  LANG_CURRENT_FILE="${CFG_DIR}/current-lang"
-  THEME_CURRENT_FILE="${CFG_DIR}/current-theme"
-  SESSION_WINDOW_FILE="${CFG_DIR}/session-window"
+  if [[ -n "$templates_src" && ! -d "$BASH4LLM_DIR/templates" ]]; then
+    mkdir -p "$BASH4LLM_DIR/templates" 2>/dev/null || true
+    cp -R "$templates_src/." "$BASH4LLM_DIR/templates/" 2>/dev/null || true
+    find "$BASH4LLM_DIR/templates" -type d -exec chmod 700 {} + 2>/dev/null || true
+    find "$BASH4LLM_DIR/templates" -type f -exec chmod 600 {} + 2>/dev/null || true
+  fi
 
-  export BASH4LLM_DIR CFG_DIR TMP_DIR CONV_DIR LOCK_FILE CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE SESSION_WINDOW_FILE
+  # 4. Garbage Collector automatico asincrono dei vecchi tenant inattivi da oltre 24 ore
+  (
+    gc_dir="${UI_ROOT}/tmp/gui-runtime.d"
+    gc_gate="${gc_dir}/.last_cleanup"
+    now="$(date +%s 2>/dev/null || echo 0)"
+    
+    mkdir -p "$gc_dir" 2>/dev/null || true
+    last_clean="$(cat "$gc_gate" 2>/dev/null || echo 0)"
+    
+    if [[ -z "$last_clean" ]] || (( now - last_clean > 3600 )); then
+      printf '%s\n' "$now" > "$gc_gate" 2>/dev/null
+      find "$gc_dir" -mindepth 1 -maxdepth 1 -type d -name "tenant_*" -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+    fi
+  ) 2>/dev/null || true
 
-  # Securely create isolated directories for the current tenant
-  mkdir -p "$BASH4LLM_DIR" "$CFG_DIR" "$TMP_DIR" "$CONV_DIR" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" 2>/dev/null || true
-  chmod 700 "$BASH4LLM_DIR" "$CFG_DIR" "$TMP_DIR" "$CONV_DIR" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" 2>/dev/null || true
-
-  # Continue with the initialization flow...
+  # 5. Configurazione delle cartelle correnti e dei parametri
   run_if_func ensure_dirs
   if [[ "${IS_TERMUX:-0}" = "1" ]]; then
     run_if_func fix_termux_perms || true
@@ -892,7 +1032,6 @@ main() {
     fi
   fi
 
-  # Safely delete conversation session via core routines
   local delete_conv
   delete_conv="$(get_query_param "delete_conv" 2>/dev/null || printf '')"
   delete_conv="$(sanitize_param "$delete_conv")"
@@ -930,7 +1069,6 @@ main() {
     return 0
   fi
 
-  # Secure session initialization delegating parameters to core interface
   local action_conv new_conv_param page_param
   action_conv="$(get_query_param "action" 2>/dev/null || printf '')"
   new_conv_param="$(get_query_param "new_conv" 2>/dev/null || printf '')"
@@ -968,7 +1106,6 @@ main() {
   QUERY_STRING="${QUERY_STRING:-}"
   QUERY_STRING="$(printf '%s' "$QUERY_STRING" | tr -d '\000-\037')"
 
-  # Protected fallback assignments prevent trap triggers on initial load
   local lang_code
   lang_code="$(get_query_param "lang" 2>/dev/null || printf '')"
   if [[ -n "$lang_code" ]]; then
@@ -984,7 +1121,6 @@ main() {
   
   run_if_func load_translations "$lang_code"
 
-  # Protected fallback assignments prevent trap triggers on initial load
   local theme_code
   theme_code="$(get_query_param "theme" 2>/dev/null || printf '')"
   if [[ -n "$theme_code" ]]; then
