@@ -793,7 +793,7 @@ atomic_write() {
   lockfile="${destdir}/.bash4llm.lock"
 
   # Fail fast if mktemp fails to allocate a secure file path
-  tmp="$(mktemp "$destdir/.groq-atomic.XXXXXX" 2>/dev/null)"
+  tmp="$(mktemp "${destdir}/.groq-atomic.XXXXXX" 2>/dev/null || mktemp "${BASH4LLM_TMPDIR:-$destdir}/.groq-atomic.XXXXXX" 2>/dev/null || true)"
   if [ -z "$tmp" ]; then
     log_error "ATOMICFAIL" "failed to create secure temporary file"
     return "$BASH4LLM_ERR_TMP"
@@ -4658,7 +4658,7 @@ if [ ! -t 0 ]; then
 
   # Formally verifying JSON payload using jq to extract API key
   if [ -n "$stdin_buffer" ] && printf '%s' "$stdin_buffer" | jq -e 'has("api_key")' >/dev/null 2>&1; then
-    local extracted_key extracted_prompt extracted_json_input
+    # Variables managed without local declarations for global scope compatibility
     extracted_key="$(printf '%s' "$stdin_buffer" | jq -r '.api_key // empty' 2>/dev/null || true)"
     extracted_prompt="$(printf '%s' "$stdin_buffer" | jq -r '.prompt // empty' 2>/dev/null || true)"
     extracted_json_input="$(printf '%s' "$stdin_buffer" | jq -c '.json_input // empty' 2>/dev/null || true)"
@@ -4668,7 +4668,6 @@ if [ ! -t 0 ]; then
 
     # If present, dynamically injects the API key into the current context
     if [ -n "$extracted_key" ]; then
-      local prov_var
       prov_var="$(provider_api_env_var_name "${PROVIDER:-groq}")"
       export "$prov_var"="$extracted_key"
       export BASH4LLM_API_KEY="$extracted_key"
@@ -4694,6 +4693,11 @@ if [ ! -t 0 ]; then
 fi
 
 assemble_content() {
+  # If CONTENT has been pre-populated (e.g. from JSON input extraction), preserve it and return
+  if [ -n "${CONTENT:-}" ]; then
+    return 0
+  fi
+
   CONTENT="${CONTENT:-}"
   local tmpl tmp_tmpl tmp_final extra file_content
 
