@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/ui/gui-bootstrap.sh
 # Extra: GUI-CGI Lifecycle bootstrap and dependency resolution
 # Copyright (C) 2026 Cristian Evangelisti
@@ -15,17 +15,39 @@
 # Resolve the absolute canonical path of BASH4LLM_DIR (Isolated for GUI environment)
 BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
 
-# Isolation of BASH4LLM_DIR for GUI: points to a dedicated subpath internal to the GUI
-BASH4LLM_DIR="${BOOTSTRAP_DIR}/tmp/gui-runtime.d"
-export BASH4LLM_DIR
-
-# Safe and secure initialization of isolated subdirectory structure
-mkdir -p "$BASH4LLM_DIR" "$BASH4LLM_DIR/config" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" "$BASH4LLM_DIR/tmp" "$BASH4LLM_DIR/config/ui_state" "$BASH4LLM_DIR/config/ui_state/sessions" 2>/dev/null || true
-chmod 700 "$BASH4LLM_DIR" "$BASH4LLM_DIR/config" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" "$BASH4LLM_DIR/tmp" "$BASH4LLM_DIR/config/ui_state" "$BASH4LLM_DIR/config/ui_state/sessions" 2>/dev/null || true
-
-# Clean environment initialization layer load
+# 1. Immediately load the environment and sanitization layer to access parsing functions
 if [[ -f "${BOOTSTRAP_DIR}/gui-env.sh" ]]; then
   source "${BOOTSTRAP_DIR}/gui-env.sh"
+fi
+
+# 2. Extracts Tenant state in a stateless manner without the use of cookies
+TENANT_HASH=""
+if declare -f get_tenant_from_request >/dev/null 2>&1; then
+  TENANT_HASH="$(get_tenant_from_request)"
+fi
+export TENANT_HASH
+
+# 3. Dynamically configures the root directory and subdirectories by isolating the tenant
+if [[ -n "${TENANT_HASH:-}" ]]; then
+  BASH4LLM_DIR="${BOOTSTRAP_DIR}/tmp/gui-runtime.d/tenant_${TENANT_HASH}"
+  CFG_DIR="${BASH4LLM_DIR}/config"
+  TMP_DIR="${BASH4LLM_DIR}/tmp"
+  CONV_DIR="${BASH4LLM_DIR}/conversations"
+  LOCK_FILE="${TMP_DIR}/gui.lock"
+  CURRENT_CONV_FILE="${CFG_DIR}/current-conv"
+  LANG_CURRENT_FILE="${CFG_DIR}/current-lang"
+  THEME_CURRENT_FILE="${CFG_DIR}/current-theme"
+  SESSION_WINDOW_FILE="${CFG_DIR}/session-window"
+  
+  export BASH4LLM_DIR CFG_DIR TMP_DIR CONV_DIR LOCK_FILE CURRENT_CONV_FILE LANG_CURRENT_FILE THEME_CURRENT_FILE SESSION_WINDOW_FILE
+
+  # Securely initialize the directory structure for the active tenant
+  mkdir -p "$BASH4LLM_DIR" "$CFG_DIR" "$TMP_DIR" "$CONV_DIR" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" "$CFG_DIR/ui_state" "$CFG_DIR/ui_state/sessions" 2>/dev/null || true
+  chmod 700 "$BASH4LLM_DIR" "$CFG_DIR" "$TMP_DIR" "$CONV_DIR" "$BASH4LLM_DIR/history" "$BASH4LLM_DIR/history/sessions" "$CFG_DIR/ui_state" "$CFG_DIR/ui_state/sessions" 2>/dev/null || true
+else
+  # Security fallback if request lacks tenant indicator (will show login screen)
+  BASH4LLM_DIR="${BOOTSTRAP_DIR}/tmp/gui-runtime.d"
+  export BASH4LLM_DIR
 fi
 
 if declare -f gui_env_init >/dev/null 2>&1; then
@@ -308,7 +330,7 @@ if [[ "${BOOTSTRAP_SKIP_INIT:-0}" -ne 1 ]]; then
       # If the target is a wrapper containing 'exec', do NOT source it directly
       # to prevent replacing and terminating the calling CGI shell process.
       if grep -q "exec " "$source_target" 2>/dev/null; then
-        local real_script
+        real_script=""
         # Attempt to extract the absolute path of the real script from the wrapper.
         # We append "|| true" to prevent any grep exit code 1 from triggering the global ERR trap.
         real_script="$(grep -o -E '/[A-Za-z0-9._/-]+/bash4llm' "$source_target" 2>/dev/null | head -n1 || true)"
