@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/ui/gui-env.sh
 # Extra: GUI-CGI Environment layer
 # Copyright (C) 2026 Cristian Evangelisti
@@ -247,25 +247,41 @@ validate_name() {
   fi
 }
 
+# Global POST body cache to allow multiple reads without consuming standard input
+_GUI_CACHED_POST_BODY=""
+_GUI_POST_BODY_READ=0
+
 read_post_body() {
   local max="${1:-65536}"
+  if [[ "$_GUI_POST_BODY_READ" -eq 1 ]]; then
+    printf '%s' "$_GUI_CACHED_POST_BODY"
+    return 0
+  fi
+  _GUI_POST_BODY_READ=1
   local ctlen="${CONTENT_LENGTH:-0}"
   if [[ -n "$ctlen" && "$ctlen" -gt "$max" ]]; then
     log_warn "CGI" "POST body exceeds bounds limit: ${ctlen} > ${max}"
-    dd bs=1 count="$max" 2>/dev/null || true
+    _GUI_CACHED_POST_BODY="$(dd bs=1 count="$max" 2>/dev/null || true)"
+    printf '%s' "$_GUI_CACHED_POST_BODY"
     return 1
   fi
   if [ -n "${CONTENT_LENGTH:-}" ]; then
-    dd bs=1 count="${CONTENT_LENGTH}" 2>/dev/null || true
+    _GUI_CACHED_POST_BODY="$(dd bs=1 count="${CONTENT_LENGTH}" 2>/dev/null || true)"
   else
-    head -c "$max"
+    _GUI_CACHED_POST_BODY="$(head -c "$max")"
   fi
+  printf '%s' "$_GUI_CACHED_POST_BODY"
+  return 0
 }
 
 parse_form_field() {
   local key="$1"
   local body
-  body="$(cat -)"
+  if [[ "$_GUI_POST_BODY_READ" -eq 1 ]]; then
+    body="$_GUI_CACHED_POST_BODY"
+  else
+    body="$(cat -)"
+  fi
   local kv
   kv="$(printf '%s' "$body" | tr '&' '\n' | awk -F= -v k="$key" '$1==k{print substr($0, index($0,"=")+1); exit}')"
   if [[ -z "$kv" ]]; then
@@ -278,6 +294,36 @@ parse_form_field() {
   printf '%s' "$decoded"
 }
 
+get_tenant_from_request() {
+  local tenant=""
+  # 1. Attempting to extract from QUERY_STRING (GET)
+  if [[ -n "${QUERY_STRING:-}" ]]; then
+    tenant="$(printf '%s' "$QUERY_STRING" | tr '&' '\n' | awk -F= '$1=="tenant"{print substr($0, index($0,"=")+1); exit}')"
+    if [[ -n "$tenant" ]]; then
+      tenant="$(url_decode "$tenant" 2>/dev/null || printf '%s' "$tenant")"
+      tenant="$(sanitize_param "$tenant")"
+    fi
+  fi
+  # 2. Attempt to extract from the request body (POST)
+  if [[ -z "$tenant" && "${REQUEST_METHOD:-}" == "POST" ]]; then
+    local dummy
+    dummy="$(read_post_body)"
+    tenant="$(printf '%s' "$_GUI_CACHED_POST_BODY" | tr '&' '\n' | awk -F= '$1=="tenant"{print substr($0, index($0,"=")+1); exit}')"
+    if [[ -n "$tenant" ]]; then
+      tenant="$(url_decode "$tenant" 2>/dev/null || printf '%s' "$tenant")"
+      tenant="$(sanitize_param "$tenant")"
+    fi
+  fi
+  
+  # Format validation (alphanumeric, hyphens, underscores)
+  if [[ -n "$tenant" ]] && validate_name "$tenant"; then
+    printf '%s' "$tenant"
+    return 0
+  fi
+  printf ''
+  return 1
+}
+
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -287,11 +333,7 @@ json_escape() {
   printf '%s' "$s"
 }
 
-# HTTP output wrapper utilities (Secure Multi-Tenant cookie management)
 print_http_header() {
-  if [[ -n "${NEW_TENANT_COOKIE:-}" ]]; then
-    printf 'Set-Cookie: BASH4LLM_TENANT=%s; Path=/; HttpOnly; SameSite=Strict\r\n' "$NEW_TENANT_COOKIE"
-  fi
   printf 'Content-Type: text/html; charset=utf-8\r\n'
   printf 'Cache-Control: no-store\r\n'
   printf 'X-Content-Type-Options: nosniff\r\n'
@@ -300,8 +342,14 @@ print_http_header() {
 
 print_http_redirect() {
   local loc="$1"
-  if [[ -n "${NEW_TENANT_COOKIE:-}" ]]; then
-    printf 'Set-Cookie: BASH4LLM_TENANT=%s; Path=/; HttpOnly; SameSite=Strict\r\n' "$NEW_TENANT_COOKIE"
+  if [[ -n "${TENANT_HASH:-}" ]]; then
+    if [[ "$loc" == *"?"* ]]; then
+      if [[ "$loc" != *"tenant="* ]]; then
+        loc="${loc}&tenant=${TENANT_HASH}"
+      fi
+    else
+      loc="${loc}?tenant=${TENANT_HASH}"
+    fi
   fi
   printf 'Status: 303 See Other\r\n'
   printf 'Location: %s\r\n' "$loc"
