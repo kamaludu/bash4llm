@@ -1,10 +1,10 @@
-# Specifica Tecnica — Modulo TUI (`tui-repl.sh`) per `bash4llm`
+## Specifica Tecnica — Modulo TUI (`tui-repl.sh`) per `bash4llm`
 
 Questo documento definisce le specifiche architettoniche, i flussi di controllo, la gestione dello stato e il comportamento visivo del modulo di interfaccia utente interattivo (`tui-repl.sh`) per lo strumento `bash4llm`.
 
 ---
 
-## 1. Architettura ed Integrazione (Hook)
+### 1. Architettura ed Integrazione (Hook)
 
 Il modulo TUI è concepito come un componente esterno opzionale separato dal nucleo funzionale (core) dell'applicazione.
 
@@ -18,7 +18,7 @@ Il modulo TUI è concepito come un componente esterno opzionale separato dal nuc
 
 ---
 
-## 2. Requisiti e Compatibilità
+### 2. Requisiti e Compatibilità
 
 * **Sistemi Operativi:** macOS, Linux (distribuzioni basate su Debian/RedHat/Arch), Termux (Android), WSL (Windows Subsystem for Linux) ed esecuzione remota via SSH.
 * **Interprete:** GNU Bash 4.x o superiore.
@@ -26,7 +26,7 @@ Il modulo TUI è concepito come un componente esterno opzionale separato dal nuc
 
 ---
 
-## 3. Trasferimento dello Stato e Variabili d'Ambiente
+### 3. Trasferimento dello Stato e Variabili d'Ambiente
 
 Il modulo TUI eredita lo stato dal processo padre e ne gestisce le variazioni locali tramite le seguenti variabili d'ambiente esportate:
 
@@ -40,7 +40,7 @@ Il modulo TUI eredita lo stato dal processo padre e ne gestisce le variazioni lo
 
 ---
 
-## 4. Interfaccia Visiva e Rendering
+### 4. Interfaccia Visiva e Rendering
 
 * **Scrittura Sequenziale Standard:** L'interfaccia utente rifiuta l'uso di librerie a schermo intero (como `ncurses` o sequenze di posizionamento assoluto ANSI tramite `tput`). Tutto il rendering visivo si affida al normale scorrimento verticale (*vertical scrolling*) del terminale.
 * **Resistenza ai Ridimensionamenti (`SIGWINCH`):** L'approccio sequenziale rende la TUI nativamente immune a crash o sfarfallii visivi causati dal ridimensionamento della finestra o dall'uso su terminali mobili e connessioni SSH instabili.
@@ -48,7 +48,7 @@ Il modulo TUI eredita lo stato dal processo padre e ne gestisce le variazioni lo
 
 ---
 
-## 5. Gestione Sincrona del Flusso e Interruzioni
+### 5. Gestione Sincrona del Flusso e Interruzioni
 
 Il REPL opera secondo un modello sincrono e sequenziale:
 ```
@@ -60,9 +60,9 @@ Attesa Input Utente -> Compilazione Contesto -> Chiamata API (Sincrona/Bloccante
 
 ---
 
-## 6. Componenti e Logica dei Menu
+### 6. Componenti e Logica dei Menu
 
-### 6.1. Wizard di Selezione Sessione (Startup)
+#### 6.1. Wizard di Selezione Sessione (Startup)
 Se all'avvio `SESSION_ID` non è popolato, lo script esegue `load_sessions_wizard` per la gestione guidata dello storico:
 1. Legge i file `.ndjson` presenti nella directory `sessions/`, ordinandoli per data di ultima modifica decrescente (i più recenti in alto).
 2. Mostra un elenco di sessioni paginato a gruppi di **10 sessioni per pagina**.
@@ -75,7 +75,7 @@ Se all'avvio `SESSION_ID` non è popolato, lo script esegue `load_sessions_wizar
    * *Data Ultimo Messaggio:* Ricavata dal timestamp `.ts` dell'ultima riga del file NDJSON, formattata in modo identico.
 4. **Navigazione:** Gestita tramite input rapidi da tastiera: `+` o `n` (pagina successiva), `-` o `p` (pagina precedente), `c` (crea una nuova sessione vuota con ID randomizzato), oppure l'inserimento dell'indice numerico per caricare la conversazione.
 
-### 6.2. Menu di Configurazione (`/config`)
+#### 6.2. Menu di Configurazione (`/config`)
 Fornisce un menu interattivo numerato (1-6) richiamabile durante la chat per modificare dinamicamente i parametri di configurazione del modulo LLM:
 * Scelta del Provider attivo (verifica la presenza nei provider registrati).
 * Scelta del Modello (valida la compatibilità testuale tramite `validate_model_dispatch`).
@@ -83,7 +83,7 @@ Fornisce un menu interattivo numerato (1-6) richiamabile durante la chat per mod
 * Esecuzione del Refresh dei modelli (invoca la chiamata API tramite `refresh_models_dispatch`).
 * Visualizzazione dei modelli installati localmente (`list_models_cli`).
 
-### 6.3. Menu Strumenti di Contesto (`/menu`)
+#### 6.3. Menu Strumenti di Contesto (`/menu`)
 Fornisce un menu interattivo numerato (1-6) per la gestione ordinativa della chat attiva:
 * Ridenominazione del titolo della sessione attiva (aggiorna atomicamente il file di metadati della UI).
 * Eliminazione fisica della sessione attiva su disco (previa doppia conferma interattiva di sicurezza).
@@ -93,7 +93,7 @@ Fornisce un menu interattivo numerato (1-6) per la gestione ordinativa della cha
 
 ---
 
-## 7. Comandi Speciali (Slash Commands)
+### 7. Comandi Speciali (Slash Commands)
 
 All'interno della chat, la riga inserita dall'utente viene intercettata dal parser locale. I comandi speciali implementati sono:
 
@@ -106,7 +106,7 @@ All'interno della chat, la riga inserita dall'utente viene intercettata dal pars
 
 ---
 
-## 8. Persistenza, Stato e Cronologia Comandi
+### 8. Persistenza, Stato e Cronologia Comandi
 
 * **Database dei Messaggi:** Ogni conversazione viene scritta e aggiornata in tempo reale in formato NDJSON all'interno della directory `sessions/` del database di `bash4llm`:
   ```
