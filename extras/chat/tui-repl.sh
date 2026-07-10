@@ -44,15 +44,12 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
 fi
 
 # --- PHASE 2: REPL STATE DICTIONARY AND VARIABLE INITIALIZATION ---
-# Map inherited operational state or initialize defaults
 SESSION_ID="${BASH4LLM_ACTIVE_SESSION:-}"
 MODEL="${BASH4LLM_ACTIVE_MODEL:-}"
 TEMPERATURE="${BASH4LLM_ACTIVE_TEMPERATURE:-1.0}"
 TURE="$TEMPERATURE"
 
-# Fallback safety configuration if inherited state is empty
 [ -n "$MODEL" ] || {
-  # Resolve default model by reusing the core function
   if resolve_model >/dev/null 2>&1 && [ -n "${FINAL_MODEL:-}" ]; then
     MODEL="$FINAL_MODEL"
   else
@@ -60,34 +57,28 @@ TURE="$TEMPERATURE"
   fi
 }
 
-# Ensure required directories for run-specific temporary state
 ensure_run_tmpdir >/dev/null 2>&1 || {
   printf 'tui-repl.sh: ERROR: Unable to initialize secure run-specific temporary directory.\n' >&2
   exit "$BASH4LLM_ERR_TMP"
 }
 
 # --- PHASE 2.1: DECLARATIVE DICTIONARIES & SECURE PARSER ---
-# Declare global associative array for messages (Requires Bash 4.0+)
 declare -A T_MSG
 
-# Securely load properties file into memory (associative array)
 load_lang_secure() {
   local lang_code="${1:-en}"
   local lang_dir="$(dirname "${BASH_SOURCE[0]}")/langs"
   local lang_file="${lang_dir}/${lang_code}.properties"
 
-  # Strict validation of language code to prevent path traversal (e.g. '../../')
   if [[ ! "$lang_code" =~ ^[a-z]{2}$ ]]; then
     lang_code="en"
     lang_file="${lang_dir}/en.properties"
   fi
 
-  # Fallback to English if the requested translation file is missing or unreadable
   if [ ! -f "$lang_file" ] || [ ! -r "$lang_file" ]; then
     lang_file="${lang_dir}/en.properties"
   fi
 
-  # If even the English file is missing, exit gracefully to prevent undefined states
   if [ ! -f "$lang_file" ]; then
     if type log_warn >/dev/null 2>&1; then
       log_warn "I18N" "Language translation files directory is missing or unreadable."
@@ -97,45 +88,36 @@ load_lang_secure() {
     return 1
   fi
 
-  # Secure manual parser: treats file as plain text, avoiding 'source' or 'eval'
   local key val
   while IFS='=' read -r key val || [ -n "$key" ]; do
-    # Ignore comments and empty lines
     [[ "$key" =~ ^[[:space:]]*# ]] && continue
     [[ -z "$key" ]] && continue
 
-    # Strictly sanitize the key (allow only alphanumeric and underscores)
     local safe_key
     safe_key="$(printf '%s' "$key" | tr -d -c 'A-Za-z0-9_')"
     [ -n "$safe_key" ] || continue
 
-    # Strip carriage returns and trim whitespace from value securely
     local trimmed_val
     trimmed_val="$(printf '%s' "$val" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-    # Store in memory hash table for O(1) runtime lookup complexity
     T_MSG["$safe_key"]="$trimmed_val"
   done < "$lang_file"
 }
 
-# Ultra-fast message lookup helper
 _msg() {
   local key="${1:-}"
   local val=""
   
-  # Safe check against unbound variable in associative array lookup under set -u
   if [ -n "$key" ]; then
     if [ "${T_MSG[$key]+x}" = "x" ]; then
       val="${T_MSG[$key]}"
     fi
   fi
   
-  # Graceful fallback to the raw key name if the translation is missing
   if [ -z "$val" ]; then
     val="$key"
   fi
 
-  # Safe format with optional arguments using printf natively (no subshells)
   if [ $# -gt 1 ]; then
     printf "$val" "${@:2}"
   else
@@ -143,7 +125,6 @@ _msg() {
   fi
 }
 
-# Read the configured language securely from the local config file
 get_stored_lang() {
   local cfg_file="${BASH4LLM_CONFIG_DIR%/}/config"
   local stored_lang=""
@@ -155,7 +136,6 @@ get_stored_lang() {
   printf '%s' "$stored_lang"
 }
 
-# Save selected language code to the local config file atomically
 save_lang_config() {
   local lang="${1:-en}"
   local cfg_file="${BASH4LLM_CONFIG_DIR%/}/config"
@@ -168,20 +148,16 @@ save_lang_config() {
     tmp_cfg="${BASH4LLM_TMPDIR}/.config_update.$$.tmp"
   fi
   
-  # Filter out existing BASH4LLM_LANG lines to preserve other user settings
   if [ -f "$cfg_file" ]; then
     grep -v "^BASH4LLM_LANG=" "$cfg_file" > "$tmp_cfg" 2>/dev/null || true
   fi
   
-  # Append updated localization value
   printf 'BASH4LLM_LANG=%s\n' "$lang" >> "$tmp_cfg"
   
-  # Write updated file using the core atomic transaction lock
   atomic_write "$cfg_file" 10 < "$tmp_cfg"
   rm -f "$tmp_cfg" 2>/dev/null || true
 }
 
-# Present the first-run language selection menu
 prompt_lang_selection() {
   local choice=""
   local selected_lang="en"
@@ -221,18 +197,15 @@ prompt_lang_selection() {
   export BASH4LLM_LANG
 }
 
-# Main initialization sequence for internationalization
 bootstrap_i18n() {
   local lang
   lang="$(get_stored_lang)"
   
-  # Prompt user for selection if no saved value is found (first run)
   if [ -z "$lang" ]; then
     prompt_lang_selection
     lang="$(get_stored_lang)"
   fi
   
-  # Strict whitelist validation to prevent unexpected values
   case "$lang" in
     en|it|es|fr|de) ;;
     *) lang="en" ;;
@@ -240,48 +213,39 @@ bootstrap_i18n() {
   
   BASH4LLM_LANG="$lang"
   export BASH4LLM_LANG
-  
-  # Load the corresponding locale properties database into memory
   load_lang_secure "$BASH4LLM_LANG"
 }
 
-# Initialize localization database
 bootstrap_i18n
 
 # --- PHASE 3: INPUT HISTORY CONFIGURATION (ISOLATED READLINE) ---
-# Manually enable history mechanisms in current REPL process
 set -o history 2>/dev/null || true
 export HISTSIZE=1000
 export HISTFILESIZE=1000
 export HISTFILE="${BASH4LLM_HISTORY_DIR}/tui_history"
 
-# Secure initialization of internal history file
 if [ ! -f "$HISTFILE" ]; then
   : > "$HISTFILE" 2>/dev/null
   chmod 600 "$HISTFILE" 2>/dev/null || true
 fi
 history -r "$HISTFILE" 2>/dev/null || true
 
-# Escape sequences wrapping for Readline prompt length calculations
 RL_START=$'\001'
 RL_END=$'\002'
 
-# --- PHASE 4: SIGNAL MANAGEMENT ARCHITECTURE (SIGINT / Ctrl+C) ---
-# Dynamic flag to distinguish network streaming from passive prompt state
+# --- PHASE 4: SIGNAL MANAGEMENT ARCHITECTURE ---
 IS_STREAMING=0
 
 handle_sigint() {
   if [ "$IS_STREAMING" -eq 1 ]; then
-    # If receiving streaming API data, let the core pipeline handle curl interruption
     :
   else
-    # If in passive input prompt, clear the line and display a fresh prompt
     printf '\n' >&2
   fi
 }
 trap handle_sigint INT
 
-# --- PHASE 5: SEQUENTIAL RENDERING UTILITIES AND GRAPHICAL HELPERS ---
+# --- PHASE 5: SEQUENTIAL RENDERING UTILITIES ---
 print_banner() {
   [ "${QUIET:-0}" -eq 1 ] && return 0
   local b_title b_sess b_help
@@ -289,10 +253,10 @@ print_banner() {
   b_sess="$(_msg banner_session "${SESSION_ID:-<None>}" "${MODEL:-<Default>}")"
   b_help="$(_msg banner_help)"
   printf '%b' "
-${C_LOGO}  ${b_title}  ${C_RST} ${C_BGREEN} ---${C_RST}
+${C_LOGO}  ${b_title}  ${C_RST}
   ${b_sess}
   ${b_help}
-${C_BGREEN}----------------------------------------${C_RST}
+----------------------------------------
 " >&2
 }
 
@@ -316,8 +280,7 @@ print_status_bar() {
 _format_ts() {
   local ts="${1:-}"
   if [ -n "$ts" ]; then
-    # Convert ISO8601 format (YYYY-MM-DDTHH:MM:SSZ) to YYYY-MM-DD HH:MM
-    printf '%s %s' "${ts:0:10}" "${ts:11:5}"
+    printf '%s' "${ts:0:10}"
   else
     printf 'N/A'
   fi
@@ -327,7 +290,6 @@ load_sessions_wizard() {
   local session_dir="${BASH4LLM_HISTORY_DIR}/sessions"
   safe_mkdir "$session_dir" 700
 
-  # Fetch existing .ndjson session files sorted by mtime descending (newest first)
   local -a files=()
   local mtime f
   while IFS='|' read -r mtime f; do
@@ -338,7 +300,6 @@ load_sessions_wizard() {
 
   local total_sessions="${#files[@]}"
 
-  # If no sessions found on disk, skip wizard and initialize a new one
   if [ "$total_sessions" -eq 0 ] || [ -z "${files:-}" ]; then
     SESSION_ID="repl-$(date +%Y%m%d-%H%M%S)-${RANDOM}"
     local new_sess_file="${session_dir}/${SESSION_ID}.ndjson"
@@ -350,7 +311,6 @@ load_sessions_wizard() {
     return 0
   fi
 
-  # Pagination parameters
   local page_size=10
   local current_page=0
   local total_pages=$(( (total_sessions + page_size - 1) / page_size ))
@@ -374,20 +334,17 @@ ${C_BANNER}  ${w_title}  ${C_RST}
     local end_idx=$((start_idx + page_size))
     [ "$end_idx" -gt "$total_sessions" ] && end_idx="$total_sessions"
 
-    # Sequential rendering of each session row
     local i
     for ((i = start_idx; i < end_idx; i++)); do
       local s_file="${files[i]}"
       local s_id
       s_id="$(basename "$s_file" .ndjson)"
 
-      # Extract creation timestamp (first line)
-      local first_line creation_ts creation_date
-      first_line="$(head -n 1 "$s_file" 2>/dev/null || true)"
-      creation_ts="$(printf '%s' "$first_line" | jq -r '.ts // empty' 2>/dev/null || true)"
-      creation_date="$(_format_ts "$creation_ts")"
+      local last_line last_ts last_date
+      last_line="$(tail -n 1 "$s_file" 2>/dev/null || true)"
+      last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
+      last_date="$(_format_ts "$last_ts")"
 
-      # Extract title from UI metadata JSON or fall back to the first user message
       local meta_file title
       meta_file="${BASH4LLM_CONFIG_DIR}/ui_state/sessions/${s_id}.json"
       title=""
@@ -395,30 +352,24 @@ ${C_BANNER}  ${w_title}  ${C_RST}
         title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
       fi
       if [ -z "$title" ] && [ -f "$s_file" ]; then
-        title="$(jq -r 'select(.role=="user") | .content' "$s_file" 2>/dev/null | head -n 1 | tr -d '\n\r' | cut -c 1-35 || true)"
+        title="$(jq -r 'select(.role=="user") | .content' "$s_file" 2>/dev/null | head -n 1 | tr -d '\n\r' | cut -c 1-18 || true)"
       fi
       [ -n "$title" ] || title="Session ${s_id:0:8}"
 
-      # Extract last message timestamp (last line)
-      local last_line last_ts last_date
-      last_line="$(tail -n 1 "$s_file" 2>/dev/null || true)"
-      last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
-      last_date="$(_format_ts "$last_ts")"
-
-      # Print formatted row in a compatible sequential manner with variable expansion
-      printf "  ${C_BCYAN}[%2d]${C_RST} %s ${C_CYAN}>${C_RST} %-35s ${C_CYAN}>${C_RST} %s\n" \
-        "$((i + 1))" "$creation_date" "$title" "$last_date" >&2
+      printf "  ${C_BCYAN}[%2d]${C_RST} %s > %s\n" \
+        "$((i + 1))" "$last_date" "$title" >&2
     done
 
     printf '%b' "
-  ----------------------------------------
-  $(_msg wizard_nav)
-  $(_msg wizard_next_prev)
-  $(_msg wizard_new_exit)
-  ----------------------------------------
+----------------------------------------
+  $(_msg wizard_nav):
+  [ + / n ] %s
+  [ - / p ] %s
+  [   c   ] %s
+  [   q   ] %s
+----------------------------------------
 " >&2
 
-    # Read user control input
     local choice
     printf '  %s ' "$(_msg wizard_prompt)" >&2
     IFS= read -r choice || { printf '\n' >&2; exit 0; }
@@ -461,26 +412,39 @@ ${C_BANNER}  ${w_title}  ${C_RST}
     esac
   done
 
-  # Final visual screen cleanup before starting the chat
   if [ -t 1 ]; then
     clear 2>/dev/null || printf '\033[H\033[2J' >&2
   fi
   return 0
 }
 
-# --- PHASE 7: INTERACTIVE CONFIGURATION INTERFACE (/config AND /menu) ---
+# --- PHASE 7: MENU ITEM AND MENU HELPERS ---
+print_menu_item() {
+  local index="$1"
+  local desc="$2"
+  local value="${3:-}"
+  local label="${4:-$(_msg menu_current)}"
+
+  if [ -n "$value" ]; then
+    printf "  %d) %-22s (%s: %s)\n" "$index" "$desc" "$label" "$value"
+  else
+    printf "  %d) %s\n" "$index" "$desc"
+  fi
+}
+
 show_config_menu() {
   while true; do
     printf '%b' "
   ${C_BANNER}  $(_msg config_title)  ${C_RST}
-  $(_msg config_opt_provider "${PROVIDER:-groq}")
-  $(_msg config_opt_model "${MODEL:-default}")
-  $(_msg config_opt_key "$(provider_api_env_var_name "${PROVIDER:-groq}")")
-  $(_msg config_opt_lang "${BASH4LLM_LANG:-en}")
-  $(_msg config_opt_refresh)
-  $(_msg config_opt_list)
-  $(_msg config_opt_return)
 " >&2
+    print_menu_item 1 "$(_msg config_opt_provider)" "${PROVIDER:-groq}"
+    print_menu_item 2 "$(_msg config_opt_model)" "${MODEL:-default}"
+    print_menu_item 3 "$(_msg config_opt_key)" "$(provider_api_env_var_name "${PROVIDER:-groq}")" "$(_msg menu_env)"
+    print_menu_item 4 "$(_msg config_opt_lang)" "${BASH4LLM_LANG:-en}"
+    print_menu_item 5 "$(_msg config_opt_refresh)"
+    print_menu_item 6 "$(_msg config_opt_list)"
+    print_menu_item 7 "$(_msg config_opt_return)"
+
     local m_sel
     printf '  %s ' "$(_msg config_prompt)" >&2
     IFS= read -r m_sel || return 0
@@ -499,7 +463,6 @@ show_config_menu() {
               PROVIDER="$new_prov"
               load_provider_module "$PROVIDER" >/dev/null 2>&1 || true
               resolve_provider_url "$PROVIDER" >/dev/null 2>&1 || true
-              # Reset model to default to prevent conflicts between different providers
               resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-default}"
               printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
               ;;
@@ -537,7 +500,6 @@ show_config_menu() {
         fi
         ;;
       4)
-        # Select and dynamically reload active localization properties
         prompt_lang_selection
         load_lang_secure "$BASH4LLM_LANG"
         printf '\n  %sLanguage set to: %s%s\n' "${C_GREEN:-}" "$BASH4LLM_LANG" "${C_RST:-}" >&2
@@ -553,9 +515,9 @@ show_config_menu() {
         fi
         ;;
       6)
-        printf '\n  --- %s ---\n' "$(_msg config_cached_title "$PROVIDER")" >&2
+        printf '\n--- %s ---\n' "$(_msg config_cached_title "$PROVIDER")" >&2
         list_models_cli || true
-        printf '  ----------------------------------------\n' >&2
+        printf '----------------------------------------\n' >&2
         ;;
       7 | q | Q | "")
         return 0
@@ -571,13 +533,21 @@ show_tools_menu() {
   while true; do
     printf '%b' "
   ${C_BANNER}  $(_msg tools_title)  ${C_RST}
-  $(_msg tools_opt_rename "${SESSION_ID:-none}")
-  $(_msg tools_opt_delete)
-  $(_msg tools_opt_start)
-  $(_msg tools_opt_stream "${STREAM_MODE:-0}")
-  $(_msg tools_opt_status)
-  $(_msg tools_opt_return)
 " >&2
+    print_menu_item 1 "$(_msg tools_opt_rename)" "${SESSION_ID:-none}"
+    print_menu_item 2 "$(_msg tools_opt_delete)"
+    print_menu_item 3 "$(_msg tools_opt_start)"
+    
+    local stream_state
+    if [ "${STREAM_MODE:-0}" -eq 1 ]; then
+      stream_state="$(_msg status_enabled)"
+    else
+      stream_state="$(_msg status_disabled)"
+    fi
+    print_menu_item 4 "$(_msg tools_opt_stream)" "$stream_state" "$(_msg menu_status)"
+    print_menu_item 5 "$(_msg tools_opt_status)"
+    print_menu_item 6 "$(_msg tools_opt_return)"
+
     local m_sel
     printf '  %s ' "$(_msg tools_prompt)" >&2
     IFS= read -r m_sel || return 0
@@ -627,12 +597,12 @@ show_tools_menu() {
         fi
         ;;
       5)
-        printf '\n  --- %s ---' "$(_msg tools_diag_title)" >&2
+        printf '\n--- %s ---\n' "$(_msg tools_diag_title)" >&2
         print_status_bar
-        _msg tools_diag_session "$BASH4LLM_HISTORY_DIR" "$SESSION_ID"; printf '\n' >&2
-        _msg tools_diag_config "$BASH4LLM_CONFIG_DIR"; printf '\n' >&2
-        _msg tools_diag_history "$HISTFILE"; printf '\n' >&2
-        printf '  ----------------------------------------\n' >&2
+        printf "  %s\n" "$(_msg tools_diag_session "$BASH4LLM_HISTORY_DIR" "$SESSION_ID")" >&2
+        printf "  %s\n" "$(_msg tools_diag_config "$BASH4LLM_CONFIG_DIR")" >&2
+        printf "  %s\n" "$(_msg tools_diag_history "$HISTFILE")" >&2
+        printf '----------------------------------------\n' >&2
         ;;
       6 | q | Q | "")
         return 0
@@ -646,7 +616,6 @@ show_tools_menu() {
 
 # --- PHASE 8: INTERACTIVE REPL CHAT LOOP ---
 run_repl() {
-  # If no active session is inherited, load the wizard
   if [ -z "$SESSION_ID" ]; then
     load_sessions_wizard
   fi
@@ -654,25 +623,20 @@ run_repl() {
   print_banner
   print_status_bar
 
-  # ANSI color codes wrapped in Readline non-printable wrappers for cursor safety
-  local prompt_sym
+  local prompt_sym prompt_str
   prompt_sym="$(_msg prompt_tu)"
-  local prompt_str="${RL_START}${C_BCYAN}${RL_END}${prompt_sym} ${RL_START}${C_RST}${RL_END}"
+  prompt_str="${RL_START}${C_BCYAN}${RL_END}${prompt_sym} ${RL_START}${C_RST}${RL_END}"
 
-  # Disable strict modes specifically for user interaction to prevent abrupt crashes
   set +e 2>/dev/null || true
   set +u 2>/dev/null || true
 
   while true; do
-    # Wait for user input via standard Readline interface
     local userline=""
     IFS= read -r -e -p "$prompt_str" userline
     local read_rc=$?
 
-    # Intercept Ctrl+D (EOF), Ctrl+C, or read failures
     if [ "$read_rc" -ne 0 ]; then
       if [ "$read_rc" -eq 130 ]; then
-        # Ctrl+C pressed during prompt: output newline and restart loop
         printf '\n' >&2
         continue
       fi
@@ -683,11 +647,9 @@ run_repl() {
     userline="$(trim "$userline")"
     [ -z "$userline" ] && continue
 
-    # Write the command line to the isolated history file
     history -s "$userline" 2>/dev/null || true
     history -w "$HISTFILE" 2>/dev/null || true
 
-    # Slash Commands Parser
     case "$userline" in
       /exit | /quit)
         break
@@ -701,31 +663,29 @@ run_repl() {
         continue
         ;;
       /help | /\?)
-        printf '%b' "
-${C_LOGO} $(_msg cmd_help_title) ${C_RST}
-  $(_msg help_line_help)
-  $(_msg help_line_exit)
-  $(_msg help_line_clear)
-  $(_msg help_line_reset)
-  $(_msg help_line_history)
-  $(_msg help_line_config)
-  $(_msg help_line_menu)
-  $(_msg help_line_undo)
-  $(_msg help_line_status)
-  $(_msg help_line_system)
-  $(_msg help_line_model)
-  $(_msg help_line_file)
-  $(_msg help_line_block)
-  $(_msg help_line_edit)
-
-${C_BANNER} $(_msg cmd_help_shortcuts_title) ${C_RST}
-  $(_msg help_sc_d)
-  $(_msg help_sc_c)
-  $(_msg help_sc_l)
-  $(_msg help_sc_ae)
-  $(_msg help_sc_uk)
-${C_BCYAN}----------------------------------------${C_RST}
-" >&2
+        printf "\n${C_LOGO} %s ${C_RST}\n" "$(_msg cmd_help_title)" >&2
+        printf "  %-15s %s\n" "/help, /?" "$( _msg help_desc_help )" >&2
+        printf "  %-15s %s\n" "/exit, /quit" "$( _msg help_desc_exit )" >&2
+        printf "  %-15s %s\n" "/clear" "$( _msg help_desc_clear )" >&2
+        printf "  %-15s %s\n" "/reset-session" "$( _msg help_desc_reset )" >&2
+        printf "  %-15s %s\n" "/history [n]" "$( _msg help_desc_history )" >&2
+        printf "  %-15s %s\n" "/config" "$( _msg help_desc_config )" >&2
+        printf "  %-15s %s\n" "/menu" "$( _msg help_desc_menu )" >&2
+        printf "  %-15s %s\n" "/undo" "$( _msg help_desc_undo )" >&2
+        printf "  %-15s %s\n" "/status" "$( _msg help_desc_status )" >&2
+        printf "  %-15s %s\n" "/system [prompt]" "$( _msg help_desc_system )" >&2
+        printf "  %-15s %s\n" "/model [name]" "$( _msg help_desc_model )" >&2
+        printf "  %-15s %s\n" "/file <path>" "$( _msg help_desc_file )" >&2
+        printf "  %-15s %s\n" "/block" "$( _msg help_desc_block )" >&2
+        printf "  %-15s %s\n" "/edit" "$( _msg help_desc_edit )" >&2
+        
+        printf "\n${C_BANNER} %s ${C_RST}\n" "$(_msg cmd_help_shortcuts_title)" >&2
+        printf "  %-15s %s\n" "Ctrl + D" "$( _msg help_sc_d_desc )" >&2
+        printf "  %-15s %s\n" "Ctrl + C" "$( _msg help_sc_c_desc )" >&2
+        printf "  %-15s %s\n" "Ctrl + L" "$( _msg help_sc_l_desc )" >&2
+        printf "  %-15s %s\n" "Ctrl + A / E" "$( _msg help_sc_ae_desc )" >&2
+        printf "  %-15s %s\n" "Ctrl + U / K" "$( _msg help_sc_uk_desc )" >&2
+        printf "----------------------------------------\n" >&2
         continue
         ;;
       /reset-session)
@@ -758,7 +718,7 @@ ${C_BCYAN}----------------------------------------${C_RST}
         local lines_to_read=40
         local print_alert=0
         if [ -z "$opt" ]; then
-          lines_to_read=40 # 20 message turns default (10 user - 10 assistant)
+          lines_to_read=40
           print_alert=1
         elif [ "$opt" = "-all" ]; then
           lines_to_read=999999
@@ -780,7 +740,7 @@ ${C_BCYAN}----------------------------------------${C_RST}
             local role content
             role="$(printf '%s' "$line" | jq -r '.role // empty' 2>/dev/null)"
             content="$(printf '%s' "$line" | jq -r '.content // empty' 2>/dev/null)"
-            local u_prompt a_prompt
+            local u_prompt
             u_prompt="$(_msg prompt_tu)"
             if [ "$role" = "user" ]; then
               printf '%s%s >%s\n%s\n\n' "${C_BCYAN:-}" "$u_prompt" "${C_RST:-}" "$content" >> "$tmp_hist"
@@ -843,18 +803,22 @@ ${C_BCYAN}----------------------------------------${C_RST}
           msg_count="$(wc -l < "$session_file" 2>/dev/null | tr -d ' ' || echo 0)"
           size_bytes="$(file_size "$session_file" 2>/dev/null || echo 0)"
         fi
-        printf '\n%s%s%s\n' "${C_CYAN:-}" "$(_msg cmd_status_title)" "${C_RST:-}" >&2
-        _msg cmd_status_provider "${PROVIDER:-groq}"; printf '\n' >&2
-        _msg cmd_status_model "${MODEL:-default}"; printf '\n' >&2
-        _msg cmd_status_temp "${TEMPERATURE:-1.0}"; printf '\n' >&2
-        _msg cmd_status_session "${SESSION_ID:-none}"; printf '\n' >&2
-        _msg cmd_status_file "$session_file" "$size_bytes" "$msg_count"; printf '\n' >&2
+        printf "\n%s%s%s\n" "${C_CYAN:-}" "$(_msg cmd_status_title)" "${C_RST:-}" >&2
+        printf "  %-12s: %s\n" "$(_msg cmd_status_provider)" "${PROVIDER:-groq}" >&2
+        printf "  %-12s: %s\n" "$(_msg cmd_status_model)" "${MODEL:-default}" >&2
+        printf "  %-12s: %s\n" "$(_msg cmd_status_temp)" "${TEMPERATURE:-1.0}" >&2
+        printf "  %-12s: %s\n" "$(_msg cmd_status_session)" "${SESSION_ID:-none}" >&2
+        
+        local bytes_msgs_fmt
+        bytes_msgs_fmt="$(_msg cmd_status_bytes_msgs "$size_bytes" "$msg_count")"
+        printf "  %-12s: %s (%s)\n" "$(_msg cmd_status_file)" "$(basename "$session_file")" "$bytes_msgs_fmt" >&2
+        
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
-          _msg cmd_status_sys_prompt "${SYSTEM_PROMPT}"; printf '\n' >&2
+          printf "  %-12s: %s\n" "$(_msg cmd_status_sys_prompt)" "${SYSTEM_PROMPT}" >&2
         else
-          printf '%s\n' "$(_msg cmd_status_sys_not_set)" >&2
+          printf "  %-12s: %s\n" "$(_msg cmd_status_sys_prompt)" "$(_msg cmd_status_sys_not_set)" >&2
         fi
-        printf '\n' >&2
+        printf "\n" >&2
         continue
         ;;
       /system | /system\ *)
@@ -914,10 +878,10 @@ ${C_BCYAN}----------------------------------------${C_RST}
 
         file_content="$(cat "$file_path" 2>/dev/null || true)"
         if [ -n "$file_prompt" ]; then
-          combined_prompt="$(printf 'Prompt: %s\n\n[File Allegato: %s]\n---\n%s\n---\n' \
+          combined_prompt="$(printf 'Prompt: %s\n\n[File Attached: %s]\n---\n%s\n---\n' \
             "$file_prompt" "$(basename "$file_path")" "$file_content")"
         else
-          combined_prompt="$(printf '[File Allegato: %s]\n---\n%s\n---\n' \
+          combined_prompt="$(printf '[File Attached: %s]\n---\n%s\n---\n' \
             "$(basename "$file_path")" "$file_content")"
         fi
 
@@ -970,7 +934,6 @@ ${C_BCYAN}----------------------------------------${C_RST}
           continue
         fi
 
-        # Safe editor invocation inside quoted variables
         "$editor" "$tmp_edit_file"
 
         if [ -s "$tmp_edit_file" ]; then
@@ -988,12 +951,10 @@ ${C_BCYAN}----------------------------------------${C_RST}
         ;;
     esac
 
-    # Process standard user query to be forwarded to the API
     if [ -z "${CONTENT:-}" ] && [ -n "${userline:-}" ]; then
       CONTENT="$userline"
     fi
 
-    # 1. Configure session context and compile history file
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
     export BUILD_MESSAGES_FILE
 
@@ -1014,22 +975,18 @@ ${C_BCYAN}----------------------------------------${C_RST}
       session_read_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 || true
     fi
 
-    # 2. Generate structured payload JSON file
     if ! build_payload_from_vars >/dev/null 2>&1; then
       log_error "TUI" "$(_msg cmd_err_payload)"
       continue
     fi
 
-    # 3. Validate API credentials before proceeding
     if ! ensure_api_key_for_provider "$PROVIDER"; then
       log_error "APIKEY" "$(_msg cmd_err_key "$PROVIDER")"
       continue
     fi
 
-    # 4. Output visual response header
     printf '\n%s%s - %s:%s\n' "${C_BGREEN:-}" "$PROVIDER" "$MODEL" "${C_RST:-}" >&2
 
-    # 5. Synchronous invocation (stream or non-stream) with signal protection
     IS_STREAMING=1
     local call_rc=0
     if [ "${STREAM_MODE:-0}" -eq 1 ]; then
@@ -1041,14 +998,12 @@ ${C_BCYAN}----------------------------------------${C_RST}
     fi
     IS_STREAMING=0
 
-    # 6. Save discussion to active history NDJSON on disk
     if [ "$call_rc" -eq 0 ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
       local meta_source="cli"
       local meta_cmd="$(session_sanitize_cmd "$0")"
       local meta_json
       meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
 
-      # Append User message
       if [ "${_engine_available:-0}" -eq 1 ]; then
         session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 \
           || session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 || true
@@ -1056,7 +1011,6 @@ ${C_BCYAN}----------------------------------------${C_RST}
         session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 || true
       fi
 
-      # Read, extract, and append Assistant response
       if [ -s "${RESP:-}" ]; then
         local assistant_text
         assistant_text="$(extract_text_from_resp 2>/dev/null || true)"
@@ -1075,12 +1029,10 @@ ${C_BCYAN}----------------------------------------${C_RST}
       fi
     fi
 
-    # Reset variables for the next turn
     unset CONTENT
     printf '\n' >&2
   done
 
-  # Restore standard terminal echo on exit
   stty echo 2>/dev/null || true
   return 0
 }
@@ -1088,9 +1040,7 @@ ${C_BCYAN}----------------------------------------${C_RST}
 # --- OPERATIONAL ENTRY POINT ---
 run_repl
 
-# Clean up temporary state safely on exit
 if ! type cleanup_run_tmp_on_exit >/dev/null 2>&1; then
-  # Fallback cleanup when function was not loaded due to inherited state
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "$RUN_TMPDIR" ]; then
     case "$RUN_TMPDIR" in
       "$BASH4LLM_TMPDIR"/*)
