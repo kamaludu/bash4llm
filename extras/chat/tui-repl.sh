@@ -43,6 +43,25 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
   exit 15
 fi
 
+# Overwrite core's tac_fallback with a robust, pipe-compatible version
+tac_fallback() {
+  local f="${1:-}"
+  if command -v tac >/dev/null 2>&1; then
+    if [ -n "$f" ]; then
+      tac "$f"
+    else
+      tac
+    fi
+    return $?
+  fi
+  if [ -n "$f" ]; then
+    awk '{ lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] }' "$f"
+  else
+    awk '{ lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] }'
+  fi
+  return 0
+}
+
 # --- PHASE 2: REPL STATE DICTIONARY AND VARIABLE INITIALIZATION ---
 SESSION_ID="${BASH4LLM_ACTIVE_SESSION:-}"
 MODEL="${BASH4LLM_ACTIVE_MODEL:-}"
@@ -253,10 +272,10 @@ print_banner() {
   b_sess="$(_msg banner_session "${SESSION_ID:-<None>}" "${MODEL:-<Default>}")"
   b_help="$(_msg banner_help)"
   printf '%b' "
-${C_LOGO}  ${b_title}  ${C_RST}
+${C_LOGO} Bash4LLM⁺ ${C_RST} ${C_BGREEN}--- ${b_title} ---${C_RST}
   ${b_sess}
   ${b_help}
-----------------------------------------
+${C_BGREEN}----------------------------------------${C_RST}
 " >&2
 }
 
@@ -327,7 +346,7 @@ load_sessions_wizard() {
     printf '%b' "
 ${C_BANNER}  ${w_title}  ${C_RST}
   ${w_page}
-----------------------------------------
+${C_BGREEN}----------------------------------------${C_RST}
 " >&2
 
     local start_idx=$((current_page * page_size))
@@ -356,19 +375,17 @@ ${C_BANNER}  ${w_title}  ${C_RST}
       fi
       [ -n "$title" ] || title="Session ${s_id:0:8}"
 
-      printf "  ${C_BCYAN}[%2d]${C_RST} %s > %s\n" \
+      printf "  ${C_BCYAN}[%2d]${C_RST} %s ${C_CYAN}>${C_RST} %s\n" \
         "$((i + 1))" "$last_date" "$title" >&2
     done
 
-    printf '%b' "
-----------------------------------------
-  $(_msg wizard_nav):
-  [ + / n ] %s
-  [ - / p ] %s
-  [   c   ] %s
-  [   q   ] %s
-----------------------------------------
-" >&2
+    printf '%b' "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
+    printf "  %s:\n" "$(_msg wizard_nav)" >&2
+    printf "  [ + / n ] %s\n" "$(_msg wizard_next_page)" >&2
+    printf "  [ - / p ] %s\n" "$(_msg wizard_prev_page)" >&2
+    printf "  [   c   ] %s\n" "$(_msg wizard_new_session)" >&2
+    printf "  [   q   ] %s\n" "$(_msg wizard_exit_repl)" >&2
+    printf '%b' "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
 
     local choice
     printf '  %s ' "$(_msg wizard_prompt)" >&2
@@ -426,9 +443,9 @@ print_menu_item() {
   local label="${4:-$(_msg menu_current)}"
 
   if [ -n "$value" ]; then
-    printf "  %d) %-22s (%s: %s)\n" "$index" "$desc" "$label" "$value"
+    printf "  ${C_BCYAN}%d)${C_RST} %-22s (${C_CYAN}%s${C_RST}: %s)\n" "$index" "$desc" "$label" "$value"
   else
-    printf "  %d) %s\n" "$index" "$desc"
+    printf "  ${C_BCYAN}%d)${C_RST} %s\n" "$index" "$desc"
   fi
 }
 
@@ -517,7 +534,7 @@ show_config_menu() {
       6)
         printf '\n--- %s ---\n' "$(_msg config_cached_title "$PROVIDER")" >&2
         list_models_cli || true
-        printf '----------------------------------------\n' >&2
+        printf "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
         ;;
       7 | q | Q | "")
         return 0
@@ -602,12 +619,12 @@ show_tools_menu() {
         printf "  %s\n" "$(_msg tools_diag_session "$BASH4LLM_HISTORY_DIR" "$SESSION_ID")" >&2
         printf "  %s\n" "$(_msg tools_diag_config "$BASH4LLM_CONFIG_DIR")" >&2
         printf "  %s\n" "$(_msg tools_diag_history "$HISTFILE")" >&2
-        printf '----------------------------------------\n' >&2
+        printf "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
         ;;
       6 | q | Q | "")
         return 0
         ;;
-      *)
+      * )
         printf '\n  %sInvalid option!%s\n' "${C_RED:-}" "${C_RST:-}" >&2
         ;;
     esac
@@ -623,14 +640,15 @@ run_repl() {
   print_banner
   print_status_bar
 
-  local prompt_sym prompt_str
-  prompt_sym="$(_msg prompt_tu)"
-  prompt_str="${RL_START}${C_BCYAN}${RL_END}${prompt_sym} ${RL_START}${C_RST}${RL_END}"
-
   set +e 2>/dev/null || true
   set +u 2>/dev/null || true
 
   while true; do
+    # Dynamically re-evaluate prompt symbol and style variables on each turn
+    local prompt_sym prompt_str
+    prompt_sym="$(_msg prompt_tu)"
+    prompt_str="${RL_START}${C_BCYAN}${RL_END}${prompt_sym} ${RL_START}${C_RST}${RL_END}"
+
     local userline=""
     IFS= read -r -e -p "$prompt_str" userline
     local read_rc=$?
@@ -664,28 +682,28 @@ run_repl() {
         ;;
       /help | /\?)
         printf "\n${C_LOGO} %s ${C_RST}\n" "$(_msg cmd_help_title)" >&2
-        printf "  %-15s %s\n" "/help, /?" "$( _msg help_desc_help )" >&2
-        printf "  %-15s %s\n" "/exit, /quit" "$( _msg help_desc_exit )" >&2
-        printf "  %-15s %s\n" "/clear" "$( _msg help_desc_clear )" >&2
-        printf "  %-15s %s\n" "/reset-session" "$( _msg help_desc_reset )" >&2
-        printf "  %-15s %s\n" "/history [n]" "$( _msg help_desc_history )" >&2
-        printf "  %-15s %s\n" "/config" "$( _msg help_desc_config )" >&2
-        printf "  %-15s %s\n" "/menu" "$( _msg help_desc_menu )" >&2
-        printf "  %-15s %s\n" "/undo" "$( _msg help_desc_undo )" >&2
-        printf "  %-15s %s\n" "/status" "$( _msg help_desc_status )" >&2
-        printf "  %-15s %s\n" "/system [prompt]" "$( _msg help_desc_system )" >&2
-        printf "  %-15s %s\n" "/model [name]" "$( _msg help_desc_model )" >&2
-        printf "  %-15s %s\n" "/file <path>" "$( _msg help_desc_file )" >&2
-        printf "  %-15s %s\n" "/block" "$( _msg help_desc_block )" >&2
-        printf "  %-15s %s\n" "/edit" "$( _msg help_desc_edit )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/help, /?" "$( _msg help_desc_help )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/exit, /quit" "$( _msg help_desc_exit )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/clear" "$( _msg help_desc_clear )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/reset-session" "$( _msg help_desc_reset )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/history [n]" "$( _msg help_desc_history )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/config" "$( _msg help_desc_config )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/menu" "$( _msg help_desc_menu )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/undo" "$( _msg help_desc_undo )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/status" "$( _msg help_desc_status )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/system [prompt]" "$( _msg help_desc_system )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/model [name]" "$( _msg help_desc_model )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/file <path>" "$( _msg help_desc_file )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/block" "$( _msg help_desc_block )" >&2
+        printf "  ${C_BGREEN}%-15s${C_RST} %s\n" "/edit" "$( _msg help_desc_edit )" >&2
         
         printf "\n${C_BANNER} %s ${C_RST}\n" "$(_msg cmd_help_shortcuts_title)" >&2
-        printf "  %-15s %s\n" "Ctrl + D" "$( _msg help_sc_d_desc )" >&2
-        printf "  %-15s %s\n" "Ctrl + C" "$( _msg help_sc_c_desc )" >&2
-        printf "  %-15s %s\n" "Ctrl + L" "$( _msg help_sc_l_desc )" >&2
-        printf "  %-15s %s\n" "Ctrl + A / E" "$( _msg help_sc_ae_desc )" >&2
-        printf "  %-15s %s\n" "Ctrl + U / K" "$( _msg help_sc_uk_desc )" >&2
-        printf "----------------------------------------\n" >&2
+        printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + D" "$( _msg help_sc_d_desc )" >&2
+        printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + C" "$( _msg help_sc_c_desc )" >&2
+        printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + L" "$( _msg help_sc_l_desc )" >&2
+        printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + A / E" "$( _msg help_sc_ae_desc )" >&2
+        printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + U / K" "$( _msg help_sc_uk_desc )" >&2
+        printf "${C_BCYAN}----------------------------------------${C_RST}\n" >&2
         continue
         ;;
       /reset-session)
@@ -803,20 +821,20 @@ run_repl() {
           msg_count="$(wc -l < "$session_file" 2>/dev/null | tr -d ' ' || echo 0)"
           size_bytes="$(file_size "$session_file" 2>/dev/null || echo 0)"
         fi
-        printf "\n%s%s%s\n" "${C_CYAN:-}" "$(_msg cmd_status_title)" "${C_RST:-}" >&2
-        printf "  %-12s: %s\n" "$(_msg cmd_status_provider)" "${PROVIDER:-groq}" >&2
-        printf "  %-12s: %s\n" "$(_msg cmd_status_model)" "${MODEL:-default}" >&2
-        printf "  %-12s: %s\n" "$(_msg cmd_status_temp)" "${TEMPERATURE:-1.0}" >&2
-        printf "  %-12s: %s\n" "$(_msg cmd_status_session)" "${SESSION_ID:-none}" >&2
+        printf "\n${C_BCYAN}--- %s ---${C_RST}\n" "$(_msg cmd_status_title)" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_provider)" "${PROVIDER:-groq}" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_model)" "${MODEL:-default}" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_temp)" "${TEMPERATURE:-1.0}" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_session)" "${SESSION_ID:-none}" >&2
         
         local bytes_msgs_fmt
         bytes_msgs_fmt="$(_msg cmd_status_bytes_msgs "$size_bytes" "$msg_count")"
-        printf "  %-12s: %s (%s)\n" "$(_msg cmd_status_file)" "$(basename "$session_file")" "$bytes_msgs_fmt" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s (%s)\n" "$(_msg cmd_status_file)" "$(basename "$session_file")" "$bytes_msgs_fmt" >&2
         
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
-          printf "  %-12s: %s\n" "$(_msg cmd_status_sys_prompt)" "${SYSTEM_PROMPT}" >&2
+          printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_sys_prompt)" "${SYSTEM_PROMPT}" >&2
         else
-          printf "  %-12s: %s\n" "$(_msg cmd_status_sys_prompt)" "$(_msg cmd_status_sys_not_set)" >&2
+          printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_sys_prompt)" "$(_msg cmd_status_sys_not_set)" >&2
         fi
         printf "\n" >&2
         continue
