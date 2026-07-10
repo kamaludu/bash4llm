@@ -114,7 +114,7 @@ print_banner() {
 ${C_LOGO}  Bash4LLM⁺  ${C_RST} — ${C_BCYAN}Interactive TUI Shell (v${SCRIPT_VERSION:-2.3.0})${C_RST}
   Sessione Attiva: ${C_YELLOW}${SESSION_ID:-<Nessuna>}${C_RST} | Modello: ${C_BGREEN}${MODEL:-<Default>}${C_RST}
   Digita ${C_BYELLOW}/?${C_RST} o ${C_BYELLOW}/help${C_RST} per l'elenco dei comandi.
-  ----------------------------------------------------------------------
+----------------------------------------
 " >&2
 }
 
@@ -178,7 +178,7 @@ load_sessions_wizard() {
     printf '%b' "
 ${C_LOGO}  SELEZIONE DI SESSIONE PREGRESSA  ${C_RST}
   Pagina: ${C_BOLD}$((current_page + 1)) di ${total_pages}${C_RST} (Totale sessioni: ${total_sessions})
-  --------------------------------------------------------------------------------
+----------------------------------------
 " >&2
 
     local start_idx=$((current_page * page_size))
@@ -222,11 +222,11 @@ ${C_LOGO}  SELEZIONE DI SESSIONE PREGRESSA  ${C_RST}
     done
 
     printf '%b' "
-  --------------------------------------------------------------------------------
+  ----------------------------------------
   Opzioni di navigazione:
   ${C_BGREEN} [ + / n ] ${C_RST} Pagina Succ.      | ${C_BGREEN} [ - / p ] ${C_RST} Pagina Prec.
   ${C_BGREEN} [   c   ] ${C_RST} Nuova Sessione     | ${C_BGREEN} [   q   ] ${C_RST} Esci REPL
-  --------------------------------------------------------------------------------
+  ----------------------------------------
 " >&2
 
     # Lettura dell'input di controllo dell'utente
@@ -359,7 +359,7 @@ show_config_menu() {
       5)
         printf '\n  --- Modelli Installati (%s) ---\n' "$PROVIDER" >&2
         list_models_cli || true
-        printf '  -----------------------------\n' >&2
+        printf '  ----------------------------------------\n' >&2
         ;;
       6 | q | Q | "")
         return 0
@@ -436,7 +436,7 @@ show_tools_menu() {
         printf '  File di sessione NDJSON: %s/sessions/%s.ndjson\n' "$BASH4LLM_HISTORY_DIR" "$SESSION_ID" >&2
         printf '  File di configurazione:  %s/config\n' "$BASH4LLM_CONFIG_DIR" >&2
         printf '  File di log storico TUI: %s\n' "$HISTFILE" >&2
-        printf '  ----------------------\n' >&2
+        printf '  ----------------------------------------\n' >&2
         ;;
       6 | q | Q | "")
         return 0
@@ -505,14 +505,15 @@ run_repl() {
         ;;
       /help | /\?)
         printf '%b' "
-${C_BCYAN}  Comandi disponibili nella TUI:${C_RST}
-  ${C_BGREEN}/help${C_RST}, ${C_BGREEN}/?${C_RST}             - Visualizza questo menu di guida
-  ${C_BGREEN}/exit${C_RST}, ${C_BGREEN}/quit${C_RST}          - Esci dalla TUI interattiva salvando lo stato
-  ${C_BGREEN}/clear${C_RST}                - Pulisce visivamente lo schermo (non distruttivo)
-  ${C_BGREEN}/reset-session${C_RST}        - Svuota interamente la cronologia della sessione NDJSON
-  ${C_BGREEN}/history [N]${C_RST}          - Sfoglia gli ultimi N messaggi nel pager (default 20, o -all)
-  ${C_BGREEN}/config${C_RST}               - Menu di gestione configurazioni LLM, provider e chiavi API
-  ${C_BGREEN}/menu${C_RST}                 - Menu di contesto per sessioni, rinomine e parametri
+${C_BCYAN}---- Comandi disponibili nella TUI: ----${C_RST}
+${C_BGREEN}/help${C_RST}, ${C_BGREEN}/?${C_RST}             - Visualizza questo menu di guida
+${C_BGREEN}/exit${C_RST}, ${C_BGREEN}/quit${C_RST}          - Esci dalla TUI interattiva salvando lo stato
+${C_BGREEN}/clear${C_RST}                - Pulisce visivamente lo schermo (non distruttivo)
+${C_BGREEN}/reset-session${C_RST}        - Svuota interamente la cronologia della sessione NDJSON
+${C_BGREEN}/history [N]${C_RST}          - Sfoglia gli ultimi N messaggi nel pager (default 20, o -all)
+${C_BGREEN}/config${C_RST}               - Menu di gestione configurazioni LLM, provider e chiavi API
+${C_BGREEN}/menu${C_RST}                 - Menu di contesto per sessioni, rinomine e parametri
+${C_CYAN}----------------------------------------${C_RST}
 " >&2
         continue
         ;;
