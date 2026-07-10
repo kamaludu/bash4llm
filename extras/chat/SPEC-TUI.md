@@ -153,3 +153,26 @@ La riga inserita dall'utente viene intercettata dal parser locale del ciclo REPL
   HISTFILE="bash4llm.d/history/tui_history"
   ```
   All'avvio, la TUI importa la cronologia locale (`history -r`) e, ad ogni invio di testo da parte dell'utente, registra atomicamente la linea inserita (`history -s` seguito da `history -w`).
+
+---
+
+### 10. Sicurezza e Meccanismi di Protezione
+
+La TUI implementa controlli rigorosi per garantire l'integrità del sistema host durante l'interazione interattiva:
+
+* **Limitazione dei File Allegati (/file):** Per evitare un consumo eccessivo di memoria RAM durante l'assemblaggio del payload JSON o crash dell'interprete `jq`, lo script impone un limite hardware rigido di **100 KB** per qualsiasi file caricato tramite il comando `/file`. I file che superano questa soglia vengono rifiutati immediatamente prima del caricamento in memoria.
+* **Isolamento dell'Editor di Testo (/edit):** La scrittura temporanea del prompt tramite editor esterno avviene in una directory di runtime protetta (allineata a `BASH4LLM_TMPDIR`), con permessi di accesso ristretti all'utente corrente (`chmod 600`). Il file temporaneo viene rimosso in modo deterministico non appena il testo viene importato nel REPL.
+* **Neutralizzazione delle Sotto-shell nei Dizionari:** Le stringhe all'interno dei file `.properties` sono trattate come costanti letterali pure. Eventuali costrutti di subshell incorporati (es. `$(comando)` o `` `comando` ``) non vengono valutati all'atto del parsing, eliminando la possibilità di attacchi di iniezione di comandi tramite file di traduzione manipolati.
+
+---
+
+### 11. Procedure di Deploy e Test di Conformità
+
+Prima di considerare il modulo TUI pronto per l'ambiente di produzione, è necessario eseguire la seguente matrice di conformità:
+
+1. **Verifica dello Strict Mode (`set -u`):**
+   Eseguire lo script in un ambiente privo di variabili esportate per assicurarsi che nessuna chiamata a funzioni interne provochi l'interruzione dello script a causa di variabili non dichiarate. Tutte le espansioni di parametro devono utilizzare valori di fallback sicuri (es. `${VARIABLE:-default}`).
+2. **Test di Integrità dei Lock:**
+   Simulare l'avvio simultaneo di due istanze del REPL sulla stessa sessione NDJSON per verificare che il meccanismo di lock atomico (`atomic_write` e directory-lock) impedisca la corruzione del file di storico o la sovrascrittura incrociata dei dati.
+3. **Conformità dei Permessi di Scrittura:**
+   Verificare che i file creati dinamicamente (`tui_history`, i file metadati JSON delle sessioni e i file NDJSON) siano generati con maschera di protezione restrittiva (`umask 077` o `chmod 600`), impedendo l'accesso in lettura e scrittura ad altri utenti del sistema host.
