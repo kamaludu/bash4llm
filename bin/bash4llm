@@ -25,8 +25,8 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.2.0"
-SCRIPT_DATE="2026-07-05"
+SCRIPT_VERSION="2.3.0"
+SCRIPT_DATE="2026-07-06"
 
 # =============================================================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -65,7 +65,13 @@ fi
 export BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX
 
 # Initialize color variables to prevent set -u (nounset) errors if referenced early
-C_TITLE="" C_CMD="" C_ARG="" C_RST="" C_GREEN="" C_GBOLD="" C_RED="" C_YELLOW="" C_BLUE="" C_CYAN="" C_BOLD="" C_LOGO=""
+C_LOGO="" C_BANNER=""
+# Foreground - Normal
+C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
+# Foreground - Bold
+C_BBLACK="" C_BRED="" C_BGREEN="" C_BYELLOW="" C_BBLUE="" C_BMAGENTA="" C_BCYAN="" C_BWHITE=""
+# Backgrounds
+BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN="" BG_WHITE=""
 
 # ---------------------------------------------------------------------------
 # Canonical error codes
@@ -184,11 +190,6 @@ _normalize_model_name() {
 
 #--3<---[ SUBSECTION: API_NET ]--->3--
 # ensure_api_key_for_provider (robust, non-interactive safe)
-# - Ensures that the API key for the provider is present.
-# - In non-interactive mode (stdin is not a TTY), it does not prompt: it exits with an error code.
-# - In interactive mode, it prompts as before.
-# - Syncs GROQ_API_KEY for backward compatibility.
-# ---------------------------------------------------------------------------
 ensure_api_key_for_provider() {
   local prov="${1:-}"
   local envvar current_key input_key custom_var custom_env
@@ -240,29 +241,22 @@ ensure_api_key_for_provider() {
   fi
 
   printf '%b' "
-${C_TITLE}----------------------------------------${C_RST}
+${C_BCYAN}----------------------------------------${C_RST}
 
 To avoid re-entering the key for subsequent invocations, run this in your shell:
 
-  ${C_CMD}export ${envvar}=\"${input_key}\"${C_RST}
+  ${C_BGREEN}export ${envvar}=\"${input_key}\"${C_RST}
 
-You can add that line to your shell profile (e.g., ${C_ARG}~/.bashrc${C_RST} or ${C_ARG}~/.profile${C_RST}) to persist it across sessions.
+You can add that line to your shell profile (e.g., ${C_YELLOW}~/.bashrc${C_RST} or ${C_YELLOW}~/.profile${C_RST}) to persist it across sessions.
 
-${C_TITLE}----------------------------------------${C_RST}
+${C_BCYAN}----------------------------------------${C_RST}
 
 " >&2
 
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# enforce_network_policy
-# - Central check to prevent any HTTP call when DRY_RUN or BASH4LLM_SKIP_NETWORK set.
-# - Should be invoked at the start of any provider call_api_* function.
-# - Returns 0 if network allowed, non-zero otherwise.
-# ---------------------------------------------------------------------------
 enforce_network_policy() {
-  # If DRY_RUN or BASH4LLM_SKIP_NETWORK are truthy, disallow network.
   if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "NETWORK" "Network calls disabled by DRY_RUN or BASH4LLM_SKIP_NETWORK; skipping HTTP."
@@ -270,7 +264,6 @@ enforce_network_policy() {
     return 1
   fi
 
-  # QUIET does not disable network by itself, but if QUIET is used with a policy variable we enforce it.
   if is_truthy "${BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET:-0}" && is_truthy "${QUIET:-0}"; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "NETWORK" "Network calls disabled due to QUIET policy."
@@ -282,9 +275,8 @@ enforce_network_policy() {
 }
 #--3<---[ /SUBSECTION: API_NET ]--->3--
 
-# Detect DEBUG with fallback to BASH4LLM_DEBUG, otherwise set to 0
 DEBUG="${DEBUG:-${BASH4LLM_DEBUG:-0}}"
-BASH4LLM_LOG="${BASH4LLM_LOG:-}" # optional path to append structured logs
+BASH4LLM_LOG="${BASH4LLM_LOG:-}"
 
 log_prefix() { printf '%s: ' "$SCRIPT_NAME"; }
 
@@ -298,7 +290,7 @@ log_info() {
 
 log_warn() {
   local code="${1:-WARN}" msg="${2:-}"
-  printf '%s%sWARN%s: %s: %s\n' "$(log_prefix)" "${C_YELLOW}" "${C_RST}" "$code" "$msg" >&2
+  printf '%s%sWARN%s: %s: %s\n' "$(log_prefix)" "${C_BYELLOW}" "${C_RST}" "$code" "$msg" >&2
   if [ -n "$BASH4LLM_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
@@ -310,17 +302,14 @@ log_error() {
 
 log_info_user() {
   local code="${1:-INFO}" msg="${2:-}"
-  # Print to stderr only if quiet mode is not active
   if [ "${QUIET:-0}" -ne 1 ]; then
     printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
   fi
-  # Mirror to log file if configured
   if [ -n "$BASH4LLM_LOG" ]; then
     printf '%s INFO_USER %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true
   fi
 }
 
-# debug helper: if DEBUG is (1)
 dbg() {
   if [ "${DEBUG:-0}" -ne 0 ]; then
     printf '%s\n' "$*" >&2
@@ -330,36 +319,55 @@ dbg() {
 # ---------------------------------------------------------------------------
 # Terminal Color Theme Initialization (conforms to NO_COLOR standard)
 # ---------------------------------------------------------------------------
-# Enable colors if standard output or standard error are real terminals (TTY)
-# and the user has not expressed a preference NO_COLOR
 if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
-  C_TITLE=$'\e[1;36m'   # Cyan Bold (Titles, Prompts)
-  C_CMD=$'\e[1;32m'     # Green (REPL Commands, Username/provider)
-  C_ARG=$'\e[0;33m'     # Yellow/Orange (Command arguments, variables)
-  C_RST=$'\e[0m'        # Reset to standard color
-  C_GREEN=$'\e[0;32m'   # Standard green
-  C_GBOLD=$'\e[1;32m'   # Bold green 
-  C_RED=$'\e[0;31m'     # Standard red (Errors)
-  C_YELLOW=$'\e[0;33m'  # Standard yellow
-  C_BLUE=$'\e[0;34m'    # Standard blue
-  C_CYAN=$'\e[0;36m'    # Standard cyan (Info)
-  C_BOLD=$'\e[1m'       # Bold
-  C_LOGO=$'\e[1;97;42m' # Bold white on green background
+  C_RST=$'\e[0m'
+  C_BOLD=$'\e[1m'
+
+  # Semantic / UI Styles
+  C_LOGO=$'\e[1;37;42m'
+  C_BANNER=$'\e[1;32;47m'
+
+  # Foreground - Normal
+  C_BLACK=$'\e[0;30m'
+  C_RED=$'\e[0;31m'
+  C_GREEN=$'\e[0;32m'
+  C_YELLOW=$'\e[0;33m'
+  C_BLUE=$'\e[0;34m'
+  C_MAGENTA=$'\e[0;35m'
+  C_CYAN=$'\e[0;36m'
+  C_WHITE=$'\e[0;37m'
+
+  # Foreground - Bold
+  C_BBLACK=$'\e[1;30m'
+  C_BRED=$'\e[1;31m'
+  C_BGREEN=$'\e[1;32m'
+  C_BYELLOW=$'\e[1;33m'
+  C_BBLUE=$'\e[1;34m'
+  C_BMAGENTA=$'\e[1;35m'
+  C_BCYAN=$'\e[1;36m'
+  C_BWHITE=$'\e[1;37m'
+
+  # Backgrounds
+  BG_BLACK=$'\e[40m'
+  BG_RED=$'\e[41m'
+  BG_GREEN=$'\e[42m'
+  BG_YELLOW=$'\e[43m'
+  BG_BLUE=$'\e[44m'
+  BG_MAGENTA=$'\e[45m'
+  BG_CYAN=$'\e[46m'
+  BG_WHITE=$'\e[47m'
 fi
 #--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 #--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 SCRIPTDIR="$(resolve_script_dir)"
-# Allow external override of repository root via BASH4LLM_ROOT.
-# Priority: explicit BASH4LLM_DIR env > BASH4LLM_ROOT env > SCRIPTDIR-derived default.
 if [ -n "${BASH4LLM_DIR:-}" ]; then
-  : # keep explicit BASH4LLM_DIR from environment
+  :
 elif [ -n "${BASH4LLM_ROOT:-}" ]; then
   BASH4LLM_DIR="${BASH4LLM_ROOT%/}/bash4llm.d"
 else
   BASH4LLM_DIR="$SCRIPTDIR/bash4llm.d"
 fi
 
-# Standard subdirectories derived from BASH4LLM_DIR (internally managed, non-overridable)
 BASH4LLM_CONFIG_DIR="${BASH4LLM_DIR}/config"
 BASH4LLM_MODELS_DIR="${BASH4LLM_DIR}/models"
 BASH4LLM_TEMPLATES_DIR="${BASH4LLM_DIR}/templates"
@@ -368,20 +376,17 @@ BASH4LLM_TMPDIR="${BASH4LLM_DIR}/tmp"
 MODELS_FILE="${BASH4LLM_MODELS_DIR}/models.txt"
 MAX_MODELS="${MAX_MODELS:-200}"
 
-# Canonical configurations derived from validated variables
 CANONICAL_EXTRAS_DIR="${BASH4LLM_DIR}/extras"
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 BASH4LLM_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
 PROVIDERS_DIR="${BASH4LLM_EXTRAS_DIR}/providers"
 export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR
 
-# Validate BASH4LLM_DIR invariants
 if [ -z "${BASH4LLM_DIR:-}" ]; then
   printf 'bash4llm: ERROR: BASH4LLM_DIR is empty; cannot derive directories\n' >&2
   exit "${BASH4LLM_ERR_TMP:-15}"
 fi
 
-# Forbid using /tmp or subpaths of /tmp as BASH4LLM_DIR
 case "${BASH4LLM_DIR:-}" in
   /tmp|/tmp/*)
     printf 'bash4llm: ERROR: BASH4LLM_DIR must not be /tmp or under /tmp: %s\n' "${BASH4LLM_DIR}" >&2
@@ -389,7 +394,6 @@ case "${BASH4LLM_DIR:-}" in
     ;;
 esac
 
-# Ensure all directories exist safely with strict permissions (only when executed directly)
 if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
   safe_mkdir "$BASH4LLM_DIR" 700
   safe_mkdir "$BASH4LLM_CONFIG_DIR" 700
@@ -402,29 +406,21 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; the
   safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
 fi
 
-# Set restricted session directory destination
 SESSION_DIR="${BASH4LLM_HISTORY_DIR}/sessions"
 #--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
-# Helper: ensure config dir exists and is usable before any writes
 ensure_config_dir() {
   safe_mkdir "${BASH4LLM_CONFIG_DIR}" 700
-
-  # Quick writability check: try to create a temp file inside
   if ! : > "${BASH4LLM_CONFIG_DIR}/.bash4llm_tmp_check" 2>/dev/null; then
     log_error "CONFIG" "config dir not writable: ${BASH4LLM_CONFIG_DIR}"
     return 1
   else
     rm -f "${BASH4LLM_CONFIG_DIR}/.bash4llm_tmp_check" 2>/dev/null || true
   fi
-
   return 0
 }
 
-# Ensure config dir exists now (fail early if not)
 ensure_config_dir || { log_error "CONFIG" "config dir unavailable; aborting."; exit "$BASH4LLM_ERR_TMP"; }
 
-# Write provider-url file (single-line, non-secret). Best-effort; do not write API keys.
-# Usage: write_provider_url_if_missing <provider> <url>
 write_provider_url_if_missing() {
   local prov="${1:-}" url="${2:-}" file dir tmp
   [ -z "$prov" ] && return 1
@@ -432,11 +428,9 @@ write_provider_url_if_missing() {
   file="$(canonical_provider_url_file)"
   dir="$(dirname "$file")"
   safe_mkdir "$dir" 700
-  # If file already exists and non-empty, do nothing
   if [ -f "$file" ] && [ -s "$file" ]; then
     return 0
   fi
-  # Write atomically into RUN_TMPDIR if available, else directly (best-effort)
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     tmp="$(mktemp "${RUN_TMPDIR%/}/provider-url.XXXXXX" 2>/dev/null || true)"
   else
@@ -448,18 +442,14 @@ write_provider_url_if_missing() {
     chmod 600 "$file" 2>/dev/null || true
     return 0
   else
-    # fallback: write directly
     printf '%s\n' "$url" > "$file" 2>/dev/null || return 1
     chmod 600 "$file" 2>/dev/null || true
     return 0
   fi
 }
 
-# Resolve provider URL with priority: ENV (BASH4LLM_API_URL / BASH4LLM_PROVIDER_URL) > provider-url file > embedded default (groq)
-# Usage: resolve_provider_url <provider>
 resolve_provider_url() {
   local prov="${1:-$PROVIDER}" prov_file prov_val cfgdir
-  # 1) ENV
   if [ -n "${BASH4LLM_API_URL:-}" ]; then
     BASH4LLM_PROVIDER_URL="${BASH4LLM_API_URL}"
     export BASH4LLM_PROVIDER_URL
@@ -468,7 +458,6 @@ resolve_provider_url() {
   if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
     return 0
   fi
-  # 2) provider-url file
   prov_file="$(canonical_provider_url_file)"
   if [ -f "$prov_file" ] && [ -s "$prov_file" ]; then
     prov_val="$(sed -n '1p' "$prov_file" 2>/dev/null | awk '{$1=$1;print}')"
@@ -478,7 +467,6 @@ resolve_provider_url() {
       return 0
     fi
   fi
-  # 3) embedded default for groq only (minimal)
   if [ "${prov:-}" = "groq" ]; then
     BASH4LLM_PROVIDER_URL="https://api.groq.com/openai/v1/chat/completions"
     export BASH4LLM_PROVIDER_URL
@@ -487,18 +475,13 @@ resolve_provider_url() {
   return 1
 }
 
-# Fail-fast if canonical_config_dir is empty for any reason
 if [ -z "$(canonical_config_dir)" ]; then
   printf 'bash4llm: %sERROR%s: CONFIG: canonical config dir is empty; aborting.\n' "${C_RED}" "${C_RST}" >&2
   exit 1
 fi
 
-# Canonical PROVIDER_FILE path built only from BASH4LLM_CONFIG_DIR
 PROVIDER_FILE="$(canonical_provider_file)"
 #--5<---[ SECTION: PRECORE_BOOT_HELPERS ]--->5--
-# Provider API key helpers (available early)
-# - provider_api_env_var_name <prov> -> prints canonical env var name (e.g., GROQ_API_KEY)
-# - ensure_api_key_for_provider <prov> -> ensures API key is set (may prompt interactively)
 provider_api_env_var_name() {
   local prov="${1:-}"
   local prov_upper
@@ -506,23 +489,17 @@ provider_api_env_var_name() {
   printf '%s' "${prov_upper}_API_KEY"
 }
 
-# Check if a string is valid JSON (non-empty, parsable by jq)
 is_valid_json_string() {
   local s="${1:-}"
   [ -n "${s:-}" ] || return 1
   printf '%s' "$s" | jq -e . >/dev/null 2>&1
 }
 
-# Portable base64 wrappers (Linux, macOS, BusyBox)
-# - b64encode: reads stdin, writes base64 without newlines
-# - b64decode: reads base64 stdin, writes decoded bytes
-# These functions replace all direct base64 calls.
 b64encode() {
   base64 2>/dev/null | tr -d '\n'
 }
 
 b64decode() {
-  # Use base64 with decode option if set; fall back to -d explicitly
   if [ -n "${B64_DECODE_OPT:-}" ]; then
     base64 ${B64_DECODE_OPT}
   else
@@ -537,14 +514,12 @@ is_truthy() {
   esac
 }
 
-# - file_size returns bytes (portable and optimized to avoid uname forks)
 file_size() {
   local f="${1:-}"
   if [ -z "$f" ] || [ ! -f "$f" ]; then
     printf '0'
     return 0
   fi
-  # Use global bootstrap detection variable to avoid subshell fork of uname
   if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
     stat -f %z "$f" 2>/dev/null || printf '0'
   else
@@ -552,17 +527,13 @@ file_size() {
   fi
 }
 
-# Check if a file contains valid JSON (non-empty, parsable by jq)
 is_valid_json_file() {
   local f="${1:-}"
   [ -f "$f" ] || return 1
   [ -s "$f" ] || return 1
-  # Trim leading BOM/whitespace by letting jq parse; jq -e returns 0 on valid JSON
   jq -e . "$f" >/dev/null 2>&1
 }
 
-# stage_b64: read stdin, write atomic base64 staging file under RUN_TMPDIR or destdir
-# Usage: stage_b64 <dest_b64_path> <max_bytes>
 stage_b64() {
   local src dst max_bytes tmp_local tmp_b64 workdir size tmp_local_is_temp=0 lockfile
 
@@ -581,7 +552,6 @@ stage_b64() {
   workdir="$(dirname "$dst")"
   safe_mkdir "$workdir" 700
 
-  # Acquire tmp_local
   if [ -n "$src" ]; then
     if [ ! -f "$src" ] || [ ! -s "$src" ]; then
       log_error "STAGE" "stage_b64: source payload missing or empty: $src"
@@ -601,7 +571,6 @@ stage_b64() {
     tmp_local_is_temp=1
   fi
 
-  # Size check
   size="$(file_size "$tmp_local" 2>/dev/null || echo 0)"
   if [ "$size" -gt "$max_bytes" ]; then
     log_error "STAGE" "staged payload exceeds max allowed size ($size > $max_bytes)"
@@ -609,14 +578,12 @@ stage_b64() {
     return 1
   fi
 
-  # Create tmp_b64 inside BASH4LLM_TMPDIR (safe), then move into workdir atomically
   tmp_b64="$(_tmpf file "$BASH4LLM_TMPDIR" .groq-b64 2>/dev/null)" || {
     [ "$tmp_local_is_temp" -eq 1 ] && rm -f -- "$tmp_local" 2>/dev/null || true
     log_error "STAGE" "failed to allocate tmp_b64"
     return 1
   }
 
-  # Encode to base64 in a portable way, then remove newlines to produce a single-line payload.
   if base64 "$tmp_local" 2>/dev/null | tr -d '\n' > "$tmp_b64"; then
     :
   else
@@ -629,7 +596,6 @@ stage_b64() {
 
   chmod 600 "$tmp_b64" 2>/dev/null || true
 
-  # Atomic move into final dst
   lockfile="${workdir%/}/.bash4llm.lock"
   lock_exec "$lockfile" 10 -- mv -f -- "$tmp_b64" "$dst" || {
     rm -f -- "$tmp_local" "$tmp_b64" 2>/dev/null || true
@@ -645,8 +611,6 @@ stage_b64() {
   return 0
 }
 
-# lock_exec: acquire exclusive flock or folder-based lock on a lockfile with timeout
-# Guarantees: acquires lock, runs command in subshell/shell context, always releases lock, handles stale locks on Android.
 lock_exec() {
   local lockfile="${1:-}"
   local timeout="${2:-10}"
@@ -658,7 +622,6 @@ lock_exec() {
   fi
   shift
 
-  # Prevention of symlink poisoning
   if [ -L "$lockfile" ]; then
     log_error "SEC" "lockfile is a symlink: $lockfile. Aborting."
     exit 15
@@ -666,14 +629,12 @@ lock_exec() {
 
   safe_mkdir "$(dirname "$lockfile")" 700
 
-  # Portability fix: skip flock on Android, macOS, and BSD platforms to prevent options parsing failures.
   local use_flock=0
   if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
     use_flock=1
   fi
 
   if [ "$use_flock" -eq 1 ]; then
-    # Isolated subshell guarantees immediate file descriptor cleanup and execution safety
     (
       exec 9>"$lockfile"
       if flock -x -w "$timeout" 9 2>/dev/null; then
@@ -687,11 +648,9 @@ lock_exec() {
     rc=$?
     return "$rc"
   else
-    # Fallback to directory-based lock (highly portable across macOS, BSD, and Android)
     local lockdir="${lockfile}.lockdir"
     local start_time now acquired lock_mtime age
 
-    # Release stale directory locks older than 15 seconds to recover from prior abrupt crashes
     lock_mtime=$(_file_mtime "$lockdir")
     if [ "$lock_mtime" -gt 0 ]; then
       now=$(date +%s 2>/dev/null || echo 0)
@@ -731,16 +690,12 @@ lock_exec() {
   fi
 }
 
-# Compatibility wrapper: _mktemp_in_dir -> uses _tmpf to create a secure temp file
-# Usage: _mktemp_in_dir <dir> [prefix]
-# Returns path on stdout or non-zero on failure.
 _mktemp_in_dir() {
   local base="${1:-}" prefix="${2:-groq}" tmp
   if [ -z "$base" ]; then
     log_error "TMP" "_mktemp_in_dir: base dir required"
     return "$BASH4LLM_ERR_TMP"
   fi
-  # Delegate to _tmpf which already enforces umask/perms and returns a path
   tmp="$(_tmpf file "$base" "$prefix" 2>/dev/null)"
   if [ -z "$tmp" ]; then
     log_error "TMP" "_mktemp_in_dir: failed to create temp in $base"
@@ -750,7 +705,6 @@ _mktemp_in_dir() {
   return 0
 }
 
-# Debug-safe payload preview (decodes b64 payloads)
 show_payload_head() {
   local path="${1:-$PAYLOAD}" lines="${2:-200}"
   if [ -z "${path:-}" ]; then
@@ -766,7 +720,6 @@ show_payload_head() {
     return 0
   fi
 
-  # Diagnostic output only when DEBUG=1
   if [ "${DEBUG:-0}" -eq 1 ]; then
     printf 'bash4llm: %sINFO%s: payload path: %s\n' "${C_GREEN}" "${C_RST}" "$path" >&2
     printf 'bash4llm: %sINFO%s: payload (head %d lines):\n' "${C_GREEN}" "${C_RST}" "$lines" >&2
@@ -780,8 +733,6 @@ show_payload_head() {
   return 0
 }
 
-# Atomic raw write helper. Reads from stdin and replaces the target file atomically under lock.
-# Usage: atomic_write <dest> [timeout_seconds]
 atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
@@ -792,7 +743,6 @@ atomic_write() {
   safe_mkdir "$destdir" 700
   lockfile="${destdir}/.bash4llm.lock"
 
-  # Fail fast if mktemp fails to allocate a secure file path
   tmp="$(mktemp "${destdir}/.groq-atomic.XXXXXX" 2>/dev/null || mktemp "${BASH4LLM_TMPDIR:-$destdir}/.groq-atomic.XXXXXX" 2>/dev/null || true)"
   if [ -z "$tmp" ]; then
     log_error "ATOMICFAIL" "failed to create secure temporary file"
@@ -806,7 +756,6 @@ atomic_write() {
   fi
   chmod 600 "$tmp" 2>/dev/null || true
 
-  # Perform atomic replace under exclusive lock context
   lock_exec "$lockfile" "$timeout" -- mv -f -- "$tmp" "$dest" || {
     rc=$?
     rm -f -- "$tmp" 2>/dev/null || true
@@ -817,13 +766,7 @@ atomic_write() {
   return 0
 }
 
-# Response extraction helpers
 extract_text_from_resp() {
-  # Extract textual content from RESP and print to stdout.
-  # Return codes:
-  # 0 = success (text printed)
-  # 2 = RESP is diagnostic (no real content)
-  # 1 = no textual content found or error
   local resp_file="${RESP:-}"
   local tmp_copy
   if [ -z "${resp_file:-}" ]; then
@@ -831,7 +774,6 @@ extract_text_from_resp() {
     return 1
   fi
 
-  # Always read from atomic copy
   tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return 1
   cp -f "$resp_file" "$tmp_copy" 2>/dev/null || return 1
   resp_file="$tmp_copy"
@@ -879,20 +821,14 @@ extract_text_from_resp() {
   return 1
 }
 
-# Ensure and create a run-specific tmpdir under BASH4LLM_TMPDIR and set neutral payload path.
-# Now uses _tmpf (dir) as the single source of truth. No predictable fallbacks, no /tmp.
-DEBUG_PRESERVE="${DEBUG_PRESERVE:-0}"
-
 ensure_run_tmpdir() {
   local print_only=0 subshell=0 tmpdir
   if [ "${1:-}" = "--print" ]; then print_only=1; fi
 
-  # Detect subshell
   if [ -n "${BASHPID:-}" ] && [ "${BASHPID:-}" != "$$" ]; then
     subshell=1
   fi
 
-  # Reuse existing RUN_TMPDIR if valid and inside BASH4LLM_TMPDIR
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
     case "$RUN_TMPDIR" in
       "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
@@ -917,14 +853,12 @@ ensure_run_tmpdir() {
     esac
   fi
 
-  # Validate BASH4LLM_TMPDIR
   if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
     log_error "TMP" "BASH4LLM_TMPDIR not set"
     return "$BASH4LLM_ERR_TMP"
   fi
   safe_mkdir "$BASH4LLM_TMPDIR" 700
 
-  # Create RUN_TMPDIR exclusively via _tmpf (dir)
   tmpdir="$(_tmpf dir "$BASH4LLM_TMPDIR" run 2>/dev/null)" || {
     log_error "TMP" "ensure_run_tmpdir: _tmpf failed to create run tmpdir"
     return "$BASH4LLM_ERR_TMP"
@@ -932,12 +866,10 @@ ensure_run_tmpdir() {
 
   RUN_TMPDIR="$tmpdir"
 
-  # Provider-agnostic payload paths
   : "${PAYLOAD:=$RUN_TMPDIR/payload}"
   : "${RESP:=$RUN_TMPDIR/resp.json}"
   : "${ERRF:=$RUN_TMPDIR/err.log}"
 
-  # Create RESP/ERRF only in main process
   if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
     : > "$RESP" 2>/dev/null || true
     chmod 600 "$RESP" 2>/dev/null || true
@@ -945,16 +877,13 @@ ensure_run_tmpdir() {
     chmod 600 "$ERRF" 2>/dev/null || true
   fi
 
-  # Cleanup function
   cleanup_run_tmp_on_exit() {
-    local rc_in=$?   # preserves original exit code
+    local rc_in=$?
 
-    # Release exclusive session lock if active
     if type release_session_lock >/dev/null 2>&1; then
       release_session_lock 2>/dev/null || true
     fi
 
-    # Safely clear active session markers if they were registered globally
     if [ -n "${RUN_TMPDIR:-}" ]; then
       rm -rf "${RUN_TMPDIR:-}"/session-msg-*.lockdir 2>/dev/null || true
     fi
@@ -976,15 +905,13 @@ ensure_run_tmpdir() {
       esac
     fi
 
-    return "$rc_in"   # always returns the original exit code
+    return "$rc_in"
   }
 
-  # Install trap only in main process
   if [ "$subshell" -eq 0 ] && [ "$print_only" -eq 0 ]; then
     trap cleanup_run_tmp_on_exit EXIT INT TERM
   fi
 
-  # Export variables
   if [ "$print_only" -eq 0 ]; then
     export RUN_TMPDIR PAYLOAD RESP ERRF
     [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
@@ -995,8 +922,6 @@ ensure_run_tmpdir() {
   return 0
 }
 
-# Base64 atomic write helper. Reads from stdin, encodes, and writes atomically.
-# Usage: b64_atomic_write /path/to/target [timeout_seconds]
 b64_atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
@@ -1006,20 +931,17 @@ b64_atomic_write() {
   }
 
   local tmp
-  # Allocate temporary file using the secure internal helper
   tmp="$(_tmpf file "$BASH4LLM_TMPDIR" .groq-b64 2>/dev/null)" || {
     log_error "B64FAIL" "failed to allocate tmp for b64_atomic_write"
     return "$BASH4LLM_ERR_TMP"
   }
 
-  # If encoding fails, abort immediately without touching the destination file
   if ! b64encode > "$tmp"; then
     rm -f -- "$tmp" 2>/dev/null || true
     log_error "B64FAIL" "base64 encoding failed"
     return "$BASH4LLM_ERR_TMP"
   fi
 
-  # Delegate atomic write, permissions, and locking to atomic_write via stdin redirection
   atomic_write "$dest" "$timeout" < "$tmp"
   local rc=$?
 
@@ -1034,13 +956,7 @@ b64_atomic_read() {
   return $?
 }
 
-# ui_state_write: centralized helper to write JSON files for the GUI (atomic)
-# Usage: ui_state_write <relpath> <json-string>
-# Writes to: $BASH4LLM_CONFIG_DIR/ui_state/<relpath>
-# Guarantees: atomic write, strict perms, non-fatal on error (logs warning).
 ui_state_write() {
-  # Write UI state JSON atomically.
-  # Usage: ui_state_write filename content_string
   local name="${1:-}" content="${2:-}"
   local dir target
 
@@ -1058,7 +974,6 @@ ui_state_write() {
   safe_mkdir "$dir" 700
   target="$dir/$name"
 
-  # Use atomic_write helper (timeout optional) to write content
   printf '%s' "$content" | atomic_write "$target" 10 || { log_warn "UI_STATE" "atomic write failed for $target"; return 1; }
   chmod 600 "$target" 2>/dev/null || true
   if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -1068,16 +983,7 @@ ui_state_write() {
 }
 #--5<---[ /SECTION: PRECORE_BOOT_HELPERS ]--->5--
 #--6<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
-# Internal CLI helpers: print canonical config paths (safe, single-file)
-# These flags are handled early and exit immediately after printing.
-# Supported forms:
-#   ./bash4llm --print-config-dir
-#   ./bash4llm --print-provider-file
-#   ./bash4llm --print-model-file <provider>
-#   ./bash4llm --print-model-file=<provider>
-# ---------------------------------------------------------------------------
 if [ "$#" -gt 0 ]; then
-  # Iterate through args to support flags anywhere on the command line
   i=1
   while [ "$i" -le "$#" ]; do
     arg="${!i}"
@@ -1106,13 +1012,10 @@ if [ "$#" -gt 0 ]; then
         printf '%s\n' "$(canonical_model_file "$prov")"
         exit 0
         ;;
-      # allow short-circuit if user passed combined flags like --help etc.
       --help|-h)
-        # fall through to normal help handling later
         break
         ;;
       *)
-        # not one of our print flags; continue scanning
         ;;
     esac
     i=$((i+1))
@@ -1133,12 +1036,10 @@ BASH4LLM_LOCK_TIMEOUT_TMP="${BASH4LLM_LOCK_TIMEOUT_TMP:-10}"
 BASH4LLM_LOCK_TIMEOUT_MODELS="${BASH4LLM_LOCK_TIMEOUT_MODELS:-10}"
 BASH4LLM_LOCK_TIMEOUT_HISTORY="${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}"
 
-# Load and validate provider module for given provider name
 load_provider_module() {
   local provider="${1:-}"
   local current_user owner file_owner perms group_write others_write beforesig aftersig dump_file rc _nounset_was_on supports_streaming supports_refresh_models loaded_from prov_json req1 req2
 
-  # Skip if already loaded for the same provider
   if [ "${LOADED_PROVIDER_NAME:-}" = "$provider" ] && [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
     return 0
   fi
@@ -1188,31 +1089,19 @@ load_provider_module() {
 
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
 
-  # --- SAFE LOAD: isolate provider in subshell, export only functions defined by provider ---
   if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
     dump_file="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
     [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return 1; }
 
-    # Subshell: capture functions added by sourcing the provider
     (
       set -e
-
-      # Safe cleanup within subshell in case sourcing or dumping crashes prematurely
       trap 'rm -f "$dump_file.before.$$" "$dump_file.after.$$" "$dump_file.funcs.$$" 2>/dev/null' EXIT
 
-      # capture function list before
       declare -F | awk '{print $3}' | sort > "$dump_file.before.$$" 2>/dev/null || true
-
-      # source provider inside subshell (isolated)
       . "$PROVIDER_MODULE_PATH"
-
-      # capture function list after
       declare -F | awk '{print $3}' | sort > "$dump_file.after.$$" 2>/dev/null || true
-
-      # compute functions added by provider (lines in after but not in before)
       comm -13 "$dump_file.before.$$" "$dump_file.after.$$" > "$dump_file.funcs.$$" 2>/dev/null || true
 
-      # ensure required functions exist; if missing, fail early
       req1="buildpayload_${provider}"
       req2="call_api_${provider}"
       for f in "$req1" "$req2"; do
@@ -1224,7 +1113,6 @@ load_provider_module() {
         fi
       done
 
-      # Write definitions of the functions added by the provider into the dump file
       : > "$dump_file"
       while IFS= read -r fn; do
         [ -z "$fn" ] && continue
@@ -1241,18 +1129,14 @@ load_provider_module() {
       return 1
     fi
 
-    # --- Minimal and safe nounset handling around sourcing the dump ---
-    # Detect if nounset (set -u) is active; if so, disable it temporarily.
     _nounset_was_on=0
     if (set -o | awk '/^nounset/ {print $2}' 2>/dev/null | grep -q on); then
       _nounset_was_on=1
       set +u
     fi
 
-    # Import the dumped functions into main shell (dump contains all functions provider defined)
     . "$dump_file"
 
-    # Restore nounset if it was on
     if [ "$_nounset_was_on" -eq 1 ]; then
       set -u
     fi
@@ -1260,7 +1144,6 @@ load_provider_module() {
     PROVIDER_MODULE_LOADED=1
     rm -f "$dump_file" 2>/dev/null || true
 
-    # Verify signature unchanged
     aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
     [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return 1; }
 
@@ -1269,7 +1152,6 @@ load_provider_module() {
     PROVIDER_MODULE_LOADED=0
   fi
 
-  # --- Write provider capabilities to ui_state (canonical) ---
   if [ -n "${provider:-}" ]; then
     supports_streaming=0
     supports_refresh_models=0
@@ -1283,23 +1165,16 @@ load_provider_module() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# Detect portable base64 encode/decode commands (avoid parsing --help)
-# Sets B64_ENCODE_CMD and B64_DECODE_CMD arrays used by wrappers
-# ---------------------------------------------------------------------------
 _detect_base64_opts() {
-  # Default conservative options
   B64_WRAP_OPT=""
   B64_DECODE_OPT="-d"
 
-  # Detect encode option that prevents line wrapping (GNU coreutils)
   if printf '' | base64 -w0 >/dev/null 2>&1; then
     B64_WRAP_OPT="-w0"
   else
     B64_WRAP_OPT=""
   fi
 
-  # Detect decode option -d vs -D
   if printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then
     B64_DECODE_OPT="-d"
   elif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then
@@ -1312,16 +1187,10 @@ _detect_base64_opts() {
 }
 _detect_base64_opts
 
-# ---------------------------------------------------------------------------
-# Portable file size and listing helpers for rotate_history
-# - list_files_sorted_by_mtime lists files with mtime and path (portable)
-# ---------------------------------------------------------------------------
-# list_files_sorted_by_mtime <dir> -> prints "mtime_seconds|path" lines sorted ascending
 list_files_sorted_by_mtime() {
   local dir="${1:-}"
   find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
     local mtime
-    # Optimized: Use global bootstrap detection variable BASH4LLM_PLAT_MACOS to avoid subshell fork of uname
     if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
       mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)"
     else
@@ -1331,29 +1200,19 @@ list_files_sorted_by_mtime() {
   done | sort -n
 }
 
-# ---------------------------------------------------------------------------
-# tac_fallback: portable reverse file lines (fallback to awk)
-# Usage: tac_fallback <file>
-# ---------------------------------------------------------------------------
 tac_fallback() {
   local f="${1:-}"
   if command -v tac >/dev/null 2>&1; then
     tac "$f"
     return $?
   fi
-  # awk-based fallback: print file in reverse
   awk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' "$f"
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# _file_mtime: portable mtime in seconds for a file
-# Usage: _file_mtime <file> -> prints epoch seconds or 0
-# ---------------------------------------------------------------------------
 _file_mtime() {
   local f="${1:-}"
   if [ ! -e "$f" ]; then printf '0'; return 0; fi
-  # Optimized: Use global bootstrap detection variable BASH4LLM_PLAT_MACOS to avoid subshell fork of uname
   if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
     stat -f %m "$f" 2>/dev/null || printf '0'
   else
@@ -1361,19 +1220,13 @@ _file_mtime() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# jq_safe: run jq with error handling; returns 0 if JSON valid and jq succeeded
-# Usage: jq_safe <filter> <file>
-# ---------------------------------------------------------------------------
 jq_safe() {
-  # wrapper to run jq and capture errors to ERRF if set
   local filter="${1:-}" file="${2:-}" rc
   if [ -z "$file" ] || [ ! -s "$file" ]; then
     return 1
   fi
   if ! jq -e "$filter" "$file" >/dev/null 2>&1; then
     rc=$?
-    # If ERRF is defined, append jq stderr for diagnostics
     if [ -n "${ERRF:-}" ]; then
       jq "$filter" "$file" 2>>"$ERRF" >/dev/null 2>&1 || true
     fi
@@ -1388,20 +1241,12 @@ jq_safe() {
 ########################################
 # SECTION: PRECORE_RUN - BEGIN
 ########################################
-
 #--1<---[ SECTION: PRECORE_RUN_HISTORY ]--->1--
-# History rotation and compaction (portable)
-# ---------------------------------------------------------------------------
 BASH4LLM_ROTATE_HISTORY="${BASH4LLM_ROTATE_HISTORY:-0}"
 BASH4LLM_HISTORY_MAX_FILES="${BASH4LLM_HISTORY_MAX_FILES:-100}"
-BASH4LLM_HISTORY_MAX_BYTES="${BASH4LLM_HISTORY_MAX_BYTES:-104857600}" # 100MB
+BASH4LLM_HISTORY_MAX_BYTES="${BASH4LLM_HISTORY_MAX_BYTES:-104857600}"
 BASH4LLM_HISTORY_KEEP_DAYS="${BASH4LLM_HISTORY_KEEP_DAYS:-90}"
 
-# ---------------------------------------------------------------------------
-# rotate_history: all rotation logic executed atomically under HISTORY_LOCK
-# - Ensures file counting, size summing and deletions happen under the same lock.
-# - Uses portable metadata extraction to support macOS and Linux flawlessly.
-# ---------------------------------------------------------------------------
 rotate_history() {
   local timeout="${1:-$BASH4LLM_LOCK_TIMEOUT_HISTORY}"
   local dir="${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}"
@@ -1409,9 +1254,6 @@ rotate_history() {
   local max_bytes="${BASH4LLM_HISTORY_MAX_BYTES:-104857600}"
   local keep_days="${BASH4LLM_HISTORY_KEEP_DAYS:-90}"
 
-  # ------------------------------
-  # 1. Remove files that are too old (macOS & POSIX portable)
-  # ------------------------------
   local now_epoch cutoff f f_mtime
   now_epoch=$(date +%s)
   cutoff=$(( now_epoch - (keep_days * 86400) ))
@@ -1423,9 +1265,6 @@ rotate_history() {
     fi
   done < <(find "$dir" -type f -print0 2>/dev/null)
 
-  # ------------------------------
-  # 2. Remove based on byte threshold
-  # ------------------------------
   local last_total=999999999999999
   while :; do
     local total=0
@@ -1433,7 +1272,6 @@ rotate_history() {
     entries=()
     local temp_mtime temp_size oldest_line oldest_file
     
-    # Portably compile active file entries
     while IFS= read -r f; do
       temp_mtime=$(_file_mtime "$f")
       temp_size=$(file_size "$f")
@@ -1445,14 +1283,12 @@ rotate_history() {
       break
     fi
 
-    # Prevent infinite loop / CPU DoS if files cannot be deleted
     if [ "$total" -ge "$last_total" ]; then
       log_warn "ROTATE" "History rotation bytes-based removal stuck (total=$total). Breaking loop."
       break
     fi
     last_total=$total
 
-    # Find and delete the oldest file (ascending sort)
     oldest_line=$(printf '%s\n' "${entries[@]}" | sort -t'|' -k1,1n | head -n 1)
     if [ -z "$oldest_line" ]; then
       break
@@ -1467,9 +1303,6 @@ rotate_history() {
     fi
   done
 
-  # ------------------------------
-  # 3. Remove based on maximum file count
-  # ------------------------------
   local last_count=999999
   while :; do
     local -a file_list
@@ -1486,7 +1319,6 @@ rotate_history() {
       break
     fi
 
-    # Prevent infinite loop / CPU DoS if files cannot be deleted
     if [ "$count" -ge "$last_count" ]; then
       log_warn "ROTATE" "History rotation files-based removal stuck (count=$count). Breaking loop."
       break
@@ -1532,7 +1364,6 @@ save_to_history() {
   dest="$BASH4LLM_HISTORY_DIR/$filename"
   lockfile="$HISTORY_LOCK"
 
-  # --- atomic move only ---
   if ! lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_HISTORY" -- bash -c '
       set -e
       mv -f -- "$1" "$2"
@@ -1544,7 +1375,6 @@ save_to_history() {
     return "$rc"
   fi
 
-  # --- metadata update in main shell (functions available) ---
   if [ -f "$dest" ]; then
     local size_bytes ts base history_json
     size_bytes="$(file_size "$dest" 2>/dev/null || echo 0)"
@@ -1579,13 +1409,6 @@ save_to_history() {
 }
 #--1<---[ /SECTION: PRECORE_RUN_HISTORY ]--->1--
 #--2<---[ SECTION: PRECORE_RUN_MANIFEST ]--->2--
-# ---------------------------------------------------------------------------
-# Manifest multimodal helpers (atomic, jq --arg usage)
-# - manifest_create <manifest_path> [timeout]
-# - manifest_add_part <manifest_path> <name> <file_path> <mime> [timeout]
-# - manifest_read <manifest_path>
-# Manifest stored as both JSON file and base64 staging file manifest.b64
-# ---------------------------------------------------------------------------
 manifest_create() {
   local manifest="${1:-}"
   local timeout="${2:-$BASH4LLM_LOCK_TIMEOUT_MODELS}"
@@ -1595,7 +1418,6 @@ manifest_create() {
    manifest="$1"
    tmp="$(mktemp "$(dirname "$manifest")/manifest.tmp.XXXXXX")"
    printf "%s" "{\"parts\":[]}" > "$tmp"
-   # write base64 staging using base64 binary and exported opts
    if [ -n "${B64_WRAP_OPT:-}" ]; then
      base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
    else
@@ -1614,10 +1436,8 @@ manifest_add_part() {
   [ -f "$file_path" ] || { log_error "MANIFESTFAIL" "manifest_add_part: file not found: $file_path"; return 1; }
   safe_mkdir "$(dirname "$manifest")" 700
 
-  # Ensure a lockfile specific to this manifest (avoid global contention)
   lockfile="${manifest}.lock"
 
-  # First, stage the part as a base64 file in the manifest directory (atomic in destdir)
   destdir="$(dirname "$manifest")"
   tmpstamp="$(date +%s)-$$"
   part_b64="$destdir/parts-$(basename "$file_path").${tmpstamp}.b64"
@@ -1635,7 +1455,6 @@ manifest_add_part() {
   mv -f "$tmp_part" "$part_b64" 2>/dev/null || { rm -f "$tmp_part" 2>/dev/null || true; log_error "MANIFESTFAIL" "cannot move staged part to $part_b64"; return 1; }
   chmod 600 "$part_b64" 2>/dev/null || true
 
-  # Now update manifest atomically under lock using jq --arg
   lock_exec "$lockfile" "$timeout" -- bash -c '
     set -e
     manifest="$1"
@@ -1644,7 +1463,6 @@ manifest_add_part() {
     mime="$4"
     tmp="$(mktemp "$(dirname "$manifest")/manifest.edit.XXXXXX")"
     if [ -f "${manifest}.b64" ]; then
-      # decode base64 staging to tmp using exported decode opt
       base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
     elif [ -f "$manifest" ]; then
       cp -f "$manifest" "$tmp"
@@ -1654,7 +1472,6 @@ manifest_add_part() {
     jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
        ".parts += [{name:\$name, path:\$path, encoding:\$enc, type:\$type}]" "$tmp" > "${tmp}.new"
     mv -f "${tmp}.new" "$tmp"
-    # write back both manifest and base64 staging atomically
     if [ -n "${B64_WRAP_OPT:-}" ]; then
       base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
     else
@@ -1685,10 +1502,8 @@ manifest_read() {
 }
 #--2<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->2--
 #--3<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
-# Utility helpers
 _get_perm_string() {
   local path="${1:-}" perm=""
-  # Optimized: Use global bootstrap detection variable BASH4LLM_PLAT_MACOS to avoid subshell fork of uname
   if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
     perm="$(stat -f %Sp "$path" 2>/dev/null || true)"
   else
@@ -1703,7 +1518,6 @@ _get_perm_string() {
 
 _get_owner() {
   local path="${1:-}" owner=""
-  # Optimized: Use global bootstrap detection variable BASH4LLM_PLAT_MACOS to avoid subshell fork of uname
   if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
     owner="$(stat -f %Su "$path" 2>/dev/null || true)"
   else
@@ -1719,43 +1533,33 @@ _get_owner() {
 _get_file_signature() {
   local path="${1:-}"
   local hash="" stat_out="" dev="" inode="" size="" ctime="" mtime="" uid="" gid="" mode="" use_hash
-  # Return empty string if not a regular file
   [ -f "$path" ] || { printf ''; return 0; }
 
-  # Decide whether to compute content hash (default 1)
   use_hash="${BASH4LLM_SIG_HASH:-1}"
 
-  # Compute SHA256 if requested and available
   if [ "${use_hash}" != "0" ] && command -v sha256sum >/dev/null 2>&1; then
     hash="$(sha256sum "$path" 2>/dev/null | awk '{print $1}' || true)"
   else
     hash=""
   fi
 
-  # Collect stat output in a portable way (Optimized using global bootstrap detection variable BASH4LLM_PLAT_MACOS)
   if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
-    # BSD/macOS stat format: device inode size ctime mtime uid gid mode
     stat_out="$(stat -f '%d %i %z %c %m %u %g %p' "$path" 2>/dev/null || true)"
   else
-    # GNU stat format: device inode size ctime mtime uid gid mode
     stat_out="$(stat -c '%d %i %s %Z %Y %u %g %a' "$path" 2>/dev/null || true)"
   fi
 
-  # If stat failed, ensure variables are empty and continue (do not abort)
   if [ -z "${stat_out:-}" ]; then
     dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
   else
-    # Parse stat_out using a here-doc to avoid process substitution portability issues
     read -r dev inode size ctime mtime uid gid mode <<EOF
 $stat_out
 EOF
-    # If read failed for any reason, reset to empty strings
     if [ -z "${dev:-}" ] && [ -z "${inode:-}" ] && [ -z "${size:-}" ]; then
       dev=""; inode=""; size=""; ctime=""; mtime=""; uid=""; gid=""; mode=""
     fi
   fi
 
-  # Output a stable, linear signature: hash|dev|inode|size|ctime|mtime|uid|gid|mode
   printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' \
     "${hash:-}" "${dev:-}" "${inode:-}" "${size:-}" "${ctime:-}" "${mtime:-}" "${uid:-}" "${gid:-}" "${mode:-}"
 }
@@ -1771,18 +1575,13 @@ _is_world_writable() {
   [ "$others_write" = "w" ]
 }
 
-# Tmpdir creation under TMP_LOCK to avoid races
-# Now delegates entirely to _tmpf (dir), removing all predictable fallbacks.
 make_tmpdir() {
   umask 077
   local tmpd lockfile rc
   lockfile="$TMP_LOCK"
 
-  # Ensure base tmpdir exists before locking
   safe_mkdir "$BASH4LLM_TMPDIR" 700
 
-  # Execute _tmpf directly in the current Bash process context
-  # avoiding spawning 'sh -c', which does not see internal functions
   tmpd="$(lock_exec "$lockfile" "$BASH4LLM_LOCK_TIMEOUT_TMP" -- _tmpf dir "$BASH4LLM_TMPDIR" groq)"
   rc=$?
   if [ "$rc" -eq 0 ] && [ -n "$tmpd" ]; then
@@ -1794,12 +1593,6 @@ make_tmpdir() {
   fi
 }
 
-# _tmpf: create a temporary file or directory inside a given base dir
-# Usage:
-#   _tmpf file <base_dir> <prefix>
-#   _tmpf dir  <base_dir> <prefix>
-# Returns path on stdout or non-zero on failure.
-# Guarantees: uses BASH4LLM_TMPDIR as fallback, enforces umask/permissions, no predictable paths.
 _tmpf() {
   local mode="${1:-}" base="${2:-}" prefix="${3:-groq}" tmp
 
@@ -1808,7 +1601,6 @@ _tmpf() {
     return "$BASH4LLM_ERR_TMP"
   fi
 
-  # Validate BASH4LLM_TMPDIR as canonical tmp base
   if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
     log_error "TMP" "_tmpf: BASH4LLM_TMPDIR not set"
     return "$BASH4LLM_ERR_TMP"
@@ -1817,18 +1609,15 @@ _tmpf() {
     log_error "TMP" "_tmpf: BASH4LLM_TMPDIR does not exist: $BASH4LLM_TMPDIR"
     return "$BASH4LLM_ERR_TMP"
   fi
-  # Reject symlinks for BASH4LLM_TMPDIR
   if [ -L "$BASH4LLM_TMPDIR" ]; then
     log_error "TMP" "_tmpf: BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR"
     return "$BASH4LLM_ERR_TMP"
   fi
-  # Enforce strict perms (700) on BASH4LLM_TMPDIR
   chmod 700 "$BASH4LLM_TMPDIR" 2>/dev/null || true
 
-  # Ensure base is inside BASH4LLM_TMPDIR perimeter (handles empty or invalid bases automatically)
   case "$base" in
     "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
-      : # ok
+      :
       ;;
     *)
       base="$BASH4LLM_TMPDIR"
@@ -1861,15 +1650,6 @@ _tmpf() {
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
 #--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
-# Session helpers (MVP - Minimum Viable Product)
-# - session_validate_id <id> -> 0 if valid, 1 if invalid
-# - session_now_ts -> prints UTC timestamp YYYY-MM-DDTHH:MM:SSZ
-# - session_messages_tmp_path <session_id> -> prints path under RUN_TMPDIR
-# - session_read_window <session_id> <N> <out_file> -> reads last N NDJSON lines, normalizes roles, writes {"messages":[...]}
-# - session_append <session_id> <role> <content> <meta_json> -> idempotent append under lock
-# - session_sanitize_cmd <cmd> -> prints sanitized cmd (truncate, remove env-like KEY=VAL, redact tokens)
-# ---------------------------------------------------------------------------
-
 session_validate_id() {
   local id="${1:-}"
   if [ -z "$id" ]; then return 1; fi
@@ -1877,7 +1657,6 @@ session_validate_id() {
 }
 
 session_now_ts() {
-  # UTC timestamp, seconds resolution, format YYYY-MM-DDTHH:MM:SSZ
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
@@ -1889,22 +1668,19 @@ session_messages_tmp_path() {
 
 session_sanitize_cmd() {
   local cmd="${1:-}"
-  # Remove env-like KEY=VAL, redact tokens/keys, truncate to 256 chars
   local sanitized
   sanitized="$(printf '%s' "$cmd" | sed -E 's/[A-Za-z0-9_]+=([^[:space:]]+)//g' | sed -E 's/(token|key|secret)[^[:space:]]*/[REDACTED]/Ig' )"
   printf '%s' "$(printf '%s' "$sanitized" | cut -c1-256)"
 }
 
-# Internal helper to update the session index under a global lock
 _update_session_index() {
   local sid="${1:-}"
   [ -n "$sid" ] || return 0
   local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
   if [ -f "$idx_file" ]; then
     if jq -e --arg sid "$sid" '(.sessions // []) | index($sid) // empty' "$idx_file" >/dev/null 2>&1; then
-      : # Already present in the index
+      :
     else
-      # Append session ID
       local tmp_idx
       tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" uiidx 2>/dev/null)" || true
       if [ -n "$tmp_idx" ]; then
@@ -1916,15 +1692,11 @@ _update_session_index() {
       fi
     fi
   else
-    # Create a new index and register the initial session (removed redundant jq flag)
     ui_state_write "sessions/index.json" "{\"sessions\":[]}" >/dev/null 2>&1 || true
     ui_state_write "sessions/index.json" "$(jq -c -n --arg sid "$sid" '{sessions:[$sid]}')" >/dev/null 2>&1 || true
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Core Session Management Mutators (Source of Truth)
-# ---------------------------------------------------------------------------
 _session_delete_locked() {
   local sid="$1" sfile="$2" mfile="$3" ifile="$4" t_idx="$5"
   rm -f -- "$sfile" 2>/dev/null || true
@@ -2035,7 +1807,6 @@ acquire_session_lock() {
     return 0
   fi
 
-  # Prevention of symlink poisoning
   if [ -L "$lockfile" ]; then
     log_error "SEC" "session lockfile is a symlink: $lockfile. Aborting."
     return 15
@@ -2043,14 +1814,12 @@ acquire_session_lock() {
 
   safe_mkdir "$(dirname "$lockfile")" 700
 
-  # Portability check for flock flags
   local use_flock=0
   if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
     use_flock=1
   fi
 
   if [ "$use_flock" -eq 1 ]; then
-    # Exclusive association with file descriptor 8 for session locking (safe redirection)
     exec 8>"$lockfile" 2>/dev/null || return 0
     if ! flock -x -n 8 2>/dev/null; then
       log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
@@ -2061,9 +1830,6 @@ acquire_session_lock() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# release_session_lock
-# ---------------------------------------------------------------------------
 release_session_lock() {
   local sid="${SESSION_ID:-}"
   [ -n "$sid" ] || return 0
@@ -2081,21 +1847,16 @@ release_session_lock() {
     return 15
   fi
 
-  # Determine if flock is supported on this platform
   local use_flock=0
   if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
     use_flock=1
   fi
 
-  # Only attempt to close fd 8 if flock is supported and the descriptor is actually open
   if [ "$use_flock" -eq 1 ] && { true 2>/dev/null <&8; }; then
-    # Secure closing of file descriptor 8 for automatic lock release
     exec 8>&- 2>/dev/null || true
   fi
 }
 
-# Isolated helper to safely execute session file parsing under an active lock.
-# This avoids nested escaping issues when evaluating awk or tail commands.
 _session_read_window_locked() {
   local session_file="${1:-}"
   local n="${2:-10}"
@@ -2113,7 +1874,6 @@ _session_read_window_locked() {
 }
 
 session_read_window() {
-  # Usage: session_read_window <session_id> <N> <out_file>
   local sid="${1:-}" n="${2:-10}" out="${3:-}"
   local history_dir="${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}"
   local session_file="$history_dir/sessions/${sid}.ndjson"
@@ -2123,7 +1883,6 @@ session_read_window() {
   [ -n "$sid" ] || return 1
   [ -n "$out" ] || return 1
 
-  # Preventive security validation
   if ! session_validate_id "$sid"; then
     log_error "SESSION" "invalid session id: $sid"
     return 1
@@ -2134,7 +1893,6 @@ session_read_window() {
   if ! printf '%s' "$n" | grep -qE '^[0-9]+$'; then n=10; fi
   if [ "$n" -le 0 ]; then n=10; fi
 
-  # Ensure tmpdir exists and is writable (must be inside bash4llm.d/)
   safe_mkdir "${tmpdir%/}" 700
   if ! : > "${tmpdir%/}/.bash4llm_tmp_check" 2>/dev/null; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2145,12 +1903,9 @@ session_read_window() {
     rm -f "${tmpdir%/}/.bash4llm_tmp_check" 2>/dev/null || true
   fi
 
-  # Create a tmpf inside tmpdir (no /tmp, no /dev/null)
   tmpf="$(_tmpf file "$tmpdir" session.read 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create tmpf\n' >&2; fi; return 1; }
 
-  # Extract last N records robustly using the isolated helper
   if [ -f "$session_file" ]; then
-    # Acquire a short lock on the session file using our helper to avoid nested parsing errors
     lock_exec "${session_file}.lock" 5 -- _session_read_window_locked "$session_file" "$n" "$tmpf"
   else
     if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2158,7 +1913,6 @@ session_read_window() {
     fi
   fi
 
-  # Prepare atomic output in same dir as out
   out_tmp="$(_tmpf file "$(dirname "$out")" out.tmp 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create out_tmp\n' >&2; fi; return 1; }
   safe_mkdir "$(dirname "$out")" 700
   : > "$out_tmp"
@@ -2166,7 +1920,6 @@ session_read_window() {
 
   printf '%s' '{"messages":[' >> "$out_tmp"
   first=1
-  # Use jq -c to compact each JSON record (handles pretty-printed and single-line NDJSON)
   if jq -c . "$tmpf" >/dev/null 2>&1; then
     jq -c . "$tmpf" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do
       role="$(printf '%s' "$line" | jq -r '.role // "user"')"
@@ -2179,7 +1932,6 @@ session_read_window() {
       first=0
     done
   else
-    # fallback: try to treat tmpf as line-based NDJSON
     while IFS= read -r line || [ -n "$line" ]; do
       if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
         role="$(printf '%s' "$line" | jq -r '.role // "user"')"
@@ -2195,7 +1947,6 @@ session_read_window() {
   fi
   printf '%s' ']}' >> "$out_tmp"
 
-  # Atomic replace
   if mv -f "$out_tmp" "$out" 2>/dev/null; then
     :
   else
@@ -2206,7 +1957,6 @@ session_read_window() {
   rm -f "$tmpf" 2>/dev/null || true
   chmod 600 "$out" 2>/dev/null || true
 
-  # --- Update ui_state session metadata after read_window (best-effort) ---
   if [ -n "$sid" ]; then
     if ensure_run_tmpdir >/dev/null 2>&1; then
       msg_count=0
@@ -2231,7 +1981,6 @@ session_read_window() {
 }
 
 session_append() {
-  # Usage: session_append <session_id> <role> <content> <meta_json>
   local sid="${1:-}" role="${2:-}" content="${3:-}" meta_json="${4:-}"
   local base_sessions_dir="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-./bash4llm.d}/sessions}"
   local session_file="${base_sessions_dir%/}/${sid}.ndjson"
@@ -2242,7 +1991,6 @@ session_append() {
 
   [ -n "$sid" ] || return 1
 
-  # Preventive security validation
   if ! session_validate_id "$sid"; then
     log_error "SESSION" "invalid session id: $sid"
     return 1
@@ -2262,7 +2010,6 @@ session_append() {
     fi
   fi
 
-  # Ensure session directory and file exist before creating marker/lock (race-safe init)
   sess_dir="$(dirname "$session_file")"
   safe_mkdir "$sess_dir" 700
 
@@ -2275,7 +2022,6 @@ session_append() {
     chmod 600 "$session_file" 2>/dev/null || true
   fi
 
-  # Global guard: skip appending empty user messages
   case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
   if [ "$role_norm" = "user" ] && [ -z "${content:-}" ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2284,8 +2030,6 @@ session_append() {
     return 0
   fi
 
-  # Marker: message_id-based folder locks (stable on macOS and Linux)
-  # Cleanup is handled automatically on EXIT by cleanup_run_tmp_on_exit.
   if [ -n "${message_id:-}" ]; then
     marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/session-msg-${message_id}.lockdir"
     if mkdir "$marker_dir" 2>/dev/null; then
@@ -2317,7 +2061,6 @@ session_append() {
 
   timeout="${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}"
 
-  # Portability check for flock flags
   local use_flock=0
   if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
     use_flock=1
@@ -2326,8 +2069,6 @@ session_append() {
   local write_success=0
 
   if [ "$use_flock" -eq 1 ]; then
-    # Lock and append are executed inside a subshell local context.
-    # This automatically destroys file descriptor 200 upon subshell exit, preventing global leaks.
     (
       exec 200>"$lockfile"
       if flock -x -w "$timeout" 200 2>/dev/null; then
@@ -2348,7 +2089,6 @@ session_append() {
       return 1
     fi
   else
-    # Highly portable fallback lock based on directories
     local fallback_lockdir="${session_file}.fallback.lockdir"
     local start_time now acquired=0
     start_time=$(date +%s 2>/dev/null || echo 0)
@@ -2378,9 +2118,7 @@ session_append() {
     chmod 600 "$session_file" 2>/dev/null || true
     touch "${marker_dir}/done" 2>/dev/null || true
 
-    # --- Update ui_state session metadata (canonical single source) ---
     if ensure_run_tmpdir >/dev/null 2>&1; then
-      # Compute msg_count and last_ts safely (session_file exists)
       msg_count=0
       last_ts=""
       if [ -f "$session_file" ]; then
@@ -2409,10 +2147,8 @@ session_append() {
       meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" --arg title "${current_title:-}" \
         '{id:$id, active:true, msg_count:$msg_count, last_ts:$last_ts, title:$title}')"
 
-      # Write canonical ui_state session file
       ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to write session meta for $sid"
 
-      # Update session index under global HISTORY_LOCK to avoid race conditions
       lock_exec "$HISTORY_LOCK" 10 -- _update_session_index "$sid"
     fi
   fi
@@ -2423,7 +2159,6 @@ session_append() {
   return 0
 }
 
-# Default parameters for session helpers (configurable via env)
 : "${LAST_CHECK_LINES:=50}"
 #--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
 #--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
@@ -2433,7 +2168,6 @@ session_append() {
 SESSION_CACHE_DIR="${BASH4LLM_CONFIG_DIR%/}/session_cache"
 safe_mkdir "$SESSION_CACHE_DIR" 700
 
-# Compute a stable hash for params_string (portable)
 _session_hash() {
   local s="${1:-}" h=""
   if command -v sha256sum >/dev/null 2>&1; then
@@ -2441,7 +2175,6 @@ _session_hash() {
   elif command -v openssl >/dev/null 2>&1; then
     h="$(printf '%s' "$s" | openssl dgst -sha256 2>/dev/null | awk '{print $2}' || true)"
   else
-    # fallback: base64 of string (not cryptographic but stable)
     h="$(printf '%s' "$s" | base64 | tr -d '\n' | cut -c1-64)"
   fi
   printf '%s' "${h:-}"
@@ -2460,15 +2193,12 @@ session_cache_get() {
   key="$(session_cache_key "$sid" "$params")" || return 1
   file="${SESSION_CACHE_DIR%/}/${key}.cache"
   if [ ! -f "$file" ]; then return 1; fi
-  # First line: expiry epoch; rest: payload
   read -r ts < "$file" 2>/dev/null || ts=0
   now="$(date +%s)"
   if [ "$now" -ge "$ts" ]; then
-    # expired
     rm -f "$file" 2>/dev/null || true
     return 1
   fi
-  # output payload to out
   if [ -n "$out" ]; then
     tail -n +2 "$file" > "$out" 2>/dev/null || return 1
   else
@@ -2485,10 +2215,8 @@ session_cache_set() {
   now="$(date +%s)"
   expiry=$((now + (ttl + 0)))
 
-  # Temporary file allocation executed only once to prevent leaks and compromised atomicity
   tmp_cache="$(_tmpf file "${SESSION_CACHE_DIR%/}" session.cache 2>/dev/null)" || return 1
 
-  # Atomic write to the previously allocated file
   if {
     printf '%s\n' "$expiry"
     if [ -n "$infile" ] && [ -f "$infile" ]; then
@@ -2511,9 +2239,6 @@ session_cache_set() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# session_cache_invalidate
-# ---------------------------------------------------------------------------
 session_cache_invalidate() {
   local sid="${1:-}" params="${2:-}" key f
   if [ -z "$sid" ]; then return 1; fi
@@ -2521,7 +2246,6 @@ session_cache_invalidate() {
     key="$(session_cache_key "$sid" "$params")" || return 1
     rm -f "${SESSION_CACHE_DIR%/}/${key}.cache" 2>/dev/null || true
   else
-    # Secure globbing expansion preventing word splitting in paths with spaces
     for f in "${SESSION_CACHE_DIR%/}/${sid}|"*.cache; do
       [ -e "$f" ] && rm -f -- "$f" 2>/dev/null || true
     done
@@ -2532,15 +2256,10 @@ session_cache_invalidate() {
 #--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
-# NOTE: Do not assign RUN_TMPDIR/RESP/PAYLOAD/ERRF to empty strings here.
-# Those variables must remain unset unless explicitly created by ensure_run_tmpdir
-# in the main process. Assign only safe, non-runtime defaults.
 CONTENT="${CONTENT:-}"
 JSON_INPUT="${JSON_INPUT:-}"
-# Session CLI flags defaults (initialized to avoid set -u failures)
 SESSION_ID="${SESSION_ID:-}"
 SESSION_WINDOW="${SESSION_WINDOW:-}"
-# Runtime flags and other non-runtime defaults
 TEMPLATE="${TEMPLATE:-}"
 BATCH_FILE="${BATCH_FILE:-}"
 CHAT_MODE="${CHAT_MODE:-0}"
@@ -2564,25 +2283,19 @@ STREAM_MODE="${STREAM_MODE:-0}"
 OUTPUT_MODE="${OUTPUT_MODE:-text}"
 THRESHOLD="${THRESHOLD:-1000}"
 
-# Reduced to 1 to prevent sequential retry loops (only single manual attempt)
 MAX_RETRIES="${MAX_RETRIES:-1}"
 
 SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
 PROVIDER="${PROVIDER:-groq}"
 
-# Ensure config dir exists and is usable before reading persisted provider
 if type ensure_config_dir >/dev/null 2>&1; then
   ensure_config_dir >/dev/null 2>&1 || true
 else
   safe_mkdir "${BASH4LLM_CONFIG_DIR}" 700
 fi
 
-# NOTE: Do NOT reassign RUN_TMPDIR, RESP, PAYLOAD, ERRF to empty values anywhere
-# after this point; those are runtime-managed and must be created by ensure_run_tmpdir
-# in the main process.
 CURL_BASE_OPTS=( --silent --show-error --no-buffer --max-time 120 )
 
-# Ensure runtime tmpdir early so RESP/RUN_TMPDIR are available for later code
 if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 0 ]; then
   if ! ensure_run_tmpdir >/dev/null 2>&1; then
     log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
@@ -2590,9 +2303,6 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 0 ]; then
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Helpers: normalization
-# ---------------------------------------------------------------------------
 _normalize_bool_env() {
   local var val
   for var in ALLOW_API_CALLS DRY_RUN DEBUG; do
@@ -2615,10 +2325,6 @@ _normalize_bool_env
 # SECTION: PROVIDER - BEGIN
 ########################################
 # Provider embedded: groq (full implementations)
-# Functions: buildpayload_groq, call_api_groq, call_api_streaming_groq,
-# refresh_models_groq, validate_model_groq, auto_select_model_groq
-
-# Provider-specific API key (can be overridden via PROVIDER_API_ENV_groq)
 GROQ_API_KEY="${GROQ_API_KEY:-}"
 if [ -n "${PROVIDER_API_ENV_groq:-}" ]; then
   if [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
@@ -2626,35 +2332,23 @@ if [ -n "${PROVIDER_API_ENV_groq:-}" ]; then
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# buildpayload_groq
-# - Produces a base64-staged payload at $PAYLOAD (uses stage_b64)
-# - Supports: JSON_INPUT (messages or prompt), SYSTEM_PROMPT + CONTENT,
-#   or CONTENT alone.
-# - Honors STREAM_MODE via stream boolean in payload.
-# ---------------------------------------------------------------------------
 buildpayload_groq() {
-  # Build payload for Groq provider into tmp_payload
-  # Assumes: MODEL, TEMPERATURE, MAX_TOKENS, MESSAGES_JSON, BUILD_MESSAGES_FILE, STREAM_MODE, JSON_INPUT, CONTENT may be set
   local tmp_payload stream_json VALID_MESSAGES_JSON http_code edgecase now_ts model_from_file payload_size staged_b64 tmp_b64 content_val msgs msgs_from_file
 
-  # always allocate a random tmp file; never use deterministic fallback
   tmp_payload="$(_mktemp_in_dir "$RUN_TMPDIR" payload.XXXXXX.json 2>/dev/null || _tmpf file "$RUN_TMPDIR" payload.json)"
 
-  # Normalize stream_json to a JSON boolean literal (true/false)
   if is_truthy "${STREAM_MODE:-0}"; then
     stream_json=true
   else
     stream_json=false
   fi
   case "${stream_json:-}" in
-    true|false) ;;    # valid
+    true|false) ;;
     1) stream_json=true ;;
     0) stream_json=false ;;
     *) stream_json=false ;;
   esac
 
-  # Validate numeric inputs used with tonumber in jq
   if ! printf '%s' "${TEMPERATURE:-}" | grep -qE '^[0-9]+([.][0-9]+)?$'; then
     log_warn "ARGS" "invalid TURE value '${TEMPERATURE:-}'; defaulting to 1.0"
     TURE="1.0"
@@ -2664,12 +2358,6 @@ buildpayload_groq() {
     MAX_TOKENS="4096"
   fi
 
-  # Priority for messages:
-  # 1) JSON_INPUT (if provided) -> .messages or .content/.prompt
-  # 2) MESSAGES_JSON (explicit)
-  # 3) BUILD_MESSAGES_FILE -> .messages
-  # 4) CONTENT (positional/stdin)
-  # 5) fallback single empty user message
   VALID_MESSAGES_JSON=""
 
   if [ -n "${JSON_INPUT:-}" ] && is_valid_json_string "${JSON_INPUT}"; then
@@ -2691,7 +2379,6 @@ buildpayload_groq() {
   if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
     msgs_from_file="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
     if printf '%s' "$msgs_from_file" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
-      # If history exists and there is current input, merge them immediately
       if [ -n "${CONTENT:-}" ]; then
         VALID_MESSAGES_JSON="$(printf '%s' "$msgs_from_file" | jq -c --arg content "$CONTENT" '. + [{role:"user", content:$content}]' 2>/dev/null || printf '%s' "$msgs_from_file")"
       else
@@ -2714,7 +2401,6 @@ buildpayload_groq() {
     VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
   fi
 
-  # Prepend system prompt if active
   if [ -n "${SYSTEM_PROMPT:-}" ]; then
     VALID_MESSAGES_JSON="$(jq -n --argjson messages "$VALID_MESSAGES_JSON" --arg sys "$SYSTEM_PROMPT" '[{role:"system", content:$sys}] + $messages' 2>/dev/null || jq -n --arg role "system" --arg content "${SYSTEM_PROMPT:-}" --argjson messages "$VALID_MESSAGES_JSON" '{messages:([{role:$role,content:$content}] + $messages) }')"
   fi
@@ -2755,7 +2441,6 @@ buildpayload_groq() {
     tmp_b64="${tmp_payload}.b64"
     if stage_b64 "$tmp_b64" < "$tmp_payload" 2>/dev/null; then
       staged_b64="$tmp_b64"
-      # remove original JSON payload after successful staging
       rm -f "$tmp_payload" 2>/dev/null || true
       if [ "${DEBUG:-0}" -eq 1 ]; then
         log_info "PAYLOAD" "Created base64-staged payload: $staged_b64"
@@ -2777,17 +2462,11 @@ buildpayload_groq() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# call_api_groq
-# - Performs HTTP POST request using curl to the resolved provider URL.
-# - Leverages standard payload and response variables ($PAYLOAD, $RESP, $ERRF).
-# ---------------------------------------------------------------------------
 call_api_groq() {
   local provider_url="${BASH4LLM_PROVIDER_URL:-}"
   local api_key="${GROQ_API_KEY:-}"
   local http_code rc payload_dec tmp_resp tmp_err
 
-  # Enforce central network policy
   enforce_network_policy || return $?
 
   if [ -z "$provider_url" ]; then
@@ -2795,7 +2474,6 @@ call_api_groq() {
     return "$BASH4LLM_ERR_API"
   fi
 
-  # Decode payload if staged in base64
   payload_dec="$PAYLOAD"
   if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
     payload_dec="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
@@ -2823,12 +2501,10 @@ call_api_groq() {
     "$provider_url" < /dev/null 2>"$tmp_err")"
   rc=$?
 
-  # Clean decoded payload
   if [ "$payload_dec" != "$PAYLOAD" ]; then
     rm -f "$payload_dec" 2>/dev/null || true
   fi
 
-  # Handle curl network failure
   if [ "$rc" -ne 0 ]; then
     log_error "CURL" "Network call failed with code $rc"
     cat "$tmp_err" >> "$ERRF" 2>/dev/null || true
@@ -2836,7 +2512,6 @@ call_api_groq() {
     return "$BASH4LLM_ERR_CURL_FAILED"
   fi
 
-  # Write back response atomically
   if [ -s "$tmp_resp" ]; then
     if mv -f "$tmp_resp" "$RESP" 2>/dev/null; then
       chmod 600 "$RESP" 2>/dev/null || true
@@ -2851,7 +2526,6 @@ call_api_groq() {
 
   rm -f "$tmp_err" 2>/dev/null || true
 
-  # Treat non-2xx status as API failure
   if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
     log_error "API" "HTTP Status code: $http_code"
     return "$BASH4LLM_ERR_API"
@@ -2860,9 +2534,6 @@ call_api_groq() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# call_api_streaming_groq (streaming)
-# ---------------------------------------------------------------------------
 call_api_streaming_groq() {
   local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code json content resp_size errf_size resp_text_tmp resp_json_tmp p_dir api_json ui_last
 
@@ -2947,8 +2618,6 @@ call_api_streaming_groq() {
     CURL_CMD+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
   fi
 
-  # Execute curl as a standard foreground process within the pipeline 
-  # to maintain the correct TTY process group association.
   "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | \
   while IFS= read -r line || [ -n "$line" ]; do
     printf '%s\n' "$line" >> "$resp_raw"
@@ -2975,7 +2644,6 @@ call_api_streaming_groq() {
   done || true
 
   rc=${PIPESTATUS[0]:-0}
-  # SIGPIPE (141) is normal if we terminate the read loop early
   if [ "$rc" -eq 141 ]; then
     rc=0
   fi
@@ -3036,7 +2704,6 @@ call_api_streaming_groq() {
   p_dir="$(dirname "$RESP")"
   safe_mkdir "$p_dir" 700
 
-  # Move resp_tmp -> RESP
   if [ -s "$resp_tmp" ]; then
     if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
       chmod 600 "$RESP" 2>/dev/null || true
@@ -3058,10 +2725,7 @@ call_api_streaming_groq() {
           '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
   fi
 
-  # remove resp_tmp if still present
   rm -f "$resp_tmp" 2>/dev/null || true
-
-  # remove ERRF after diagnostics
   rm -f "$ERRF" 2>/dev/null || true
 
   if ensure_run_tmpdir >/dev/null 2>&1; then
@@ -3078,10 +2742,6 @@ call_api_streaming_groq() {
   return "${rc:-0}"
 }
 
-# ---------------------------------------------------------------------------
-# refresh_models_groq
-# - Fetches /openai/v1/models and writes a newline-separated list to MODELS_FILE
-# ---------------------------------------------------------------------------
 refresh_models_groq() {
   if [ -n "${PROVIDER_API_ENV_groq:-}" ] && [ -n "${!PROVIDER_API_ENV_groq:-}" ]; then
     GROQ_API_KEY="${!PROVIDER_API_ENV_groq}"
@@ -3183,26 +2843,18 @@ refresh_models_groq() {
 
   chmod 600 "$MODELS_FILE" 2>/dev/null || true
 
-  # Refreshed models are logged to the user
   log_info_user "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
 
   rm -rf "$tmpd"
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# validate_model_groq
-# ---------------------------------------------------------------------------
 validate_model_groq() {
   local model="${1:-}"
-  # Delegate verification to the core validation logic to prevent duplication
   validate_model_core "$model"
   return $?
 }
 
-# ---------------------------------------------------------------------------
-# auto_select_model_groq
-# ---------------------------------------------------------------------------
 auto_select_model_groq() {
   local file="$MODELS_FILE" line norm cnt=0
   if [ -f "$file" ] && [ -s "$file" ]; then
@@ -3234,9 +2886,6 @@ auto_select_model_groq() {
 # SECTION: CORE_SETUP - BEGIN
 ########################################
 #--1<---[ SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
-# Core helpers and CLI wiring (public interfaces preserved)
-
-# Dispatch helper: call provider-specific function by name if available
 call_provider() {
   local fn="${1:-}" shift_args=("${@:2}")
   if type "$fn" >/dev/null 2>&1; then
@@ -3246,7 +2895,6 @@ call_provider() {
   return 127
 }
 
-# Provider dispatch wrappers (call provider-specific implementations if present)
 refresh_models_dispatch() {
   local destfile="${1:-${MODELS_FILE:-$BASH4LLM_MODELS_DIR/models.txt}}"
   local fn="refresh_models_${PROVIDER}"
@@ -3257,7 +2905,6 @@ refresh_models_dispatch() {
     return 127
   fi
 
-  # Try provider-specific refresh; prefer passing destfile but tolerate providers that ignore args
   if "$fn" "$destfile" 2>/dev/null; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER -> $destfile"
@@ -3287,7 +2934,6 @@ validate_model_dispatch() {
     return $?
   fi
 
-  # Explicit permissive fallback (once per run, GLOBAL guard)
   if [ -z "${VALIDATE_MODEL_DISPATCH_WARNED:-}" ]; then
     log_warn "MODEL" "provider '${PROVIDER}' does not implement ${fn}; falling back to permissive validation."
     VALIDATE_MODEL_DISPATCH_WARNED=1
@@ -3296,7 +2942,6 @@ validate_model_dispatch() {
   return 0
 }
 
-# auto_select_model_dispatch (call provider-specific implementations if present)
 auto_select_model_dispatch() {
   local fn="auto_select_model_${PROVIDER}"
   if type "$fn" >/dev/null 2>&1; then
@@ -3306,8 +2951,7 @@ auto_select_model_dispatch() {
   return 127
 }
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
-# resolve_model: determines the final MODEL following priority rules and validation
-# Output: sets the global variable FINAL_MODEL (string) or empty if unresolved.
+#--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
 resolve_model() {
   local active_provider candidate norm MODEL_PROVIDER_CFG cfg_model cnt m
   ALLOWED_MODELS="${ALLOWED_MODELS:-}"
@@ -3321,13 +2965,11 @@ resolve_model() {
 
   FINAL_MODEL=""
 
-  # 1) CLI-specified model
   if [ "${MODEL_CLI_SET:-0}" -eq 1 ] && [ -n "${MODEL:-}" ]; then
     FINAL_MODEL="$MODEL"
     return 0
   fi
 
-  # Determine active provider
   if [ -n "${PROVIDER_CLI:-}" ]; then
     active_provider="${PROVIDER_CLI}"
   elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
@@ -3338,7 +2980,6 @@ resolve_model() {
     active_provider="${PROVIDER:-groq}"
   fi
 
-  # 2) provider-specific persisted default
   MODEL_PROVIDER_CFG="$(canonical_model_file "${active_provider}")"
 
   if [ -z "$(canonical_config_dir)" ] || [ "$(canonical_config_dir)" = "/" ]; then
@@ -3347,9 +2988,7 @@ resolve_model() {
     if [ -s "$MODEL_PROVIDER_CFG" ]; then
       candidate="$(sed -n '1p' "$MODEL_PROVIDER_CFG" 2>/dev/null || true)"
       candidate="$(printf '%s' "$candidate" | awk '{$1=$1;print}')"
-
       norm="$(_normalize_model_name "$candidate")"
-
       if [ -n "$norm" ] && is_supported_model "$norm"; then
         if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
           FINAL_MODEL="$norm"
@@ -3359,7 +2998,6 @@ resolve_model() {
     fi
   fi
 
-  # 3) provider auto-select
   candidate="$(auto_select_model_dispatch 2>/dev/null || true)"
   if [ -n "$candidate" ]; then
     norm="$(_normalize_model_name "$candidate")"
@@ -3371,33 +3009,26 @@ resolve_model() {
     fi
   fi
 
-  # 4) first supported entry in MODELS_FILE
   if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
     cnt=0
     while IFS= read -r m || [ -n "$m" ]; do
       [ -z "$m" ] && continue
       cnt=$((cnt+1))
-
       norm="$(_normalize_model_name "$m")"
-
       if is_supported_model "$norm"; then
         if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
           FINAL_MODEL="$norm"
           return 0
         fi
       fi
-
       [ "$cnt" -ge "$MAX_MODELS" ] && break
     done < "$MODELS_FILE"
   fi
 
-  # 5) config MODEL= in config file (legacy)
   if [ -f "${BASH4LLM_CONFIG_DIR%/}/config" ]; then
     cfg_model="$(awk -F= '/^MODEL=/ {sub(/^MODEL=/,""); print; exit}' "${BASH4LLM_CONFIG_DIR%/}/config" 2>/dev/null || true)"
     cfg_model="$(printf '%s' "$cfg_model" | awk '{$1=$1;print}')"
-
     norm="$(_normalize_model_name "$cfg_model")"
-
     if [ -n "$norm" ] && is_supported_model "$norm"; then
       if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
         FINAL_MODEL="$norm"
@@ -3406,22 +3037,18 @@ resolve_model() {
     fi
   fi
 
-  # 6) ALLOWED_MODELS fallback
   if [ -n "${ALLOWED_MODELS:-}" ]; then
     cnt=0
     while IFS= read -r m || [ -n "$m" ]; do
       [ -z "$m" ] && continue
       cnt=$((cnt+1))
-
       norm="$(_normalize_model_name "$m")"
-
       if is_supported_model "$norm"; then
         if validate_model_core "$norm" >/dev/null 2>&1 && validate_model_dispatch "$norm" >/dev/null 2>&1; then
           FINAL_MODEL="$norm"
           return 0
         fi
       fi
-
       [ "$cnt" -ge "$MAX_MODELS" ] && break
     done <<EOF
 $(printf '%s\n' "$ALLOWED_MODELS")
@@ -3432,9 +3059,6 @@ EOF
   return 1
 }
 
-# ---------------------------------------------------------------------------
-# Build payload from current vars (delegates to provider)
-# ---------------------------------------------------------------------------
 build_payload_from_vars() {
   ensure_run_tmpdir
   local fn="buildpayload_${PROVIDER}"
@@ -3452,8 +3076,6 @@ build_payload_from_vars() {
   fi
 }
 
-#--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
-# API call wrappers (non-streaming and streaming)
 call_api_once() {
   local fn="call_api_${PROVIDER}"
   local rc
@@ -3478,7 +3100,6 @@ call_api_once() {
 }
 
 call_api_streaming() {
-  # Acquire the exclusive lock for the current session (if set)
   acquire_session_lock || return $?
 
   local fn="call_api_streaming_${PROVIDER}"
@@ -3492,17 +3113,13 @@ call_api_streaming() {
     return 0
   fi
 
-  # Save active trap for SIGINT to prevent shell disruption
   local prev_trap
   prev_trap="$(trap -p INT)"
-
-  # Intercept SIGINT during the active API request to allow graceful recovery
   trap 'printf "\n[Streaming request interrupted by user]\n" >&2; return 130' INT
 
   call_provider "$fn"
   rc=$?
 
-  # Restore original trap configuration
   if [ -n "$prev_trap" ]; then
     eval "$prev_trap"
   else
@@ -3515,9 +3132,7 @@ call_api_streaming() {
 
 extract_api_error() {
   [ ! -s "${RESP:-}" ] && return 0
-
   if jq -e . "$RESP" >/dev/null 2>&1; then
-    # Prefer explicit error.message, then any non-empty choice content (first), else empty.
     jq -r '
       ( [ .error?.message // empty ] 
         + [ .choices[]? | (.message?.content // .delta?.content // empty) ] )
@@ -3529,13 +3144,7 @@ extract_api_error() {
   fi
 }
 
-# detect_empty_edge_case: detects the empty completion edge case
-# Does NOT print anything. If detected, sets diagnostic global variables:
-#   BASH4LLM_EDGE_EMPTY=1
-#   BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON, BASH4LLM_EDGE_COMPLETION_TOKENS
-# Returns 0 if edge case is detected, 1 otherwise.
 detect_empty_edge_case() {
-  # Populate edge-case variables and set BASH4LLM_EDGE_EMPTY=1 when response is an "empty completion" edge.
   local resp="${RESP:-}"
   local tmp_copy content finish_reason completion_tokens req_id
   BASH4LLM_EDGE_EMPTY=0
@@ -3543,7 +3152,6 @@ detect_empty_edge_case() {
   BASH4LLM_EDGE_FINISH_REASON=""
   BASH4LLM_EDGE_COMPLETION_TOKENS=0
 
-  # Always read from atomic copy
   tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return 1
   cp -f "$resp" "$tmp_copy" 2>/dev/null || return 1
   resp="$tmp_copy"
@@ -3580,16 +3188,11 @@ detect_empty_edge_case() {
 
   return 0
 }
-#--2<---[ /SECTION: CORE_SETUP_API_CALL ]--->2--
 
-# ---------------------------------------------------------------------------
-# finalize_and_output
-# ---------------------------------------------------------------------------
 finalize_and_output() {
   local mode="${1:-}" text="${2:-}"
   local resp_file tmp_copy len do_save dest_dir dest_path tmp_save
 
-  # Always read from atomic copy of RESP
   resp_file="${RESP:-}"
   if [ -n "$resp_file" ]; then
     tmp_copy="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" resp_copy 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
@@ -3644,41 +3247,31 @@ finalize_and_output() {
       tmp_save="$(_tmpf file "$RUN_TMPDIR" save.tmp 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
       printf '%s\n' "$text" > "$tmp_save" 2>/dev/null || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
 
-      # Directly invoke lock_exec without redundant check wrapper
       lock_exec "$HISTORY_LOCK" 10 -- mv -f "$tmp_save" "$dest_path" || { rm -f "$tmp_save" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
       chmod 600 "$dest_path" 2>/dev/null || true
     fi
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Perform request with retries
-# ---------------------------------------------------------------------------
 perform_request_once() {
-  # Acquire the exclusive lock for the current session (if set)
   acquire_session_lock || return $?
 
   local attempt=1 rc text api_err ui_last finish_reason req_id edgecase now_ts http_code_fallback api_json
   local prev_trap
 
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
-    # Save active trap for SIGINT to prevent shell disruption
     prev_trap="$(trap -p INT)"
-
-    # Intercept SIGINT during the active API request to allow graceful recovery
     trap 'printf "\n[Request interrupted by user]\n" >&2; return 130' INT
 
     call_api_once
     rc=$?
 
-    # Restore original trap configuration
     if [ -n "$prev_trap" ]; then
       eval "$prev_trap"
     else
       trap - INT
     fi
 
-    # Handle immediate user interruption
     if [ "$rc" -eq 130 ]; then
       release_session_lock
       return 130
@@ -3693,21 +3286,16 @@ perform_request_once() {
         return 0
       fi
 
-      # Reset diagnostic metrics before reading the API response
       BASH4LLM_EDGE_EMPTY=0
       BASH4LLM_EDGE_REQ_ID=""
       BASH4LLM_EDGE_FINISH_REASON=""
       BASH4LLM_EDGE_COMPLETION_TOKENS=0
 
       text="$(extract_text_from_resp || true)"
-
-      # Perform edgecase detection on the response file immediately
       detect_empty_edge_case || true
 
-      # Ensure last_api.json exists (fallback if provider didn't write it)
       ui_last="${BASH4LLM_CONFIG_DIR%/}/ui_state/last_api.json"
       if [ ! -f "$ui_last" ] || [ "$ui_last" -ot "${RESP:-/dev/null}" ]; then
-        # Build fallback api_json from available globals
         finish_reason="$(jq -r '.choices[0]?.finish_reason // empty' "$RESP" 2>/dev/null || echo "")"
         req_id="$(jq -r '.x_groq?.id // .id // empty' "$RESP" 2>/dev/null || echo "")"
         edgecase=0
@@ -3726,7 +3314,6 @@ perform_request_once() {
           release_session_lock
           return "$BASH4LLM_ERR_API"
         else
-          # Output structured logs exactly once if empty completion edgecase is matched
           if [ "${BASH4LLM_EDGE_EMPTY:-0}" -eq 1 ]; then
             printf '%s\n' \
               "API edge case detected: empty completion" \
@@ -3739,7 +3326,6 @@ perform_request_once() {
             return "$BASH4LLM_ERR_API"
           fi
 
-          # Generic fallback when response text is blank with no detailed API errors
           log_error "API" "no textual content extracted from response."
           if [ "${DEBUG:-0}" -eq 1 ]; then
             head -n 50 "${RESP:-/dev/null}" >&2 || true
@@ -3755,7 +3341,7 @@ perform_request_once() {
     else
       rc=$?
       if [ "$rc" -eq "$BASH4LLM_ERR_CURL_FAILED" ]; then
-        printf 'bash4llm: %sWARN%s: Network error (curl). Retrying...\n' "${C_YELLOW}" "${C_RST}" >&2
+        printf 'bash4llm: %sWARN%s: Network error (curl). Retrying...\n' "${C_BYELLOW}" "${C_RST}" >&2
       elif [ "$rc" -eq "$BASH4LLM_ERR_API" ]; then
         printf 'bash4llm: %sERROR%s: HTTP/API error. Not retrying.\n' "${C_RED}" "${C_RST}" >&2
         if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -3764,7 +3350,7 @@ perform_request_once() {
         release_session_lock
         return "$BASH4LLM_ERR_API"
       else
-        printf 'bash4llm: %sWARN%s: Unknown error (code %s). Retrying...\n' "${C_YELLOW}" "${C_RST}" "$rc" >&2
+        printf 'bash4llm: %sWARN%s: Unknown error (code %s). Retrying...\n' "${C_BYELLOW}" "${C_RST}" "$rc" >&2
       fi
     fi
 
@@ -3775,9 +3361,8 @@ perform_request_once() {
   release_session_lock
   return "$BASH4LLM_ERR_API"
 }
-
+#--2<---[ /SECTION: CORE_SETUP_API_CALL ]--->2--
 #--3<---[ SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
-# Input helpers
 collect_input_from_files() {
   local out="" first=1 f
   for f in "$@"; do
@@ -3810,13 +3395,10 @@ is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}';
 #--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
 
 is_supported_model() {
-  # Return 0 if model name appears to support text-only usage.
-  # Reject models that clearly indicate image/audio/embedding/multimodal capabilities.
   local m="${1:-}" l
   [ -n "$m" ] || return 1
   l="$(printf '%s' "$m" | tr '[:upper:]' '[:lower:]')"
 
-  # Patterns that indicate non-text capabilities
   case "$l" in
     *image*|*imagen*|*img*|*vision*|*vqa*|*vit*|*clip*|*render* ) return 1 ;;
     *audio*|*speech*|*tts*|*wav2vec*|*whisper* ) return 1 ;;
@@ -3827,8 +3409,6 @@ is_supported_model() {
 }
 
 list_models_cli() {
-  # Print MODELS_FILE entries in a provider-agnostic way.
-  # Normalize entries (strip leading "models/") and mark non-text models.
   if [ ! -s "${MODELS_FILE:-}" ]; then
     printf 'No models available locally. Consider --refresh-models.\n' >&2
     return 1
@@ -3850,21 +3430,15 @@ list_models_cli() {
 }
 
 validate_model_core() {
-  # Validate a model name against local MODELS_FILE (if present) and textual support.
-  # Accepts exact matches or matches after stripping common provider prefixes like "models/".
   local model="${1:-}" norm_model file_match
   [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_core: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
 
-  # Normalize incoming model for comparison
   norm_model="$(_normalize_model_name "$model")"
 
-  # If MODELS_FILE exists and non-empty, require presence
   if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
-    # Check exact match first
     if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
       file_match=1
     else
-      # Check normalized match (strip leading models/ and provider prefixes in file entries and compare)
       file_match=0
       while IFS= read -r m || [ -n "$m" ]; do
         [ -z "$m" ] && continue
@@ -3881,7 +3455,6 @@ validate_model_core() {
     fi
   fi
 
-  # Check textual support
   if ! is_supported_model "$norm_model"; then
     printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GBOLD}Bash4LLM⁺${C_RST}" >&2
     return 1
@@ -3890,9 +3463,6 @@ validate_model_core() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# Configuration and Whitelist Helpers (placed before execution logic)
-# ---------------------------------------------------------------------------
 load_local_config() {
   local cfg="${BASH4LLM_CONFIG_DIR%/}/config" key val line
   [ -f "$cfg" ] || return 0
@@ -3927,14 +3497,11 @@ is_tty_out() {
 
 # ---------------------------------------------------------------------------
 # Sourcing Guard: Stop here if sourced to load functions only.
-# This prevents executing any folder creations, CLI parsing, or exit commands.
 # ---------------------------------------------------------------------------
 if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 1 ]; then
   return 0 2>/dev/null || exit 0
 fi
 #--4<---[ SECTION: CORE_SETUP_CLI_PARSE ]--->4--
-# CLI parsing (flags, normalization, immediate actions)
-# ---------------------------------------------------------------------------
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" OUTPUT_MODE="${OUTPUT_MODE:-text}" THRESHOLD="${THRESHOLD:-1000}"
@@ -3947,7 +3514,6 @@ INSTALL_EXTRAS_SRC=""
 BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 INIT_SESSION="${INIT_SESSION:-0}"
 
-# Session Lifecycle CLI extensions initialized to avoid nounset (set -u) issues
 DELETE_SESSION=0
 DELETE_SESSION_ID=""
 RENAME_SESSION=0
@@ -4094,16 +3660,14 @@ while [ $# -gt 0 ]; do
     -h|--help)
       help_file="$BASH4LLM_EXTRAS_DIR/docs/help.txt"
       if [ -f "$help_file" ]; then
-        # If colors are not active, show the normal file
-        if [ -z "${C_TITLE:-}" ]; then
+        if [ -z "${C_BCYAN:-}" ]; then
           cat "$help_file"
         else
-          # Colorize on the fly in a portable way (works on both macOS and Linux)
           sed \
-            -e "s/^\([A-Za-z]\{2,\}:\)/${C_TITLE}\1${C_RST}/" \
-            -e "s/\(--[a-zA-Z0-9-][a-zA-Z0-9-]*\)/${C_CMD}\1${C_RST}/g" \
-            -e "s/\([[:blank:],]\)\(-[a-zA-Z0-9]\)/\1${C_CMD}\2${C_RST}/g" \
-            -e "s/\(<[a-zA-Z0-9_]\{1,\}>\)/${C_ARG}\1${C_RST}/g" \
+            -e "s/^\([A-Za-z]\{2,\}:\)/${C_BCYAN}\1${C_RST}/" \
+            -e "s/\(--[a-zA-Z0-9-][a-zA-Z0-9-]*\)/${C_BGREEN}\1${C_RST}/g" \
+            -e "s/\([[:blank:],]\)\(-[a-zA-Z0-9]\)/\1${C_BGREEN}\2${C_RST}/g" \
+            -e "s/\(<[a-zA-Z0-9_]\{1,\}>\)/${C_YELLOW}\1${C_RST}/g" \
             "$help_file"
         fi
       else
@@ -4121,10 +3685,6 @@ while [ $# -gt 0 ]; do
 done
 #--4<---[ /SECTION: CORE_SETUP_CLI_PARSE ]--->4--
 #--5<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
-# Session Engine: safe sourcing and robust fallback
-# ---------------------------------------------------------------------------
-# Note: Its integrated architecture will still use session_lock
-# to protect the message database between concurrent instances.
 SE_ENGINE_PATH="${BASH4LLM_EXTRAS_DIR}/session/session-engine.sh"
 SE_AVAILABLE=0
 if [ -f "$SE_ENGINE_PATH" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
@@ -4152,27 +3712,17 @@ if [ -f "$SE_ENGINE_PATH" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; th
   fi
 else
   SE_AVAILABLE=0
-  if [ -n "${SESSION_ID:-}" ]; then
-    if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "SESSION" "Session Engine not available; using legacy session helpers"
-    fi
-  fi
 fi
 #--5<---[ /SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
-
 #--6<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
-# Guard: prevent accidental real API calls (ALLOW_API_CALLS defaults to 1)
-# ---------------------------------------------------------------------------
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
   exit "$BASH4LLM_ERR_TMP"
 fi
 
-# Rebuild supported providers array (machine-readable source of truth)
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
-# Resolve extras providers dir
 extras_prov_dir="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}"
 if [ -z "${extras_prov_dir:-}" ]; then
   extras_prov_dir="$(canonical_config_dir)/providers"
@@ -4187,7 +3737,6 @@ if [ -d "$extras_prov_dir" ]; then
 fi
 SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
 
-# Non-interactive machine-readable provider listing
 if [ "${LIST_PROVIDERS_RAW:-0}" -eq 1 ]; then
   if [ "${#_supported_providers_arr[@]}" -eq 0 ]; then
     exit 1
@@ -4198,7 +3747,6 @@ if [ "${LIST_PROVIDERS_RAW:-0}" -eq 1 ]; then
   exit 0
 fi
 
-# Non-interactive machine-readable models listing
 if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
   if [ -n "${PROVIDER_CLI:-}" ]; then
     PROVIDER="${PROVIDER_CLI}"
@@ -4217,9 +3765,6 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
 fi
 #--6<---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
 #--7<---[ SECTION: CORE_SETUP_ACTIONS ]--->7--
-# Immediate actions: list providers/models, set-default, install-extras, session management actions (with Early Exit safety)
-
-# 1. Early-exit intercept for Session Deletion
 if [ "${DELETE_SESSION:-0}" -eq 1 ]; then
   if [ -z "${DELETE_SESSION_ID:-}" ]; then
     log_error "SESSION" "--delete-session requires a valid session ID"
@@ -4229,7 +3774,6 @@ if [ "${DELETE_SESSION:-0}" -eq 1 ]; then
   exit 0
 fi
 
-# 2. Early-exit intercept for Session Renaming
 if [ "${RENAME_SESSION:-0}" -eq 1 ]; then
   if [ -z "${RENAME_SESSION_ID:-}" ]; then
     log_error "SESSION" "--rename-session requires a valid session ID"
@@ -4261,7 +3805,6 @@ fi
 if [ -n "$SET_DEFAULT_MODEL" ]; then
   safe_mkdir "$(canonical_config_dir)" 700
 
-  # Detect correct provider before saving model preference
   if [ -n "${PROVIDER_CLI:-}" ]; then
     target_provider="${PROVIDER_CLI}"
   elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
@@ -4278,20 +3821,17 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
     exit "$BASH4LLM_ERR_TMP"
   fi
   chmod 600 "$target_model_file" 2>/dev/null || true
-  # Refreshed output utilizing user info logging
   log_info_user "MODEL" "default model for $target_provider set to: $SET_DEFAULT_MODEL"
   exit 0
 fi
 
 if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
-  # 1. Identify the source (CLI or legacy fallback) and canonical destination
   SRC_DIR="${INSTALL_EXTRAS_SRC:-$LEGACY_EXTRAS_DIR}"
   DEST_DIR="${CANONICAL_EXTRAS_DIR}"
 
   SRC_BASE=""
   DEST_BASE=""
 
-  # 2. Canonical resolution (real absolute paths to avoid bypass or self-copy)
   if [ -d "$SRC_DIR" ]; then
     SRC_BASE="$(cd "$SRC_DIR" >/dev/null 2>&1 && pwd || true)"
   fi
@@ -4307,30 +3847,23 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     fi
   fi
 
-  # 3. Source validation
   if [ -z "$SRC_BASE" ] || [ ! -d "$SRC_BASE" ]; then
     log_error "EXTRAS" "Source directory does not exist or is invalid: ${SRC_DIR}"
     exit "$BASH4LLM_ERR_TMP"
   fi
 
-  # 4. Security check against recursive overwrite
   if [ "$SRC_BASE" = "$DEST_BASE" ]; then
     log_error "EXTRAS" "Install source and destination cannot match: ${SRC_BASE}"
     exit "$BASH4LLM_ERR_TMP"
   fi
 
-  # Refreshed output utilizing user info logging
   log_info_user "EXTRAS" "Synchronizing extras from ${SRC_BASE} to ${DEST_BASE}..."
 
-  # 5. Safe creation of the destination with restrictive permissions (700)
   safe_mkdir "$DEST_BASE" 700
 
-  # 6. Recursive copy preserving structure in a portable way (using /.)
   if cp -R "$SRC_BASE/." "$DEST_BASE/" 2>/dev/null; then
-    # Apply restrictive permissions required by the architecture (700 folders, 600 files)
     find "$DEST_BASE" -type d -exec chmod 700 {} + 2>/dev/null || true
     find "$DEST_BASE" -type f -exec chmod 600 {} + 2>/dev/null || true
-    # Refreshed output utilizing user info logging
     log_info_user "EXTRAS" "Installation successfully completed."
   else
     log_error "EXTRAS" "Error copying extras files."
@@ -4339,7 +3872,6 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   exit 0
 fi
 
-# --- Handle CLI Session Initialization ---
 if [ "${INIT_SESSION:-0}" -eq 1 ]; then
   if [ -z "${SESSION_ID:-}" ]; then
     log_error "SESSION" "--init-session requires a valid session ID via --session"
@@ -4350,7 +3882,6 @@ if [ "${INIT_SESSION:-0}" -eq 1 ]; then
     exit "$BASH4LLM_ERR_TMP"
   fi
 
-  # Create empty session directory and file
   safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
   session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
   if [ ! -f "$session_file" ]; then
@@ -4358,13 +3889,11 @@ if [ "${INIT_SESSION:-0}" -eq 1 ]; then
     chmod 600 "$session_file"
   fi
 
-  # Establish metadata structure and title configuration
   meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${SESSION_ID}.json"
   meta_json="$(jq -c -n --arg id "$SESSION_ID" --arg title "Session ${SESSION_ID:0:8}" \
     '{id:$id, active:true, msg_count:0, last_ts:"", title:$title}')"
   ui_state_write "sessions/${SESSION_ID}.json" "$meta_json"
 
-  # Register session entry under global lock
   lock_exec "$HISTORY_LOCK" 10 -- _update_session_index "$SESSION_ID"
 
   log_info_user "SESSION" "Session initialized: $SESSION_ID"
@@ -4375,16 +3904,12 @@ fi
 # SECTION: CORE_PROVIDER - BEGIN
 ########################################
 #--1<---[ SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
-# Provider discovery and loading
-
-# Respect persisted provider selection unless overridden via CLI
 if [ -f "$(canonical_provider_file)" ] && [ -z "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ]; then
   prov="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
   prov="$(printf '%s' "$prov" | awk '{$1=$1;print}')"
   [ -n "$prov" ] && PROVIDER="$prov"
 fi
 
-# CLI provider selection handling
 if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   case " $SUPPORTED_PROVIDERS " in
     *" $PROVIDER_CLI "*) 
@@ -4405,7 +3930,6 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
     fi
   fi
 
-  # Persist explicit CLI chosen provider
   target_provider="${PROVIDER_CLI}"
   target_provider_file="$(canonical_provider_file)"
   printf '%s\n' "$target_provider" | atomic_write "$target_provider_file" 10 \
@@ -4415,7 +3939,6 @@ if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
 fi
 
-# Interactive provider selection
 if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
   IFS=' ' read -r -a _prov_arr <<EOF
 $SUPPORTED_PROVIDERS
@@ -4496,7 +4019,6 @@ EOF
   fi
 
   if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ]; then
-    # Refreshed output utilizing user info logging
     log_info_user "PROVIDER" "Provider set to: ${PROVIDER:-}"
     exit 0
   fi
@@ -4572,7 +4094,6 @@ if [ ! -s "${MODELS_FILE:-}" ]; then
 fi
 #--1<---[ /SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
 #--2<---[ SECTION: CORE_PROVIDER_SHOW ]--->2--
-# Show config / diagnostics
 if [ "${PRINT_CONFIG_DIR:-0}" -eq 1 ]; then
   printf '%s\n' "$(canonical_config_dir)"
   exit 0
@@ -4621,7 +4142,6 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
 #--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--
-# Main flow
 if [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
   exit 0
 fi
@@ -4653,20 +4173,15 @@ MODEL="$FINAL_MODEL"
 
 STDIN_CONTENT=""
 if [ ! -t 0 ]; then
-  # Reading the standard input stream
   stdin_buffer="$(cat - 2>/dev/null || true)"
 
-  # Formally verifying JSON payload using jq to extract API key
   if [ -n "$stdin_buffer" ] && printf '%s' "$stdin_buffer" | jq -e 'has("api_key")' >/dev/null 2>&1; then
-    # Variables managed without local declarations for global scope compatibility
     extracted_key="$(printf '%s' "$stdin_buffer" | jq -r '.api_key // empty' 2>/dev/null || true)"
     extracted_prompt="$(printf '%s' "$stdin_buffer" | jq -r '.prompt // empty' 2>/dev/null || true)"
     extracted_json_input="$(printf '%s' "$stdin_buffer" | jq -c '.json_input // empty' 2>/dev/null || true)"
 
-    # Overwrite and immediately clear the RAM buffer for security reasons
     stdin_buffer="CLEARED_AND_OVERWRITTEN_$(printf '%08x' $((RANDOM & 0xFFFF)))"
 
-    # If present, dynamically injects the API key into the current context
     if [ -n "$extracted_key" ]; then
       prov_var="$(provider_api_env_var_name "${PROVIDER:-groq}")"
       export "$prov_var"="$extracted_key"
@@ -4677,7 +4192,6 @@ if [ ! -t 0 ]; then
       extracted_key=""
     fi
 
-    # Wrap the JSON prompt or configuration into operational variables
     if [ -n "$extracted_json_input" ]; then
       JSON_INPUT="$extracted_json_input"
       extracted_json_input=""
@@ -4686,14 +4200,12 @@ if [ ! -t 0 ]; then
       extracted_prompt=""
     fi
   else
-    # Compatibility with unstructured standard input (traditional CLI)
     STDIN_CONTENT="$stdin_buffer"
     stdin_buffer=""
   fi
 fi
 
 assemble_content() {
-  # If CONTENT has been pre-populated (e.g. from JSON input extraction), preserve it and return
   if [ -n "${CONTENT:-}" ]; then
     return 0
   fi
@@ -4753,7 +4265,6 @@ assemble_content() {
 assemble_content
 
 if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ] && [ -z "${CONTENT:-}" ]; then
-  # Refreshed output utilizing user info logging
   log_info_user "PROVIDER" "Provider set to: ${PROVIDER:-}"
   exit 0
 fi
@@ -4765,12 +4276,6 @@ elif [ -z "${CONTENT:-}" ] && [ -z "${BATCH_FILE:-}" ] && [ "${CHAT_MODE:-0}" -n
   exit "$BASH4LLM_ERR_NO_PROMPT"
 fi
 
-# Ensure separation between prompt execution lines in non-chat runs
-if [ "$CHAT_MODE" -ne 1 ] && [ "$QUIET" -ne 1 ] && is_tty_out; then
-  : # separation handled individually inside print loops
-fi
-
-# Batch processing
 if [ -n "$BATCH_FILE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
@@ -4831,414 +4336,34 @@ if [ -n "$BATCH_FILE" ]; then
 fi
 
 # =============================================================================
-# chat mode: REPL / INTERACTIVE SHELL MODE
+# chat mode: External TUI REPL Invocation Hook
 # =============================================================================
 if [ "$CHAT_MODE" -eq 1 ]; then
-  if [ ! -t 0 ]; then
-    log_error "CHAT" "interactive chat requires a valid TTY."
+  # Resolviamo dinamicamente il percorso assoluto del core per passarlo come hook
+  BASH4LLM_CORE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  export BASH4LLM_CORE_SCRIPT
+
+  # Esportazione dello stato attivo ereditato dal figlio
+  export BASH4LLM_ACTIVE_SESSION="${SESSION_ID}"
+  export BASH4LLM_ACTIVE_MODEL="${MODEL}"
+  export BASH4LLM_ACTIVE_TEMPERATURE="${TEMPERATURE}"
+
+  tui_script="${BASH4LLM_EXTRAS_DIR}/chat/tui-repl.sh"
+  if [ -f "$tui_script" ]; then
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "CHAT" "Executing external TUI REPL: $tui_script"
+    fi
+    # Eseguiamo come processo figlio indipendente ereditando l'ambiente
+    bash "$tui_script" "$@"
+    exit $?
+  else
+    log_error "CHAT" "Interactive TUI REPL script not found at: $tui_script"
+    log_error "CHAT" "Please install optional extras using: $0 --install-extras"
     exit "$BASH4LLM_ERR_TMP"
   fi
-
-  # Deactivate strict mode flags only for the interactive REPL session
-  # to prevent premature aborts on minor pipeline or network glitches.
-  set +e 2>/dev/null || true
-  set +u 2>/dev/null || true
-  set +o pipefail 2>/dev/null || true
-
-  set -o history 2>/dev/null || true
-  export HISTSIZE=1000
-  HISTFILE="${BASH4LLM_HISTORY_DIR}/repl_history"
-  
-  touch "$HISTFILE" 2>/dev/null && chmod 600 "$HISTFILE" 2>/dev/null || true
-  history -r "$HISTFILE" 2>/dev/null || true
-
-  if [ "$QUIET" -ne 1 ]; then
-    printf '%s\n' '-----------------------------------------' >&2
-    printf 'Starting %s Interactive Shell\n' "${C_LOGO} Bash4LLM⁺ ${C_RST}" >&2
-    printf 'Press Ctrl+D to quit, type /? for Help\n' >&2
-    printf '%s\n\n' '-----------------------------------------' >&2
-  fi
-
-  trap 'printf "\n[Interrupted. Type /exit or press Ctrl+D to exit]\n" >&2' INT
-
-  if [ -z "${SESSION_ID:-}" ]; then
-    SESSION_ID="repl-$(date +%Y%m%d)-$$"
-  fi
-
-  while true; do
-    # Do not manually call stty echo here to avoid race conditions with background processes
-    # and Readline initialization. Readline (read -e) manages the TTY state.
-
-    # Print static header "You:" on its own line
-    if [ "$QUIET" -ne 1 ]; then
-      if [ -n "$C_TITLE" ] && [ -t 1 ]; then
-        printf '\n%sYou:%s\n' "${C_TITLE}" "${C_RST}" >&2
-      else
-        printf '\nYou:\n' >&2
-      fi
-    fi
-
-    # Read user line with empty prompt
-    userline=""
-    IFS= read -r -e -p "" userline
-    read_rc=$?
-
-    # Handle read failures or termination signals (like Ctrl+D or Ctrl+C)
-    if [ "$read_rc" -ne 0 ]; then
-      if [ "$read_rc" -eq 130 ]; then
-        # Ctrl+C pressed: print a newline and stay in the REPL
-        printf '\n' >&2
-        continue
-      fi
-      # Ctrl+D or other EOF event: exit the REPL cleanly
-      printf '\nExited.\n' >&2
-      break
-    fi
-
-    userline="$(printf '%s' "$userline" | awk '{$1=$1;print}')"
-    [ -z "$userline" ] && continue
-
-    history -s "$userline" 2>/dev/null || true
-    history -w "$HISTFILE" 2>/dev/null || true
-
-    case "$userline" in
-      /exit|/quit)
-        cleanup_run_tmp_on_exit
-        exit 0
-        ;;
-      /help|/\?)
-        printf '%b' "
-${C_TITLE}------------------------------------------${C_RST}
-${C_TITLE}Interactive Shell Commands:${C_RST}
-  ${C_CMD}/help${C_RST}, ${C_CMD}/?${C_RST}            - Show this help menu
-  ${C_CMD}/exit${C_RST}, ${C_CMD}/quit${C_RST}         - Exit the interactive shell
-  ${C_CMD}/clear${C_RST}               - Clear terminal screen and reset conversation history
-  ${C_CMD}/undo${C_RST}                - Remove the last prompt and response from history
-  ${C_CMD}/status${C_RST}              - Show active configurations and session statistics
-  ${C_CMD}/system${C_RST} [${C_ARG}<prompt>${C_RST}]   - View or update the current system prompt instructions
-  ${C_CMD}/model${C_RST} ${C_ARG}<name>${C_RST}        - Switch the active LLM model
-  ${C_CMD}/file${C_RST} ${C_ARG}<path>${C_RST} [${C_ARG}prompt${C_RST}]- Read a file, append an optional prompt, and send to model
-  ${C_CMD}/block${C_RST}               - Enter block input mode (type ${C_YELLOW}/end${C_RST} on a new line to send)
-  ${C_CMD}/edit${C_RST}                - Edit prompt using the system default editor (\$EDITOR)
-  
-  ${C_TITLE}Keyboard Shortcuts:${C_RST}
-  ${C_ARG}Ctrl+C${C_RST}               - Interrupt active generation or abort block/input
-  ${C_ARG}Ctrl+D${C_RST}               - Exit the interactive shell cleanly (at You: prompt)
-${C_TITLE}------------------------------------------${C_RST}
-
-" >&2
-        continue
-        ;;
-      /clear)
-        if [ -n "${SESSION_ID:-}" ]; then
-          session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${SESSION_ID}.ndjson"
-          if [ -f "$session_file" ]; then
-            : > "$session_file" 2>/dev/null || true
-          fi
-          if command -v session_cache_invalidate >/dev/null 2>&1; then
-            session_cache_invalidate "$SESSION_ID" >/dev/null 2>/dev/null || true
-          fi
-        fi
-        if [ -t 1 ]; then
-          clear 2>/dev/null || printf '\033[H\033[2J' >&2
-        fi
-        printf '\n\033[1;33mInteractive session context and screen cleared.\033[0m\n\n' >&2
-        continue
-        ;;
-      /undo)
-        if [ -n "${SESSION_ID:-}" ]; then
-          session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${SESSION_ID}.ndjson"
-          if [ -f "$session_file" ] && [ -s "$session_file" ]; then
-            total_lines="$(wc -l < "$session_file" 2>/dev/null | tr -d ' ' || echo 0)"
-            if [ "$total_lines" -ge 2 ]; then
-              tmp_undo="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" undo 2>/dev/null)"
-              if [ -n "$tmp_undo" ]; then
-                head -n "$((total_lines - 2))" "$session_file" > "$tmp_undo" 2>/dev/null \
-                  && mv -f "$tmp_undo" "$session_file" 2>/dev/null || true
-                rm -f "$tmp_undo" 2>/dev/null || true
-                if command -v session_cache_invalidate >/dev/null 2>&1; then
-                  session_cache_invalidate "$SESSION_ID" >/dev/null 2>/dev/null || true
-                fi
-                printf '\n\033[1;33mUndone last turn (removed last query & response from history).\033[0m\n\n' >&2
-              else
-                printf 'bash4llm: %sERROR%s: Failed to prepare temporary file for undo.\n' "${C_RED}" "${C_RST}" >&2
-              fi
-            elif [ "$total_lines" -eq 1 ]; then
-              : > "$session_file" 2>/dev/null || true
-              printf '\n\033[1;33mConversation history truncated.\033[0m\n\n' >&2
-            else
-              printf '\nConversation history is already empty.\n\n' >&2
-            fi
-          else
-            printf '\nNo conversation history to undo.\n\n' >&2
-          fi
-        fi
-        continue
-        ;;
-      /status)
-        printf '\n%sCurrent REPL Status:%s\n' "${C_CYAN}" "${C_RST}" >&2
-        printf '  Provider:      %s\n' "${PROVIDER:-groq}" >&2
-        printf '  Model:         %s\n' "${MODEL:-default}" >&2
-        printf '  Temperature:   %s\n' "${TEMPERATURE:-1.0}" >&2
-        printf '  Max Tokens:    %s\n' "${MAX_TOKENS:-4096}" >&2
-        printf '  Session ID:    %s\n' "${SESSION_ID:-none}" >&2
-        if [ -n "${SESSION_ID:-}" ]; then
-          session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${SESSION_ID}.ndjson"
-          if [ -f "$session_file" ]; then
-            msg_count="$(wc -l < "$session_file" 2>/dev/null | tr -d ' ' || echo 0)"
-            size_bytes="$(file_size "$session_file" 2>/dev/null || echo 0)"
-            printf '  Session File:  %s (%s bytes, %s messages)\n' "$session_file" "$size_bytes" "$msg_count" >&2
-          else
-            printf '  Session File:  empty/not created yet\n' >&2
-          fi
-        fi
-        if [ -n "${SYSTEM_PROMPT:-}" ]; then
-          printf '  System Prompt: %s\n' "${SYSTEM_PROMPT}" >&2
-        else
-          printf '  System Prompt: <none>\n' >&2
-        fi
-        printf '\n' >&2
-        continue
-        ;;
-      /system|/system\ *)
-        if [ "$userline" = "/system" ]; then
-          if [ -n "${SYSTEM_PROMPT:-}" ]; then
-            printf '\nCurrent System Prompt:\n%s\n\n' "${SYSTEM_PROMPT}" >&2
-          else
-            printf '\nNo system prompt is currently set.\n\n' >&2
-          fi
-        else
-          new_sys="${userline#/system }"
-          SYSTEM_PROMPT="$(printf '%s' "$new_sys" | awk '{$1=$1;print}')"
-          printf '\n\033[1;32mSystem prompt updated for this session.\033[0m\n\n' >&2
-        fi
-        continue
-        ;;
-      /model\ *)
-        new_model="${userline#/model }"
-        new_model="$(printf '%s' "$new_model" | tr -d -c 'A-Za-z0-9._/:-' | awk '{$1=$1;print}')"
-        if [ -z "$new_model" ]; then
-          printf 'bash4llm: %sERROR%s: Empty or invalid model name.\n' "${C_RED}" "${C_RST}" >&2
-        else
-          if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
-            MODEL="$new_model"
-            printf '\n%sModel successfully set to: %s%s\n' "${C_GREEN}" "$MODEL" "${C_RST}" >&2
-          else
-            printf 'bash4llm: %sERROR%s: Model "%s" is not supported or registered.\n' "${C_RED}" "${C_RST}" "$new_model" >&2
-          fi
-        fi
-        continue
-        ;;
-      /file\ *)
-        file_cmd_args="${userline#/file }"
-        file_cmd_args="$(printf '%s' "$file_cmd_args" | awk '{$1=$1;print}')"
-        
-        if [ -z "$file_cmd_args" ]; then
-          printf 'bash4llm: %sERROR%s: Usage: /file <path> [optional prompt...]\n' "${C_RED}" "${C_RST}" >&2
-          continue
-        fi
-        
-        file_path="$(printf '%s' "$file_cmd_args" | awk '{print $1}')"
-        file_prompt="$(printf '%s' "$file_cmd_args" | cut -d' ' -f2-)"
-        if [ "$file_path" = "$file_cmd_args" ]; then
-          file_prompt=""
-        fi
-        
-        if ! file_readable "$file_path"; then
-          printf 'bash4llm: %sERROR%s: File does not exist or is not readable: %s\n' "${C_RED}" "${C_RST}" "$file_path" >&2
-          continue
-        fi
-        
-        file_size="$(file_size "$file_path" 2>/dev/null || echo 0)"
-        if [ "$file_size" -gt 102400 ] 2>/dev/null; then
-          printf 'bash4llm: %sERROR%s: File exceeds max attach limit of 100 KB: %s (%s KB)\n' \
-            "${C_RED}" "${C_RST}" "$file_path" "$((file_size / 1024))" >&2
-          continue
-        fi
-        
-        file_content="$(cat "$file_path" 2>/dev/null || true)"
-        
-        if [ -n "$file_prompt" ]; then
-          combined_prompt="$(printf 'Prompt: %s\n\n[File Attached: %s]\n---\n%s\n---\n' \
-            "$file_prompt" "$(basename "$file_path")" "$file_content")"
-        else
-          combined_prompt="$(printf '[File Attached: %s]\n---\n%s\n---\n' \
-            "$(basename "$file_path")" "$file_content")"
-        fi
-        
-        CONTENT="$combined_prompt"
-        unset file_cmd_args file_path file_prompt file_content file_size combined_prompt
-        ;;
-      /block)
-        # Inform the user about the block mode activation with colors
-        printf '%sEntering block input mode.%s Type "%s/end%s" on a new line to send.\n' "${C_GREEN}" "${C_RST}" "${C_YELLOW}" "${C_RST}" >&2
-        block_content=""
-        block_line=""
-        read_block_rc=0
-        while true; do
-          block_line=""
-          # Use indent prompt for multiline block input
-          IFS= read -r -e -p "  | " block_line
-          read_block_rc=$?
-          if [ "$read_block_rc" -ne 0 ]; then
-            printf '\n[Block input aborted]\n' >&2
-            block_content=""
-            break
-          fi
-          if [ "$block_line" = "/end" ]; then
-            break
-          fi
-          if [ -z "$block_content" ]; then
-            block_content="$block_line"
-          else
-            block_content="${block_content}"$'\n'"$block_line"
-          fi
-        done
-        if [ -n "$block_content" ]; then
-          CONTENT="$block_content"
-        else
-          continue
-        fi
-        ;;
-      /edit)
-        # Detect default system editor, fallback to nano or vi
-        editor="${EDITOR:-}"
-        if [ -z "$editor" ]; then
-          if command -v nano >/dev/null 2>&1; then
-            editor="nano"
-          elif command -v vi >/dev/null 2>&1; then
-            editor="vi"
-          else
-            printf 'bash4llm: %sERROR%s: No suitable editor found (set $EDITOR or install nano/vi).\n' "${C_RED}" "${C_RST}" >&2
-            continue
-          fi
-        fi
-
-        # Allocate secure temporary file under RUN_TMPDIR using internal _tmpf helper
-        tmp_edit_file=""
-        tmp_edit_file="$(_tmpf file "$RUN_TMPDIR" edit 2>/dev/null)"
-        if [ -z "$tmp_edit_file" ] || [ ! -f "$tmp_edit_file" ]; then
-          printf 'bash4llm: %sERROR%s: Failed to create temporary file for editing.\n' "${C_RED}" "${C_RST}" >&2
-          continue
-        fi
-
-        # Open system editor
-        "$editor" "$tmp_edit_file"
-
-        # Read final content and verify size
-        if [ -s "$tmp_edit_file" ]; then
-          CONTENT="$(cat "$tmp_edit_file")"
-        else
-          printf 'No text entered. Editing session discarded.\n' >&2
-          rm -f "$tmp_edit_file" 2>/dev/null
-          continue
-        fi
-
-        # Secure cleanup of temporary files
-        rm -f "$tmp_edit_file" 2>/dev/null
-        ;;
-      /*)
-        printf 'bash4llm: %sERROR%s: Unknown command. Type /help or /? to list available commands.\n' "${C_RED}" "${C_RST}" >&2
-        continue
-        ;;
-    esac
-
-    if [ -z "${CONTENT:-}" ]; then
-      CONTENT="$userline"
-    fi
-
-    if [ -n "${SESSION_ID:-}" ]; then
-      if ! session_validate_id "$SESSION_ID" >/dev/null 2>&1; then
-        log_error "SESSION" "invalid session id: $SESSION_ID"
-        continue
-      fi
-
-      ensure_run_tmpdir || { log_error "SESSION" "cannot access run tmpdir"; continue; }
-      BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
-      export BUILD_MESSAGES_FILE
-
-      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-        session_engine_build_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 \
-          || session_read_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 || true
-      else
-        session_read_window "$SESSION_ID" "${SESSION_WINDOW:-10}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 || true
-      fi
-    fi
-
-    if build_payload_from_vars >/dev/null 2>&1; then
-      if ! ensure_api_key_for_provider "$PROVIDER" >/dev/null 2>&1; then
-        log_error "APIKEY" "Missing API key for provider $PROVIDER."
-        continue
-      fi
-
-      # Standard invocation allowing input stream to bind correctly to the REPL's TTY
-      if [ "$STREAM_MODE" -eq 1 ]; then
-        if ! call_api_streaming; then
-          log_error "CALL" "Streaming request failed."
-          continue
-        fi
-      else
-        if [ -t 1 ] && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
-          # Protect against format string vulnerabilities with %s format specifier
-          if [ -n "$C_CMD" ]; then
-            printf '\n%s%s:%s\n' "${C_CMD}" "${MODEL:-default}" "${C_RST}" >&2
-          else
-            printf '\n%s:\n' "${MODEL:-default}" >&2
-          fi
-        fi
-        if ! perform_request_once; then
-          log_error "CALL" "API request failed."
-          continue
-        fi
-      fi
-
-      if [ -n "${SESSION_ID:-}" ] && [ "${DRY_RUN:-0}" -ne 1 ]; then
-        meta_source="cli"
-        meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
-        meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-
-        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-          session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 \
-            || session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 || true
-        else
-          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1 || true
-        fi
-
-        if [ -s "${RESP:-}" ]; then
-          assistant_text="$(extract_text_from_resp 2>/dev/null || true)"
-          assistant_text="$(printf '%s' "$assistant_text" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d' || true)"
-          if [ -n "${assistant_text:-}" ]; then
-            meta_source="provider"
-            meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
-
-            if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
-              session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" >/dev/null 2>&1 \
-                || session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" >/dev/null 2>&1 || true
-            else
-              session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" >/dev/null 2>&1 || true
-            fi
-          fi
-        fi
-      fi
-
-    else
-      log_error "PAYLOAD" "Failed to compile net request payload."
-    fi
-
-    # Reset CONTENT for the next turn
-    unset CONTENT
-
-    printf '\n' >&2
-  done
-
-  # Restore standard TTY echo settings on REPL exit
-  stty echo 2>/dev/null || true
-
-  trap - INT
-  exit 0
 fi
 
-# Single request (streaming or non-streaming)
+# Single request path (streaming or non-streaming)
 if [ "$STREAM_MODE" -eq 1 ]; then
   if [ -n "${SESSION_ID:-}" ]; then
     if ! session_validate_id "$SESSION_ID"; then
@@ -5335,9 +4460,8 @@ fi
 
 # Non-streaming single request path
 if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTPUT_MODE" = "raw" ]; }; then
-  # Print static header "You:" on its own line
-  if [ -n "$C_TITLE" ]; then
-    printf '%sYou:%s\n' "${C_TITLE}" "${C_RST}" >&2
+  if [ -n "$C_BCYAN" ]; then
+    printf '%sYou:%s\n' "${C_BCYAN}" "${C_RST}" >&2
   else
     printf 'You:\n' >&2
   fi
@@ -5350,9 +4474,8 @@ if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTP
     printf '%s\n' "$CONTENT" >&2
   fi
 
-  # Protect against format string vulnerabilities with %s format specifier
-  if [ -n "$C_CMD" ]; then
-    printf '\n%s%s:%s\n' "${C_CMD}" "${MODEL:-default}" "${C_RST}" >&2
+  if [ -n "$C_BGREEN" ]; then
+    printf '\n%s%s:%s\n' "${C_BGREEN}" "${MODEL:-default}" "${C_RST}" >&2
   else
     printf '\n%s:\n' "${MODEL:-default}" >&2
   fi
@@ -5442,7 +4565,6 @@ if perform_request_once; then
 else
   rc=$?
   if [ -n "${SESSION_ID:-}" ] && [ -n "${CONTENT:-}" ]; then
-    # Even on request failures, record user prompt attempt inside history
     meta_source="cli"
     meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
     meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
