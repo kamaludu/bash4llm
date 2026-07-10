@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
-# File: tui-repl.sh
+# File: extras/chat/tui-repl.sh
 # Component: TUI REPL Interactive Module (External Extra)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
