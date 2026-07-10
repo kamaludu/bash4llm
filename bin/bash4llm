@@ -26,7 +26,7 @@ ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
 SCRIPT_VERSION="2.3.0"
-SCRIPT_DATE="2026-07-06"
+SCRIPT_DATE="2026-07-10"
 
 # =============================================================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -64,8 +64,8 @@ else
 fi
 export BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX
 
-# Initialize color variables to prevent set -u (nounset) errors if referenced early
-C_LOGO="" C_BANNER=""
+# Initialize style and color variables to prevent set -u (nounset) errors if referenced early
+C_LOGO="" C_BANNER="" C_RST="" C_BOLD=""
 # Foreground - Normal
 C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
 # Foreground - Bold
@@ -325,7 +325,7 @@ if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
 
   # Semantic / UI Styles
   C_LOGO=$'\e[1;37;42m'
-  C_BANNER=$'\e[1;32;47m'
+  C_BANNER=$'\e[1;37;44m'
 
   # Foreground - Normal
   C_BLACK=$'\e[0;30m'
@@ -821,6 +821,38 @@ extract_text_from_resp() {
   return 1
 }
 
+# Globally defined exit handler to guarantee resolution in all sourcing states
+cleanup_run_tmp_on_exit() {
+  local rc_in=$?
+
+  if type release_session_lock >/dev/null 2>&1; then
+    release_session_lock 2>/dev/null || true
+  fi
+
+  if [ -n "${RUN_TMPDIR:-}" ]; then
+    rm -rf "${RUN_TMPDIR:-}"/session-msg-*.lockdir 2>/dev/null || true
+  fi
+
+  if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
+    [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
+    return "$rc_in"
+  fi
+
+  if [ -n "${RUN_TMPDIR:-}" ]; then
+    case "$RUN_TMPDIR" in
+      "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
+        rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
+        [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
+        ;;
+      *)
+        [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "RUN_TMPDIR outside BASH4LLM_TMPDIR; not removed: $RUN_TMPDIR"
+        ;;
+    esac
+  fi
+
+  return "$rc_in"
+}
+
 ensure_run_tmpdir() {
   local print_only=0 subshell=0 tmpdir
   if [ "${1:-}" = "--print" ]; then print_only=1; fi
@@ -877,37 +909,6 @@ ensure_run_tmpdir() {
     chmod 600 "$ERRF" 2>/dev/null || true
   fi
 
-  cleanup_run_tmp_on_exit() {
-    local rc_in=$?
-
-    if type release_session_lock >/dev/null 2>&1; then
-      release_session_lock 2>/dev/null || true
-    fi
-
-    if [ -n "${RUN_TMPDIR:-}" ]; then
-      rm -rf "${RUN_TMPDIR:-}"/session-msg-*.lockdir 2>/dev/null || true
-    fi
-
-    if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
-      [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR"
-      return "$rc_in"
-    fi
-
-    if [ -n "${RUN_TMPDIR:-}" ]; then
-      case "$RUN_TMPDIR" in
-        "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
-          rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
-          [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Cleaned RUN_TMPDIR: $RUN_TMPDIR"
-          ;;
-        *)
-          [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "RUN_TMPDIR outside BASH4LLM_TMPDIR; not removed: $RUN_TMPDIR"
-          ;;
-      esac
-    fi
-
-    return "$rc_in"
-  }
-
   if [ "$subshell" -eq 0 ] && [ "$print_only" -eq 0 ]; then
     trap cleanup_run_tmp_on_exit EXIT INT TERM
   fi
@@ -921,7 +922,6 @@ ensure_run_tmpdir() {
 
   return 0
 }
-
 b64_atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
@@ -2535,7 +2535,8 @@ call_api_groq() {
 }
 
 call_api_streaming_groq() {
-  local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp ERRF rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code json content resp_size errf_size resp_text_tmp resp_json_tmp p_dir api_json ui_last
+  # ERRF is un-shadowed from the local scope to correctly point to the global log path
+  local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code json content resp_size errf_size resp_text_tmp resp_json_tmp p_dir api_json ui_last
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
@@ -2584,8 +2585,11 @@ call_api_streaming_groq() {
   resp_lines="$(_tmpf file "$RUN_TMPDIR" resp.lines 2>/dev/null)"
   resp_valid="$(_tmpf file "$RUN_TMPDIR" resp.valid.jsons 2>/dev/null)"
   resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
-  ERRF="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
-  : > "$ERRF" 2>/dev/null || true
+  
+  # ERRF is assigned directly as a dynamic temp file for curl stdout streams, logging back to ERRF safely
+  local curl_err_log
+  curl_err_log="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
+  : > "$curl_err_log" 2>/dev/null || true
   rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" 2>/dev/null || true
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -2595,9 +2599,9 @@ call_api_streaming_groq() {
   decoded_payload="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || true
 
   if printf '%s' "${tmp_payload}" | grep -qE '\.b64$'; then
-    if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$ERRF"; then
-      log_error "B64DECODE" "base64 decode failed for payload; see $ERRF"
-      rm -f "$decoded_payload" 2>/dev/null || true
+    if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$curl_err_log"; then
+      log_error "B64DECODE" "base64 decode failed for payload; see $curl_err_log"
+      rm -f "$decoded_payload" "$curl_err_log" 2>/dev/null || true
       return "$BASH4LLM_ERR_TMP"
     fi
     send_payload="$decoded_payload"
@@ -2618,14 +2622,14 @@ call_api_streaming_groq() {
     CURL_CMD+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
   fi
 
-  "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$ERRF" | \
+  "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$curl_err_log" | \
   while IFS= read -r line || [ -n "$line" ]; do
     printf '%s\n' "$line" >> "$resp_raw"
     case "$line" in
       'data: [DONE]'|'data:[DONE]') break ;;
       data:\ * )
         json="${line#data: }"
-        content="$(printf '%s' "$json" | jq -j 'try (if type=="string" then fromjson else . end | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$ERRF" || true; printf 'x')"
+        content="$(printf '%s' "$json" | jq -j 'try (if type=="string" then fromjson else . end | (.choices[]?.delta?.content // .choices[]?.message?.content // "")) catch ""' 2>>"$curl_err_log" || true; printf 'x')"
         content="${content%x}"
         if [ -n "$content" ]; then
           printf '%s' "$content"
@@ -2633,7 +2637,7 @@ call_api_streaming_groq() {
         ;;
       *)
         if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
-          content="$(printf '%s' "$line" | jq -j '(.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$ERRF" || true; printf 'x')"
+          content="$(printf '%s' "$line" | jq -j '(.choices[]?.delta?.content // .choices[]?.message?.content // "")' 2>>"$curl_err_log" || true; printf 'x')"
           content="${content%x}"
           if [ -n "$content" ]; then
             printf '%s' "$content"
@@ -2651,12 +2655,12 @@ call_api_streaming_groq() {
   rm -f "$decoded_payload" 2>/dev/null || true
 
   resp_size=0; [ -f "$resp_raw" ] && resp_size=$(wc -c < "$resp_raw" 2>/dev/null || echo 0)
-  errf_size=0; [ -f "$ERRF" ] && errf_size=$(wc -c < "$ERRF" 2>/dev/null || echo 0)
+  errf_size=0; [ -f "$curl_err_log" ] && errf_size=$(wc -c < "$curl_err_log" 2>/dev/null || echo 0)
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CALL_STREAM" "curl rc=${rc} resp_raw_size=${resp_size}B ERRF_size=${errf_size}B"
-    if [ -s "$ERRF" ]; then
+    if [ -s "$curl_err_log" ]; then
       log_info "CALL_STREAM" "curl stderr (head 400 chars):"
-      head -c 400 "$ERRF" 2>/dev/null | sed -n '1,20p' >&2 || true
+      head -c 400 "$curl_err_log" 2>/dev/null | sed -n '1,20p' >&2 || true
     fi
   fi
 
@@ -2713,20 +2717,20 @@ call_api_streaming_groq() {
       else
         log_error "RESP" "mv failed; writing diagnostic RESP"
         now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+        stderr_head="$(head -c 200 "${curl_err_log:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
         jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
           '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
       fi
     fi
   else
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    stderr_head="$(head -c 200 "${ERRF:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
+    stderr_head="$(head -c 200 "${curl_err_log:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
     jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
           '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
   fi
 
   rm -f "$resp_tmp" 2>/dev/null || true
-  rm -f "$ERRF" 2>/dev/null || true
+  rm -f "$curl_err_log" 2>/dev/null || true
 
   if ensure_run_tmpdir >/dev/null 2>&1; then
     http_code=200
@@ -3339,7 +3343,7 @@ perform_request_once() {
       release_session_lock
       return 0
     else
-      rc=$?
+      # Duplicate 'rc=$?' removed to prevent overwriting of the original failure code
       if [ "$rc" -eq "$BASH4LLM_ERR_CURL_FAILED" ]; then
         printf 'bash4llm: %sWARN%s: Network error (curl). Retrying...\n' "${C_BYELLOW}" "${C_RST}" >&2
       elif [ "$rc" -eq "$BASH4LLM_ERR_API" ]; then
@@ -3685,33 +3689,33 @@ while [ $# -gt 0 ]; do
 done
 #--4<---[ /SECTION: CORE_SETUP_CLI_PARSE ]--->4--
 #--5<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
-SE_ENGINE_PATH="${BASH4LLM_EXTRAS_DIR}/session/session-engine.sh"
-SE_AVAILABLE=0
-if [ -f "$SE_ENGINE_PATH" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
-  if bash -n "$SE_ENGINE_PATH" 2>/dev/null; then
-    . "$SE_ENGINE_PATH"
+_engine_path="${BASH4LLM_EXTRAS_DIR}/session/session-engine.sh"
+_engine_available=0
+if [ -f "$_engine_path" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
+  if bash -n "$_engine_path" 2>/dev/null; then
+    . "$_engine_path"
     if type session_engine_build_window >/dev/null 2>&1 && type session_engine_append >/dev/null 2>&1 && type session_engine_enabled >/dev/null 2>&1; then
       if session_engine_enabled 2>/dev/null; then
-        SE_AVAILABLE=1
+        _engine_available=1
         if [ "${DEBUG:-0}" -eq 1 ]; then
           log_info "SESSION" "Session Engine loaded and available"
         fi
       else
-        SE_AVAILABLE=0
+        _engine_available=0
         if [ "${DEBUG:-0}" -eq 1 ]; then
           log_info "SESSION" "Session Engine loaded but disabled by module"
         fi
       fi
     else
-      SE_AVAILABLE=0
+      _engine_available=0
       log_warn "SESSION" "Session Engine module missing required functions; falling back to legacy"
     fi
   else
-    SE_AVAILABLE=0
+    _engine_available=0
     log_warn "SESSION" "Session Engine module has syntax errors; falling back to legacy"
   fi
 else
-  SE_AVAILABLE=0
+  _engine_available=0
 fi
 #--5<---[ /SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 #--6<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
@@ -4303,7 +4307,7 @@ if [ -n "$BATCH_FILE" ]; then
       BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
       export BUILD_MESSAGES_FILE
 
-      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+      if [ "${_engine_available:-0}" -eq 1 ]; then
         if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
           log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
           session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "SESSION" "legacy session_read_window also failed"
@@ -4335,15 +4339,13 @@ if [ -n "$BATCH_FILE" ]; then
   exit 0
 fi
 
-# =============================================================================
 # chat mode: External TUI REPL Invocation Hook
-# =============================================================================
 if [ "$CHAT_MODE" -eq 1 ]; then
-  # Resolviamo dinamicamente il percorso assoluto del core per passarlo come hook
+  # Dynamically resolve absolute core path for environment child processes
   BASH4LLM_CORE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
   export BASH4LLM_CORE_SCRIPT
 
-  # Esportazione dello stato attivo ereditato dal figlio
+  # Export core structural state variables for child TUI REPL shell
   export BASH4LLM_ACTIVE_SESSION="${SESSION_ID}"
   export BASH4LLM_ACTIVE_MODEL="${MODEL}"
   export BASH4LLM_ACTIVE_TEMPERATURE="${TEMPERATURE}"
@@ -4353,7 +4355,7 @@ if [ "$CHAT_MODE" -eq 1 ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "CHAT" "Executing external TUI REPL: $tui_script"
     fi
-    # Eseguiamo come processo figlio indipendente ereditando l'ambiente
+    # Execute external chat binary as a clean child process inheriting current env
     bash "$tui_script" "$@"
     exit $?
   else
@@ -4386,7 +4388,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
     ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
     BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
-    if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+    if [ "${_engine_available:-0}" -eq 1 ]; then
       if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
         log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
         session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
@@ -4422,7 +4424,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
         meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
         meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
 
-        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+        if [ "${_engine_available:-0}" -eq 1 ]; then
           if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1; then
             session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
           fi
@@ -4438,7 +4440,7 @@ if [ "$STREAM_MODE" -eq 1 ]; then
           meta_source="provider"
           meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
 
-          if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+          if [ "${_engine_available:-0}" -eq 1 ]; then
             if ! session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json"; then
               log_warn "SESSION" "session_engine_append (assistant) failed; falling back to legacy session_append"
               session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
@@ -4502,7 +4504,7 @@ if [ -n "${SESSION_ID:-}" ]; then
   ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
   BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
-  if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+  if [ "${_engine_available:-0}" -eq 1 ]; then
     if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
       log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
       session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
@@ -4534,7 +4536,7 @@ if perform_request_once; then
       meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
       meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
 
-      if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+      if [ "${_engine_available:-0}" -eq 1 ]; then
         if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json"; then
           log_warn "SESSION" "session_engine_append (user) failed; falling back to legacy session_append"
           session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
@@ -4551,7 +4553,7 @@ if perform_request_once; then
         meta_source="provider"
         meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
 
-        if [ "${SE_AVAILABLE:-0}" -eq 1 ]; then
+        if [ "${_engine_available:-0}" -eq 1 ]; then
           if ! session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json"; then
             log_warn "SESSION" "session_engine_append (assistant) failed; falling back to legacy session_append"
             session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
