@@ -272,7 +272,7 @@ print_banner() {
   b_sess="$(_msg banner_session "${SESSION_ID:-<None>}" "${MODEL:-<Default>}")"
   b_help="$(_msg banner_help)"
   printf '%b' "
-${C_LOGO} Bash4LLM⁺ ${C_RST} ${C_BGREEN}--- ${b_title} ---${C_RST}
+${C_LOGO} Bash4LLM⁺ ${C_RST} ${C_BGREEN} ${b_title} ${C_RST}
   ${b_sess}
   ${b_help}
 ${C_BGREEN}----------------------------------------${C_RST}
