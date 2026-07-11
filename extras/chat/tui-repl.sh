@@ -703,7 +703,7 @@ run_repl() {
         printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + L" "$( _msg help_sc_l_desc )" >&2
         printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + A / E" "$( _msg help_sc_ae_desc )" >&2
         printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + U / K" "$( _msg help_sc_uk_desc )" >&2
-        printf "${C_BCYAN}----------------------------------------${C_RST}\n" >&2
+        printf "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
         continue
         ;;
       /reset-session)
