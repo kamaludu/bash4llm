@@ -191,7 +191,7 @@ prompt_lang_selection() {
   
   while true; do
     printf '%b' "
-  ${C_BANNER:-} LANGUAGE / LINGUA / IDIOMA / LANGUE / SPRACHE ${C_RST:-}
+${C_BANNER:-} LANGUAGE•LINGUA•IDIOMA•LANGUE•SPRACHE ${C_RST:-}
   1 - English
   2 - Italiano
   3 - Español
@@ -501,7 +501,7 @@ print_status_bar() {
 show_config_menu() {
   while true; do
     local config_title=" $(_msg config_title) "
-    printf '\n%b%b%s%b\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$config_title" "${C_RST:-}" >&2
+    printf '\n%b%b%s%b\n' "${C_BANNER:-}" "$config_title" "${C_RST:-}" >&2
     print_menu_item 1 "$(_msg config_opt_provider)" "${PROVIDER:-groq}"
     print_menu_item 2 "$(_msg config_opt_model)" "${MODEL:-<Default>}"
     print_menu_item 3 "$(_msg config_opt_key)" "$(provider_api_env_var_name "${PROVIDER:-groq}")" "$(_msg menu_env)"
@@ -607,7 +607,7 @@ show_config_menu() {
 show_tools_menu() {
   while true; do
     local tools_title=" $(_msg tools_title) "
-    printf '\n%b%b%s%b\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$tools_title" "${C_RST:-}" >&2
+    printf '\n%b%b%s%b\n' "${C_BANNER:-}" "$tools_title" "${C_RST:-}" >&2
     print_menu_item 1 "$(_msg tools_opt_rename)" "${SESSION_ID:-}"
     print_menu_item 2 "$(_msg tools_opt_delete)"
     print_menu_item 3 "$(_msg tools_opt_start)"
@@ -748,7 +748,7 @@ run_repl() {
         continue
         ;;
       /help | /\?)
-        printf "\n${C_LOGO:-} %s ${C_RST:-}\n" "$(_msg cmd_help_title)" >&2
+        printf "\n${C_LOGO:-}.  %s   ${C_RST:-}\n" "$(_msg cmd_help_title)" >&2
         printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/help, /?" "$( _msg help_desc_help )" >&2
         printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/exit, /quit" "$( _msg help_desc_exit )" >&2
         printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/clear" "$( _msg help_desc_clear )" >&2
@@ -764,7 +764,7 @@ run_repl() {
         printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/block" "$( _msg help_desc_block )" >&2
         printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/edit" "$( _msg help_desc_edit )" >&2
         
-        printf "\n${C_BANNER:-} %s ${C_RST:-}\n" "$(_msg cmd_help_shortcuts_title)" >&2
+        printf "\n${C_LOGO:-} %s ${C_RST:-}\n" "$(_msg cmd_help_shortcuts_title)" >&2
         printf "  ${C_BYELLOW:-}%-15s${C_RST:-} %s\n" "Ctrl + D" "$( _msg help_sc_d_desc )" >&2
         printf "  ${C_BYELLOW:-}%-15s${C_RST:-} %s\n" "Ctrl + C" "$( _msg help_sc_c_desc )" >&2
         printf "  ${C_BYELLOW:-}%-15s${C_RST:-} %s\n" "Ctrl + L" "$( _msg help_sc_l_desc )" >&2
