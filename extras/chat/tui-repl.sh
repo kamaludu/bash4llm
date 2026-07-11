@@ -62,6 +62,16 @@ tac_fallback() {
   return 0
 }
 
+# Color placeholders and conditional attributes wrapped in <...> with C_YELLOW
+color_attributes() {
+  local text="$1"
+  if [ -n "${C_YELLOW:-}" ]; then
+    printf '%s' "$text" | sed "s/\(<[^>]*>\)/${C_YELLOW}\1${C_RST}/g"
+  else
+    printf '%s' "$text"
+  fi
+}
+
 # --- PHASE 2: REPL STATE DICTIONARY AND VARIABLE INITIALIZATION ---
 SESSION_ID="${BASH4LLM_ACTIVE_SESSION:-}"
 MODEL="${BASH4LLM_ACTIVE_MODEL:-}"
@@ -72,7 +82,7 @@ TURE="$TEMPERATURE"
   if resolve_model >/dev/null 2>&1 && [ -n "${FINAL_MODEL:-}" ]; then
     MODEL="$FINAL_MODEL"
   else
-    MODEL="default"
+    MODEL="<Default>"
   fi
 }
 
@@ -269,8 +279,27 @@ print_banner() {
   [ "${QUIET:-0}" -eq 1 ] && return 0
   local b_title b_sess b_help
   b_title="$(_msg banner_title)"
-  b_sess="$(_msg banner_session "${SESSION_ID:-<None>}" "${MODEL:-<Default>}")"
+  
+  # Dynamically build the session status line to include Provider and highlight with <...>
+  if [ "${BASH4LLM_LANG:-en}" = "it" ]; then
+    b_sess="Sessione Attiva: <${SESSION_ID:-<None>}> | Provider: <${PROVIDER:-groq}> | Modello: <${MODEL:-<Default>}>"
+  elif [ "${BASH4LLM_LANG:-en}" = "es" ]; then
+    b_sess="Sesión Activa: <${SESSION_ID:-<None>}> | Provider: <${PROVIDER:-groq}> | Modelo: <${MODEL:-<Default>}>"
+  elif [ "${BASH4LLM_LANG:-en}" = "fr" ]; then
+    b_sess="Session Active: <${SESSION_ID:-<None>}> | Provider: <${PROVIDER:-groq}> | Modèle: <${MODEL:-<Default>}>"
+  elif [ "${BASH4LLM_LANG:-en}" = "de" ]; then
+    b_sess="Aktive Sitzung: <${SESSION_ID:-<None>}> | Provider: <${PROVIDER:-groq}> | Modell: <${MODEL:-<Default>}>"
+  else
+    b_sess="Active Session: <${SESSION_ID:-<None>}> | Provider: <${PROVIDER:-groq}> | Model: <${MODEL:-<Default>}>"
+  fi
+  
   b_help="$(_msg banner_help)"
+  
+  # Highlight conditional placeholders inside strings
+  b_sess="$(color_attributes "$b_sess")"
+  b_help="$(color_attributes "$b_help")"
+
+  # Divider line after the initial banner MUST be C_BGREEN
   printf '%b' "
 ${C_LOGO} Bash4LLM⁺ ${C_RST} ${C_BGREEN} ${b_title} ${C_RST}
   ${b_sess}
@@ -289,12 +318,13 @@ print_status_bar() {
   fi
   
   local s_bar
-  s_bar="$(_msg status_bar "${SESSION_ID:-none}" "${MODEL:-default}" "${TEMPERATURE:-1.0}" "$stream_status")"
+  s_bar="$(_msg status_bar "${SESSION_ID:-<None>}" "${MODEL:-<Default>}" "${TEMPERATURE:-1.0}" "$stream_status")"
+  s_bar="$(color_attributes "$s_bar")"
+
   printf '%b' "
   ${C_BCYAN}${s_bar}${C_RST}
 " >&2
 }
-
 # --- PHASE 6: PAGINATED SESSION SELECTION WIZARD ---
 _format_ts() {
   local ts="${1:-}"
@@ -343,15 +373,29 @@ load_sessions_wizard() {
     w_title="$(_msg wizard_title)"
     w_page="$(_msg wizard_page "$((current_page + 1))" "$total_pages" "$total_sessions")"
 
-    printf '%b' "
-${C_BANNER}  ${w_title}  ${C_RST}
-  ${w_page}
-${C_BGREEN}----------------------------------------${C_RST}
-" >&2
+    # Display Wizard Header Section
+    printf '\n%b' "  ${C_BANNER}  ${w_title}  ${C_RST}\n\n" >&2
+    printf "  %s\n\n" "${w_page}" >&2
+    printf '%b' "  ${C_BBLUE}----------------------------------------${C_RST}\n\n" >&2
 
     local start_idx=$((current_page * page_size))
     local end_idx=$((start_idx + page_size))
     [ "$end_idx" -gt "$total_sessions" ] && end_idx="$total_sessions"
+
+    # Determine localized colored label for "New Empty Session"
+    local colored_new_session="${C_YELLOW}<Nuova Sessione Vuota>${C_RST}"
+    if [ "${BASH4LLM_LANG:-en}" = "en" ]; then
+      colored_new_session="${C_YELLOW}<New Empty Session>${C_RST}"
+    elif [ "${BASH4LLM_LANG:-en}" = "es" ]; then
+      colored_new_session="${C_YELLOW}<Nueva Sesión Vacía>${C_RST}"
+    elif [ "${BASH4LLM_LANG:-en}" = "fr" ]; then
+      colored_new_session="${C_YELLOW}<Nouvelle Session Vide>${C_RST}"
+    elif [ "${BASH4LLM_LANG:-en}" = "de" ]; then
+      colored_new_session="${C_YELLOW}<Neue leere Sitzung>${C_RST}"
+    fi
+
+    # Option [ 1] is always mapped to creating a New Empty Session
+    printf "  ${C_BCYAN}[ 1]${C_RST} %s\n\n" "$colored_new_session" >&2
 
     local i
     for ((i = start_idx; i < end_idx; i++)); do
@@ -375,22 +419,26 @@ ${C_BGREEN}----------------------------------------${C_RST}
       fi
       [ -n "$title" ] || title="Session ${s_id:0:8}"
 
-      printf "  ${C_BCYAN}[%2d]${C_RST} %s ${C_CYAN}>${C_RST} %s\n" \
-        "$((i + 1))" "$last_date" "$title" >&2
+      # Shifting existing session list indexes to [ 2], [ 3], etc.
+      printf "  ${C_BCYAN}[%2d]${C_RST} %s ${C_CYAN}>${C_RST} %s\n\n" \
+        "$((i + 2))" "$last_date" "$title" >&2
     done
 
-    printf '%b' "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
-    printf "  %s:\n" "$(_msg wizard_nav)" >&2
-    printf "  [ + / n ] %s\n" "$(_msg wizard_next_page)" >&2
-    printf "  [ - / p ] %s\n" "$(_msg wizard_prev_page)" >&2
-    printf "  [   c   ] %s\n" "$(_msg wizard_new_session)" >&2
-    printf "  [   q   ] %s\n" "$(_msg wizard_exit_repl)" >&2
-    printf '%b' "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
+    printf '%b' "  ${C_BBLUE}----------------------------------------${C_RST}\n\n" >&2
+    printf "  %s:\n\n" "$(_msg wizard_nav)" >&2
+    printf "  [ + / n ] %s\n\n" "$(_msg wizard_next_page)" >&2
+    printf "  [ - / p ] %s\n\n" "$(_msg wizard_prev_page)" >&2
+    printf "  [   q   ] %s\n\n" "$(_msg wizard_exit_repl)" >&2
+    printf '%b' "  ${C_BBLUE}----------------------------------------${C_RST}\n" >&2
 
     local choice
     printf '  %s ' "$(_msg wizard_prompt)" >&2
-    IFS= read -r choice || { printf '\n' >&2; exit 0; }
+    if ! IFS= read -r choice; then
+      printf '\n' >&2
+      exit 0
+    fi
     choice="$(printf '%s' "$choice" | awk '{$1=$1;print}')"
+    printf '\n' >&2 # Separating selected option visually from next actions
 
     case "$choice" in
       + | n | N)
@@ -399,7 +447,7 @@ ${C_BGREEN}----------------------------------------${C_RST}
       - | p | P)
         current_page=$(( (current_page - 1 + total_pages) % total_pages ))
         ;;
-      c | C | new | NEW)
+      1 | c | C | new | NEW)
         SESSION_ID="repl-$(date +%Y%m%d-%H%M%S)-${RANDOM}"
         local new_sess_file="${session_dir}/${SESSION_ID}.ndjson"
         : > "$new_sess_file"
@@ -412,7 +460,8 @@ ${C_BGREEN}----------------------------------------${C_RST}
         ;;
       *)
         if printf '%s\n' "$choice" | grep -qE '^[0-9]+$'; then
-          local target_idx=$((choice - 1))
+          # Match index offset due to [ 1] being New Session option
+          local target_idx=$((choice - 2))
           if [ "$target_idx" -ge 0 ] && [ "$target_idx" -lt "$total_sessions" ] && [ -n "${files[target_idx]+x}" ]; then
             local selected_file="${files[target_idx]}"
             SESSION_ID="$(basename "$selected_file" .ndjson)"
@@ -442,8 +491,12 @@ print_menu_item() {
   local value="${3:-}"
   local label="${4:-$(_msg menu_current)}"
 
+  # Render placeholders wrapped in <...> in C_YELLOW
+  local colored_val
+  colored_val="$(color_attributes "$value")"
+
   if [ -n "$value" ]; then
-    printf "  ${C_BCYAN}%d)${C_RST} %-22s (${C_CYAN}%s${C_RST}: %s)\n" "$index" "$desc" "$label" "$value"
+    printf "  ${C_BCYAN}%d)${C_RST} %-22s (${C_CYAN}%s${C_RST}: %s)\n" "$index" "$desc" "$label" "$colored_val"
   else
     printf "  ${C_BCYAN}%d)${C_RST} %s\n" "$index" "$desc"
   fi
@@ -455,49 +508,57 @@ show_config_menu() {
   ${C_BANNER}  $(_msg config_title)  ${C_RST}
 " >&2
     print_menu_item 1 "$(_msg config_opt_provider)" "${PROVIDER:-groq}"
-    print_menu_item 2 "$(_msg config_opt_model)" "${MODEL:-default}"
+    print_menu_item 2 "$(_msg config_opt_model)" "${MODEL:-<Default>}"
     print_menu_item 3 "$(_msg config_opt_key)" "$(provider_api_env_var_name "${PROVIDER:-groq}")" "$(_msg menu_env)"
     print_menu_item 4 "$(_msg config_opt_lang)" "${BASH4LLM_LANG:-en}"
     print_menu_item 5 "$(_msg config_opt_refresh)"
     print_menu_item 6 "$(_msg config_opt_list)"
     print_menu_item 7 "$(_msg config_opt_return)"
 
+    # Bold Blue horizontal line (exactly 40 characters)
+    printf '%b' "  ${C_BBLUE}----------------------------------------${C_RST}\n" >&2
+
     local m_sel
     printf '  %s ' "$(_msg config_prompt)" >&2
-    IFS= read -r m_sel || return 0
+    if ! IFS= read -r m_sel; then
+      return 0
+    fi
     m_sel="$(trim "$m_sel")"
+    printf '\n' >&2 # Separating selected option visually from next actions
 
     case "$m_sel" in
       1)
         printf '\n  %s\n' "$(_msg config_providers_installed "$SUPPORTED_PROVIDERS")" >&2
         printf '  %s ' "$(_msg config_provider_prompt)" >&2
         local new_prov
-        IFS= read -r new_prov || continue
-        new_prov="$(trim "$new_prov")"
-        if [ -n "$new_prov" ]; then
-          case " $SUPPORTED_PROVIDERS " in
-            *" $new_prov "*)
-              PROVIDER="$new_prov"
-              load_provider_module "$PROVIDER" >/dev/null 2>&1 || true
-              resolve_provider_url "$PROVIDER" >/dev/null 2>&1 || true
-              resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-default}"
-              printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
-              ;;
-            *) printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_provider_unknown)" "${C_RST:-}" >&2 ;;
-          esac
+        if IFS= read -r new_prov; then
+          new_prov="$(trim "$new_prov")"
+          if [ -n "$new_prov" ]; then
+            case " $SUPPORTED_PROVIDERS " in
+              *" $new_prov "*)
+                PROVIDER="$new_prov"
+                load_provider_module "$PROVIDER" >/dev/null 2>&1 || true
+                resolve_provider_url "$PROVIDER" >/dev/null 2>&1 || true
+                resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-<Default>}"
+                printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
+                ;;
+              *) printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_provider_unknown)" "${C_RST:-}" >&2 ;;
+            esac
+          fi
         fi
         ;;
       2)
         printf '\n  %s ' "$(_msg config_model_prompt)" >&2
         local new_model
-        IFS= read -r new_model || continue
-        new_model="$(trim "$new_model")"
-        if [ -n "$new_model" ]; then
-          if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
-            MODEL="$new_model"
-            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_model_success "$MODEL")" "${C_RST:-}" >&2
-          else
-            printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_model_invalid)" "${C_RST:-}" >&2
+        if IFS= read -r new_model; then
+          new_model="$(trim "$new_model")"
+          if [ -n "$new_model" ]; then
+            if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
+              MODEL="$new_model"
+              printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_model_success "$MODEL")" "${C_RST:-}" >&2
+                else
+              printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_model_invalid)" "${C_RST:-}" >&2
+            fi
           fi
         fi
         ;;
@@ -508,12 +569,13 @@ show_config_menu() {
         printf '\n  %s\n' "$(_msg config_key_title "$key_var" "${key_val:-<not set>}")" >&2
         printf '  %s ' "$(_msg config_key_prompt)" >&2
         local new_key
-        IFS= read -r new_key || continue
-        new_key="$(trim "$new_key")"
-        if [ -n "$new_key" ]; then
-          export "${key_var}=${new_key}"
-          if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
-          printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
+        if IFS= read -r new_key; then
+          new_key="$(trim "$new_key")"
+          if [ -n "$new_key" ]; then
+            export "${key_var}=${new_key}"
+            if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
+          fi
         fi
         ;;
       4)
@@ -534,7 +596,7 @@ show_config_menu() {
       6)
         printf '\n--- %s ---\n' "$(_msg config_cached_title "$PROVIDER")" >&2
         list_models_cli || true
-        printf "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
+        printf "${C_BBLUE}----------------------------------------${C_RST}\n" >&2
         ;;
       7 | q | Q | "")
         return 0
@@ -551,7 +613,7 @@ show_tools_menu() {
     printf '%b' "
   ${C_BANNER}  $(_msg tools_title)  ${C_RST}
 " >&2
-    print_menu_item 1 "$(_msg tools_opt_rename)" "${SESSION_ID:-none}"
+    print_menu_item 1 "$(_msg tools_opt_rename)" "${SESSION_ID:-<None>}"
     print_menu_item 2 "$(_msg tools_opt_delete)"
     print_menu_item 3 "$(_msg tools_opt_start)"
     
@@ -565,35 +627,43 @@ show_tools_menu() {
     print_menu_item 5 "$(_msg tools_opt_status)"
     print_menu_item 6 "$(_msg tools_opt_return)"
 
+    # Bold Blue horizontal line (exactly 40 characters)
+    printf '%b' "  ${C_BBLUE}----------------------------------------${C_RST}\n" >&2
+
     local m_sel
     printf '  %s ' "$(_msg tools_prompt)" >&2
-    IFS= read -r m_sel || return 0
+    if ! IFS= read -r m_sel; then
+      return 0
+    fi
     m_sel="$(trim "$m_sel")"
+    printf '\n' >&2 # Separating selected option visually from next actions
 
     case "$m_sel" in
       1)
         printf '\n  %s ' "$(_msg tools_rename_prompt)" >&2
         local new_title
-        IFS= read -r new_title || continue
-        new_title="$(trim "$new_title")"
-        if [ -n "$new_title" ]; then
-          session_rename_core "$SESSION_ID" "$new_title"
-          printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg tools_rename_success)" "${C_RST:-}" >&2
+        if IFS= read -r new_title; then
+          new_title="$(trim "$new_title")"
+          if [ -n "$new_title" ]; then
+            session_rename_core "$SESSION_ID" "$new_title"
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg tools_rename_success)" "${C_RST:-}" >&2
+          fi
         fi
         ;;
       2)
         printf '\n  %s ' "$(_msg tools_delete_warn "$SESSION_ID")" >&2
         local confirm
-        IFS= read -r confirm || continue
-        confirm="$(trim "$confirm")"
-        if [[ "$confirm" =~ ^[yY](es|ES)?$ ]]; then
-          session_delete_core "$SESSION_ID"
-          printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg tools_delete_success)" "${C_RST:-}" >&2
-          sleep 1
-          load_sessions_wizard
-          return 0
-        else
-          printf '\n  %s\n' "$(_msg tools_delete_cancel)" >&2
+        if IFS= read -r confirm; then
+          confirm="$(trim "$confirm")"
+          if [[ "$confirm" =~ ^[yY](es|ES)?$ ]]; then
+            session_delete_core "$SESSION_ID"
+            printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg tools_delete_success)" "${C_RST:-}" >&2
+            sleep 1
+            load_sessions_wizard
+            return 0
+          else
+            printf '\n  %s\n' "$(_msg tools_delete_cancel)" >&2
+          fi
         fi
         ;;
       3)
@@ -619,7 +689,7 @@ show_tools_menu() {
         printf "  %s\n" "$(_msg tools_diag_session "$BASH4LLM_HISTORY_DIR" "$SESSION_ID")" >&2
         printf "  %s\n" "$(_msg tools_diag_config "$BASH4LLM_CONFIG_DIR")" >&2
         printf "  %s\n" "$(_msg tools_diag_history "$HISTFILE")" >&2
-        printf "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
+        printf "${C_BBLUE}----------------------------------------${C_RST}\n" >&2
         ;;
       6 | q | Q | "")
         return 0
@@ -630,7 +700,6 @@ show_tools_menu() {
     esac
   done
 }
-
 # --- PHASE 8: INTERACTIVE REPL CHAT LOOP ---
 run_repl() {
   if [ -z "$SESSION_ID" ]; then
@@ -644,7 +713,7 @@ run_repl() {
   set +u 2>/dev/null || true
 
   while true; do
-    # Dynamically re-evaluate prompt symbol and style variables on each turn
+    # Dynamically rebuild prompt with cyan coloring and reset escape sequences
     local prompt_sym prompt_str
     prompt_sym="$(_msg prompt_tu)"
     prompt_str="${RL_START}${C_BCYAN}${RL_END}${prompt_sym} ${RL_START}${C_RST}${RL_END}"
@@ -703,6 +772,7 @@ run_repl() {
         printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + L" "$( _msg help_sc_l_desc )" >&2
         printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + A / E" "$( _msg help_sc_ae_desc )" >&2
         printf "  ${C_BYELLOW}%-15s${C_RST} %s\n" "Ctrl + U / K" "$( _msg help_sc_uk_desc )" >&2
+        # Divider line after the help screen MUST be C_BGREEN
         printf "${C_BGREEN}----------------------------------------${C_RST}\n" >&2
         continue
         ;;
@@ -822,10 +892,10 @@ run_repl() {
           size_bytes="$(file_size "$session_file" 2>/dev/null || echo 0)"
         fi
         printf "\n${C_BCYAN}--- %s ---${C_RST}\n" "$(_msg cmd_status_title)" >&2
-        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_provider)" "${PROVIDER:-groq}" >&2
-        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_model)" "${MODEL:-default}" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_provider)" "$(color_attributes "${PROVIDER:-<None>}")" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_model)" "$(color_attributes "${MODEL:-<Default>}")" >&2
         printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_temp)" "${TEMPERATURE:-1.0}" >&2
-        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_session)" "${SESSION_ID:-none}" >&2
+        printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_session)" "$(color_attributes "${SESSION_ID:-<None>}")" >&2
         
         local bytes_msgs_fmt
         bytes_msgs_fmt="$(_msg cmd_status_bytes_msgs "$size_bytes" "$msg_count")"
@@ -834,7 +904,7 @@ run_repl() {
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
           printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_sys_prompt)" "${SYSTEM_PROMPT}" >&2
         else
-          printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_sys_prompt)" "$(_msg cmd_status_sys_not_set)" >&2
+          printf "  ${C_CYAN}%-12s${C_RST} : %s\n" "$(_msg cmd_status_sys_prompt)" "$(color_attributes "$(_msg cmd_status_sys_not_set)")" >&2
         fi
         printf "\n" >&2
         continue
