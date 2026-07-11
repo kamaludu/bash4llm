@@ -191,7 +191,7 @@ prompt_lang_selection() {
   
   while true; do
     printf '%b' "
-  ${C_BANNER:-}  SELECT LANGUAGE / SELEZIONA LINGUA  ${C_RST:-}
+  ${C_BANNER:-} LANGUAGE / LINGUA / IDIOMA / LANGUE / SPRACHE ${C_RST:-}
   1 - English
   2 - Italiano
   3 - Español
