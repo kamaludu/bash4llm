@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/chat/tui-repl.sh
-# Component: TUI REPL Interactive Module (External Extra) - Part 1
+# Component: TUI REPL Interactive Module (Final Corrected Release - Part 2)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
@@ -60,11 +60,12 @@ tac_fallback() {
   return 0
 }
 
-# Color placeholders and conditional attributes wrapped in <...> with C_YELLOW
+# Color placeholders and conditional attributes wrapped in <...> with C_YELLOW (Task C Corrected)
 color_attributes() {
   local text="$1"
   if [ -n "${C_YELLOW:-}" ]; then
-    printf '%s' "$text" | sed "s/\(<[^>]*>\)/${C_YELLOW}\1${C_RST:-}/g"
+    local tmp="${text//</${C_YELLOW}<}"
+    printf '%s' "${tmp//>/>${C_RST:-}}"
   else
     printf '%s' "$text"
   fi
@@ -94,10 +95,12 @@ declare -A T_MSG
 
 load_lang_secure() {
   local lang_code="${1:-en}"
-  local lang_dir="$(dirname "${BASH_SOURCE[0]}")/langs"
+  local lang_dir
+  lang_dir="$(dirname "${BASH_SOURCE[0]}")/langs"
   local lang_file="${lang_dir}/${lang_code}.properties"
 
-  if [[ ! "$lang_code" =~ ^[a-z]{2}$ ]]; then
+  local rx_lang='^[a-z]{2}$'
+  if [[ ! "$lang_code" =~ $rx_lang ]]; then
     lang_code="en"
     lang_file="${lang_dir}/en.properties"
   fi
@@ -115,17 +118,16 @@ load_lang_secure() {
     return 1
   fi
 
-  local key val
+  local key val safe_key trimmed_val
   while IFS='=' read -r key val || [ -n "$key" ]; do
     [[ "$key" =~ ^[[:space:]]*# ]] && continue
     [[ -z "$key" ]] && continue
 
-    local safe_key
-    safe_key="$(printf '%s' "$key" | tr -d -c 'A-Za-z0-9_')"
+    safe_key="${key//[!A-Za-z0-9_]/}"
     [ -n "$safe_key" ] || continue
 
-    local trimmed_val
-    trimmed_val="$(printf '%s' "$val" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    trimmed_val="${val//$'\r'/}"
+    trimmed_val="$(trim_space "$trimmed_val")"
 
     T_MSG["$safe_key"]="$trimmed_val"
   done < "$lang_file"
@@ -157,8 +159,15 @@ get_stored_lang() {
   local stored_lang=""
   
   if [ -f "$cfg_file" ]; then
-    stored_lang="$(awk -F= '/^BASH4LLM_LANG=/ {sub(/^BASH4LLM_LANG=/,""); print; exit}' "$cfg_file" 2>/dev/null || true)"
-    stored_lang="$(printf '%s' "$stored_lang" | tr -d ' ' | tr '[:upper:]' '[:lower:]')"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" == BASH4LLM_LANG=* ]]; then
+        stored_lang="${line#BASH4LLM_LANG=}"
+        break
+      fi
+    done < "$cfg_file"
+    
+    stored_lang="${stored_lang// /}"
+    stored_lang="${stored_lang,,}"
   fi
   printf '%s' "$stored_lang"
 }
@@ -198,12 +207,12 @@ ${C_BANNER:-} LANGUAGE•LINGUA•IDIOMA•LANGUE•SPRACHE ${C_RST:-}
   4 - Français
   5 - Deutsch
 " >&2
-    printf '  Choose / Scegli (1-5) [Default: 1]: ' >&2
+    printf '  %s (1-5) [Default: 1]: ' "$(_msg config_prompt)" >&2
     if ! IFS= read -r choice; then
       printf '\n' >&2
       choice="1"
     fi
-    choice="$(printf '%s' "$choice" | tr -d ' ')"
+    choice="${choice// /}"
     [ -z "$choice" ] && choice="1"
 
     case "$choice" in
@@ -213,7 +222,7 @@ ${C_BANNER:-} LANGUAGE•LINGUA•IDIOMA•LANGUE•SPRACHE ${C_RST:-}
       4) selected_lang="fr"; break ;;
       5) selected_lang="de"; break ;;
       *)
-        printf '\n  Invalid choice / Scelta non valida.\n' >&2
+        printf '\n  %s\n' "$(_msg wizard_invalid_choice)" >&2
         sleep 1
         ;;
     esac
@@ -227,17 +236,20 @@ ${C_BANNER:-} LANGUAGE•LINGUA•IDIOMA•LANGUE•SPRACHE ${C_RST:-}
 bootstrap_i18n() {
   local lang
   lang="$(get_stored_lang)"
-  
+
   if [ -z "$lang" ]; then
+    # Carica l'inglese solo se è il primissimo avvio assoluto
+    # per permettere a prompt_lang_selection di tradurre le domande
+    load_lang_secure "en" >/dev/null 2>&1 || true
     prompt_lang_selection
     lang="$(get_stored_lang)"
   fi
-  
+
   case "$lang" in
     en|it|es|fr|de) ;;
     *) lang="en" ;;
   esac
-  
+
   BASH4LLM_LANG="$lang"
   export BASH4LLM_LANG
   load_lang_secure "$BASH4LLM_LANG"
@@ -285,7 +297,6 @@ print_banner() {
   [ -n "$r_sess" ] || r_sess="$(_msg attribute_none)"
   [ -n "$r_model" ] || r_model="$(_msg attribute_default)"
 
-  # Yellow formatting applied directly to runtime parameters
   local col_sess="${C_YELLOW:-}${r_sess}${C_RST:-}"
   local col_prov="${C_YELLOW:-}${r_prov}${C_RST:-}"
   local col_model="${C_YELLOW:-}${r_model}${C_RST:-}"
@@ -295,7 +306,6 @@ print_banner() {
   b_help="$(_msg banner_help)"
   b_help="$(color_attributes "$b_help")"
 
-  # Divider is C_BGREEN
   printf '%b' "
 ${C_LOGO:-} Bash4LLM⁺ ${C_RST:-} ${C_BGREEN:-} ${b_title} ${C_RST:-}
   ${b_sess}
@@ -352,7 +362,6 @@ load_sessions_wizard() {
     w_title="$(_msg wizard_title)"
     w_page="$(_msg wizard_page "$((current_page + 1))" "$total_pages" "$total_sessions")"
 
-    # Display Wizard Header Section
     printf '\n%b' "  ${C_BANNER:-}  ${w_title}  ${C_RST:-}\n\n" >&2
     printf "  %s\n\n" "${w_page}" >&2
     printf '%b' "  ${C_BBLUE:-}----------------------------------------${C_RST:-}\n\n" >&2
@@ -361,18 +370,16 @@ load_sessions_wizard() {
     local end_idx=$((start_idx + page_size))
     [ "$end_idx" -gt "$total_sessions" ] && end_idx="$total_sessions"
 
-    # Retrieve and wrap the new session label as a placeholder
     local new_session_label="<$(_msg wizard_new_session)>"
     local colored_new_session="$(color_attributes "$new_session_label")"
 
-    # Option [ 1] is mapped to the placeholder option "New Empty Session"
     printf "  ${C_BCYAN:-}[ 1]${C_RST:-} %s\n\n" "$colored_new_session" >&2
 
     local i
     for ((i = start_idx; i < end_idx; i++)); do
       local s_file="${files[i]}"
-      local s_id
-      s_id="$(basename "$s_file" .ndjson)"
+      local filename="${s_file##*/}"
+      local s_id="${filename%.ndjson}"
 
       local last_line last_ts last_date
       last_line="$(tail -n 1 "$s_file" 2>/dev/null || true)"
@@ -386,11 +393,13 @@ load_sessions_wizard() {
         title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
       fi
       if [ -z "$title" ] && [ -f "$s_file" ]; then
-        title="$(jq -r 'select(.role=="user") | .content' "$s_file" 2>/dev/null | head -n 1 | tr -d '\n\r' | cut -c 1-18 || true)"
+        title="$(jq -r 'select(.role=="user") | .content' "$s_file" 2>/dev/null | head -n 1 || true)"
+        title="${title//$'\n'/}"
+        title="${title//$'\r'/}"
+        title="${title:0:18}"
       fi
       [ -n "$title" ] || title="Session ${s_id:0:8}"
 
-      # Existing physical sessions are shifted to start from index [ 2]
       printf "  ${C_BCYAN:-}[%2d]${C_RST:-} %s ${C_CYAN:-}>${C_RST:-} %s\n\n" \
         "$((i + 2))" "$last_date" "$title" >&2
     done
@@ -408,7 +417,7 @@ load_sessions_wizard() {
       printf '\n' >&2
       exit 0
     fi
-    choice="$(printf '%s' "$choice" | awk '{$1=$1;print}')"
+    choice="$(trim_space "$choice")"
     printf '\n' >&2
 
     case "$choice" in
@@ -430,11 +439,13 @@ load_sessions_wizard() {
         exit 0
         ;;
       *)
-        if printf '%s\n' "$choice" | grep -qE '^[0-9]+$'; then
+        local rx_num='^[0-9]+$'
+        if [[ "$choice" =~ $rx_num ]]; then
           local target_idx=$((choice - 2))
           if [ "$target_idx" -ge 0 ] && [ "$target_idx" -lt "$total_sessions" ] && [ -n "${files[target_idx]+x}" ]; then
             local selected_file="${files[target_idx]}"
-            SESSION_ID="$(basename "$selected_file" .ndjson)"
+            local selfilename="${selected_file##*/}"
+            SESSION_ID="${selfilename%.ndjson}"
             break
           else
             printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg wizard_out_of_range)" "${C_RST:-}" >&2
@@ -453,6 +464,7 @@ load_sessions_wizard() {
   fi
   return 0
 }
+
 # --- PHASE 7: MENU ITEM AND MENU HELPERS ---
 print_menu_item() {
   local index="$1"
@@ -484,13 +496,11 @@ print_status_bar() {
   [ -n "$r_sess" ] || r_sess="$(_msg attribute_none)"
   [ -n "$r_model" ] || r_model="$(_msg attribute_default)"
 
-  # Variables formatted in yellow natively
   local col_sess="${C_YELLOW:-}${r_sess}${C_RST:-}"
   local col_model="${C_YELLOW:-}${r_model}${C_RST:-}"
   local col_temp="${C_YELLOW:-}${TEMPERATURE:-1.0}${C_RST:-}"
   local col_stream="${C_YELLOW:-}${stream_status}${C_RST:-}"
 
-  # Prints single unified line formatting with static labels in C_BCYAN
   printf "  %b%s%b %s | %b%s%b %s | %b%s%b %s | %b%s%b %s\n" \
     "${C_BCYAN:-}" "$(_msg label_repl_status)" "${C_RST:-}" "$col_sess" \
     "${C_BCYAN:-}" "$(_msg label_llm)" "${C_RST:-}" "$col_model" \
@@ -510,7 +520,6 @@ show_config_menu() {
     print_menu_item 6 "$(_msg config_opt_list)"
     print_menu_item 7 "$(_msg config_opt_return)"
     
-    # Separator is C_BBLUE
     printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
     local m_sel
@@ -518,7 +527,7 @@ show_config_menu() {
     if ! IFS= read -r m_sel; then
       return 0
     fi
-    m_sel="$(trim "$m_sel")"
+    m_sel="$(trim_space "$m_sel")"
     printf '\n' >&2
 
     case "$m_sel" in
@@ -527,7 +536,7 @@ show_config_menu() {
         printf '  %s ' "$(_msg config_provider_prompt)" >&2
         local new_prov
         if IFS= read -r new_prov; then
-          new_prov="$(trim "$new_prov")"
+          new_prov="$(trim_space "$new_prov")"
           if [ -n "$new_prov" ]; then
             case " $SUPPORTED_PROVIDERS " in
               *" $new_prov "*)
@@ -546,7 +555,7 @@ show_config_menu() {
         printf '\n  %s ' "$(_msg config_model_prompt)" >&2
         local new_model
         if IFS= read -r new_model; then
-          new_model="$(trim "$new_model")"
+          new_model="$(trim_space "$new_model")"
           if [ -n "$new_model" ]; then
             if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
               MODEL="$new_model"
@@ -565,7 +574,7 @@ show_config_menu() {
         printf '  %s ' "$(_msg config_key_prompt)" >&2
         local new_key
         if IFS= read -r new_key; then
-          new_key="$(trim "$new_key")"
+          new_key="$(trim_space "$new_key")"
           if [ -n "$new_key" ]; then
             export "${key_var}=${new_key}"
             if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
@@ -622,7 +631,6 @@ show_tools_menu() {
     print_menu_item 5 "$(_msg tools_opt_status)"
     print_menu_item 6 "$(_msg tools_opt_return)"
 
-    # Separator is C_BBLUE
     printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
     local m_sel
@@ -630,7 +638,7 @@ show_tools_menu() {
     if ! IFS= read -r m_sel; then
       return 0
     fi
-    m_sel="$(trim "$m_sel")"
+    m_sel="$(trim_space "$m_sel")"
     printf '\n' >&2
 
     case "$m_sel" in
@@ -638,7 +646,7 @@ show_tools_menu() {
         printf '\n  %s ' "$(_msg tools_rename_prompt)" >&2
         local new_title
         if IFS= read -r new_title; then
-          new_title="$(trim "$new_title")"
+          new_title="$(trim_space "$new_title")"
           if [ -n "$new_title" ]; then
             session_rename_core "$SESSION_ID" "$new_title"
             printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg tools_rename_success)" "${C_RST:-}" >&2
@@ -649,7 +657,7 @@ show_tools_menu() {
         printf '\n  %s ' "$(_msg tools_delete_warn "$SESSION_ID")" >&2
         local confirm
         if IFS= read -r confirm; then
-          confirm="$(trim "$confirm")"
+          confirm="$(trim_space "$confirm")"
           if [[ "$confirm" =~ ^[yY](es|ES)?$ ]]; then
             session_delete_core "$SESSION_ID"
             printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg tools_delete_success)" "${C_RST:-}" >&2
@@ -683,7 +691,6 @@ show_tools_menu() {
         printf '\n%b%b%s%b\n\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$diag_title" "${C_RST:-}" >&2
         print_status_bar
         
-        # Fixed labels in C_BCYAN, trailing paths / outputs in plain reset color
         printf "  %b%s%b %s/sessions/%s.ndjson\n" "${C_BCYAN:-}" "$(_msg label_diag_session)" "${C_RST:-}" "${BASH4LLM_HISTORY_DIR}" "${SESSION_ID}" >&2
         printf "  %b%s%b %s/config\n" "${C_BCYAN:-}" "$(_msg label_diag_config)" "${C_RST:-}" "${BASH4LLM_CONFIG_DIR}" >&2
         printf "  %b%s%b %s\n" "${C_BCYAN:-}" "$(_msg label_diag_history)" "${C_RST:-}" "${HISTFILE}" >&2
@@ -707,7 +714,6 @@ run_repl() {
   fi
 
   print_banner
-  # Automated print_status_bar call removed from startup for visual cleanliness
 
   set +e 2>/dev/null || true
   set +u 2>/dev/null || true
@@ -730,7 +736,7 @@ run_repl() {
       break
     fi
 
-    userline="$(trim "$userline")"
+    userline="$(trim_space "$userline")"
     [ -z "$userline" ] && continue
 
     history -s "$userline" 2>/dev/null || true
@@ -771,7 +777,6 @@ run_repl() {
         printf "  ${C_BYELLOW:-}%-15s${C_RST:-} %s\n" "Ctrl + A / E" "$( _msg help_sc_ae_desc )" >&2
         printf "  ${C_BYELLOW:-}%-15s${C_RST:-} %s\n" "Ctrl + U / K" "$( _msg help_sc_uk_desc )" >&2
         
-        # Help footer is C_BGREEN
         printf '%b----------------------------------------%b\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
         continue
         ;;
@@ -779,7 +784,7 @@ run_repl() {
         printf '\n  %s ' "$(_msg cmd_reset_warn)" >&2
         local confirm
         IFS= read -r confirm
-        confirm="$(trim "$confirm")"
+        confirm="$(trim_space "$confirm")"
         if [[ "$confirm" =~ ^[yY](es|ES)?$ ]]; then
           local session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
           : > "$session_file" 2>/dev/null
@@ -794,7 +799,7 @@ run_repl() {
         ;;
       /history | /history\ *)
         local opt="${userline#/history}"
-        opt="$(trim "$opt")"
+        opt="$(trim_space "$opt")"
         local session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
 
         if [ ! -f "$session_file" ] || [ ! -s "$session_file" ]; then
@@ -893,7 +898,6 @@ run_repl() {
         local stat_title=" $(_msg cmd_status_title) "
         printf '\n%b%b%s%b\n\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$stat_title" "${C_RST:-}" >&2
         
-        # Labels in C_CYAN, parameters natively processed inside standard error streams
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_provider)" "${C_RST:-}" "$(color_attributes "${PROVIDER:-}")" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_model)" "${C_RST:-}" "$(color_attributes "${MODEL:-}")" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_temp)" "${C_RST:-}" "${TEMPERATURE:-1.0}" >&2
@@ -920,14 +924,15 @@ run_repl() {
           fi
         else
           local new_sys="${userline#/system }"
-          SYSTEM_PROMPT="$(printf '%s' "$new_sys" | awk '{$1=$1;print}')"
+          SYSTEM_PROMPT="$(trim_space "$new_sys")"
           printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_system_updated)" "${C_RST:-}" >&2
         fi
         continue
         ;;
       /model\ *)
         local new_model="${userline#/model }"
-        new_model="$(printf '%s' "$new_model" | tr -d -c 'A-Za-z0-9._/:-' | awk '{$1=$1;print}')"
+        new_model="${new_model//[!A-Za-z0-9._\/:-]/}"
+        new_model="$(trim_space "$new_model")"
         if [ -z "$new_model" ]; then
           printf '%s\n' "$(_msg cmd_model_invalid)" >&2
         else
@@ -942,37 +947,45 @@ run_repl() {
         ;;
       /file\ *)
         local file_cmd_args="${userline#/file }"
-        file_cmd_args="$(printf '%s' "$file_cmd_args" | awk '{$1=$1;print}')"
+        file_cmd_args="$(trim_space "$file_cmd_args")"
         if [ -z "$file_cmd_args" ]; then
           printf '%s\n' "$(_msg cmd_file_syntax)" >&2
           continue
         fi
 
-        local file_path file_prompt file_size file_content combined_prompt
-        file_path="$(printf '%s' "$file_cmd_args" | awk '{print $1}')"
-        file_prompt="$(printf '%s' "$file_cmd_args" | cut -d' ' -f2-)"
+        local file_path file_prompt file_content combined_prompt
+        file_path="${file_cmd_args%% *}"
+        file_prompt="${file_cmd_args#* }"
         if [ "$file_path" = "$file_cmd_args" ]; then
           file_prompt=""
+        else
+          file_prompt="$(trim_space "$file_prompt")"
         fi
 
-        if [ ! -f "$file_path" ] || [ ! -r "$file_path" ]; then
-          printf '%s\n' "$(_msg cmd_file_not_found "$file_path")" >&2
-          continue
-        fi
+        # Task A: Centralized Core check validation
+        validate_file_input "$file_path"
+        local check_rc=$?
+        case "$check_rc" in
+          1) printf '%s\n' "$(_msg cmd_file_syntax)" >&2; continue ;;
+          2) printf '%s\n' "$(_msg cmd_file_not_found "$file_path")" >&2; continue ;;
+          3) printf 'tui-repl: ERROR: File is empty: %s\n' "$file_path" >&2; continue ;;
+          4) printf 'tui-repl: ERROR: File is binary or invalid UTF-8: %s\n' "$file_path" >&2; continue ;;
+        esac
 
-        file_size="$(file_size "$file_path" 2>/dev/null || echo 0)"
-        if [ "$file_size" -gt 102400 ]; then
-          printf '%s\n' "$(_msg cmd_file_limit "$file_path" "$((file_size / 1024))")" >&2
+        local file_size_val
+        file_size_val="$(file_size "$file_path" 2>/dev/null || echo 0)"
+        if [ "$file_size_val" -gt 102400 ]; then
+          printf '%s\n' "$(_msg cmd_file_limit "$file_path" "$((file_size_val / 1024))")" >&2
           continue
         fi
 
         file_content="$(cat "$file_path" 2>/dev/null || true)"
         if [ -n "$file_prompt" ]; then
           combined_prompt="$(printf 'Prompt: %s\n\n[File Attached: %s]\n---\n%s\n---\n' \
-            "$file_prompt" "$(basename "$file_path")" "$file_content")"
+            "$file_prompt" "${file_path##*/}" "$file_content")"
         else
           combined_prompt="$(printf '[File Attached: %s]\n---\n%s\n---\n' \
-            "$(basename "$file_path")" "$file_content")"
+            "${file_path##*/}" "$file_content")"
         fi
 
         CONTENT="$combined_prompt"
@@ -1077,7 +1090,6 @@ run_repl() {
 
     printf '\n%s%s - %s:%s\n' "${C_BGREEN:-}" "$PROVIDER" "$MODEL" "${C_RST:-}" >&2
 
-    # Invoking standard streaming or core execution pathways securely on stderr
     IS_STREAMING=1
     local call_rc=0
     if [ "${STREAM_MODE:-0}" -eq 1 ]; then
