@@ -712,7 +712,7 @@ validate_key_huggingface() {
 # Provider-specific model normalization for Hugging Face
 normalize_model_huggingface() {
   local name="${1:-}"
-  # Strip standard "models/" prefix if present, but strictly preserve the "author/model-name" structure
+  # Preserve author slash for HF repositories (e.g., meta-llama/Llama-3)
   name="${name#models/}"
   printf '%s' "$name"
 }
