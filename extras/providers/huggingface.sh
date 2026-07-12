@@ -705,3 +705,14 @@ validate_key_huggingface() {
     return 1
   fi
 }
+
+# -------------------------
+# normalize_model_huggingface
+# -------------------------
+# Provider-specific model normalization for Hugging Face
+normalize_model_huggingface() {
+  local name="${1:-}"
+  # Strip standard "models/" prefix if present, but strictly preserve the "author/model-name" structure
+  name="${name#models/}"
+  printf '%s' "$name"
+}
