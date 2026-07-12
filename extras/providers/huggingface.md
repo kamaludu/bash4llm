@@ -115,6 +115,14 @@ export HUGGINGFACE_API_KEY="hf_..."
 
 ---
 
+#### 4.1 Validazione attiva della chiave (Diagnostica)
+Il modulo supporta la convalida proattiva della chiave tramite la funzione `validate_key_huggingface`:
+- **Endpoint interrogato**: `https://huggingface.co/api/whoami-v2` (richiesta GET).
+- **Meccanismo**: Il token viene trasmesso nell'header `Authorization: Bearer <token>`.
+- **Esito**: Un codice di risposta HTTP `200` conferma che il token è valido e l'account è attivo (ritorna `0`). Un codice `401` indica che il token è invalido o scaduto (ritorna `1`). Eventuali problemi di connessione o timeout entro i 10 secondi restituiscono il codice d'errore di rete.
+
+---
+
 ### 5. Comportamento runtime
 
 #### 5.1 Selezione modello e Fallback automatico
