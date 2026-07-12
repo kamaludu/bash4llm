@@ -455,7 +455,7 @@ call_api_streaming_mistral() {
 # refresh_models_mistral
 # -------------------------
 refresh_models_mistral() {
-  # Temporaneamente disattiva set -u (nounset) per sicurezza durante la lettura delle variabili
+  # Temporarily disable set -u (nounset) for safety during variable reading
   local _set_u_was_on=0
   case "$-" in
     *u*) _set_u_was_on=1; set +u ;;
@@ -493,10 +493,10 @@ refresh_models_mistral() {
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
   
-  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
+  # INLINE RESOLUTION: Adaptation to bash4llm sandboxing
   api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  # Robustly build the curl command array to avoid empty arguments
   local -a curl_cmd=(curl -s -w "%{http_code}")
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
     curl_cmd+=("${CURL_BASE_OPTS[@]}")
@@ -533,13 +533,12 @@ refresh_models_mistral() {
     end
   ' "$out" | awk 'NF{print}' | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//' | sort -u > "$parsed" 2>/dev/null || true
 
-  # Sanitizzazione e normalizzazione dei modelli (solo caratteri sicuri)
+  # Model sanitization and normalization (only safe characters, preserving official prefixes)
   local tmp_trim
   tmp_trim="$tmpd/parsed_trimmed.txt"
   awk '{
     g=$0
     sub(/^models\//,"",g)
-    sub(/^mistral[:\/-]*/,"",g)
     if (g ~ /^[[:alnum:]._\/:-]+$/) print g
   }' "$parsed" | awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' > "$tmp_trim" 2>/dev/null || true
 
