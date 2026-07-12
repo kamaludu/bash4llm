@@ -652,13 +652,7 @@ validate_key_mistral() {
 # Provider-specific model normalization for Mistral
 normalize_model_mistral() {
   local name="${1:-}"
-  # Strip standard "models/" prefix
+  # Preserve the full Mistral model name but strip standard "models/" path prefix if present
   name="${name#models/}"
-  # Strip provider prefix to align with local models.txt names saved during refresh
-  name="${name#mistral}"
-  # Clean up any leftover leading separators
-  while [[ "$name" == [[:space:]:/~_-]* ]]; do
-    name="${name#?}"
-  done
   printf '%s' "$name"
 }
