@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/gemini.sh
 # Extra: Provider Gemini
 # Copyright (C) 2026 Cristian Evangelisti
@@ -752,4 +752,54 @@ auto_select_model_gemini() {
   fi
   printf ''
   return 0
+}
+
+validate_key_gemini() {
+  # Temporarily disable set -u if active
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
+  local key="${1:-}"
+  local http_code curl_rc=0
+  local tmpout errf workdir
+
+  if [ -z "$key" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return 1
+  fi
+
+  workdir="$(_get_work_tmpdir_gemini)"
+  [ -n "$workdir" ] || workdir="${BASH4LLM_TMPDIR:-/tmp}"
+
+  tmpout="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="${workdir}/gemini-key-diag.tmp"
+  errf="${tmpout}.err"
+
+  # GET call passing the key as a URL parameter (?key=...)
+  local api_url="https://generativelanguage.googleapis.com/v1beta/models?key=${key}"
+
+  http_code="$(curl "${CURL_BASE_OPTS[@]:-}" --silent --show-error --no-buffer --max-time 10 \
+    -o "$tmpout" \
+    -w "%{http_code}" \
+    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  curl_rc=$?
+
+  rm -f "$tmpout" "$errf" 2>/dev/null || true
+
+  # Restore set -u if previously active
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+
+  # Detecting timeouts or network problems
+  if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
+    return 28
+  fi
+
+  # HTTP 200 = Valid;  HTTP 400/403 = Invalid
+  if [ "$http_code" = "200" ]; then
+    return 0
+  else
+    return 1
+  fi
 }
