@@ -2342,6 +2342,7 @@ session_cache_invalidate() {
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
 CONTENT="${CONTENT:-}"
+PROVIDER="${PROVIDER:-groq}"
 JSON_INPUT="${JSON_INPUT:-}"
 SESSION_ID="${SESSION_ID:-}"
 SESSION_WINDOW="${SESSION_WINDOW:-}"
