@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: bash4llm
-# Component: Core
+# Component: Core (Final Corrected Release - Part 1)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
@@ -181,11 +181,72 @@ canonical_provider_url_file() {
   printf '%s' "${cfgdir%/}/provider-url"
 }
 
-# Normalize model name by removing 'models/', the active provider prefix, and surrounding whitespace.
+# Pure POSIX/Bash 4.0+ Native Trim (Approved Correction)
+trim_space() {
+  local var="${1:-}"
+  var="${var#"${var%%[![:space:]]*}"}"
+  var="${var%"${var##*[![:space:]]}"}"
+  printf '%s' "$var"
+}
+
+# =============================================================================
+# TASK A: CENTRALIZED FILE INPUT VALIDATION (Core Source of Truth)
+# =============================================================================
+# Validates path existence, readability, non-empty state, UTF-8 locale matching,
+# and checks that file strictly contains only valid printable/space characters.
+# Returns:
+#   0 = Success (Valid UTF-8 printable text file)
+#   1 = File path empty
+#   2 = File not found or not readable
+#   3 = File is empty (0 bytes) - REJECTED
+#   4 = File contains non-printable, binary bytes, or invalid UTF-8 sequences
+# =============================================================================
+validate_file_input() {
+  local f="${1:-}"
+  if [ -z "$f" ]; then
+    return 1
+  fi
+  if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+    return 2
+  fi
+
+  local size
+  size="$(file_size "$f" 2>/dev/null || echo 0)"
+  if [ "$size" -eq 0 ]; then
+    return 3
+  fi
+
+  # Under standard UTF-8 environments, any invalid UTF-8 sequences or raw binary
+  # control chars (except standard space/tabs/newlines) are captured by reversing
+  # the POSIX character class check. This handles validation in a single native process.
+  if grep -q -v '^[[:print:][:space:]]*$' "$f" 2>/dev/null; then
+    return 4
+  fi
+
+  return 0
+}
+
+# Normalize model name natively using parameter expansions (Task C)
 _normalize_model_name() {
   local prov="${PROVIDER:-groq}"
-  # Dynamically strip the active provider's prefix (e.g., 'groq', 'gemini') and generic 'models/'
-  printf '%s' "$1" | sed -e 's#^models/##' -e "s#^${prov}[:/ -]*##" -e 's/^[[:space:]]*//;s/[[:space:]]*$//'
+  local name="${1:-}"
+
+  # Strip leading models/
+  name="${name#models/}"
+
+  # Strip active provider prefix
+  name="${name#$prov}"
+
+  # Strip standard whitespace or separators from the beginning
+  while [[ "$name" == [[:space:]:/~_-]* ]]; do
+    name="${name#?}"
+  done
+
+  # Trim leading and trailing whitespace natively (reusing trim_space logic inline)
+  name="${name#"${name%%[![:space:]]*}"}"
+  name="${name%"${name##*[![:space:]]}"}"
+
+  printf '%s' "$name"
 }
 
 #--3<---[ SUBSECTION: API_NET ]--->3--
@@ -223,11 +284,20 @@ ensure_api_key_for_provider() {
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
-  # Normalize input: strip CR/LF, leading "export ", and VAR=VALUE forms
-  input_key="$(printf '%s' "$input_key" | tr -d '\r\n')"
-  input_key="$(printf '%s' "$input_key" | sed -E 's/^[[:space:]]*export[[:space:]]+//I')"
-  if printf '%s' "$input_key" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*='; then
-    input_key="$(printf '%s' "$input_key" | sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[\"\x27]?([^\"\x27]*).*$/\1/')"
+  # Native normalization (Task C: replaces tr and sed forks)
+  input_key="${input_key//$'\r'/}"
+  input_key="${input_key//$'\n'/}"
+
+  # Strip case-insensitive "export " prefix natively
+  local rx_export='^[[:space:]]*[eE][xX][pP][oO][rR][tT][[:space:]]+(.*)$'
+  if [[ "$input_key" =~ $rx_export ]]; then
+    input_key="${BASH_REMATCH[1]}"
+  fi
+
+  # Strip assignment patterns "VAR=" natively (Approved safe single/double quoting correction)
+  local rx_assign='^[A-Za-z_][A-Za-z0-9_]*=['"'"'"]?([^'"'"'"]*).*$'
+  if [[ "$input_key" =~ $rx_assign ]]; then
+    input_key="${BASH_REMATCH[1]}"
   fi
 
   if [ -z "$input_key" ]; then
@@ -482,10 +552,12 @@ fi
 
 PROVIDER_FILE="$(canonical_provider_file)"
 #--5<---[ SECTION: PRECORE_BOOT_HELPERS ]--->5--
+# Native string transformation replacing tr/sed forks (Task C)
 provider_api_env_var_name() {
   local prov="${1:-}"
   local prov_upper
-  prov_upper="$(printf '%s' "$prov" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  prov_upper="${prov^^}"
+  prov_upper="${prov_upper//[!A-Z0-9_]/_}"
   printf '%s' "${prov_upper}_API_KEY"
 }
 
@@ -917,11 +989,12 @@ ensure_run_tmpdir() {
     export RUN_TMPDIR PAYLOAD RESP ERRF
     [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
   else
-    printf '%s' "$print_only"
+    printf '%s' "$RUN_TMPDIR"
   fi
 
   return 0
 }
+
 b64_atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
@@ -2535,7 +2608,6 @@ call_api_groq() {
 }
 
 call_api_streaming_groq() {
-  # ERRF is un-shadowed from the local scope to correctly point to the global log path
   local tmp_payload provider_url resp_raw resp_lines resp_valid resp_chunks resp_tmp rc stderr_head now_ts decoded_payload finish_reason req_id edgecase send_payload CURL_CMD http_code json content resp_size errf_size resp_text_tmp resp_json_tmp p_dir api_json ui_last
 
   if ! enforce_network_policy >/dev/null 2>&1; then
@@ -2586,7 +2658,6 @@ call_api_streaming_groq() {
   resp_valid="$(_tmpf file "$RUN_TMPDIR" resp.valid.jsons 2>/dev/null)"
   resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
   
-  # ERRF is assigned directly as a dynamic temp file for curl stdout streams, logging back to ERRF safely
   local curl_err_log
   curl_err_log="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
   : > "$curl_err_log" 2>/dev/null || true
@@ -3135,7 +3206,7 @@ call_api_streaming() {
 }
 
 extract_api_error() {
-  [ ! -s "${RESP:-}" ] && return 0
+  if [ ! -s "${RESP:-}" ]; then return 0; fi
   if jq -e . "$RESP" >/dev/null 2>&1; then
     jq -r '
       ( [ .error?.message // empty ] 
@@ -3218,7 +3289,7 @@ finalize_and_output() {
   esac
 
   if [ "$mode" = "text" ] || [ "$mode" = "raw" ]; then
-    [ "${FORCE_SAVE_MODE:-}" = "nosave" ] && return 0
+    if [ "${FORCE_SAVE_MODE:-}" = "nosave" ]; then return 0; fi
     do_save=0
     len="$(printf '%s' "$text" | wc -c | tr -d ' ')"
     if [ "${FORCE_SAVE_MODE:-}" = "save" ]; then
@@ -3343,7 +3414,6 @@ perform_request_once() {
       release_session_lock
       return 0
     else
-      # Duplicate 'rc=$?' removed to prevent overwriting of the original failure code
       if [ "$rc" -eq "$BASH4LLM_ERR_CURL_FAILED" ]; then
         printf 'bash4llm: %sWARN%s: Network error (curl). Retrying...\n' "${C_BYELLOW}" "${C_RST}" >&2
       elif [ "$rc" -eq "$BASH4LLM_ERR_API" ]; then
@@ -4341,11 +4411,9 @@ fi
 
 # chat mode: External TUI REPL Invocation Hook
 if [ "$CHAT_MODE" -eq 1 ]; then
-  # Dynamically resolve absolute core path for environment child processes
   BASH4LLM_CORE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
   export BASH4LLM_CORE_SCRIPT
 
-  # Export core structural state variables for child TUI REPL shell
   export BASH4LLM_ACTIVE_SESSION="${SESSION_ID}"
   export BASH4LLM_ACTIVE_MODEL="${MODEL}"
   export BASH4LLM_ACTIVE_TEMPERATURE="${TEMPERATURE}"
@@ -4355,7 +4423,6 @@ if [ "$CHAT_MODE" -eq 1 ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "CHAT" "Executing external TUI REPL: $tui_script"
     fi
-    # Execute external chat binary as a clean child process inheriting current env
     bash "$tui_script" "$@"
     exit $?
   else
@@ -4505,9 +4572,8 @@ if [ -n "${SESSION_ID:-}" ]; then
   BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
 
   if [ "${_engine_available:-0}" -eq 1 ]; then
-    if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
-      log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
-      session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
+    if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; } then
+      :
     fi
   else
     session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" || { log_warn "SESSION" "failed to read session window for $SESSION_ID"; rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true; }
