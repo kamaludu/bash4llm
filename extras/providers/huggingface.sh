@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/huggingface.sh
 # Extra: Provider Huggingface
 # Copyright (C) 2026 Cristian Evangelisti
@@ -653,4 +653,55 @@ auto_select_model_huggingface() {
   fi
   printf ''
   return 0
+}
+
+validate_key_huggingface() {
+  # Temporarily disable set -u if active
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
+  local key="${1:-}"
+  local http_code curl_rc=0
+  local tmpout errf workdir
+
+  if [ -z "$key" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return 1
+  fi
+
+  workdir="$(_get_work_tmpdir_hf)"
+  [ -n "$workdir" ] || workdir="${BASH4LLM_TMPDIR:-/tmp}"
+
+  tmpout="$(_mktemp_in_dir_hf "$workdir" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="${workdir}/hf-key-diag.tmp"
+  errf="${tmpout}.err"
+
+  # GET call to the /api/whoami-v2 identity endpoint
+  local api_url="https://huggingface.co/api/whoami-v2"
+
+  http_code="$(curl "${CURL_BASE_OPTS[@]:-}" --silent --show-error --no-buffer --max-time 10 \
+    -H "Authorization: Bearer $key" \
+    -o "$tmpout" \
+    -w "%{http_code}" \
+    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  curl_rc=$?
+
+  rm -f "$tmpout" "$errf" 2>/dev/null || true
+
+  # Restore set -u if previously active
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+
+  # Detecting timeouts or network problems
+  if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
+    return 28
+  fi
+
+  # HTTP 200 = Valid;  HTTP 401 = Invalid
+  if [ "$http_code" = "200" ]; then
+    return 0
+  else
+    return 1
+  fi
 }
