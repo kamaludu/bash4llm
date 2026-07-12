@@ -576,9 +576,74 @@ show_config_menu() {
         if IFS= read -r new_key; then
           new_key="$(trim_space "$new_key")"
           if [ -n "$new_key" ]; then
-            export "${key_var}=${new_key}"
-            if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
-            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
+            local val_rc=0
+            local loop_active=1
+
+            while [ "$loop_active" -eq 1 ]; do
+              printf '\n  %s\n' "$(_msg config_key_checking)" >&2
+              
+              # Call to the Core dispatch function
+              validate_provider_key_dispatch "$new_key"
+              val_rc=$?
+
+              if [ "$val_rc" -eq 127 ]; then
+                # Case A: Diagnostics not supported by provider
+                printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg config_key_not_supported)" "${C_RST:-}" >&2
+                export "${key_var}=${new_key}"
+                if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
+                loop_active=0
+
+              elif [ "$val_rc" -eq 28 ]; then
+                # Case B: Network timeout (10 seconds expired) or curl connection error
+                printf '\n  %s%s%s\n' "${C_BRED:-}" "$(_msg config_key_timeout)" "${C_RST:-}" >&2
+                printf '  %s ' "$(_msg config_key_timeout_prompt)" >&2
+                
+                local timeout_choice
+                if IFS= read -r timeout_choice; then
+                  timeout_choice="$(trim_space "${timeout_choice,,}")"
+                  if [ "$timeout_choice" = "r" ]; then
+                    # Rerun the loop to retry validation
+                    continue
+                  elif [ "$timeout_choice" = "p" ]; then
+                    # It still proceeds by saving the key
+                    export "${key_var}=${new_key}"
+                    if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
+                    printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
+                    loop_active=0
+                  else
+                    # Cancel the operation (discard the new key)
+                    loop_active=0
+                  fi
+                else
+                  loop_active=0
+                fi
+
+              elif [ "$val_rc" -eq 0 ]; then
+                # Case C: Validation completed successfully
+                printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_valid)" "${C_RST:-}" >&2
+                export "${key_var}=${new_key}"
+                if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
+                printf '  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
+                loop_active=0
+
+              else
+                # Case D: Key rejected by provider (e.g. HTTP 401/403)
+                printf '\n  %s%s%s\n' "${C_BRED:-}" "$(_msg config_key_invalid)" "${C_RST:-}" >&2
+                printf '  %s' "$(_msg config_key_save_invalid_prompt)" >&2
+                
+                local confirm_save
+                if IFS= read -r confirm_save; then
+                  confirm_save="$(trim_space "${confirm_save,,}")"
+                  if [[ "$confirm_save" =~ ^[yY](es)?$ ]]; then
+                    # The user explicitly chooses to save the invalid key
+                    export "${key_var}=${new_key}"
+                    if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
+                    printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
+                  fi
+                fi
+                loop_active=0
+              fi
+            done
           fi
         fi
         ;;
