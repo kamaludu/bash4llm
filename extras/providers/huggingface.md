@@ -86,11 +86,11 @@ hf_remove_endpoint "google/gemma-2-2b-it"
 > 
 > ```text
 > # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-> Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
-> Qwen/Qwen2.5-Coder-7B-Instruct|https://router.huggingface.co/v1/chat/completions
-> microsoft/Phi-3-mini-4k-instruct|https://router.huggingface.co/v1/chat/completions
-> microsoft/Phi-3.5-mini-instruct|https://router.huggingface.co/v1/chat/completions
-> HuggingFaceTB/smollm2-1.7b-instruct|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-7B-Instruct|https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct/v1/chat/completions
+> Qwen/Qwen2.5-Coder-7B-Instruct|https://api-inference.huggingface.co/models/Qwen/Qwen2.5-Coder-7B-Instruct/v1/chat/completions
+> microsoft/Phi-3-mini-4k-instruct|https://api-inference.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct/v1/chat/completions
+> microsoft/Phi-3.5-mini-instruct|https://api-inference.huggingface.co/models/microsoft/Phi-3.5-mini-instruct/v1/chat/completions
+> HuggingFaceTB/smollm2-1.7b-instruct|https://api-inference.huggingface.co/models/HuggingFaceTB/smollm2-1.7b-instruct/v1/chat/completions
 > deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
 > ```
 >
