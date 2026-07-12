@@ -81,19 +81,26 @@ hf_remove_endpoint "google/gemma-2-2b-it"
 > `bash4llm.d/config/providers/hf_endpoints`
 > 
 > con le seguenti righe:
+>
+> **Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)**
 > 
 > ```text
 > # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-> google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
-> mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
 > Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
 > Qwen/Qwen2.5-Coder-7B-Instruct|https://router.huggingface.co/v1/chat/completions
 > microsoft/Phi-3-mini-4k-instruct|https://router.huggingface.co/v1/chat/completions
 > microsoft/Phi-3.5-mini-instruct|https://router.huggingface.co/v1/chat/completions
 > HuggingFaceTB/smollm2-1.7b-instruct|https://router.huggingface.co/v1/chat/completions
 > deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
+> ```
+>
 > 
+> **Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)**
+> 
+> ```text
 > # Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
+> google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
+> mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
 > meta-llama/Llama-3.2-1B-Instruct|https://router.huggingface.co/v1/chat/completions
 > meta-llama/Llama-3.2-3B-Instruct|https://router.huggingface.co/v1/chat/completions
 > ```
