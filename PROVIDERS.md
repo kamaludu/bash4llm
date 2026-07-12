@@ -111,6 +111,19 @@ Il core di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per
 
 ---
 
+#### ➕ `validate_key_<provider>()`
+
+**Responsabilità:**
+- Verificare la validità della chiave API inserita dall'utente tramite una richiesta di rete leggera (GET) all'endpoint di diagnostica del rispettivo provider.
+- Impostare un timeout di rete rigido a 10 secondi (passando `--max-time 10` a curl).
+- Restituire i seguenti codici di stato:
+  - `0` se la chiave è valida (es. risposta HTTP 200).
+  - `1` se la chiave non è valida (es. risposta HTTP 401/403/400).
+  - `28` (o il codice di errore restituito da curl) in caso di timeout di rete o errore di connessione.
+- Rispettare la modalità rigorosa `set -u` gestendo e ripristinando temporaneamente lo stato tramite variabili locali se necessario.
+
+---
+
 ## 4. Variabili garantite dal CORE
 
 Il CORE di Bash4LLM⁺ rende disponibili e valorizza per il provider le seguenti variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
@@ -356,6 +369,19 @@ The core of Bash4LLM⁺ interacts with providers through dedicated functions. To
 - Return `0` on success.
 
 *Note on capabilities: The Bash4LLM⁺ core automatically detects whether a provider supports this feature by inspecting the presence of the function via `type "refresh_models_${provider}"`. No external enablement variables are required.*
+
+---
+
+#### ➕ `validate_key_<provider>()`
+
+**Responsibilities:**
+- Verify the validity of the API key entered by the user via a lightweight network request (GET) to the respective provider's diagnostic endpoint.
+- Set a strict network timeout of 10 seconds (by passing `--max-time 10` to curl).
+- Return the following status codes:
+- `0` if the key is valid (e.g., HTTP 200 response).
+- `1` if the key is invalid (e.g., HTTP 401/403/400 response).
+- `28` (or the error code returned by curl) in the event of a network timeout or connection failure.
+- Enforce the strict `set -u` mode by temporarily managing and restoring state via local variables if necessary.
 
 ---
 
