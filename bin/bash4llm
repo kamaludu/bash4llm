@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: bash4llm
-# Component: Core (Final Corrected Release - Part 1)
+# Component: Core
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
@@ -2930,6 +2930,47 @@ validate_model_groq() {
   return $?
 }
 
+validate_key_groq() {
+  local key="${1:-}"
+  local url="${BASH4LLM_PROVIDER_URL:-https://api.groq.com/openai/v1/chat/completions}"
+  local base_url="${url%/chat/completions}"
+  local api_url="${base_url%/v1}/v1/models"
+  local http_code curl_rc=0
+  local tmpout errf
+
+  if [ -z "$key" ]; then
+    return 1
+  fi
+
+  # Secure temporary file allocation compliant with Core configuration
+  if type _mktemp_in_dir >/dev/null 2>&1; then
+    tmpout="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" 2>/dev/null || true)"
+  fi
+  [ -n "$tmpout" ] || tmpout="$(_tmpf file "$BASH4LLM_TMPDIR" groq-key-diag 2>/dev/null || mktemp "${BASH4LLM_TMPDIR}/groq-key-diag.XXXXXX")"
+  errf="${tmpout}.err"
+
+  # Diagnostic call with a strict 10-second timeout
+  http_code="$(curl "${CURL_BASE_OPTS[@]}" --max-time 10 \
+    -H "Authorization: Bearer $key" \
+    -o "$tmpout" \
+    -w "%{http_code}" \
+    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  curl_rc=$?
+
+  rm -f "$tmpout" "$errf" 2>/dev/null || true
+
+  # Specific timeout detection (curl exit code 28) or generic network error
+  if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
+    return 28
+  fi
+
+  if [ "$http_code" = "200" ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 auto_select_model_groq() {
   local file="$MODELS_FILE" line norm cnt=0
   if [ -f "$file" ] && [ -s "$file" ]; then
@@ -2967,6 +3008,19 @@ call_provider() {
     "$fn" "${shift_args[@]}"
     return $?
   fi
+  return 127
+}
+
+validate_provider_key_dispatch() {
+  local key="${1:-}"
+  local fn="validate_key_${PROVIDER}"
+
+  if type "$fn" >/dev/null 2>&1; then
+    "$fn" "$key"
+    return $?
+  fi
+
+  # Returns 127 if the provider module does not support key diagnostics
   return 127
 }
 
