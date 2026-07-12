@@ -226,27 +226,43 @@ validate_file_input() {
   return 0
 }
 
-# Normalize model name natively using parameter expansions (Task C)
+# Normalize model name natively and securely
 _normalize_model_name() {
   local prov="${PROVIDER:-groq}"
   local name="${1:-}"
+  local normalized=""
 
-  # Strip leading models/
-  name="${name#models/}"
-
-  # Strip active provider prefix
-  name="${name#$prov}"
-
-  # Strip standard whitespace or separators from the beginning
-  while [[ "$name" == [[:space:]:/~_-]* ]]; do
-    name="${name#?}"
-  done
-
-  # Trim leading and trailing whitespace natively (reusing trim_space logic inline)
+  # 1. Safe preventive sanitization (trim leading/trailing whitespace and carriage returns)
   name="${name#"${name%%[![:space:]]*}"}"
   name="${name%"${name##*[![:space:]]}"}"
+  name="${name//$'\r'/}"
 
-  printf '%s' "$name"
+  # 2. Hook detection and execution in an isolated subshell
+  if type "normalize_model_${prov}" >/dev/null 2>&1; then
+    # Execute provider-specific hook in a subshell to isolate errors and prevent state pollution
+    normalized="$( "normalize_model_${prov}" "$name" 2>/dev/null || true )"
+  fi
+
+  # 3. Zero-Fallback algorithm if hook is missing, crashes, or returns empty
+  if [ -z "$normalized" ]; then
+    normalized="$name"
+    # Strip leading models/ prefix safely
+    normalized="${normalized#models/}"
+    # Strip provider prefix unless it is gemini
+    if [ "$prov" != "gemini" ]; then
+      normalized="${normalized#$prov}"
+    fi
+    # Clean up remaining standard separators from the beginning
+    while [[ "$normalized" == [[:space:]:/~_-]* ]]; do
+      normalized="${normalized#?}"
+    done
+  fi
+
+  # 4. Strict Output Whitelist Filter (alphanumeric, dot, underscore, slash, colon, plus, at, equal, hyphen)
+  # Note: the hyphen '-' is positioned at the very end of the class to avoid range interpretation
+  normalized="$(printf '%s' "$normalized" | tr -cd 'a-zA-Z0-9._/::+@=-')"
+
+  printf '%s' "$normalized"
 }
 
 #--3<---[ SUBSECTION: API_NET ]--->3--
