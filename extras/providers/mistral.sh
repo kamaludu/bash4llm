@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/mistral.sh
 # Extra: Provider Mistral
 # Copyright (C) 2026 Cristian Evangelisti
@@ -584,4 +584,64 @@ auto_select_model_mistral() {
   fi
   printf ''
   return 0
+}
+
+validate_key_mistral() {
+  # Temporarily disable set -u if it is currently active
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
+  local key="${1:-}"
+  local http_code curl_rc=0
+  local tmpout errf workdir
+
+  if [ -z "$key" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return 1
+  fi
+
+  workdir="$(_get_work_tmpdir_mistral)"
+  [ -n "$workdir" ] || workdir="${BASH4LLM_TMPDIR:-/tmp}"
+
+  tmpout="$(_mktemp_in_dir_mistral "$workdir" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="${workdir}/mistral-key-diag.tmp"
+  errf="${tmpout}.err"
+
+  # Resolve the models API URL matching the provider configuration
+  local api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
+
+  # Build the curl command array robustly
+  local -a curl_cmd=(curl -s -w "%{http_code}")
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    --max-time 10
+    -H "Authorization: Bearer $key"
+    -H "Content-Type: application/json"
+    "$api_url" -o "$tmpout"
+  )
+
+  # Execute the validation check with a rigid 10-second timeout limit
+  http_code="$("${curl_cmd[@]}" 2>"$errf" || echo "CURL_ERR")"
+  curl_rc=$?
+
+  rm -f "$tmpout" "$errf" 2>/dev/null || true
+
+  # Restore set -u state if it was active
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+
+  # Detect specific network timeouts (curl exit code 28) or general failures
+  if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
+    return 28
+  fi
+
+  # HTTP 200 = Valid token; HTTP 401 = Invalid token
+  if [ "$http_code" = "200" ]; then
+    return 0
+  else
+    return 1
+  fi
 }
