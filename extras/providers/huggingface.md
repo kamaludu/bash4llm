@@ -81,30 +81,32 @@ hf_remove_endpoint "google/gemma-2-2b-it"
 > `bash4llm.d/config/providers/hf_endpoints`
 > 
 > con le seguenti righe:
+> 
+>
+> **Hugging Face Endpoints - Ultima sincronizzazione con API Live: 2026-07-10**
 >
 > **Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)**
 > 
 > ```text
-> # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-> Qwen/Qwen2.5-7B-Instruct|https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct/v1/chat/completions
-> Qwen/Qwen2.5-Coder-7B-Instruct|https://api-inference.huggingface.co/models/Qwen/Qwen2.5-Coder-7B-Instruct/v1/chat/completions
-> microsoft/Phi-3-mini-4k-instruct|https://api-inference.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct/v1/chat/completions
-> microsoft/Phi-3.5-mini-instruct|https://api-inference.huggingface.co/models/microsoft/Phi-3.5-mini-instruct/v1/chat/completions
-> HuggingFaceTB/smollm2-1.7b-instruct|https://api-inference.huggingface.co/models/HuggingFaceTB/smollm2-1.7b-instruct/v1/chat/completions
+> # Modelli Liberi (Testati e attivi sul tuo Router di Hugging Face)
 > deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
+> microsoft/phi-4|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-72B-Instruct|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-Coder-32B-Instruct|https://router.huggingface.co/v1/chat/completions
+> deepseek-ai/DeepSeek-R1-Distill-Qwen-7B|https://router.huggingface.co/v1/chat/completions
 > ```
 >
 > 
 > **Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)**
 > 
 > ```text
-> # Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
-> google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
+> # Modelli Gated (Richiedono accettazione licenza sul sito)
+> meta-llama/Llama-3.3-70B-Instruct|https://router.huggingface.co/v1/chat/completions
+> google/gemma-3-12b-it|https://router.huggingface.co/v1/chat/completions
+> google/gemma-3-27b-it|https://router.huggingface.co/v1/chat/completions
 > mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
-> meta-llama/Llama-3.2-1B-Instruct|https://router.huggingface.co/v1/chat/completions
-> meta-llama/Llama-3.2-3B-Instruct|https://router.huggingface.co/v1/chat/completions
 > ```
-
 ---
 
 ### 4. API key e sicurezza
