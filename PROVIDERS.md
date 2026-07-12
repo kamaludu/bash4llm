@@ -124,6 +124,13 @@ Il core di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per
 
 ---
 
+### 3.3: `normalize_model_<provider>()` (Opzionale)
+* **Responsabilità:** Riceve come argomento `$1` il nome del modello grezzo. Deve restituire esclusivamente su `stdout` il nome del modello normalizzato.
+* **Isolamento:** La funzione viene eseguita dal CORE in una sotto-shell. Qualsiasi modifica a variabili globali, directory corrente (`cd`) o opzioni di shell effettuata all'interno dell'hook non avrà effetto sul CORE.
+* **Vincoli di Output:** L'output deve idealmente conformarsi alla whitelist dei caratteri sicuri. Qualsiasi carattere non conforme (es. spazi, simboli di controllo) verrà comunque rimosso d'ufficio dal CORE.
+
+---
+
 ## 4. Variabili garantite dal CORE
 
 Il CORE di Bash4LLM⁺ rende disponibili e valorizza per il provider le seguenti variabili d'ambiente e di stato prima di invocare le rispettive funzioni:
@@ -382,6 +389,13 @@ The core of Bash4LLM⁺ interacts with providers through dedicated functions. To
 - `1` if the key is invalid (e.g., HTTP 401/403/400 response).
 - `28` (or the error code returned by curl) in the event of a network timeout or connection failure.
 - Enforce the strict `set -u` mode by temporarily managing and restoring state via local variables if necessary.
+
+---
+
+### 3.3: `normalize_model_<provider>()` (Optional)
+* **Responsibilities:** Takes the raw model name as the `$1` argument. Must return only the normalized model name to `stdout`.
+* **Isolation:** The function is executed by CORE in a subshell. Any changes to global variables, the current directory (`cd`), or shell options made within the hook will have no effect on CORE.
+* **Output Constraints:** The output should ideally conform to the whitelist of safe characters. Any non-conforming characters (e.g., spaces, control symbols) will be automatically removed from CORE.
 
 ---
 
