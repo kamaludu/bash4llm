@@ -226,7 +226,7 @@ validate_file_input() {
   return 0
 }
 
-# Normalize model name natively and securely
+# Normalize model name natively and securely (Bash 4.0+ compliant)
 _normalize_model_name() {
   local prov="${PROVIDER:-groq}"
   local name="${1:-}"
@@ -239,28 +239,24 @@ _normalize_model_name() {
 
   # 2. Hook detection and execution in an isolated subshell
   if type "normalize_model_${prov}" >/dev/null 2>&1; then
-    # Execute provider-specific hook in a subshell to isolate errors and prevent state pollution
     normalized="$( "normalize_model_${prov}" "$name" 2>/dev/null || true )"
   fi
 
   # 3. Zero-Fallback algorithm if hook is missing, crashes, or returns empty
   if [ -z "$normalized" ]; then
     normalized="$name"
-    # Strip leading models/ prefix safely
     normalized="${normalized#models/}"
-    # Strip provider prefix unless it is gemini
     if [ "$prov" != "gemini" ]; then
       normalized="${normalized#$prov}"
     fi
-    # Clean up remaining standard separators from the beginning
     while [[ "$normalized" == [[:space:]:/~_-]* ]]; do
       normalized="${normalized#?}"
     done
   fi
 
-  # 4. Strict Output Whitelist Filter (alphanumeric, dot, underscore, slash, colon, plus, at, equal, hyphen)
-  # Note: the hyphen '-' is positioned at the very end of the class to avoid range interpretation
-  normalized="$(printf '%s' "$normalized" | tr -cd 'a-zA-Z0-9._/::+@=-')"
+  # 4. Strict Output Whitelist Filter using native parameter expansion
+  # Escape-safe and verified for older Bash 4.x parser variants
+  normalized="${normalized//[^a-zA-Z0-9._\/:+@=-]/}"
 
   printf '%s' "$normalized"
 }
@@ -2375,7 +2371,7 @@ THRESHOLD="${THRESHOLD:-1000}"
 MAX_RETRIES="${MAX_RETRIES:-1}"
 
 SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
-PROVIDER="${PROVIDER:-groq}"
+export SUPPORTED_PROVIDERS
 
 if type ensure_config_dir >/dev/null 2>&1; then
   ensure_config_dir >/dev/null 2>&1 || true
@@ -3880,6 +3876,7 @@ if [ -d "$extras_prov_dir" ]; then
   done
 fi
 SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
+export SUPPORTED_PROVIDERS
 
 if [ "${LIST_PROVIDERS_RAW:-0}" -eq 1 ]; then
   if [ "${#_supported_providers_arr[@]}" -eq 0 ]; then
