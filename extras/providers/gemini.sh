@@ -803,3 +803,14 @@ validate_key_gemini() {
     return 1
   fi
 }
+
+# -------------------------
+# normalize_model_gemini
+# -------------------------
+# Provider-specific model normalization for Gemini
+normalize_model_gemini() {
+  local name="${1:-}"
+  # Preserve the full gemini/gemma model identity but safely strip "models/" path prefix if present
+  name="${name#models/}"
+  printf '%s' "$name"
+}
