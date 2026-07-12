@@ -651,7 +651,7 @@ validate_key_mistral() {
 # Provider-specific model normalization for Mistral
 normalize_model_mistral() {
   local name="${1:-}"
-  # Preserve the full Mistral model name but strip standard "models/" path prefix if present
+  # Preserve the full Mistral model prefix (e.g. mistral-medium)
   name="${name#models/}"
   printf '%s' "$name"
 }
