@@ -508,10 +508,216 @@ print_status_bar() {
     "${C_BCYAN:-}" "$(_msg label_stream)" "${C_RST:-}" "$col_stream" >&2
 }
 
+# --- SELEZIONE ASSISTITA DEL PROVIDER (WIZARD) ---
+select_provider_wizard() {
+  local -a prov_arr=()
+  local p i sel idx chosen prev_provider target_provider_file
+
+  # Parsing sicuro dei provider supportati
+  IFS=' ' read -r -a prov_arr <<< "${SUPPORTED_PROVIDERS:-groq}"
+
+  if [ "${#prov_arr[@]}" -eq 0 ]; then
+    printf '\n  %s%s%s\n' "${C_RED:-}" "Nessun provider disponibile." "${C_RST:-}" >&2
+    return 1
+  fi
+
+  local title_val
+  title_val="$(_msg config_provider_title)"
+
+  # Titolo con spazio estetico all'inizio e alla fine dentro C_BANNER
+  printf '\n%b%s%b\n\n' "${C_BANNER:-}" " ${title_val} " "${C_RST:-}" >&2
+
+  # Elenco verticale ad elementi singoli con indici colorati in C_BCYAN
+  for ((i=0; i<${#prov_arr[@]}; i++)); do
+    p="${prov_arr[i]}"
+    if [ "$p" = "${PROVIDER:-}" ]; then
+      printf "  ${C_BCYAN:-}[%2d]${C_RST:-} %s (%s)\n" "$((i + 1))" "$p" "$(_msg menu_current)" >&2
+    else
+      printf "  ${C_BCYAN:-}[%2d]${C_RST:-} %s\n" "$((i + 1))" "$p" >&2
+    fi
+  done
+
+  # Chiusura grafica da esattamente 40 caratteri in C_BBLUE
+  printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
+
+  printf '  %s ' "$(_msg config_prompt)" >&2
+  if ! IFS= read -r sel; then
+    return 0
+  fi
+  sel="$(trim_space "$sel")"
+
+  # Annullamento standard di sicurezza su input vuoto o 'q'/'Q'
+  if [ -z "$sel" ] || [ "$sel" = "q" ] || [ "$sel" = "Q" ]; then
+    return 0
+  fi
+
+  chosen=""
+  if [[ "$sel" =~ ^[0-9]+$ ]]; then
+    idx=$((sel - 1))
+    if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#prov_arr[@]}" ]; then
+      chosen="${prov_arr[idx]}"
+    fi
+  else
+    # Accetta anche l'inserimento diretto del nome testuale
+    for p in "${prov_arr[@]}"; do
+      if [ "$p" = "$sel" ]; then
+        chosen="$p"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$chosen" ]; then
+    printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_provider_unknown)" "${C_RST:-}" >&2
+    sleep 1
+    return 1
+  fi
+
+  prev_provider="${PROVIDER:-}"
+  PROVIDER="$chosen"
+
+  if ! ensure_config_dir; then
+    log_error "PROVIDER" "cannot persist provider selection: config dir unavailable."
+    PROVIDER="$prev_provider"
+    return 1
+  fi
+
+  target_provider_file="$(canonical_provider_file)"
+  if ! printf '%s\n' "$PROVIDER" | atomic_write "$target_provider_file" 10; then
+    log_error "PROVIDER" "cannot persist provider selection to $target_provider_file."
+    PROVIDER="$prev_provider"
+    return 1
+  fi
+
+  chmod 600 "$target_provider_file" 2>/dev/null || true
+  rm -f "$(canonical_provider_url_file)" 2>/dev/null || true
+
+  load_provider_module "$PROVIDER" >/dev/null 2>&1 || true
+  resolve_provider_url "$PROVIDER" >/dev/null 2>&1 || true
+
+  if [ "$prev_provider" != "$PROVIDER" ]; then
+    if [ -f "${MODELS_FILE:-}" ]; then
+      rm -f "$MODELS_FILE" 2>/dev/null || true
+    fi
+    resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-}"
+  fi
+
+  printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
+  sleep 1
+  return 0
+}
+
+# --- ASSISTED MODEL SELECTION (WIZARD) ---
+select_model_wizard() {
+  if [ ! -s "${MODELS_FILE:-}" ]; then
+    printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_no_local_models)" "${C_RST:-}" >&2
+    sleep 2
+    return 1
+  fi
+
+  local -a models_arr=()
+  local line norm
+
+  # Robust preemptive filtering of unsupported client models
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -z "$line" ] && continue
+    norm="$(_normalize_model_name "$line")"
+    if is_supported_model "$norm"; then
+      models_arr+=("$norm")
+    fi
+  done < "$MODELS_FILE"
+
+  local total_models="${#models_arr[@]}"
+  if [ "$total_models" -eq 0 ]; then
+    printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_no_compatible_models)" "${C_RST:-}" >&2
+    sleep 2
+    return 1
+  fi
+
+  local page_size=10
+  local current_page=0
+  local total_pages=$(( (total_models + page_size - 1) / page_size ))
+  local title_val
+  title_val="$(_msg config_model_title)"
+
+  while true; do
+    if [ -t 1 ]; then
+      clear 2>/dev/null || printf '\033[H\033[2J' >&2
+    fi
+
+    printf '\n%b%s%b\n\n' "${C_BANNER:-}" " ${title_val} " "${C_RST:-}" >&2
+    printf "  %s\n\n" "$(_msg wizard_page "$((current_page + 1))" "$total_pages" "$total_models")" >&2
+
+    local start_idx=$((current_page * page_size))
+    local end_idx=$((start_idx + page_size))
+    [ "$end_idx" -gt "$total_models" ] && end_idx="$total_models"
+
+    local i
+    for ((i = start_idx; i < end_idx; i++)); do
+      local m_name="${models_arr[i]}"
+      if [ "$m_name" = "${MODEL:-}" ]; then
+        printf "  ${C_BCYAN:-}[%2d]${C_RST:-} %s (%s)\n" "$((i + 1))" "$m_name" "$(_msg menu_current)" >&2
+      else
+        printf "  ${C_BCYAN:-}[%2d]${C_RST:-} %s\n" "$((i + 1))" "$m_name" >&2
+      fi
+    done
+
+    printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
+
+    local btn_prev="${BG_WHITE:-}${C_BBLUE:-}< [ -/p ]${C_RST:-}"
+    local btn_quit="${BG_WHITE:-}${C_BBLUE:-}[ q ] $(_msg word_exit)${C_RST:-}"
+    local btn_next="${BG_WHITE:-}${C_BBLUE:-}[ +/n ] >${C_RST:-}"
+    
+    printf "  %s  %s  %s\n\n" "$btn_prev" "$btn_quit" "$btn_next" >&2
+
+    local choice
+    printf '  %s ' "$(_msg wizard_prompt)" >&2
+    if ! IFS= read -r choice; then
+      return 0
+    fi
+    choice="$(trim_space "$choice")"
+
+    # q, Q or Empty Send: Standard cancellation (no changes to the active template)
+    if [ -z "$choice" ] || [ "$choice" = "q" ] || [ "$choice" = "Q" ]; then
+      return 0
+    fi
+
+    case "$choice" in
+      + | n | N)
+        current_page=$(( (current_page + 1) % total_pages ))
+        ;;
+      - | p | P)
+        current_page=$(( (current_page - 1 + total_pages) % total_pages ))
+        ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+          local target_idx=$((choice - 1))
+          if [ "$target_idx" -ge 0 ] && [ "$target_idx" -lt "$total_models" ]; then
+            MODEL="${models_arr[target_idx]}"
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_model_success "$MODEL")" "${C_RST:-}" >&2
+            sleep 1
+            return 0
+          else
+            printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg wizard_out_of_range)" "${C_RST:-}" >&2
+            sleep 1
+          fi
+        else
+          printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg wizard_invalid_choice)" "${C_RST:-}" >&2
+          sleep 1
+        fi
+        ;;
+    esac
+  done
+}
+
+# --- INTERACTIVE CONFIGURATION MENU ---
 show_config_menu() {
   while true; do
+    # Display the configuration menu header formatted with C_BANNER
     local config_title=" $(_msg config_title) "
     printf '\n%b%b%s%b\n' "${C_BANNER:-}" "$config_title" "${C_RST:-}" >&2
+    
+    # List the available menu items
     print_menu_item 1 "$(_msg config_opt_provider)" "${PROVIDER:-groq}"
     print_menu_item 2 "$(_msg config_opt_model)" "${MODEL:-<Default>}"
     print_menu_item 3 "$(_msg config_opt_key)" "$(provider_api_env_var_name "${PROVIDER:-groq}")" "$(_msg menu_env)"
@@ -519,7 +725,8 @@ show_config_menu() {
     print_menu_item 5 "$(_msg config_opt_refresh)"
     print_menu_item 6 "$(_msg config_opt_list)"
     print_menu_item 7 "$(_msg config_opt_return)"
-    
+
+    # Print a closing line of exactly 40 characters in C_BBLUE
     printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
     local m_sel
@@ -530,43 +737,36 @@ show_config_menu() {
     m_sel="$(trim_space "$m_sel")"
     printf '\n' >&2
 
+    # Standard clean case statement resolving the previous syntax issue
     case "$m_sel" in
       1)
-        printf '\n  %s\n' "$(_msg config_providers_installed "$SUPPORTED_PROVIDERS")" >&2
-        printf '  %s ' "$(_msg config_provider_prompt)" >&2
-        local new_prov
-        if IFS= read -r new_prov; then
-          new_prov="$(trim_space "$new_prov")"
-          if [ -n "$new_prov" ]; then
-            case " $SUPPORTED_PROVIDERS " in
-              *" $new_prov "*)
-                PROVIDER="$new_prov"
-                load_provider_module "$PROVIDER" >/dev/null 2>&1 || true
-                resolve_provider_url "$PROVIDER" >/dev/null 2>&1 || true
-                resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-}"
-                printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
-                ;;
-              *) printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_provider_unknown)" "${C_RST:-}" >&2 ;;
-            esac
-          fi
-        fi
+        # Launch the provider's assisted selection and vertical listing interface
+        select_provider_wizard
         ;;
       2)
-        printf '\n  %s ' "$(_msg config_model_prompt)" >&2
+        # Smart interactive prompt: Direct typing or Enter to show the list
+        printf '\n  %s ' "$(_msg config_model_prompt_choice)" >&2
         local new_model
         if IFS= read -r new_model; then
           new_model="$(trim_space "$new_model")"
-          if [ -n "$new_model" ]; then
+          if [ -z "$new_model" ]; then
+            # Press Enter without typing text: opens the interactive model selection interface
+            select_model_wizard
+          else
+            # Validation and possible application of the manually entered model
             if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
               MODEL="$new_model"
               printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_model_success "$MODEL")" "${C_RST:-}" >&2
+              sleep 1
             else
               printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_model_invalid)" "${C_RST:-}" >&2
+              sleep 1
             fi
           fi
         fi
         ;;
       3)
+        # Handle API key configuration for the active provider
         local key_var
         key_var="$(provider_api_env_var_name "${PROVIDER:-groq}")"
         local key_val="${!key_var:-}"
@@ -581,13 +781,13 @@ show_config_menu() {
 
             while [ "$loop_active" -eq 1 ]; do
               printf '\n  %s\n' "$(_msg config_key_checking)" >&2
-              
-              # Call to the Core dispatch function
+
+              # Call to the Core dispatch function to validate the key
               validate_provider_key_dispatch "$new_key"
               val_rc=$?
 
               if [ "$val_rc" -eq 127 ]; then
-                # Case A: Diagnostics not supported by provider
+                # Case A: Diagnostics not supported by provider, proceed to save directly
                 printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg config_key_not_supported)" "${C_RST:-}" >&2
                 export "${key_var}=${new_key}"
                 if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
@@ -597,7 +797,7 @@ show_config_menu() {
                 # Case B: Network timeout (10 seconds expired) or curl connection error
                 printf '\n  %s%s%s\n' "${C_BRED:-}" "$(_msg config_key_timeout)" "${C_RST:-}" >&2
                 printf '  %s ' "$(_msg config_key_timeout_prompt)" >&2
-                
+
                 local timeout_choice
                 if IFS= read -r timeout_choice; then
                   timeout_choice="$(trim_space "${timeout_choice,,}")"
@@ -605,13 +805,13 @@ show_config_menu() {
                     # Rerun the loop to retry validation
                     continue
                   elif [ "$timeout_choice" = "p" ]; then
-                    # It still proceeds by saving the key
+                    # Proceed and save the key anyway
                     export "${key_var}=${new_key}"
                     if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
                     printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
                     loop_active=0
                   else
-                    # Cancel the operation (discard the new key)
+                    # Cancel the operation and discard the entered key
                     loop_active=0
                   fi
                 else
@@ -619,7 +819,7 @@ show_config_menu() {
                 fi
 
               elif [ "$val_rc" -eq 0 ]; then
-                # Case C: Validation completed successfully
+                # Case C: Validation completed successfully, save the key
                 printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_valid)" "${C_RST:-}" >&2
                 export "${key_var}=${new_key}"
                 if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
@@ -627,15 +827,15 @@ show_config_menu() {
                 loop_active=0
 
               else
-                # Case D: Key rejected by provider (e.g. HTTP 401/403)
+                # Case D: Key explicitly rejected by provider (e.g., HTTP 401/403)
                 printf '\n  %s%s%s\n' "${C_BRED:-}" "$(_msg config_key_invalid)" "${C_RST:-}" >&2
                 printf '  %s' "$(_msg config_key_save_invalid_prompt)" >&2
-                
+
                 local confirm_save
                 if IFS= read -r confirm_save; then
                   confirm_save="$(trim_space "${confirm_save,,}")"
                   if [[ "$confirm_save" =~ ^[yY](es)?$ ]]; then
-                    # The user explicitly chooses to save the invalid key
+                    # The user explicitly chooses to save the invalid key anyway
                     export "${key_var}=${new_key}"
                     if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
                     printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
@@ -648,11 +848,13 @@ show_config_menu() {
         fi
         ;;
       4)
+        # Change the active UI language
         prompt_lang_selection
         load_lang_secure "$BASH4LLM_LANG"
         printf '\n  %sLanguage set to: %s%s\n' "${C_GREEN:-}" "$BASH4LLM_LANG" "${C_RST:-}" >&2
         ;;
       5)
+        # Fetch and refresh the list of available models from the provider API
         printf '\n  %s\n' "$(_msg config_refresh_start)" >&2
         if ensure_api_key_for_provider "$PROVIDER"; then
           if refresh_models_dispatch; then
@@ -663,15 +865,18 @@ show_config_menu() {
         fi
         ;;
       6)
+        # List locally cached models for the active provider
         local cached_title=" $(_msg config_cached_title "$PROVIDER") "
         printf '\n%b%b%s%b\n\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$cached_title" "${C_RST:-}" >&2
         list_models_cli >&2 || true
         printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
         ;;
       7 | q | Q | "")
+        # Exit configuration menu and return to standard chat
         return 0
         ;;
-      * )
+      *)
+        # Handle invalid inputs
         printf '\n  %sInvalid option!%s\n' "${C_RED:-}" "${C_RST:-}" >&2
         ;;
     esac
