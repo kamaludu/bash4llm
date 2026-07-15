@@ -65,7 +65,7 @@ buildpayload_gemini() {
     messages_json="$(jq -c '.messages // if type=="array" then . else [.] end' "${BUILD_MESSAGES_FILE:-}" 2>/dev/null || true)"
     if [ -n "$messages_json" ] && [ "$messages_json" != "null" ]; then
       messages_arg=1
-      # Sicuro sotto set -u: inserimento di CONTENT via stdin per evitare limiti di riga comando (ARG_MAX)
+      # Safe under set -u: injecting CONTENT via stdin to prevent ARG_MAX limitations
       if [ -n "${CONTENT:-}" ]; then
         messages_json="$(printf '%s' "$CONTENT" | jq -sR --argjson msgs "$messages_json" '$msgs + [{role: "user", content: .}]' 2>/dev/null || printf '%s' "$messages_json")"
       fi
@@ -94,29 +94,29 @@ buildpayload_gemini() {
 
   sys_prompt="${SYSTEM_PROMPT:-}"
 
-  # Sicuro sotto set -u: passiamo l'intero array dei messaggi a jq tramite pipeline (stdin) invece di --argjson
+  # Safe under set -u: passing message array to jq via pipeline instead of --argjson
   if ! printf '%s' "${input_messages_json}" | jq \
          --arg system_prompt "${sys_prompt}" \
          --arg temp "${TURE:-}" \
          --arg max_tok "${MAX_TOKENS:-}" \
          '
          . as $messages |
-         # 1) Estrae e unisce le istruzioni di sistema
+         # 1) Extract and merge system instructions
          ((($messages | map(select(.role == "system") | .content) | join("\n")) + (if $system_prompt != "" then "\n" + $system_prompt else "" end) | sub("^\\s+"; "") | sub("\\s+$"; ""))) as $sys_instruction |
 
-         # 2) Converte i turni di conversazione (mappando "assistant" -> "model")
+         # 2) Convert conversation turns mapping "assistant" -> "model"
          ($messages | map(select(.role != "system") | {
            role: (if .role == "assistant" then "model" else "user" end),
            parts: [{text: (.content // "")}]
          })) as $contents |
 
-         # 3) Configura i parametri di generazione (se presenti)
+         # 3) Build generation configuration
          ({} |
           if $temp != "" then . + {temperature: ($temp | tonumber)} else . end |
           if $max_tok != "" then . + {maxOutputTokens: ($max_tok | tonumber)} else . end
          ) as $gen_config |
 
-         # 4) Compone il payload finale nativo di Gemini
+         # 4) Construct the final Gemini-native payload
          ({contents: $contents} |
           if $sys_instruction != "" then . + {systemInstruction: {parts: [{text: $sys_instruction}]}} else . end |
           if ($gen_config | keys | length) > 0 then . + {generationConfig: $gen_config} else . end
@@ -263,7 +263,7 @@ call_api_gemini() {
   tmpresp="$(_mktemp_in_dir_gemini "$workdir")" || return 4
   errf="$(_mktemp_in_dir_gemini "$workdir")" || errf="${workdir%/}/curl.err"
 
-  # Gestione decodifica Base64 se il payload è codificato in b64
+  # Base64 decoding if input payload is formatted as a .b64 file
   send_payload="$PAYLOAD"
   decoded_payload=""
   if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
@@ -365,8 +365,9 @@ call_api_gemini() {
 }
 
 # -------------------------
-# call_api_streaming_gemini (streaming)
+# call_api_streaming_gemini
 # -------------------------
+# Optimized Gemini streaming using single unbuffered jq processor
 call_api_streaming_gemini() {
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
@@ -418,7 +419,7 @@ call_api_streaming_gemini() {
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
 
-  # Gestione decodifica Base64 se il payload è codificato in b64
+  # Base64 decoding if input payload is formatted as a .b64 file
   send_payload="$PAYLOAD"
   decoded_payload=""
   if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
@@ -455,24 +456,21 @@ call_api_streaming_gemini() {
 
   dbg "call_api_streaming_gemini: url=${api_url}"
 
+  # Real-time streaming decoder using a single unbuffered jq process
   curl "${CURL_BASE_OPTS[@]:-}" -H "x-goog-api-key: ${key_trim}" -H "Content-Type: application/json" --no-buffer --max-time 0 --data-binary @"$send_payload" "$api_url" 2>"$errf" | \
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      data:\ * ) line="${line#data: }" ;;
-      '' ) continue ;;
-    esac
-
-    if printf '%s' "$line" | jq -e . >/dev/null 2>&1; then
-      chunk="$(printf '%s' "$line" | jq -r 'try (if .candidates then (.candidates[]?.content?.parts[]?.text // empty) elif .content then (.content?.parts[]?.text // empty) elif .outputs then (.outputs[]?.content?.parts[]?.text // empty) else empty end) catch empty' 2>>"$errf" || true)"
-      if [ -n "$chunk" ]; then
-        printf '%s' "$chunk"
-      fi
-    else
-      printf '%s\n' "$line"
-    fi
-
-    printf '%s\n' "$line" >> "$RESP_RAW"
-  done
+  tee -a "$RESP_RAW" | \
+  jq --unbuffered -R -r '
+    select(length > 0) |
+    if startswith("data: ") then sub("^data:[[:space:]]*"; "") else . end |
+    try (
+      fromjson |
+      if .error then ("\nAPI Error: " + .error.message)
+      elif .candidates then (.candidates[]?.content?.parts[]?.text // "")
+      elif .content then (.content?.parts[]?.text // "")
+      elif .outputs then (.outputs[]?.content?.parts[]?.text // "")
+      else "" end
+    ) catch ""
+  '
 
   rc=${PIPESTATUS[0]:-0}
 
@@ -488,7 +486,7 @@ call_api_streaming_gemini() {
         chmod 600 "${resp_path}" 2>/dev/null || true
       fi
     else
-      printf '%s\n' "gemini: errore durante lo streaming. Vedi curl stderr (head):" >&2
+      printf '%s\n' "gemini: error during streaming. See curl stderr (head):" >&2
       head -n 50 "$errf" >&2 || true
       umask 077
       jq -n --arg stderr "$(head -n 200 "$errf" 2>/dev/null || true)" '{error:{stderr:$stderr}}' > "${resp_path}" 2>/dev/null || true
