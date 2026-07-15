@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/chat/tui-repl.sh
-# Component: TUI REPL Interactive Module (Final Corrected Release - Part 2)
+# Component: TUI REPL Interactive Module (Updated Multi-Param Version - Part 1)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
@@ -60,7 +60,7 @@ tac_fallback() {
   return 0
 }
 
-# Color placeholders and conditional attributes wrapped in <...> with C_YELLOW (Task C Corrected)
+# Color placeholders and conditional attributes wrapped in <...> with C_YELLOW
 color_attributes() {
   local text="$1"
   if [ -n "${C_YELLOW:-}" ]; then
@@ -74,8 +74,13 @@ color_attributes() {
 # --- PHASE 2: REPL STATE DICTIONARY AND VARIABLE INITIALIZATION ---
 SESSION_ID="${BASH4LLM_ACTIVE_SESSION:-}"
 MODEL="${BASH4LLM_ACTIVE_MODEL:-}"
-TEMPERATURE="${BASH4LLM_ACTIVE_TEMPERATURE:-1.0}"
+
+# Inherit global parameters with safe, validated defaults
+TEMPERATURE="${TEMPERATURE:-${TURE:-1.0}}"
 TURE="$TEMPERATURE"
+MAX_TOKENS="${MAX_TOKENS:-4096}"
+THRESHOLD="${THRESHOLD:-1000}"
+OUTPUT_MODE="${OUTPUT_MODE:-text}"
 
 # Dynamically synchronize the model cache for the current session
 sync_models_file_path
@@ -288,7 +293,6 @@ handle_sigint() {
   fi
 }
 trap handle_sigint INT
-
 # --- PHASE 5: SEQUENTIAL RENDERING UTILITIES ---
 print_banner() {
   [ "${QUIET:-0}" -eq 1 ] && return 0
@@ -319,7 +323,6 @@ ${C_BGREEN:-}----------------------------------------${C_RST:-}
 " >&2
 }
 
-# --- PHASE 6: PAGINATED SESSION SELECTION WIZARD ---
 _format_ts() {
   local ts="${1:-}"
   if [ -n "$ts" ]; then
@@ -329,6 +332,7 @@ _format_ts() {
   fi
 }
 
+# --- PHASE 6: PAGINATED SESSION SELECTION WIZARD ---
 load_sessions_wizard() {
   local hist_dir="${BASH4LLM_HISTORY_DIR:-}"
   local session_dir="${hist_dir%/}/sessions"
@@ -482,7 +486,7 @@ print_menu_item() {
   colored_val="$(color_attributes "$value")"
 
   if [ -n "$value" ]; then
-    printf "  ${C_BCYAN:-}%d)${C_RST:-} %-22s (${C_CYAN:-}%s${C_RST:-}: %s)\n" "$index" "$desc" "$label" "$colored_val" >&2
+    printf "  ${C_BCYAN:-}%d)${C_RST:-} %-26s (${C_CYAN:-}%s${C_RST:-}: %s)\n" "$index" "$desc" "$label" "$colored_val" >&2
   else
     printf "  ${C_BCYAN:-}%d)${C_RST:-} %s\n" "$index" "$desc" >&2
   fi
@@ -505,12 +509,18 @@ print_status_bar() {
   local col_sess="${C_YELLOW:-}${r_sess}${C_RST:-}"
   local col_model="${C_YELLOW:-}${r_model}${C_RST:-}"
   local col_temp="${C_YELLOW:-}${TEMPERATURE:-1.0}${C_RST:-}"
+  local col_tokens="${C_YELLOW:-}${MAX_TOKENS:-4096}${C_RST:-}"
+  local col_threshold="${C_YELLOW:-}${THRESHOLD:-1000}${C_RST:-}"
+  local col_format="${C_YELLOW:-}${OUTPUT_MODE:-text}${C_RST:-}"
   local col_stream="${C_YELLOW:-}${stream_status}${C_RST:-}"
 
-  printf "  %b%s%b %s | %b%s%b %s | %b%s%b %s | %b%s%b %s\n" \
+  printf "  %b%s%b %s\n  %b%s%b %s | %b%s%b %s | %b%s%b %s | %b%s%b %s | %b%s%b %s | %b%s%b %s\n" \
     "${C_BCYAN:-}" "$(_msg label_repl_status)" "${C_RST:-}" "$col_sess" \
     "${C_BCYAN:-}" "$(_msg label_llm)" "${C_RST:-}" "$col_model" \
     "${C_BCYAN:-}" "$(_msg label_temp)" "${C_RST:-}" "$col_temp" \
+    "${C_BCYAN:-}" "$(_msg label_tokens)" "${C_RST:-}" "$col_tokens" \
+    "${C_BCYAN:-}" "$(_msg label_threshold)" "${C_RST:-}" "$col_threshold" \
+    "${C_BCYAN:-}" "$(_msg label_format)" "${C_RST:-}" "$col_format" \
     "${C_BCYAN:-}" "$(_msg label_stream)" "${C_RST:-}" "$col_stream" >&2
 }
 
@@ -519,7 +529,6 @@ select_provider_wizard() {
   local -a prov_arr=()
   local p i sel idx chosen prev_provider target_provider_file
 
-  # Safe parsing of supported providers
   IFS=' ' read -r -a prov_arr <<< "${SUPPORTED_PROVIDERS:-groq}"
 
   if [ "${#prov_arr[@]}" -eq 0 ]; then
@@ -530,10 +539,8 @@ select_provider_wizard() {
   local title_val
   title_val="$(_msg config_provider_title)"
 
-  # Title with aesthetic spacing inside C_BANNER
   printf '\n%b%s%b\n\n' "${C_BANNER:-}" " ${title_val} " "${C_RST:-}" >&2
 
-  # Vertical list of single elements with colored indices in C_BCYAN
   for ((i=0; i<${#prov_arr[@]}; i++)); do
     p="${prov_arr[i]}"
     if [ "$p" = "${PROVIDER:-}" ]; then
@@ -543,7 +550,6 @@ select_provider_wizard() {
     fi
   done
 
-  # Graphical line of exactly 40 characters in C_BBLUE
   printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
   printf '  %s ' "$(_msg config_prompt)" >&2
@@ -552,7 +558,6 @@ select_provider_wizard() {
   fi
   sel="$(trim_space "$sel")"
 
-  # Standard safety cancellation on empty input or 'q'/'Q'
   if [ -z "$sel" ] || [ "$sel" = "q" ] || [ "$sel" = "Q" ]; then
     return 0
   fi
@@ -564,7 +569,6 @@ select_provider_wizard() {
       chosen="${prov_arr[idx]}"
     fi
   else
-    # Also accept direct input of textual name
     for p in "${prov_arr[@]}"; do
       if [ "$p" = "$sel" ]; then
         chosen="$p"
@@ -610,6 +614,7 @@ select_provider_wizard() {
   sleep 1
   return 0
 }
+
 # --- ASSISTED MODEL SELECTION (WIZARD) ---
 select_model_wizard() {
   if [ ! -s "${MODELS_FILE:-}" ]; then
@@ -621,7 +626,6 @@ select_model_wizard() {
   local -a models_arr=()
   local line norm
 
-  # Robust preemptive filtering of unsupported client models
   while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     norm="$(_normalize_model_name "$line")"
@@ -680,7 +684,6 @@ select_model_wizard() {
     fi
     choice="$(trim_space "$choice")"
 
-    # q, Q or Empty Send: Standard cancellation (no changes to the active template)
     if [ -z "$choice" ] || [ "$choice" = "q" ] || [ "$choice" = "Q" ]; then
       return 0
     fi
@@ -712,24 +715,54 @@ select_model_wizard() {
     esac
   done
 }
+# --- PERSISTENT CONFIGURATION WRITER ---
+save_all_configs_to_file() {
+  local cfg_file="${BASH4LLM_CONFIG_DIR:-}/config"
+  local tmp_cfg
+  safe_mkdir "$(dirname "$cfg_file")" 700
+  tmp_cfg="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" config_save 2>/dev/null)"
+  if [ -z "$tmp_cfg" ]; then
+    tmp_cfg="${BASH4LLM_TMPDIR:-/tmp}/.config_save.$$.tmp"
+  fi
+
+  if [ -f "$cfg_file" ]; then
+    grep -vE "^(MODEL|TEMPERATURE|TURE|MAX_TOKENS|FORMAT|THRESHOLD|BASH4LLM_LANG)=" "$cfg_file" > "$tmp_cfg" 2>/dev/null || true
+  else
+    : > "$tmp_cfg"
+  fi
+
+  {
+    printf 'MODEL=%s\n' "${MODEL:-}"
+    printf 'TEMPERATURE=%s\n' "${TEMPERATURE:-1.0}"
+    printf 'TURE=%s\n' "${TEMPERATURE:-1.0}"
+    printf 'MAX_TOKENS=%s\n' "${MAX_TOKENS:-4096}"
+    printf 'FORMAT=%s\n' "${OUTPUT_MODE:-text}"
+    printf 'THRESHOLD=%s\n' "${THRESHOLD:-1000}"
+    printf 'BASH4LLM_LANG=%s\n' "${BASH4LLM_LANG:-en}"
+  } >> "$tmp_cfg"
+
+  atomic_write "$cfg_file" 10 < "$tmp_cfg"
+  rm -f "$tmp_cfg" 2>/dev/null || true
+}
 
 # --- INTERACTIVE CONFIGURATION MENU ---
 show_config_menu() {
   while true; do
-    # Display the configuration menu header formatted with C_BANNER
     local config_title=" $(_msg config_title) "
     printf '\n%b%b%s%b\n' "${C_BANNER:-}" "$config_title" "${C_RST:-}" >&2
     
-    # List the available menu items
     print_menu_item 1 "$(_msg config_opt_provider)" "${PROVIDER:-groq}"
     print_menu_item 2 "$(_msg config_opt_model)" "${MODEL:-<Default>}"
     print_menu_item 3 "$(_msg config_opt_key)" "$(provider_api_env_var_name "${PROVIDER:-groq}")" "$(_msg menu_env)"
     print_menu_item 4 "$(_msg config_opt_lang)" "${BASH4LLM_LANG:-en}"
-    print_menu_item 5 "$(_msg config_opt_refresh)"
-    print_menu_item 6 "$(_msg config_opt_list)"
-    print_menu_item 7 "$(_msg config_opt_return)"
+    print_menu_item 5 "$(_msg config_opt_temp)" "${TEMPERATURE:-1.0}"
+    print_menu_item 6 "$(_msg config_opt_tokens)" "${MAX_TOKENS:-4096}"
+    print_menu_item 7 "$(_msg config_opt_threshold)" "${THRESHOLD:-1000}"
+    print_menu_item 8 "$(_msg config_opt_format)" "${OUTPUT_MODE:-text}"
+    print_menu_item 9 "$(_msg config_opt_refresh)"
+    print_menu_item 10 "$(_msg config_opt_list)"
+    print_menu_item 11 "$(_msg config_opt_return)"
 
-    # Print a closing line of exactly 40 characters in C_BBLUE
     printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
     local m_sel
@@ -740,23 +773,20 @@ show_config_menu() {
     m_sel="$(trim_space "$m_sel")"
     printf '\n' >&2
 
-    # Standard clean case statement resolving the previous syntax issue
     case "$m_sel" in
       1)
-        # Launch the provider's assisted selection and vertical listing interface
-        select_provider_wizard
+        if select_provider_wizard; then
+          save_all_configs_to_file
+        fi
         ;;
       2)
-        # Smart interactive prompt: Direct typing or Enter to show the list
         printf '\n  %s ' "$(_msg config_model_prompt_choice)" >&2
         local new_model
         if IFS= read -r new_model; then
           new_model="$(trim_space "$new_model")"
           if [ -z "$new_model" ]; then
-            # Press Enter without typing text: opens the interactive model selection interface
             select_model_wizard
           else
-            # Validation and possible application of the manually entered model
             if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
               MODEL="$new_model"
               printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_model_success "$MODEL")" "${C_RST:-}" >&2
@@ -766,19 +796,15 @@ show_config_menu() {
               sleep 1
             fi
           fi
+          save_all_configs_to_file
         fi
         ;;
       3)
-        # Handle API key configuration for the active provider with safe set -u checking
-        local key_var
+        local key_var key_val="" _u_set=0
         key_var="$(provider_api_env_var_name "${PROVIDER:-groq}")"
-        local key_val=""
-        if [ -n "$key_var" ]; then
-          local _u_set=0
-          case "$-" in *u*) _u_set=1; set +u;; esac
-          key_val="${!key_var:-}"
-          [ "$_u_set" -eq 1 ] && set -u
-        fi
+        case "$-" in *u*) _u_set=1; set +u;; esac
+        key_val="${!key_var:-}"
+        [ "$_u_set" -eq 1 ] && set -u
         
         printf '\n  %s\n' "$(_msg config_key_title "$key_var" "${key_val:-<not set>}")" >&2
         printf '  %s ' "$(_msg config_key_prompt)" >&2
@@ -786,66 +812,49 @@ show_config_menu() {
         if IFS= read -r new_key; then
           new_key="$(trim_space "$new_key")"
           if [ -n "$new_key" ]; then
-            local val_rc=0
-            local loop_active=1
-
+            local val_rc=0 loop_active=1
             while [ "$loop_active" -eq 1 ]; do
               printf '\n  %s\n' "$(_msg config_key_checking)" >&2
-
-              # Call to the Core dispatch function to validate the key
               validate_provider_key_dispatch "$new_key"
               val_rc=$?
 
               if [ "$val_rc" -eq 127 ]; then
-                # Case A: Diagnostics not supported by provider, proceed to save directly
                 printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg config_key_not_supported)" "${C_RST:-}" >&2
                 export "${key_var}=${new_key}"
                 if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
                 loop_active=0
-
               elif [ "$val_rc" -eq 28 ]; then
-                # Case B: Network timeout (10 seconds expired) or curl connection error
                 printf '\n  %s%s%s\n' "${C_BRED:-}" "$(_msg config_key_timeout)" "${C_RST:-}" >&2
                 printf '  %s ' "$(_msg config_key_timeout_prompt)" >&2
-
                 local timeout_choice
                 if IFS= read -r timeout_choice; then
                   timeout_choice="$(trim_space "${timeout_choice,,}")"
                   if [ "$timeout_choice" = "r" ]; then
-                    # Rerun the loop to retry validation
                     continue
                   elif [ "$timeout_choice" = "p" ]; then
-                    # Proceed and save the key anyway
                     export "${key_var}=${new_key}"
                     if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
                     printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
                     loop_active=0
                   else
-                    # Cancel the operation and discard the entered key
                     loop_active=0
                   fi
                 else
                   loop_active=0
                 fi
-
               elif [ "$val_rc" -eq 0 ]; then
-                # Case C: Validation completed successfully, save the key
                 printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_valid)" "${C_RST:-}" >&2
                 export "${key_var}=${new_key}"
                 if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
                 printf '  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
                 loop_active=0
-
               else
-                # Case D: Key explicitly rejected by provider (e.g., HTTP 401/403)
                 printf '\n  %s%s%s\n' "${C_BRED:-}" "$(_msg config_key_invalid)" "${C_RST:-}" >&2
                 printf '  %s' "$(_msg config_key_save_invalid_prompt)" >&2
-
                 local confirm_save
                 if IFS= read -r confirm_save; then
                   confirm_save="$(trim_space "${confirm_save,,}")"
                   if [[ "$confirm_save" =~ ^[yY](es)?$ ]]; then
-                    # The user explicitly chooses to save the invalid key anyway
                     export "${key_var}=${new_key}"
                     if [ "${PROVIDER:-groq}" = "groq" ]; then export GROQ_API_KEY="$new_key"; fi
                     printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_key_success)" "${C_RST:-}" >&2
@@ -858,13 +867,76 @@ show_config_menu() {
         fi
         ;;
       4)
-        # Change the active UI language
         prompt_lang_selection
         load_lang_secure "$BASH4LLM_LANG"
+        save_all_configs_to_file
         printf '\n  %sLanguage set to: %s%s\n' "${C_GREEN:-}" "$BASH4LLM_LANG" "${C_RST:-}" >&2
         ;;
       5)
-        # Fetch and refresh the list of available models from the provider API
+        printf '\n  %s ' "$(_msg config_temp_prompt)" >&2
+        local new_temp
+        if IFS= read -r new_temp; then
+          new_temp="$(trim_space "$new_temp")"
+          if [[ "$new_temp" =~ ^((0|1)(\.[0-9]+)?|2(\.0+)?)$ ]]; then
+            TEMPERATURE="$new_temp"
+            TURE="$new_temp"
+            save_all_configs_to_file
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "Temperature updated." "${C_RST:-}" >&2
+          else
+            printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_temp)" "${C_RST:-}" >&2
+          fi
+          sleep 1
+        fi
+        ;;
+      6)
+        printf '\n  %s ' "$(_msg config_tokens_prompt)" >&2
+        local new_tokens
+        if IFS= read -r new_tokens; then
+          new_tokens="$(trim_space "$new_tokens")"
+          if [[ "$new_tokens" =~ ^[0-9]+$ ]] && [ "$new_tokens" -ge 1 ] && [ "$new_tokens" -le 32768 ]; then
+            MAX_TOKENS="$new_tokens"
+            save_all_configs_to_file
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "Max Tokens updated." "${C_RST:-}" >&2
+          else
+            printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_tokens)" "${C_RST:-}" >&2
+          fi
+          sleep 1
+        fi
+        ;;
+      7)
+        printf '\n  %s ' "$(_msg config_threshold_prompt)" >&2
+        local new_threshold
+        if IFS= read -r new_threshold; then
+          new_threshold="$(trim_space "$new_threshold")"
+          if [[ "$new_threshold" =~ ^[0-9]+$ ]] && [ "$new_threshold" -ge 0 ] && [ "$new_threshold" -le 10485760 ]; then
+            THRESHOLD="$new_threshold"
+            save_all_configs_to_file
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "Save threshold updated." "${C_RST:-}" >&2
+          else
+            printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_threshold)" "${C_RST:-}" >&2
+          fi
+          sleep 1
+        fi
+        ;;
+      8)
+        printf '\n  %s ' "$(_msg config_format_prompt)" >&2
+        local new_format
+        if IFS= read -r new_format; then
+          new_format="$(trim_space "$new_format")"
+          case "$new_format" in
+            text|raw|json|pretty)
+              OUTPUT_MODE="$new_format"
+              save_all_configs_to_file
+              printf '\n  %s%s%s\n' "${C_GREEN:-}" "Output format updated." "${C_RST:-}" >&2
+              ;;
+            *)
+              printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_format)" "${C_RST:-}" >&2
+              ;;
+          esac
+          sleep 1
+        fi
+        ;;
+      9)
         printf '\n  %s\n' "$(_msg config_refresh_start)" >&2
         if ensure_api_key_for_provider "$PROVIDER"; then
           if refresh_models_dispatch; then
@@ -874,25 +946,23 @@ show_config_menu() {
           fi
         fi
         ;;
-      6)
-        # List locally cached models for the active provider
+      10)
         local cached_title=" $(_msg config_cached_title "$PROVIDER") "
         printf '\n%b%b%s%b\n\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$cached_title" "${C_RST:-}" >&2
         list_models_cli >&2 || true
         printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
         ;;
-      7 | q | Q | "")
-        # Exit configuration menu and return to standard chat
+      11 | q | Q | "")
         return 0
         ;;
       *)
-        # Handle invalid inputs
         printf '\n  %sInvalid option!%s\n' "${C_RED:-}" "${C_RST:-}" >&2
         ;;
     esac
   done
 }
 
+# --- INTERACTIVE CONTEXTUAL TOOLS MENU ---
 show_tools_menu() {
   while true; do
     local tools_title=" $(_msg tools_title) "
@@ -986,7 +1056,6 @@ show_tools_menu() {
     esac
   done
 }
-
 # --- PHASE 8: INTERACTIVE REPL CHAT LOOP ---
 run_repl() {
   if [ -z "$SESSION_ID" ]; then
@@ -1035,20 +1104,24 @@ run_repl() {
         ;;
       /help | /\?)
         printf "\n${C_LOGO:-}.  %s   ${C_RST:-}\n" "$(_msg cmd_help_title)" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/help, /?" "$( _msg help_desc_help )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/exit, /quit" "$( _msg help_desc_exit )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/clear" "$( _msg help_desc_clear )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/reset-session" "$( _msg help_desc_reset )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/history [n]" "$( _msg help_desc_history )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/config" "$( _msg help_desc_config )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/menu" "$( _msg help_desc_menu )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/undo" "$( _msg help_desc_undo )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/status" "$( _msg help_desc_status )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/system [prompt]" "$( _msg help_desc_system )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/model [name]" "$( _msg help_desc_model )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/file <path>" "$( _msg help_desc_file )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/block" "$( _msg help_desc_block )" >&2
-        printf "  ${C_BGREEN:-}%-15s${C_RST:-} %s\n" "/edit" "$( _msg help_desc_edit )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/help, /?" "$( _msg help_desc_help )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/exit, /quit" "$( _msg help_desc_exit )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/clear" "$( _msg help_desc_clear )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/reset-session" "$( _msg help_desc_reset )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/history [n]" "$( _msg help_desc_history )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/config" "$( _msg help_desc_config )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/menu" "$( _msg help_desc_menu )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/undo" "$( _msg help_desc_undo )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/status" "$( _msg help_desc_status )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/system [prompt]" "$( _msg help_desc_system )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/model [name]" "$( _msg help_desc_model )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/temperature, /ture [v]" "$( _msg help_desc_temp )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/max [valore]" "$( _msg help_desc_max )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/threshold [val]" "$( _msg help_desc_threshold )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/format [format]" "$( _msg help_desc_format )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/file <path>" "$( _msg help_desc_file )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/block" "$( _msg help_desc_block )" >&2
+        printf "  ${C_BGREEN:-}%-22s${C_RST:-} %s\n" "/edit" "$( _msg help_desc_edit )" >&2
         
         printf "\n${C_LOGO:-} %s ${C_RST:-}\n" "$(_msg cmd_help_shortcuts_title)" >&2
         printf "  ${C_BYELLOW:-}%-15s${C_RST:-} %s\n" "Ctrl + D" "$( _msg help_sc_d_desc )" >&2
@@ -1185,6 +1258,9 @@ run_repl() {
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_provider)" "${C_RST:-}" "$(color_attributes "${PROVIDER:-}")" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_model)" "${C_RST:-}" "$(color_attributes "${MODEL:-}")" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_temp)" "${C_RST:-}" "${TEMPERATURE:-1.0}" >&2
+        printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_tokens)" "${C_RST:-}" "${MAX_TOKENS:-4096}" >&2
+        printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_threshold)" "${C_RST:-}" "${THRESHOLD:-1000}" >&2
+        printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_format)" "${C_RST:-}" "${OUTPUT_MODE:-text}" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_session)" "${C_RST:-}" "$(color_attributes "${SESSION_ID:-}")" >&2
         
         local bytes_msgs_fmt
@@ -1213,19 +1289,97 @@ run_repl() {
         fi
         continue
         ;;
-      /model\ *)
-        local new_model="${userline#/model }"
-        new_model="${new_model//[!A-Za-z0-9._\/:-]/}"
-        new_model="$(trim_space "$new_model")"
-        if [ -z "$new_model" ]; then
-          printf '%s\n' "$(_msg cmd_model_invalid)" >&2
+      /model | /model\ *)
+        if [ "$userline" = "/model" ]; then
+          printf '\n  %s: %s\n\n' "$(_msg cmd_status_model)" "${MODEL}" >&2
         else
-          if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
-            MODEL="$new_model"
-            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_model_success "$MODEL")" "${C_RST:-}" >&2
+          local new_model="${userline#/model }"
+          new_model="${new_model//[!A-Za-z0-9._\/:-]/}"
+          new_model="$(trim_space "$new_model")"
+          if [ -z "$new_model" ]; then
+            printf '%s\n' "$(_msg cmd_model_invalid)" >&2
           else
-            printf '%s\n' "$(_msg cmd_model_not_supported "$new_model")" >&2
+            if validate_model_dispatch "$new_model" >/dev/null 2>&1; then
+              MODEL="$new_model"
+              save_all_configs_to_file
+              printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_model_success "$MODEL")" "${C_RST:-}" >&2
+            else
+              printf '%s\n' "$(_msg cmd_model_not_supported "$new_model")" >&2
+            fi
           fi
+        fi
+        continue
+        ;;
+      /temperature | /ture | /temperature\ * | /ture\ *)
+        if [ "$userline" = "/temperature" ] || [ "$userline" = "/ture" ]; then
+          printf '\n  %s: %s\n\n' "$(_msg cmd_status_temp)" "${TEMPERATURE}" >&2
+        else
+          local val=""
+          if [[ "$userline" == /temperature\ * ]]; then
+            val="${userline#/temperature }"
+          else
+            val="${userline#/ture }"
+          fi
+          val="$(trim_space "$val")"
+          if [[ "$val" =~ ^((0|1)(\.[0-9]+)?|2(\.0+)?)$ ]]; then
+            TEMPERATURE="$val"
+            TURE="$val"
+            save_all_configs_to_file
+            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Temperature updated to ${TEMPERATURE}" "${C_RST:-}" >&2
+          else
+            printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_temp)" "${C_RST:-}" >&2
+          fi
+        fi
+        continue
+        ;;
+      /max | /max\ *)
+        if [ "$userline" = "/max" ]; then
+          printf '\n  %s: %s\n\n' "$(_msg label_tokens)" "${MAX_TOKENS}" >&2
+        else
+          local val="${userline#/max }"
+          val="$(trim_space "$val")"
+          if [[ "$val" =~ ^[0-9]+$ ]] && [ "$val" -ge 1 ] && [ "$val" -le 32768 ]; then
+            MAX_TOKENS="$val"
+            save_all_configs_to_file
+            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Max Tokens updated to ${MAX_TOKENS}" "${C_RST:-}" >&2
+          else
+            printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_tokens)" "${C_RST:-}" >&2
+          fi
+        fi
+        continue
+        ;;
+      /threshold | /threshold\ *)
+        if [ "$userline" = "/threshold" ]; then
+          printf '\n  %s: %s\n\n' "$(_msg label_threshold)" "${THRESHOLD}" >&2
+        else
+          local val="${userline#/threshold }"
+          val="$(trim_space "$val")"
+          if [[ "$val" =~ ^[0-9]+$ ]] && [ "$val" -ge 0 ] && [ "$val" -le 10485760 ]; then
+            THRESHOLD="$val"
+            save_all_configs_to_file
+            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Save threshold updated to ${THRESHOLD}" "${C_RST:-}" >&2
+          else
+            printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_threshold)" "${C_RST:-}" >&2
+          fi
+        fi
+        continue
+        ;;
+      /format | /format\ *)
+        if [ "$userline" = "/format" ]; then
+          printf '\n  %s: %s\n\n' "$(_msg label_format)" "${OUTPUT_MODE}" >&2
+        else
+          local val="${userline#/format }"
+          val="$(trim_space "$val")"
+          case "$val" in
+            text|raw|json|pretty)
+              OUTPUT_MODE="$val"
+              save_all_configs_to_file
+              printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Output format updated to ${OUTPUT_MODE}" "${C_RST:-}" >&2
+              ;;
+            *)
+              printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_format)" "${C_RST:-}" >&2
+              ;;
+          esac
         fi
         continue
         ;;
@@ -1246,7 +1400,6 @@ run_repl() {
           file_prompt="$(trim_space "$file_prompt")"
         fi
 
-        # Task A: Centralized Core check validation
         validate_file_input "$file_path"
         local check_rc=$?
         case "$check_rc" in
@@ -1346,14 +1499,10 @@ run_repl() {
     BUILD_MESSAGES_FILE="${run_tmp%/}/session-${SESSION_ID}-messages.json"
     export BUILD_MESSAGES_FILE
 
-    if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_LINUX:-0}" -eq 1 ] || [ -n "${BASH_VERSION:-}" ]; then
-      if [ -n "${BASH4LLM_CONFIG_DIR:-}" ]; then
-        _engine_available=0
-        _engine_path="${BASH4LLM_EXTRAS_DIR:-}/session/session-engine.sh"
-        if [ -f "$_engine_path" ] && type session_engine_build_window >/dev/null 2>&1; then
-          _engine_available=1
-        fi
-      fi
+    _engine_available=0
+    _engine_path="${BASH4LLM_EXTRAS_DIR:-}/session/session-engine.sh"
+    if [ -f "$_engine_path" ] && type session_engine_build_window >/dev/null 2>&1; then
+      _engine_available=1
     fi
 
     if [ "${_engine_available:-0}" -eq 1 ]; then
