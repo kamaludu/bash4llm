@@ -3132,7 +3132,7 @@ resolve_model() {
   local active_provider="" candidate="" norm="" MODEL_PROVIDER_CFG="" cfg_model="" cnt=0 m=""
   ALLOWED_MODELS="${ALLOWED_MODELS:-}"
 
-  if [ -n "${MODEL:-}" ] && [ "${MODEL_CLI_SET:-0}" -ne 1 ]; then
+  if [ -n "${MODEL:-}" ] && [ "${MODEL_CLI_SET:-0}" -ne 1 ] && [ "${CHAT_MODE:-0}" -ne 1 ]; then
     MODEL_PROVIDER_CFG="$(canonical_model_file "${PROVIDER:-groq}")"
     if [ ! -s "$MODEL_PROVIDER_CFG" ]; then
       log_warn "MODEL" "MODEL is set in environment but not passed with -m/--set-default; use -m for per-run override or --set-default to persist."
