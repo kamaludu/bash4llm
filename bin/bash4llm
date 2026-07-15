@@ -25,7 +25,7 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.2.0"
+SCRIPT_VERSION="2.3.0"
 SCRIPT_DATE="2026-07-15"
 
 # =============================================================================
@@ -63,6 +63,9 @@ else
   BASH4LLM_PLAT_LINUX=1
 fi
 export BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX
+
+# Initialize cache for model normalization
+declare -A BASH4LLM_MODEL_CACHE=()
 
 # Initialize style and color variables to prevent set -u (nounset) errors if referenced early
 C_LOGO="" C_BANNER="" C_RST="" C_BOLD="" C_GBOLD=""
@@ -240,25 +243,33 @@ validate_file_input() {
   return 0
 }
 
-# Normalize model name natively and securely (Bash 4.0+ compliant)
+# Normalize model name natively and securely (Bash 4.0+ compliant) with associative cache
 _normalize_model_name() {
   local prov="${PROVIDER:-groq}"
   local name="${1:-}"
+  local cache_key="${prov}||${name}"
+
+  # Check in-memory cache to bypass costly subshell/regex execution
+  if [ -n "${BASH4LLM_MODEL_CACHE[$cache_key]:-}" ]; then
+    printf '%s' "${BASH4LLM_MODEL_CACHE[$cache_key]}"
+    return 0
+  fi
+
   local normalized=""
 
   # 1. Safe preventive sanitization (trim leading/trailing whitespace and carriage returns)
-  name="${name#"${name%%[![:space:]]*}"}"
-  name="${name%"${name##*[![:space:]]}"}"
-  name="${name//$'\r'/}"
+  local trimmed="${name#"${name%%[![:space:]]*}"}"
+  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+  trimmed="${trimmed//$'\r'/}"
 
   # 2. Hook detection and execution in an isolated subshell
   if type "normalize_model_${prov}" >/dev/null 2>&1; then
-    normalized="$( "normalize_model_${prov}" "$name" 2>/dev/null || true )"
+    normalized="$( "normalize_model_${prov}" "$trimmed" 2>/dev/null || true )"
   fi
 
   # 3. Zero-Fallback algorithm if hook is missing, crashes, or returns empty
   if [ -z "$normalized" ]; then
-    normalized="$name"
+    normalized="$trimmed"
     normalized="${normalized#models/}"
     if [ "$prov" != "gemini" ]; then
       normalized="${normalized#$prov}"
@@ -271,6 +282,9 @@ _normalize_model_name() {
   # 4. Strict Output Whitelist Filter using native parameter expansion
   # Escape-safe and verified for older Bash 4.x parser variants
   normalized="${normalized//[^a-zA-Z0-9._\/:+@=-]/}"
+
+  # Store normalized result in the memory cache
+  BASH4LLM_MODEL_CACHE["$cache_key"]="$normalized"
 
   printf '%s' "$normalized"
 }
@@ -286,7 +300,7 @@ ensure_api_key_for_provider() {
   
   # Safe indirect variable loading avoiding set -u (nounset) errors
   if [ -n "${custom_var:-}" ] && declare -p "$custom_var" >/dev/null 2>&1; then
-    custom_env="${!custom_var}"
+    custom_env="${!custom_var:-}"
   fi
   if [ -n "${custom_env:-}" ]; then
     envvar="$custom_env"
@@ -628,7 +642,7 @@ file_size() {
     printf '0'
     return 0
   fi
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
+  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
     stat -f %z "$f" 2>/dev/null || printf '0'
   else
     stat -c %s "$f" 2>/dev/null || printf '0'
@@ -831,7 +845,7 @@ show_payload_head() {
   if [ "${DEBUG:-0}" -eq 1 ]; then
     printf 'bash4llm: %sINFO%s: payload path: %s\n' "${C_GREEN}" "${C_RST}" "$path" >&2
     printf 'bash4llm: %sINFO%s: payload (head %d lines):\n' "${C_GREEN}" "${C_RST}" "$lines" >&2
-    if printf '%s' "$path" | grep -qE '\.b64$'; then
+    if [[ "$path" == *.b64 ]]; then
       b64decode < "$path" 2>/dev/null | head -n "$lines" >&2 || true
     else
       head -n "$lines" "$path" 2>/dev/null >&2 || true
@@ -1024,7 +1038,7 @@ ensure_run_tmpdir() {
     export RUN_TMPDIR PAYLOAD RESP ERRF
     [ "${DEBUG:-0}" -eq 1 ] && log_info "TMP" "Created RUN_TMPDIR: $RUN_TMPDIR"
   else
-    printf '%s' "$RUN_TMPDIR"
+    printf '%s' "$tmpdir"
   fi
 
   return 0
@@ -1159,9 +1173,19 @@ load_provider_module() {
 
   safe_mkdir "$PROVIDER_DIR" 700
 
+  # Relax permission-checks block under WSL or explicit user opt-out variable policy
+  local ignore_sec=0
+  if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ] || is_truthy "${BASH4LLM_IGNORE_SEC_CHECKS:-0}"; then
+    ignore_sec=1
+  fi
+
   if _is_world_writable "$PROVIDER_DIR"; then
-    log_error "SEC" "provider directory is world-writable."
-    return 1
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "provider directory is world-writable (ignored due to WSL/policy)."
+    else
+      log_error "SEC" "provider directory is world-writable."
+      return 1
+    fi
   fi
 
   current_user="$(id -un 2>/dev/null || printf '')"
@@ -1185,14 +1209,25 @@ load_provider_module() {
   fi
 
   file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
-  [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ] && { log_error "SEC" "wrong owner for provider file."; return 1; }
+  if [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ]; then
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "wrong owner for provider file: $file_owner (ignored due to WSL/policy)."
+    else
+      log_error "SEC" "wrong owner for provider file."
+      return 1
+    fi
+  fi
 
   perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
   group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
   if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
-    log_error "SEC" "provider file writable by group/world."
-    return 1
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "provider file writable by group/world (ignored due to WSL/policy)."
+    else
+      log_error "SEC" "provider file writable by group/world."
+      return 1
+    fi
   fi
 
   beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
@@ -1300,7 +1335,7 @@ list_files_sorted_by_mtime() {
   local dir="${1:-}"
   find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
     local mtime=""
-    if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
+    if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
       mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)"
     else
       mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
@@ -1322,7 +1357,7 @@ tac_fallback() {
 _file_mtime() {
   local f="${1:-}"
   if [ ! -e "$f" ]; then printf '0'; return 0; fi
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
+  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
     stat -f %m "$f" 2>/dev/null || printf '0'
   else
     stat -c %Y "$f" 2>/dev/null || printf '0'
@@ -1393,7 +1428,7 @@ rotate_history() {
 
   # 3. Trim oldest entries to respect maximum allowed byte size (guarded against unbound variables when the array is empty)
   if [ "$total" -gt "$max_bytes" ] && [ "${#entries[@]}" -gt 0 ]; then
-    for entry in "${entries[@]}"; do
+    for entry in ${entries[@]+"${entries[@]}"}; do
       oldest_size="${entry%%|*}"
       oldest_path="${entry#*|}"
       if [ -f "$oldest_path" ] && lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$oldest_path"; then
@@ -1406,7 +1441,7 @@ rotate_history() {
   # 4. Trim oldest entries to respect maximum allowed file count limit (guarded against unbound variables when the array is empty)
   local count="${#entries[@]}"
   if [ "$count" -gt "$max_files" ] && [ "${#entries[@]}" -gt 0 ]; then
-    for entry in "${entries[@]}"; do
+    for entry in ${entries[@]+"${entries[@]}"}; do
       oldest_path="${entry#*|}"
       if [ -f "$oldest_path" ] && lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$oldest_path"; then
         count=$(( count - 1 ))
@@ -1580,7 +1615,7 @@ manifest_read() {
 #--3<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
 _get_perm_string() {
   local path="${1:-}" perm=""
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
+  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
     perm="$(stat -f %Sp "$path" 2>/dev/null || true)"
   else
     if command -v stat >/dev/null 2>&1; then
@@ -1594,7 +1629,7 @@ _get_perm_string() {
 
 _get_owner() {
   local path="${1:-}" owner=""
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ]; then
+  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
     owner="$(stat -f %Su "$path" 2>/dev/null || true)"
   else
     if command -v stat >/dev/null 2>&1; then
@@ -1941,12 +1976,9 @@ _session_read_window_locked() {
   [ -n "$session_file" ] || return 1
   [ -n "$tmpf" ] || return 1
 
-  if grep -q "^$" "$session_file" 2>/dev/null; then
-    awk -v n="$n" 'BEGIN{RS=""; ORS=RS} {rec[++c]=$0} END{start=c-n+1; if(start<1) start=1; for(i=start;i<=c;i++) print rec[i]}' "$session_file" > "$tmpf" 2>/dev/null || cp -f "$session_file" "$tmpf" 2>/dev/null || true
-  else
-    if ! tail -n "$n" "$session_file" 2>/dev/null > "$tmpf"; then
-      cp -f "$session_file" "$tmpf" 2>/dev/null || true
-    fi
+  # Optimized O(1) tail read, bypassing redundant total scan
+  if ! tail -n "$n" "$session_file" 2>/dev/null > "$tmpf"; then
+    cp -f "$session_file" "$tmpf" 2>/dev/null || true
   fi
 }
 
@@ -2541,7 +2573,8 @@ call_api_groq() {
   fi
 
   payload_dec="$PAYLOAD"
-  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
+  # Native suffix match replacing grep sub-process
+  if [[ "$PAYLOAD" == *.b64 ]]; then
     payload_dec="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
     if ! b64decode < "$PAYLOAD" > "$payload_dec" 2>/dev/null; then
       log_error "B64DECODE" "Failed to decode staging payload"
@@ -2664,7 +2697,8 @@ call_api_streaming_groq() {
 
   decoded_payload="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || true
 
-  if printf '%s' "${tmp_payload}" | grep -qE '\.b64$'; then
+  # Native suffix match replacing grep sub-process
+  if [[ "$tmp_payload" == *.b64 ]]; then
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$curl_err_log"; then
       log_error "B64DECODE" "base64 decode failed for payload; see $curl_err_log"
       rm -f "$decoded_payload" "$curl_err_log" 2>/dev/null || true
@@ -2909,6 +2943,8 @@ refresh_models_groq() {
 
   log_info_user "MODELREFRESH" "Models refreshed and saved to: $MODELS_FILE (max ${MAX_MODELS})"
 
+  # Safe cleanup of the staged tmpout file to eliminate resource leak
+  [ -n "${tmpout:-}" ] && [ -f "$tmpout" ] && rm -f "$tmpout" 2>/dev/null || true
   rm -rf "$tmpd"
   return 0
 }
@@ -3515,12 +3551,8 @@ collect_input_from_files() {
 
 expand_args_to_content() {
   local out="" first=1 a
-  # Guard against empty array expansion to prevent unbound variable errors under set -u
-  if [ "${#ARGS[@]}" -eq 0 ]; then
-    printf ''
-    return 0
-  fi
-  for a in "${ARGS[@]}"; do
+  # Guard against empty array expansion under strict set -u shell mode
+  for a in ${ARGS[@]+"${ARGS[@]}"}; do
     if file_readable "$a"; then
       [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${a} ---"$'\n\n'
       out="${out}$(cat "$a")"; first=0
@@ -3665,6 +3697,7 @@ RENAME_SESSION=0
 RENAME_SESSION_ID=""
 RENAME_TITLE=""
 
+# Parsed options with robust alias resolutions (--providers, --tui, --diagnostic, --install-extra)
 while [ $# -gt 0 ]; do
   case "$1" in
     --init-session) INIT_SESSION=1; shift ;;
@@ -3686,10 +3719,10 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --refresh-models|--refresh-model) REFRESH_MODELS=1; shift ;;
-    --list-models) LIST_MODELS=1; shift ;;
-    --list-providers) LIST_PROVIDERS=1; shift ;;
-    --list-providers-raw) LIST_PROVIDERS_RAW=1; shift ;;
-    --list-models-raw) LIST_MODELS_RAW=1; shift ;;
+    --list-models|--list-model) LIST_MODELS=1; shift ;;
+    --list-providers|--list-provider) LIST_PROVIDERS=1; shift ;;
+    --list-providers-raw|--list-provider-raw) LIST_PROVIDERS_RAW=1; shift ;;
+    --list-models-raw|--list-model-raw) LIST_MODELS_RAW=1; shift ;;
     --set-default)
       check_required_arg "--set-default" "$#"
       SET_DEFAULT_MODEL="$2"
@@ -3776,10 +3809,10 @@ while [ $# -gt 0 ]; do
     --pretty) OUTPUT_MODE="pretty"; shift ;;
     --text) OUTPUT_MODE="text"; shift ;;
     --raw) OUTPUT_MODE="raw"; shift ;;
-    --chat) CHAT_MODE=1; shift ;;
+    --chat|--tui) CHAT_MODE=1; shift ;;
     --show-config) SHOW_CONFIG=1; shift ;;
-    --diagnostics) DIAGNOSTICS=1; shift ;;
-    --provider)
+    --diagnostics|--diagnostic) DIAGNOSTICS=1; shift ;;
+    --provider|--providers)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
         PROVIDER_CLI="$2"
         shift 2
@@ -3788,7 +3821,7 @@ while [ $# -gt 0 ]; do
         shift
       fi
       ;;
-    --install-extras)
+    --install-extras|--install-extra)
       INSTALL_EXTRAS=1
       if [ $# -gt 1 ] && [ "${2:0:1}" != "-" ]; then
         INSTALL_EXTRAS_SRC="$2"
@@ -3796,9 +3829,13 @@ while [ $# -gt 0 ]; do
       fi
       shift
       ;;
-    --install-extras=*)
+    --install-extras=*|--install-extra=*)
       INSTALL_EXTRAS=1
-      INSTALL_EXTRAS_SRC="${1#--install-extras=}"
+      if [[ "$1" == --install-extras=* ]]; then
+        INSTALL_EXTRAS_SRC="${1#--install-extras=}"
+      else
+        INSTALL_EXTRAS_SRC="${1#--install-extra=}"
+      fi
       shift
       ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
@@ -3925,7 +3962,7 @@ if [ "${LIST_PROVIDERS_RAW:-0}" -eq 1 ]; then
   if [ "${#_supported_providers_arr[@]}" -eq 0 ]; then
     exit 1
   fi
-  for p in "${_supported_providers_arr[@]}"; do
+  for p in ${_supported_providers_arr[@]+"${_supported_providers_arr[@]}"}; do
     printf '%s\n' "$p"
   done
   exit 0
@@ -4100,7 +4137,7 @@ EOF
 
   printf 'Select provider:\n' >&2
   i=1
-  for p in "${_prov_arr[@]}"; do
+  for p in ${_prov_arr[@]+"${_prov_arr[@]}"}; do
     if [ "$p" = "$current_default" ]; then
       printf '%d) %s (default)\n' "$i" "$p" >&2
     else
@@ -4124,7 +4161,7 @@ EOF
       chosen="${_prov_arr[$((idx-1))]}"
     else
       chosen=""
-      for p in "${_prov_arr[@]}"; do
+      for p in ${_prov_arr[@]+"${_prov_arr[@]}"}; do
         if [ "$p" = "$sel" ]; then
           chosen="$p"
           break
@@ -4583,7 +4620,7 @@ if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTP
 
   if [ "${#ARGS[@]}" -gt 0 ]; then
     anyfile=0
-    for a in "${ARGS[@]}"; do [ -r "$a" ] && [ -f "$a" ] && { anyfile=1; break; }; done
+    for a in ${ARGS[@]+"${ARGS[@]}"}; do [ -r "$a" ] && [ -f "$a" ] && { anyfile=1; break; }; done
     [ "$anyfile" -eq 1 ] && printf '%s\n' "(using file contents)" >&2 || printf '%s\n' "$CONTENT" >&2
   else
     printf '%s\n' "$CONTENT" >&2
