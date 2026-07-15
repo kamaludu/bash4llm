@@ -641,7 +641,7 @@ select_model_wizard() {
     return 1
   fi
 
-  local page_size=10
+  local page_size=20
   local current_page=0
   local total_pages=$(( (total_models + page_size - 1) / page_size ))
   local title_val
@@ -653,7 +653,7 @@ select_model_wizard() {
     fi
 
     printf '\n%b%s%b\n\n' "${C_BANNER:-}" " ${title_val} " "${C_RST:-}" >&2
-    printf "  %s\n\n" "$(_msg wizard_page "$((current_page + 1))" "$total_pages" "$total_models")" >&2
+    printf "  %s\n\n" "$(_msg model_wizard_page "$((current_page + 1))" "$total_pages" "$total_models")" >&2
 
     local start_idx=$((current_page * page_size))
     local end_idx=$((start_idx + page_size))
