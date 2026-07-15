@@ -77,6 +77,9 @@ MODEL="${BASH4LLM_ACTIVE_MODEL:-}"
 TEMPERATURE="${BASH4LLM_ACTIVE_TEMPERATURE:-1.0}"
 TURE="$TEMPERATURE"
 
+# Dynamically synchronize the model cache for the current session
+sync_models_file_path
+
 [ -n "$MODEL" ] || {
   if resolve_model >/dev/null 2>&1 && [ -n "${FINAL_MODEL:-}" ]; then
     MODEL="$FINAL_MODEL"
@@ -155,7 +158,8 @@ _msg() {
 }
 
 get_stored_lang() {
-  local cfg_file="${BASH4LLM_CONFIG_DIR%/}/config"
+  local cfg_dir="${BASH4LLM_CONFIG_DIR:-}"
+  local cfg_file="${cfg_dir%/}/config"
   local stored_lang=""
   
   if [ -f "$cfg_file" ]; then
@@ -174,14 +178,15 @@ get_stored_lang() {
 
 save_lang_config() {
   local lang="${1:-en}"
-  local cfg_file="${BASH4LLM_CONFIG_DIR%/}/config"
+  local cfg_dir="${BASH4LLM_CONFIG_DIR:-}"
+  local cfg_file="${cfg_dir%/}/config"
   local tmp_cfg
   
   safe_mkdir "$(dirname "$cfg_file")" 700
   
   tmp_cfg="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" config_update 2>/dev/null)"
   if [ -z "$tmp_cfg" ]; then
-    tmp_cfg="${BASH4LLM_TMPDIR}/.config_update.$$.tmp"
+    tmp_cfg="${BASH4LLM_TMPDIR:-/tmp}/.config_update.$$.tmp"
   fi
   
   if [ -f "$cfg_file" ]; then
@@ -238,8 +243,8 @@ bootstrap_i18n() {
   lang="$(get_stored_lang)"
 
   if [ -z "$lang" ]; then
-    # Carica l'inglese solo se è il primissimo avvio assoluto
-    # per permettere a prompt_lang_selection di tradurre le domande
+    # Load English only if this is the absolute first boot
+    # to allow prompt_lang_selection to translate the questions
     load_lang_secure "en" >/dev/null 2>&1 || true
     prompt_lang_selection
     lang="$(get_stored_lang)"
@@ -261,7 +266,7 @@ bootstrap_i18n
 set -o history 2>/dev/null || true
 export HISTSIZE=1000
 export HISTFILESIZE=1000
-export HISTFILE="${BASH4LLM_HISTORY_DIR}/tui_history"
+export HISTFILE="${BASH4LLM_HISTORY_DIR:-}/tui_history"
 
 if [ ! -f "$HISTFILE" ]; then
   : > "$HISTFILE" 2>/dev/null
@@ -325,7 +330,8 @@ _format_ts() {
 }
 
 load_sessions_wizard() {
-  local session_dir="${BASH4LLM_HISTORY_DIR}/sessions"
+  local hist_dir="${BASH4LLM_HISTORY_DIR:-}"
+  local session_dir="${hist_dir%/}/sessions"
   safe_mkdir "$session_dir" 700
 
   local -a files=()
@@ -386,8 +392,8 @@ load_sessions_wizard() {
       last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
       last_date="$(_format_ts "$last_ts")"
 
-      local meta_file title
-      meta_file="${BASH4LLM_CONFIG_DIR}/ui_state/sessions/${s_id}.json"
+      local cfg_dir="${BASH4LLM_CONFIG_DIR:-}"
+      local meta_file="${cfg_dir%/}/ui_state/sessions/${s_id}.json"
       title=""
       if [ -f "$meta_file" ]; then
         title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
@@ -508,26 +514,26 @@ print_status_bar() {
     "${C_BCYAN:-}" "$(_msg label_stream)" "${C_RST:-}" "$col_stream" >&2
 }
 
-# --- SELEZIONE ASSISTITA DEL PROVIDER (WIZARD) ---
+# --- ASSISTED PROVIDER SELECTION (WIZARD) ---
 select_provider_wizard() {
   local -a prov_arr=()
   local p i sel idx chosen prev_provider target_provider_file
 
-  # Parsing sicuro dei provider supportati
+  # Safe parsing of supported providers
   IFS=' ' read -r -a prov_arr <<< "${SUPPORTED_PROVIDERS:-groq}"
 
   if [ "${#prov_arr[@]}" -eq 0 ]; then
-    printf '\n  %s%s%s\n' "${C_RED:-}" "Nessun provider disponibile." "${C_RST:-}" >&2
+    printf '\n  %s%s%s\n' "${C_RED:-}" "No providers available." "${C_RST:-}" >&2
     return 1
   fi
 
   local title_val
   title_val="$(_msg config_provider_title)"
 
-  # Titolo con spazio estetico all'inizio e alla fine dentro C_BANNER
+  # Title with aesthetic spacing inside C_BANNER
   printf '\n%b%s%b\n\n' "${C_BANNER:-}" " ${title_val} " "${C_RST:-}" >&2
 
-  # Elenco verticale ad elementi singoli con indici colorati in C_BCYAN
+  # Vertical list of single elements with colored indices in C_BCYAN
   for ((i=0; i<${#prov_arr[@]}; i++)); do
     p="${prov_arr[i]}"
     if [ "$p" = "${PROVIDER:-}" ]; then
@@ -537,7 +543,7 @@ select_provider_wizard() {
     fi
   done
 
-  # Chiusura grafica da esattamente 40 caratteri in C_BBLUE
+  # Graphical line of exactly 40 characters in C_BBLUE
   printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
   printf '  %s ' "$(_msg config_prompt)" >&2
@@ -546,7 +552,7 @@ select_provider_wizard() {
   fi
   sel="$(trim_space "$sel")"
 
-  # Annullamento standard di sicurezza su input vuoto o 'q'/'Q'
+  # Standard safety cancellation on empty input or 'q'/'Q'
   if [ -z "$sel" ] || [ "$sel" = "q" ] || [ "$sel" = "Q" ]; then
     return 0
   fi
@@ -558,7 +564,7 @@ select_provider_wizard() {
       chosen="${prov_arr[idx]}"
     fi
   else
-    # Accetta anche l'inserimento diretto del nome testuale
+    # Also accept direct input of textual name
     for p in "${prov_arr[@]}"; do
       if [ "$p" = "$sel" ]; then
         chosen="$p"
@@ -596,9 +602,7 @@ select_provider_wizard() {
   resolve_provider_url "$PROVIDER" >/dev/null 2>&1 || true
 
   if [ "$prev_provider" != "$PROVIDER" ]; then
-    if [ -f "${MODELS_FILE:-}" ]; then
-      rm -f "$MODELS_FILE" 2>/dev/null || true
-    fi
+    sync_models_file_path "$PROVIDER"
     resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-}"
   fi
 
@@ -606,7 +610,6 @@ select_provider_wizard() {
   sleep 1
   return 0
 }
-
 # --- ASSISTED MODEL SELECTION (WIZARD) ---
 select_model_wizard() {
   if [ ! -s "${MODELS_FILE:-}" ]; then
@@ -766,10 +769,17 @@ show_config_menu() {
         fi
         ;;
       3)
-        # Handle API key configuration for the active provider
+        # Handle API key configuration for the active provider with safe set -u checking
         local key_var
         key_var="$(provider_api_env_var_name "${PROVIDER:-groq}")"
-        local key_val="${!key_var:-}"
+        local key_val=""
+        if [ -n "$key_var" ]; then
+          local _u_set=0
+          case "$-" in *u*) _u_set=1; set +u;; esac
+          key_val="${!key_var:-}"
+          [ "$_u_set" -eq 1 ] && set -u
+        fi
+        
         printf '\n  %s\n' "$(_msg config_key_title "$key_var" "${key_val:-<not set>}")" >&2
         printf '  %s ' "$(_msg config_key_prompt)" >&2
         local new_key
@@ -941,7 +951,7 @@ show_tools_menu() {
         ;;
       3)
         SESSION_ID="repl-$(date +%Y%m%d-%H%M%S)-${RANDOM}"
-        local new_sess_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
+        local new_sess_file="${BASH4LLM_HISTORY_DIR:-}/sessions/${SESSION_ID}.ndjson"
         : > "$new_sess_file"
         chmod 600 "$new_sess_file"
         printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg tools_new_session "$SESSION_ID")" "${C_RST:-}" >&2
@@ -961,9 +971,9 @@ show_tools_menu() {
         printf '\n%b%b%s%b\n\n' "${BG_WHITE:-}" "${C_BBLUE:-}" "$diag_title" "${C_RST:-}" >&2
         print_status_bar
         
-        printf "  %b%s%b %s/sessions/%s.ndjson\n" "${C_BCYAN:-}" "$(_msg label_diag_session)" "${C_RST:-}" "${BASH4LLM_HISTORY_DIR}" "${SESSION_ID}" >&2
-        printf "  %b%s%b %s/config\n" "${C_BCYAN:-}" "$(_msg label_diag_config)" "${C_RST:-}" "${BASH4LLM_CONFIG_DIR}" >&2
-        printf "  %b%s%b %s\n" "${C_BCYAN:-}" "$(_msg label_diag_history)" "${C_RST:-}" "${HISTFILE}" >&2
+        printf "  %b%s%b %s/sessions/%s.ndjson\n" "${C_BCYAN:-}" "$(_msg label_diag_session)" "${C_RST:-}" "${BASH4LLM_HISTORY_DIR:-}" "${SESSION_ID}" >&2
+        printf "  %b%s%b %s/config\n" "${C_BCYAN:-}" "$(_msg label_diag_config)" "${C_RST:-}" "${BASH4LLM_CONFIG_DIR:-}" >&2
+        printf "  %b%s%b %s\n" "${C_BCYAN:-}" "$(_msg label_diag_history)" "${C_RST:-}" "${HISTFILE:-}" >&2
         
         printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
         ;;
@@ -1010,7 +1020,7 @@ run_repl() {
     [ -z "$userline" ] && continue
 
     history -s "$userline" 2>/dev/null || true
-    history -w "$HISTFILE" 2>/dev/null || true
+    history -w "${HISTFILE:-}" 2>/dev/null || true
 
     case "$userline" in
       /exit | /quit)
@@ -1056,7 +1066,8 @@ run_repl() {
         IFS= read -r confirm
         confirm="$(trim_space "$confirm")"
         if [[ "$confirm" =~ ^[yY](es|ES)?$ ]]; then
-          local session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
+          local hist_dir="${BASH4LLM_HISTORY_DIR:-}"
+          local session_file="${hist_dir%/}/sessions/${SESSION_ID}.ndjson"
           : > "$session_file" 2>/dev/null
           if type session_cache_invalidate >/dev/null 2>&1; then
             session_cache_invalidate "$SESSION_ID" >/dev/null 2>&1 || true
@@ -1070,7 +1081,8 @@ run_repl() {
       /history | /history\ *)
         local opt="${userline#/history}"
         opt="$(trim_space "$opt")"
-        local session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
+        local hist_dir="${BASH4LLM_HISTORY_DIR:-}"
+        local session_file="${hist_dir%/}/sessions/${SESSION_ID}.ndjson"
 
         if [ ! -f "$session_file" ] || [ ! -s "$session_file" ]; then
           printf '\n  %s%s%s\n\n' "${C_YELLOW:-}" "$(_msg cmd_history_empty)" "${C_RST:-}" >&2
@@ -1092,7 +1104,7 @@ run_repl() {
         fi
 
         local tmp_hist
-        tmp_hist="$(_tmpf file "$RUN_TMPDIR" hist_preview 2>/dev/null)"
+        tmp_hist="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" hist_preview 2>/dev/null)"
         if [ -n "$tmp_hist" ]; then
           if [ "$print_alert" -eq 1 ]; then
             _msg cmd_history_alert 20; printf '\n\n' >> "$tmp_hist"
@@ -1129,7 +1141,8 @@ run_repl() {
         continue
         ;;
       /undo)
-        local session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
+        local hist_dir="${BASH4LLM_HISTORY_DIR:-}"
+        local session_file="${hist_dir%/}/sessions/${SESSION_ID}.ndjson"
         if [ -f "$session_file" ] && [ -s "$session_file" ]; then
           local total_lines
           total_lines="$(wc -l < "$session_file" 2>/dev/null | tr -d ' ' || echo 0)"
@@ -1159,7 +1172,8 @@ run_repl() {
         continue
         ;;
       /status)
-        local session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
+        local hist_dir="${BASH4LLM_HISTORY_DIR:-}"
+        local session_file="${hist_dir%/}/sessions/${SESSION_ID}.ndjson"
         local msg_count=0 size_bytes=0
         if [ -f "$session_file" ]; then
           msg_count="$(wc -l < "$session_file" 2>/dev/null | tr -d ' ' || echo 0)"
@@ -1301,7 +1315,7 @@ run_repl() {
         fi
 
         local tmp_edit_file
-        tmp_edit_file="$(_tmpf file "$RUN_TMPDIR" edit 2>/dev/null)"
+        tmp_edit_file="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" edit 2>/dev/null)"
         if [ -z "$tmp_edit_file" ] || [ ! -f "$tmp_edit_file" ]; then
           printf '%s\n' "$(_msg cmd_edit_error_tmp)" >&2
           continue
@@ -1328,7 +1342,8 @@ run_repl() {
       CONTENT="$userline"
     fi
 
-    BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
+    local run_tmp="${RUN_TMPDIR:-}"
+    BUILD_MESSAGES_FILE="${run_tmp%/}/session-${SESSION_ID}-messages.json"
     export BUILD_MESSAGES_FILE
 
     if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_LINUX:-0}" -eq 1 ] || [ -n "${BASH_VERSION:-}" ]; then
