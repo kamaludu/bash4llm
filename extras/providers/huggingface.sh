@@ -58,7 +58,7 @@ hf_default_endpoints_file() {
   if [ -n "${BASH4LLM_CONFIG_DIR:-}" ]; then
     cfgdir="${BASH4LLM_CONFIG_DIR}"
   else
-    # fallback for standalone sourcing
+    # Fallback for standalone sourcing
     local base
     base="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd 2>/dev/null || pwd)"
     cfgdir="${base}/bash4llm.d/config"
@@ -96,7 +96,7 @@ hf_list_endpoints() {
   fi
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    # Sostituito controllo case con test di stringa nativo per evitare problemi di commenti
+    # Native string check to ignore commented out rows
     [[ "$line" == "#"* ]] && continue
     model="$(printf '%s' "$line" | awk -F'|' '{print $1}')"
     url="$(printf '%s' "$line" | awk -F'|' '{print $2}')"
@@ -123,7 +123,7 @@ hf_add_endpoint() {
       ;;
   esac
 
-  # Verifica corretta del duplicato (esce con 0 se trova corrispondenze)
+  # Verify duplication exits safely
   if awk -F'|' -v m="$model" '$1==m{found=1; exit} END{exit !found}' "$f" 2>/dev/null; then
     if type log_error >/dev/null 2>&1; then
       log_error "HF" "Model '$model' already present in endpoints file"
@@ -195,7 +195,7 @@ buildpayload_huggingface() {
   PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
   RESP="${RESP:-${workdir}/resp.json}"
 
-  # Rilevamento formato endpoint (OpenAI chat completions o legacy)
+  # Detection of endpoint format (OpenAI completions vs legacy text-gen)
   local endpoint_url is_openai=1
   endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
   if [ -n "$endpoint_url" ] && [[ "$endpoint_url" != */v1/chat/completions ]]; then
@@ -203,7 +203,7 @@ buildpayload_huggingface() {
   fi
 
   if [ "$is_openai" -eq 1 ]; then
-    # Payload standard OpenAI Chat Completions per router.huggingface.co/v1
+    # OpenAI Chat Completions payload for router.huggingface.co/v1
     local messages_arr="[]"
     if [ -n "${JSON_INPUT:-}" ]; then
       if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
@@ -217,17 +217,17 @@ buildpayload_huggingface() {
         cat "$JSON_INPUT" > "$tmp_payload"
       fi
     else
-      # Gestione della cronologia di sessione (BUILD_MESSAGES_FILE)
+      # Manage history (BUILD_MESSAGES_FILE)
       if [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
         local history_msgs
         history_msgs="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
         if printf '%s' "$history_msgs" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
-          # Accoda il prompt corrente (CONTENT) alla cronologia della sessione
+          # Append current prompt to history
           messages_arr="$(jq -n --argjson hist "$history_msgs" --arg usr "$CONTENT" '$hist + [{role:"user", content:$usr}]')"
         fi
       fi
 
-      # Se non c'è cronologia, inizializza l'array con il solo prompt corrente
+      # Fallback single message if history is missing or empty
       if [ "$messages_arr" = "[]" ]; then
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
           messages_arr="$(jq -n --arg sys "$SYSTEM_PROMPT" --arg usr "$CONTENT" '[{role:"system", content:$sys}, {role:"user", content:$usr}]')"
@@ -235,8 +235,7 @@ buildpayload_huggingface() {
           messages_arr="$(jq -n --arg usr "$CONTENT" '[{role:"user", content:$usr}]')"
         fi
       else
-        # Se la cronologia è presente e il prompt corrente è stato accodato,
-        # inserisci in testa il SYSTEM_PROMPT se definito
+        # Prepend system prompt to reconstructed history array
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
           messages_arr="$(jq -n --argjson msgs "$messages_arr" --arg sys "$SYSTEM_PROMPT" '[{role:"system", content:$sys}] + $msgs')"
         fi
@@ -250,7 +249,7 @@ buildpayload_huggingface() {
          '{model:$model, messages:$messages, max_tokens:($max_tokens|tonumber), stream:$stream}' > "$tmp_payload"
     fi
   else
-    # Payload legacy text-generation
+    # Legacy text-generation payload
     if [ -n "${JSON_INPUT:-}" ]; then
       if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
         jq --arg model "$MODEL" --argjson max_tokens "${MAX_TOKENS:-256}" \
@@ -478,6 +477,7 @@ EOF
 # -------------------------
 # call_api_streaming_huggingface
 # -------------------------
+# Optimized HuggingFace streaming using single unbuffered jq processor
 call_api_streaming_huggingface() {
   local _set_u_was_on=0
   case "$-" in
@@ -519,7 +519,6 @@ call_api_streaming_huggingface() {
     ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
-  # NOTA: ERRF non deve essere dichiarato "local" per poter essere propagato globalmente al chiamante
   local api_url rc RESP_RAW workdir hdr_file
   workdir="$(_get_work_tmpdir_hf)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   RESP_RAW="${RESP_RAW:-${workdir}/resp.raw}"
@@ -537,6 +536,7 @@ call_api_streaming_huggingface() {
     api_url="${endpoint_url%/}"
   fi
 
+  # Single unbuffered jq processing pipeline extracting delta content and catching direct HTTP errors
   curl "${CURL_BASE_OPTS[@]:-}" \
        -sS -D "$hdr_file" \
        -H "Authorization: Bearer $HFAPIKEY" \
@@ -544,18 +544,22 @@ call_api_streaming_huggingface() {
        --no-buffer \
        --data-binary @"$PAYLOAD" \
        "$api_url" \
-       2>"$ERRF" | tee -a "$RESP_RAW" | \
-  while IFS= read -r line; do
-    case "$line" in
-      'data: [DONE]'|'data:[DONE]') break ;;
-      data:\ * )
-        json="${line#data: }"
-        raw="$(printf '%s' "$json" | jq -j 'try (if type=="string" then fromjson else . end | .choices[]?.delta?.content // .choices[]?.message?.content // empty) catch empty' 2>>"$ERRF" || true)"
-        [ -n "$raw" ] && printf '%s' "$raw"
-        ;;
-      *) ;;
-    esac
-  done
+       2>"$ERRF" | \
+  tee -a "$RESP_RAW" | \
+  jq --unbuffered -R -r '
+    if startswith("data: ") then
+      sub("^data:[[:space:]]*"; "") |
+      select(. != "[DONE]") |
+      try (fromjson | .choices[]?.delta?.content // .choices[]?.message?.content // "") catch ""
+    else
+      try (
+        fromjson | 
+        if .error.message then ("\nAPI Error: " + .error.message) 
+        elif .message then ("\nAPI Error: " + .message) 
+        else empty end
+      ) catch empty
+    fi
+  '
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
