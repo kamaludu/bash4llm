@@ -1,5 +1,7 @@
 [![Logo 320](../../docs/img/bash4llm320.png "Logo bash4llm")](../../README.md)
 
+[![Bash](https://img.shields.io/badge/TUI%20REPL-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](SPEC-TUI.md)
+
 ## 📟 Specifica Tecnica — Modulo TUI (`tui-repl.sh`) per `bash4llm`
 
 Questo documento definisce le specifiche architettoniche, i flussi di controllo, la gestione dello stato, il sistema di internazionalizzazione e il comportamento interattivo del modulo TUI REPL (`tui-repl.sh`) per lo strumento `bash4llm`.
