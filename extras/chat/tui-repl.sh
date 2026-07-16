@@ -369,7 +369,7 @@ _format_ts() {
   if [ -n "$ts" ]; then
     printf '%s' "${ts:0:10}"
   else
-    printf 'N/A'
+    printf '%s' "$(_msg attribute_na)"
   fi
 }
 
@@ -408,7 +408,7 @@ print_status_bar() {
   # Print active parameters including the contextual Incognito indicator
   local col_sess="${C_YELLOW:-}${r_sess}${C_RST:-}"
   if [ "$PRIVATE_MODE" -eq 1 ]; then
-    col_sess="${C_BRED:-}INCOGNITO / PRIVATE${C_RST:-}"
+    col_sess="${C_BRED:-}$(_msg status_private_mode)${C_RST:-}"
   fi
 
   local col_model="${C_YELLOW:-}${r_model}${C_RST:-}"
@@ -507,7 +507,7 @@ load_threads_wizard() {
         title="${title//$'\r'/}"
         title="${title:0:18}"
       fi
-      [ -n "$title" ] || title="Thread ${s_id:0:8}"
+      [ -n "$title" ] || title="$(_msg thread_default_title "${s_id:0:8}")"
 
       printf "  ${C_BCYAN:-}[%2d]${C_RST:-} %s ${C_CYAN:-}>${C_RST:-} %s\n\n" \
         "$((i + 2))" "$last_date" "$title" >&2
@@ -582,7 +582,7 @@ select_provider_wizard() {
   IFS=' ' read -r -a prov_arr <<< "${SUPPORTED_PROVIDERS:-groq}"
 
   if [ "${#prov_arr[@]}" -eq 0 ]; then
-    printf '\n  %s%s%s\n' "${C_RED:-}" "No providers available." "${C_RST:-}" >&2
+    printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_no_providers)" "${C_RST:-}" >&2
     return 1
   fi
 
@@ -926,7 +926,7 @@ show_config_menu() {
         prompt_lang_selection
         load_lang_secure "$BASH4LLM_LANG"
         save_all_configs_to_file
-        printf '\n  %sLanguage set to: %s%s\n' "${C_GREEN:-}" "$BASH4LLM_LANG" "${C_RST:-}" >&2
+        printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_lang_success "$BASH4LLM_LANG")" "${C_RST:-}" >&2
         ;;
       5)
         printf '\n  %s ' "$(_msg config_temp_prompt)" >&2
@@ -937,7 +937,7 @@ show_config_menu() {
             TEMPERATURE="$new_temp"
             TURE="$new_temp"
             save_all_configs_to_file
-            printf '\n  %s%s%s\n' "${C_GREEN:-}" "Temperature updated." "${C_RST:-}" >&2
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_temp_success)" "${C_RST:-}" >&2
           else
             printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_temp)" "${C_RST:-}" >&2
           fi
@@ -952,7 +952,7 @@ show_config_menu() {
           if [[ "$new_tokens" =~ ^[0-9]+$ ]] && [ "$new_tokens" -ge 1 ] && [ "$new_tokens" -le 32768 ]; then
             MAX_TOKENS="$new_tokens"
             save_all_configs_to_file
-            printf '\n  %s%s%s\n' "${C_GREEN:-}" "Max Tokens updated." "${C_RST:-}" >&2
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_tokens_success)" "${C_RST:-}" >&2
           else
             printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_tokens)" "${C_RST:-}" >&2
           fi
@@ -967,7 +967,7 @@ show_config_menu() {
           if [[ "$new_threshold" =~ ^[0-9]+$ ]] && [ "$new_threshold" -ge 0 ] && [ "$new_threshold" -le 10485760 ]; then
             THRESHOLD="$new_threshold"
             save_all_configs_to_file
-            printf '\n  %s%s%s\n' "${C_GREEN:-}" "Save threshold updated." "${C_RST:-}" >&2
+            printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_threshold_success)" "${C_RST:-}" >&2
           else
             printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_threshold)" "${C_RST:-}" >&2
           fi
@@ -983,7 +983,7 @@ show_config_menu() {
             text|raw|json|pretty)
               OUTPUT_MODE="$new_format"
               save_all_configs_to_file
-              printf '\n  %s%s%s\n' "${C_GREEN:-}" "Output format updated." "${C_RST:-}" >&2
+              printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_format_success)" "${C_RST:-}" >&2
               ;;
             *)
               printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_format)" "${C_RST:-}" >&2
@@ -1012,7 +1012,7 @@ show_config_menu() {
         return 0
         ;;
       *)
-        printf '\n  %sInvalid option!%s\n' "${C_RED:-}" "${C_RST:-}" >&2
+        printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_option)" "${C_RST:-}" >&2
         ;;
     esac
   done
@@ -1022,15 +1022,24 @@ show_config_menu() {
 # Display and handle thread management utility outputs
 show_thread_menu() {
   while true; do
+    # Fetch the friendly title of the active thread from its metadata file
+    local current_friendly_title=""
+    local meta_file="${BASH4LLM_CONFIG_DIR:-}/ui_state/threads/${THREAD_ID}.json"
+    if [ -f "$meta_file" ]; then
+      current_friendly_title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
+    fi
+    # Fallback to THREAD_ID if no friendly title has been configured yet
+    [ -n "$current_friendly_title" ] || current_friendly_title="$THREAD_ID"
+
     local thread_title=" $(_msg tools_title) "
     printf '\n%b%b%s%b\n' "${C_BANNER:-}" "$thread_title" "${C_RST:-}" >&2
-    print_menu_item 1 "$(_msg tools_opt_rename)" "${THREAD_ID:-}"
+    print_menu_item 1 "$(_msg tools_opt_rename)" "${current_friendly_title}"
     print_menu_item 2 "$(_msg tools_opt_delete)"
     print_menu_item 3 "$(_msg tools_opt_start)"
-    print_menu_item 4 "Elenca e Leggi Thread passati"
-    print_menu_item 5 "Carica Thread passato"
+    print_menu_item 4 "$(_msg tools_opt_read_past)"
+    print_menu_item 5 "$(_msg tools_opt_load_past)"
     print_menu_item 6 "$(_msg tools_opt_return)"
-
+    
     printf '%b----------------------------------------%b\n' "${C_BBLUE:-}" "${C_RST:-}" >&2
 
     local m_sel
@@ -1090,7 +1099,7 @@ show_thread_menu() {
         done < <(list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
 
         if [ "${#files[@]}" -eq 0 ]; then
-          printf '\n  %s%s%s\n' "${C_YELLOW:-}" "Nessun thread salvato su disco." "${C_RST:-}" >&2
+          printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg tools_err_no_threads)" "${C_RST:-}" >&2
           sleep 1
           continue
         fi
@@ -1112,7 +1121,7 @@ show_thread_menu() {
             if [ -f "$meta_file" ]; then
               title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
             fi
-            [ -n "$title" ] || title="Thread ${tid:0:8}"
+            [ -n "$title" ] || title="$(_msg thread_default_title "${tid:0:8}")"
             
             printf "=== [%s] %s (ID: %s) ===\n" "$last_date" "$title" "$tid" >> "$tmp_preview"
             tail -n 20 "$f" | while IFS= read -r line || [ -n "$line" ]; do
@@ -1120,9 +1129,9 @@ show_thread_menu() {
               role="$(printf '%s' "$line" | jq -r '.role // empty' 2>/dev/null)"
               content="$(printf '%s' "$line" | jq -r '.content // empty' 2>/dev/null)"
               if [ "$role" = "user" ]; then
-                printf "  Tu > %s\n" "$content" >> "$tmp_preview"
+                printf "  %s > %s\n" "$(_msg role_user_label)" "$content" >> "$tmp_preview"
               elif [ "$role" = "assistant" ]; then
-                printf "  IA > %s\n\n" "$content" >> "$tmp_preview"
+                printf "  %s > %s\n\n" "$(_msg role_assistant_label)" "$content" >> "$tmp_preview"
               fi
             done
             printf "\n\n" >> "$tmp_preview"
@@ -1147,8 +1156,8 @@ show_thread_menu() {
       6 | q | Q | "")
         return 0
         ;;
-      * )
-        printf '\n  %sInvalid option!%s\n' "${C_RED:-}" "${C_RST:-}" >&2
+      *)
+        printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg err_invalid_option)" "${C_RST:-}" >&2
         ;;
     esac
   done
@@ -1194,7 +1203,7 @@ run_repl() {
     
     # Render customized Incognito layout prompt if Private Mode is active
     if [ "$PRIVATE_MODE" -eq 1 ]; then
-      prompt_str="${RL_START}${C_RED:-}${RL_END}Incognito ${RL_START}${C_BRED:-}${RL_END}${prompt_sym} ${RL_START}${C_RST:-}${RL_END}"
+      prompt_str="${RL_START}${C_MAGENTA:-}${RL_END}$(_msg prompt_incognito) ${RL_START}${C_BRED:-}${RL_END}${prompt_sym} ${RL_START}${C_RST:-}${RL_END}"
     else
       prompt_str="${RL_START}${C_BCYAN:-}${RL_END}${prompt_sym} ${RL_START}${C_RST:-}${RL_END}"
     fi
@@ -1264,16 +1273,17 @@ run_repl() {
         continue
         ;;
       /private)
-        # Toggle private mode and modify environment variables dynamically
-        if [ "$PRIVATE_MODE" -eq 0 ]; then
-          PRIVATE_MODE=1
-          ORIG_HISTFILE="${HISTFILE:-}"
-          HISTFILE=""
-          printf '\n%s%s%s\n\n' "${C_RED:-}" "Modalità privata ATTIVA. Cronologia e registri di sessione disabilitati su disco." "${C_RST:-}" >&2
-        else
+          # Toggle private mode and modify environment variables dynamically
+          if [ "$PRIVATE_MODE" -eq 0 ]; then
+            PRIVATE_MODE=1
+            ORIG_HISTFILE="${HISTFILE:-}"
+            HISTFILE=""
+            printf '\n%b########################################%b' "${C_MAGENTA:-}" "${C_RST:-}" >&2
+            printf '\n%s%s%s\n\n' "${C_MAGENTA:-}" "$(_msg cmd_private_on)" "${C_RST:-}" >&2
+          else
           PRIVATE_MODE=0
           HISTFILE="${ORIG_HISTFILE:-${BASH4LLM_HISTORY_DIR:-}/tui_history}"
-          printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Modalità privata DISATTIVA. Ripristinata la cronologia normale." "${C_RST:-}" >&2
+          printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_private_off)" "${C_RST:-}" >&2
         fi
         continue
         ;;
@@ -1331,8 +1341,18 @@ run_repl() {
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_model)" "${C_RST:-}" "$(color_attributes "${MODEL:-}")" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_temp)" "${C_RST:-}" "${TEMPERATURE:-1.0}" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_tokens)" "${C_RST:-}" "${MAX_TOKENS:-4096}" >&2
+        
+        # Fetch the friendly title of the active thread for the status report
+        local current_friendly_title=""
+        local meta_file="${BASH4LLM_CONFIG_DIR:-}/ui_state/threads/${THREAD_ID}.json"
+        if [ -f "$meta_file" ]; then
+          current_friendly_title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
+        fi
+        [ -n "$current_friendly_title" ] || current_friendly_title="$(_msg attribute_not_configured)"
+
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_threshold)" "${C_RST:-}" "${THRESHOLD:-1000}" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_format)" "${C_RST:-}" "${OUTPUT_MODE:-text}" >&2
+        printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg label_thread_title)" "${C_RST:-}" "$(color_attributes "${current_friendly_title}")" >&2
         printf "  %b%s%b : %s\n" "${C_CYAN:-}" "$(_msg cmd_status_session)" "${C_RST:-}" "$(color_attributes "${THREAD_ID:-}")" >&2
         
         local bytes_msgs_fmt
@@ -1397,7 +1417,7 @@ run_repl() {
             TEMPERATURE="$val"
             TURE="$val"
             save_all_configs_to_file
-            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Temperature updated to ${TEMPERATURE}" "${C_RST:-}" >&2
+            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_temp_success "${TEMPERATURE}")" "${C_RST:-}" >&2
           else
             printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_temp)" "${C_RST:-}" >&2
           fi
@@ -1413,7 +1433,7 @@ run_repl() {
           if [[ "$val" =~ ^[0-9]+$ ]] && [ "$val" -ge 1 ] && [ "$val" -le 32768 ]; then
             MAX_TOKENS="$val"
             save_all_configs_to_file
-            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Max Tokens updated to ${MAX_TOKENS}" "${C_RST:-}" >&2
+            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_tokens_success "${MAX_TOKENS}")" "${C_RST:-}" >&2
           else
             printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_tokens)" "${C_RST:-}" >&2
           fi
@@ -1429,7 +1449,7 @@ run_repl() {
           if [[ "$val" =~ ^[0-9]+$ ]] && [ "$val" -ge 0 ] && [ "$val" -le 10485760 ]; then
             THRESHOLD="$val"
             save_all_configs_to_file
-            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Save threshold updated to ${THRESHOLD}" "${C_RST:-}" >&2
+            printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_threshold_success "${THRESHOLD}")" "${C_RST:-}" >&2
           else
             printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_threshold)" "${C_RST:-}" >&2
           fi
@@ -1446,7 +1466,7 @@ run_repl() {
             text|raw|json|pretty)
               OUTPUT_MODE="$val"
               save_all_configs_to_file
-              printf '\n%s%s%s\n\n' "${C_GREEN:-}" "Output format updated to ${OUTPUT_MODE}" "${C_RST:-}" >&2
+              printf '\n%s%s%s\n\n' "${C_GREEN:-}" "$(_msg cmd_format_success "${OUTPUT_MODE}")" "${C_RST:-}" >&2
               ;;
             *)
               printf '\n%s%s%s\n\n' "${C_RED:-}" "$(_msg err_invalid_format)" "${C_RST:-}" >&2
@@ -1477,8 +1497,8 @@ run_repl() {
         case "$check_rc" in
           1) printf '%s\n' "$(_msg cmd_file_syntax)" >&2; continue ;;
           2) printf '%s\n' "$(_msg cmd_file_not_found "$file_path")" >&2; continue ;;
-          3) printf 'tui-repl: ERROR: File is empty: %s\n' "$file_path" >&2; continue ;;
-          4) printf 'tui-repl: ERROR: File is binary or invalid UTF-8: %s\n' "$file_path" >&2; continue ;;
+          3) printf '%s\n' "$(_msg cmd_file_err_empty "$file_path")" >&2; continue ;;
+          4) printf '%s\n' "$(_msg cmd_file_err_binary "$file_path")" >&2; continue ;;
         esac
 
         local file_size_val
@@ -1599,13 +1619,19 @@ run_repl() {
       continue
     fi
 
-    printf '\n%s%s - %s:%s\n' "${C_BGREEN:-}" "$PROVIDER" "$MODEL" "${C_RST:-}" >&2
+    # Determine header color based on private mode status
+    local model_header_color="${C_BGREEN:-}"
+    if [ "$PRIVATE_MODE" -eq 1 ]; then
+      model_header_color="${C_BMAGENTA:-}"
+    fi
+
+    printf '\n%s%s - %s:%s\n' "$model_header_color" "$PROVIDER" "$MODEL" "${C_RST:-}" >&2
 
     IS_STREAMING=1
     local call_rc=0
     
     # Establish local signal trap handler around generation cycles safely
-    trap 'printf "\n[Interrotto dall\047utente]\n" >&2; call_rc=130' INT
+    trap 'printf "\n%s\n" "$(_msg err_interrupted_user)" >&2; call_rc=130' INT
     if [ "${STREAM_MODE:-0}" -eq 1 ]; then
       call_api_streaming
       call_rc=$?
