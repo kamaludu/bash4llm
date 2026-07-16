@@ -373,7 +373,7 @@ load_sessions_wizard() {
     w_page="$(_msg wizard_page "$((current_page + 1))" "$total_pages" "$total_sessions")"
 
     printf '\n%b' "  ${C_BANNER:-}  ${w_title}  ${C_RST:-}\n\n" >&2
-    printf "  %s\n\n" "${w_page}" >&2
+    printf "  %s\n" "${w_page}" >&2
     printf '%b' "  ${C_BBLUE:-}----------------------------------------${C_RST:-}\n\n" >&2
 
     local start_idx=$((current_page * page_size))
@@ -383,7 +383,7 @@ load_sessions_wizard() {
     local new_session_label="<$(_msg wizard_new_session)>"
     local colored_new_session="$(color_attributes "$new_session_label")"
 
-    printf "  ${C_BCYAN:-}[ 1]${C_RST:-} %s\n\n" "$colored_new_session" >&2
+    printf "  ${C_BCYAN:-}[ 1]${C_RST:-} %s\n" "$colored_new_session" >&2
 
     local i
     for ((i = start_idx; i < end_idx; i++)); do
@@ -415,9 +415,9 @@ load_sessions_wizard() {
     done
 
     printf '%b' "  ${C_BBLUE:-}----------------------------------------${C_RST:-}\n\n" >&2
-    printf "  %s:\n\n" "$(_msg wizard_nav)" >&2
-    printf "  [ + / n ] %s\n\n" "$(_msg wizard_next_page)" >&2
-    printf "  [ - / p ] %s\n\n" "$(_msg wizard_prev_page)" >&2
+    printf "  ${BG_WHITE:-}${C_BBLUE:-} %s: ${C_RST:-}\n" "$(_msg wizard_nav)" >&2
+    printf "  [ + / n ] %s\n" "$(_msg wizard_next_page)" >&2
+    printf "  [ - / p ] %s\n" "$(_msg wizard_prev_page)" >&2
     printf "  [   q   ] %s\n\n" "$(_msg wizard_exit_repl)" >&2
     printf '%b' "  ${C_BBLUE:-}----------------------------------------${C_RST:-}\n" >&2
 
