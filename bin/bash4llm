@@ -25,7 +25,7 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.3.0"
+SCRIPT_VERSION="2.4.0"
 SCRIPT_DATE="2026-07-15"
 
 # =============================================================================
@@ -522,10 +522,10 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; the
   safe_mkdir "$BASH4LLM_TMPDIR" 700
   safe_mkdir "$BASH4LLM_EXTRAS_DIR" 700
   safe_mkdir "$BASH4LLM_CONFIG_DIR/providers" 700
-  safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
+  safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
 fi
 
-SESSION_DIR="${BASH4LLM_HISTORY_DIR}/sessions"
+THREAD_DIR="${BASH4LLM_HISTORY_DIR}/threads"
 #--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 ensure_config_dir() {
   safe_mkdir "${BASH4LLM_CONFIG_DIR}" 700
@@ -946,12 +946,12 @@ extract_text_from_resp() {
 cleanup_run_tmp_on_exit() {
   local rc_in=$?
 
-  if type release_session_lock >/dev/null 2>&1; then
-    release_session_lock 2>/dev/null || true
+  if type release_thread_lock >/dev/null 2>&1; then
+    release_thread_lock 2>/dev/null || true
   fi
 
   if [ -n "${RUN_TMPDIR:-}" ]; then
-    rm -rf "${RUN_TMPDIR:-}"/session-msg-*.lockdir 2>/dev/null || true
+    rm -rf "${RUN_TMPDIR:-}"/thread-msg-*.lockdir 2>/dev/null || true
   fi
 
   if [ "${DEBUG_PRESERVE:-0}" -eq 1 ]; then
@@ -1403,7 +1403,7 @@ rotate_history() {
   now_epoch=$(date +%s)
   cutoff=$(( now_epoch - (keep_days * 86400) ))
   
-  # 1. Day-based cleaning of stale session entries
+  # 1. Day-based cleaning of stale thread entries
   while IFS= read -r -d '' f; do
     f_mtime=$(_file_mtime "$f")
     if [ "$f_mtime" -gt 0 ] && [ "$f_mtime" -lt "$cutoff" ]; then
@@ -1761,63 +1761,63 @@ _tmpf() {
   fi
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
-#--4<---[ SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
-session_validate_id() {
+#--4<---[ SECTION: PRECORE_RUN_THREAD_MVP ]--->4--
+thread_validate_id() {
   local id="${1:-}"
   if [ -z "$id" ]; then return 1; fi
   if printf '%s' "$id" | grep -qE '^[A-Za-z0-9._-]{1,128}$'; then return 0; else return 1; fi
 }
 
-session_now_ts() {
+thread_now_ts() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
-session_messages_tmp_path() {
-  local sid="${1:-}"
+thread_messages_tmp_path() {
+  local tid="${1:-}"
   ensure_run_tmpdir || return 1
-  printf '%s' "$RUN_TMPDIR/session-${sid}-messages.json"
+  printf '%s' "$RUN_TMPDIR/thread-${tid}-messages.json"
 }
 
-session_sanitize_cmd() {
+thread_sanitize_cmd() {
   local cmd="${1:-}"
   local sanitized=""
   sanitized="$(printf '%s' "$cmd" | sed -E 's/[A-Za-z0-9_]+=([^[:space:]]+)//g' | sed -E 's/(token|key|secret)[^[:space:]]*/[REDACTED]/Ig' )"
   printf '%s' "$(printf '%s' "$sanitized" | cut -c1-256)"
 }
 
-_update_session_index() {
-  local sid="${1:-}"
-  [ -n "$sid" ] || return 0
-  local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
+_update_thread_index() {
+  local tid="${1:-}"
+  [ -n "$tid" ] || return 0
+  local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/index.json"
   if [ -f "$idx_file" ]; then
-    if jq --arg sid "$sid" '(.sessions // []) | index($sid) // empty' "$idx_file" >/dev/null 2>&1; then
+    if jq --arg tid "$tid" '(.threads // []) | index($tid) // empty' "$idx_file" >/dev/null 2>&1; then
       :
     else
       local tmp_idx=""
       tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" uiidx 2>/dev/null)" || true
       if [ -n "$tmp_idx" ]; then
-        if jq --arg sid "$sid" '.sessions = ((.sessions // []) + [$sid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null; then
+        if jq --arg tid "$tid" '.threads = ((.threads // []) + [$tid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null; then
           mv -f "${tmp_idx}.new" "$tmp_idx"
-          ui_state_write "sessions/index.json" "$(cat "$tmp_idx")" || true
+          ui_state_write "threads/index.json" "$(cat "$tmp_idx")" || true
         fi
         rm -f "$tmp_idx" 2>/dev/null || true
       fi
     fi
   else
-    ui_state_write "sessions/index.json" "{\"sessions\":[]}" >/dev/null 2>&1 || true
-    ui_state_write "sessions/index.json" "$(jq -c -n --arg sid "$sid" '{sessions:[$sid]}')" >/dev/null 2>&1 || true
+    ui_state_write "threads/index.json" "{\"threads\":[]}" >/dev/null 2>&1 || true
+    ui_state_write "threads/index.json" "$(jq -c -n --arg tid "$tid" '{threads:[$tid]}')" >/dev/null 2>&1 || true
   fi
 }
 
-_session_delete_locked() {
-  local sid="$1" sfile="$2" mfile="$3" ifile="$4" t_idx="$5"
-  rm -f -- "$sfile" 2>/dev/null || true
-  rm -f -- "${sfile}.concurrency.lock" 2>/dev/null || true
-  rm -rf -- "${sfile}.concurrency.lockdir" 2>/dev/null || true
+_thread_delete_locked() {
+  local tid="$1" tfile="$2" mfile="$3" ifile="$4" t_idx="$5"
+  rm -f -- "$tfile" 2>/dev/null || true
+  rm -f -- "${tfile}.concurrency.lock" 2>/dev/null || true
+  rm -rf -- "${tfile}.concurrency.lockdir" 2>/dev/null || true
   rm -f -- "$mfile" 2>/dev/null || true
 
   if [ -f "$ifile" ]; then
-    if jq --arg sid "$sid" ".sessions = (.sessions - [\$sid])" "$ifile" > "$t_idx" 2>/dev/null; then
+    if jq --arg tid "$tid" ".threads = (.threads - [\$tid])" "$ifile" > "$t_idx" 2>/dev/null; then
       mv -f "$t_idx" "$ifile" 2>/dev/null
       chmod 600 "$ifile" 2>/dev/null || true
     else
@@ -1826,41 +1826,41 @@ _session_delete_locked() {
   fi
 }
 
-session_delete_core() {
-  local sid="${1:-}"
-  [ -n "$sid" ] || return 1
-  if ! session_validate_id "$sid"; then
-    log_error "SESSION" "invalid session id for deletion: $sid"
+thread_delete_core() {
+  local tid="${1:-}"
+  [ -n "$tid" ] || return 1
+  if ! thread_validate_id "$tid"; then
+    log_error "THREAD" "invalid thread id for deletion: $tid"
     return "$BASH4LLM_ERR_TMP"
   fi
 
-  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
-  local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${sid}.json"
-  local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/index.json"
+  local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
+  local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${tid}.json"
+  local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/index.json"
   local tmp_idx=""
 
   tmp_idx="${BASH4LLM_TMPDIR%/}/idx_del.$$.tmp"
 
-  lock_exec "$HISTORY_LOCK" 10 -- _session_delete_locked "$sid" "$session_file" "$meta_file" "$idx_file" "$tmp_idx"
+  lock_exec "$HISTORY_LOCK" 10 -- _thread_delete_locked "$tid" "$thread_file" "$meta_file" "$idx_file" "$tmp_idx"
   rm -f "$tmp_idx" 2>/dev/null || true
 
-  if type session_cache_invalidate >/dev/null 2>&1; then
-    session_cache_invalidate "$sid" >/dev/null 2>&1 || true
+  if type thread_cache_invalidate >/dev/null 2>&1; then
+    thread_cache_invalidate "$tid" >/dev/null 2>&1 || true
   fi
 
-  log_info "SESSION" "deleted session $sid"
+  log_info "THREAD" "deleted thread $tid"
   return 0
 }
 
-_session_rename_locked() {
-  local mfile="$1" t_meta="$2" sid="$3" title="$4" m_count="$5" l_ts="$6"
+_thread_rename_locked() {
+  local mfile="$1" t_meta="$2" tid="$3" title="$4" m_count="$5" l_ts="$6"
   if [ -f "$mfile" ] && jq -e . "$mfile" >/dev/null 2>&1; then
     jq --arg title "$title" \
        --argjson msg_count "$m_count" \
        --arg last_ts "$l_ts" \
        ".title = \$title | .msg_count = \$msg_count | .last_ts = \$last_ts" "$mfile" > "$t_meta"
   else
-    jq -n --arg id "$sid" --arg title "$title" \
+    jq -n --arg id "$tid" --arg title "$title" \
           --argjson msg_count "$m_count" --arg last_ts "$l_ts" \
           "{id:\$id, title:\$title, active:true, msg_count:\$msg_count, last_ts:\$last_ts}" > "$t_meta"
   fi
@@ -1868,59 +1868,59 @@ _session_rename_locked() {
   chmod 600 "$mfile"
 }
 
-session_rename_core() {
-  local sid="${1:-}" title="${2:-}"
-  [ -n "$sid" ] || return 1
-  if ! session_validate_id "$sid"; then
-    log_error "SESSION" "invalid session id for rename: $sid"
+thread_rename_core() {
+  local tid="${1:-}" title="${2:-}"
+  [ -n "$tid" ] || return 1
+  if ! thread_validate_id "$tid"; then
+    log_error "THREAD" "invalid thread id for rename: $tid"
     return "$BASH4LLM_ERR_TMP"
   fi
 
   title="$(printf '%s' "$title" | tr -d '\r\n' | awk '{$1=$1;print}')"
-  [ -n "$title" ] || title="Session ${sid:0:8}"
+  [ -n "$title" ] || title="Thread ${tid:0:8}"
 
-  local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${sid}.json"
+  local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${tid}.json"
   local tmp_meta="" msg_count=0 last_ts=""
-  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
+  local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
 
   tmp_meta="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" meta_ren 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
 
   msg_count=0
   last_ts=""
-  if [ -f "$session_file" ]; then
-    msg_count="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
+  if [ -f "$thread_file" ]; then
+    msg_count="$(wc -l < "$thread_file" 2>/dev/null || echo 0)"
     local last_line
-    last_line="$(tail -n 1 "$session_file" 2>/dev/null || true)"
+    last_line="$(tail -n 1 "$thread_file" 2>/dev/null || true)"
     if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
       last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
     fi
   fi
 
-  lock_exec "$HISTORY_LOCK" 10 -- _session_rename_locked "$meta_file" "$tmp_meta" "$sid" "$title" "$msg_count" "$last_ts"
+  lock_exec "$HISTORY_LOCK" 10 -- _thread_rename_locked "$meta_file" "$tmp_meta" "$tid" "$title" "$msg_count" "$last_ts"
   rm -f "$tmp_meta" 2>/dev/null || true
 
-  log_info "SESSION" "renamed session $sid to '$title'"
+  log_info "THREAD" "renamed thread $tid to '$title'"
   return 0
 }
 
-acquire_session_lock() {
-  local sid="${SESSION_ID:-}"
-  [ -n "$sid" ] || return 0
+acquire_thread_lock() {
+  local tid="${THREAD_ID:-}"
+  [ -n "$tid" ] || return 0
 
-  if ! session_validate_id "$sid"; then
-    log_error "SESSION" "invalid session id: $sid"
+  if ! thread_validate_id "$tid"; then
+    log_error "THREAD" "invalid thread id: $tid"
     return 15
   fi
 
-  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
-  local lockfile="${session_file}.concurrency.lock"
+  local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
+  local lockfile="${thread_file}.concurrency.lock"
 
   if [ "${DRY_RUN:-0}" -eq 1 ] || [ "${BASH4LLM_SKIP_NETWORK:-0}" -eq 1 ]; then
     return 0
   fi
 
   if [ -L "$lockfile" ]; then
-    log_error "SEC" "session lockfile is a symlink: $lockfile. Aborting."
+    log_error "SEC" "thread lockfile is a symlink: $lockfile. Aborting."
     return 15
   fi
 
@@ -1934,7 +1934,7 @@ acquire_session_lock() {
   if [ "$use_flock" -eq 1 ]; then
     exec 8>"$lockfile" 2>/dev/null || return 0
     if ! flock -x -n 8 2>/dev/null; then
-      log_error "SESSION" "Session '$sid' is already active in another instance of Bash4LLM."
+      log_error "THREAD" "Thread '$tid' is already active in another instance of Bash4LLM."
       exec 8>&- 2>/dev/null || true
       return 15
     fi
@@ -1942,20 +1942,20 @@ acquire_session_lock() {
   return 0
 }
 
-release_session_lock() {
-  local sid="${SESSION_ID:-}"
-  [ -n "$sid" ] || return 0
+release_thread_lock() {
+  local tid="${THREAD_ID:-}"
+  [ -n "$tid" ] || return 0
 
-  if ! session_validate_id "$sid"; then
-    log_error "SESSION" "invalid session id: $sid"
+  if ! thread_validate_id "$tid"; then
+    log_error "THREAD" "invalid thread id: $tid"
     return 15
   fi
 
-  local session_file="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-.}/sessions}/${sid}.ndjson"
-  local lockfile="${session_file}.concurrency.lock"
+  local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
+  local lockfile="${thread_file}.concurrency.lock"
 
   if [ -L "$lockfile" ]; then
-    log_error "SEC" "session lockfile is a symlink during release: $lockfile. Aborting."
+    log_error "SEC" "thread lockfile is a symlink during release: $lockfile. Aborting."
     return 15
   fi
 
@@ -1969,36 +1969,36 @@ release_session_lock() {
   fi
 }
 
-_session_read_window_locked() {
-  local session_file="${1:-}"
+_thread_read_window_locked() {
+  local thread_file="${1:-}"
   local n="${2:-10}"
   local tmpf="${3:-}"
-  [ -n "$session_file" ] || return 1
+  [ -n "$thread_file" ] || return 1
   [ -n "$tmpf" ] || return 1
 
   # Optimized O(1) tail read, bypassing redundant total scan
-  if ! tail -n "$n" "$session_file" 2>/dev/null > "$tmpf"; then
-    cp -f "$session_file" "$tmpf" 2>/dev/null || true
+  if ! tail -n "$n" "$thread_file" 2>/dev/null > "$tmpf"; then
+    cp -f "$thread_file" "$tmpf" 2>/dev/null || true
   fi
 }
 
 # Unified, crash-resilient and fast NDJSON history loader using single-pass parsing
-session_read_window() {
-  local sid="${1:-}" n="${2:-10}" out="${3:-}"
+thread_read_window() {
+  local tid="${1:-}" n="${2:-10}" out="${3:-}"
   local history_dir="${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}"
-  local session_file="$history_dir/sessions/${sid}.ndjson"
+  local thread_file="$history_dir/threads/${tid}.ndjson"
   local tmpdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-$PWD/bash4llm.d/tmp}}"
   local tmpf="" out_tmp="" line="" role="" content="" role_norm="" first="" msg_count=0 last_ts="" last_line="" meta_json=""
 
-  [ -n "$sid" ] || return 1
+  [ -n "$tid" ] || return 1
   [ -n "$out" ] || return 1
 
-  if ! session_validate_id "$sid"; then
-    log_error "SESSION" "invalid session id: $sid"
+  if ! thread_validate_id "$tid"; then
+    log_error "THREAD" "invalid thread id: $tid"
     return 1
   fi
 
-  safe_mkdir "${history_dir%/}/sessions" 700
+  safe_mkdir "${history_dir%/}/threads" 700
 
   if ! printf '%s' "$n" | grep -qE '^[0-9]+$'; then n=10; fi
   if [ "$n" -le 0 ]; then n=10; fi
@@ -2006,24 +2006,24 @@ session_read_window() {
   safe_mkdir "${tmpdir%/}" 700
   if ! : > "${tmpdir%/}/.bash4llm_tmp_check" 2>/dev/null; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
-      printf 'DEBUG: session_read_window: tmpdir not writable: %s\n' "$tmpdir" >&2
+      printf 'DEBUG: thread_read_window: tmpdir not writable: %s\n' "$tmpdir" >&2
     fi
     return 1
   else
     rm -f "${tmpdir%/}/.bash4llm_tmp_check" 2>/dev/null || true
   fi
 
-  tmpf="$(_tmpf file "$tmpdir" session.read 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create tmpf\n' >&2; fi; return 1; }
+  tmpf="$(_tmpf file "$tmpdir" thread.read 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: thread_read_window: cannot create tmpf\n' >&2; fi; return 1; }
 
-  if [ -f "$session_file" ]; then
-    lock_exec "${session_file}.lock" 5 -- _session_read_window_locked "$session_file" "$n" "$tmpf"
+  if [ -f "$thread_file" ]; then
+    lock_exec "${thread_file}.lock" 5 -- _thread_read_window_locked "$thread_file" "$n" "$tmpf"
   else
     if [ "${DEBUG:-0}" -eq 1 ]; then
-      printf 'DEBUG: session_read_window: session file not found: %s\n' "$session_file" >&2
+      printf 'DEBUG: thread_read_window: thread file not found: %s\n' "$thread_file" >&2
     fi
   fi
 
-  out_tmp="$(_tmpf file "$(dirname "$out")" out.tmp 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: session_read_window: cannot create out_tmp\n' >&2; fi; return 1; }
+  out_tmp="$(_tmpf file "$(dirname "$out")" out.tmp 2>/dev/null)" || { if [ "${DEBUG:-0}" -eq 1 ]; then printf 'DEBUG: thread_read_window: cannot create out_tmp\n' >&2; fi; return 1; }
   safe_mkdir "$(dirname "$out")" 700
   : > "$out_tmp"
   chmod 600 "$out_tmp" 2>/dev/null || true
@@ -2038,7 +2038,7 @@ session_read_window() {
       })
     }
   ' "$tmpf" > "$out_tmp" 2>/dev/null; then
-    log_error "SESSION" "Failed to safely process history NDJSON payload."
+    log_error "THREAD" "Failed to safely process history NDJSON payload."
     rm -f "$out_tmp" "$tmpf" 2>/dev/null || true
     return 1
   fi
@@ -2053,45 +2053,46 @@ session_read_window() {
   rm -f "$tmpf" 2>/dev/null || true
   chmod 600 "$out" 2>/dev/null || true
 
-  if [ -n "$sid" ]; then
+  if [ -n "$tid" ]; then
     if ensure_run_tmpdir >/dev/null 2>&1; then
       msg_count=0
       last_ts=""
-      if [ -f "$session_file" ]; then
-        msg_count="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
-        last_line="$(tail -n 1 "$session_file" 2>/dev/null || true)"
+      if [ -f "$thread_file" ]; then
+        msg_count="$(wc -l < "$thread_file" 2>/dev/null || echo 0)"
+        last_line="$(tail -n 1 "$thread_file" 2>/dev/null || true)"
         if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
           last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
         fi
       fi
-      meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" '{id:$id, active:(( $msg_count | tonumber) > 0), msg_count:$msg_count, last_ts:$last_ts}')"
-      ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to update session meta for $sid (read_window)"
+      meta_json="$(jq -c -n --arg id "$tid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" '{id:$id, active:(( $msg_count | tonumber) > 0), msg_count:$msg_count, last_ts:$last_ts}')"
+      ui_state_write "threads/${tid}.json" "$meta_json" || log_warn "UI_STATE" "failed to update thread meta for $tid (read_window)"
     fi
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf 'DEBUG: session_read_window done: out=%s size=%s tmpf=%s\n' "$out" "$( [ -f "$out" ] && wc -c < "$out" || echo 0 )" "$tmpf" >&2
+    printf 'DEBUG: thread_read_window done: out=%s size=%s tmpf=%s\n' "$out" "$( [ -f "$out" ] && wc -c < "$out" || echo 0 )" "$tmpf" >&2
   fi
 
   return 0
 }
-session_append() {
-  local sid="${1:-}" role="${2:-}" content="${3:-}" meta_json="${4:-}"
-  local base_sessions_dir="${SESSION_DIR:-${BASH4LLM_HISTORY_DIR:-./bash4llm.d}/sessions}"
-  local session_file="${base_sessions_dir%/}/${sid}.ndjson"
-  local lockfile="${session_file}.lock"
+
+thread_append() {
+  local tid="${1:-}" role="${2:-}" content="${3:-}" meta_json="${4:-}"
+  local base_threads_dir="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-./bash4llm.d}/threads}"
+  local thread_file="${base_threads_dir%/}/${tid}.ndjson"
+  local lockfile="${thread_file}.lock"
   local invocation_ts="" message_id="" marker="" normalized="" rand="" tmpf="" found=0 role_norm="" line="" timeout=""
   local marker_dir="" created_marker=0 sess_dir="" tmp_init="" msg_count=0 last_ts="" last_line="" idx_file="" tmp_idx=""
   local meta_file="" current_title="" first_content=""
 
-  [ -n "$sid" ] || return 1
+  [ -n "$tid" ] || return 1
 
-  if ! session_validate_id "$sid"; then
-    log_error "SESSION" "invalid session id: $sid"
+  if ! thread_validate_id "$tid"; then
+    log_error "THREAD" "invalid thread id: $tid"
     return 1
   fi
 
-  invocation_ts="$(session_now_ts)"
+  invocation_ts="$(thread_now_ts)"
   message_id="$(printf '%s' "$meta_json" | jq -r '.id // empty' 2>/dev/null || true)"
   if [ -z "$message_id" ]; then
     normalized="$(printf '%s' "$content" | sed -e 's/\r$//' -e 's/\r\n/\n/g' | awk '{$1=$1; print}')"
@@ -2105,28 +2106,28 @@ session_append() {
     fi
   fi
 
-  sess_dir="$(dirname "$session_file")"
+  sess_dir="$(dirname "$thread_file")"
   safe_mkdir "$sess_dir" 700
 
-  if [ ! -f "$session_file" ]; then
-    tmp_init="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" session.init 2>/dev/null)" || true
+  if [ ! -f "$thread_file" ]; then
+    tmp_init="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" thread.init 2>/dev/null)" || true
     : > "${tmp_init:-/dev/null}" 2>/dev/null || true
-    if ! mv -f "$tmp_init" "$session_file" 2>/dev/null; then
-      cp -f "$tmp_init" "$session_file" 2>/dev/null || true
+    if ! mv -f "$tmp_init" "$thread_file" 2>/dev/null; then
+      cp -f "$tmp_init" "$thread_file" 2>/dev/null || true
     fi
-    chmod 600 "$session_file" 2>/dev/null || true
+    chmod 600 "$thread_file" 2>/dev/null || true
   fi
 
   case "$role" in user|assistant|system) role_norm="$role" ;; *) role_norm="user" ;; esac
   if [ "$role_norm" = "user" ] && [ -z "${content:-}" ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "SESSION" "skipping append of empty user message for session $sid"
+      log_info "THREAD" "skipping append of empty user message for thread $tid"
     fi
     return 0
   fi
 
   if [ -n "${message_id:-}" ]; then
-    marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/session-msg-${message_id}.lockdir"
+    marker_dir="${RUN_TMPDIR:-$BASH4LLM_TMPDIR}/thread-msg-${message_id}.lockdir"
     if mkdir "$marker_dir" 2>/dev/null; then
       printf '%s\n' "$$" > "${marker_dir}/owner.pid" 2>/dev/null || true
       printf '%s\n' "$(date +%s)" > "${marker_dir}/owner.ts" 2>/dev/null || true
@@ -2134,7 +2135,7 @@ session_append() {
       created_marker=1
     else
       if [ "${DEBUG:-0}" -eq 1 ]; then
-        log_info "SESSION" "append skipped: marker exists for message_id $message_id"
+        log_info "THREAD" "append skipped: marker exists for message_id $message_id"
       fi
       return 0
     fi
@@ -2167,10 +2168,10 @@ session_append() {
     (
       exec 200>"$lockfile"
       if flock -x -w "$timeout" 200 2>/dev/null; then
-        if [ -n "${message_id:-}" ] && grep -F -q "\"id\":\"$message_id\"" "$session_file" 2>/dev/null; then
+        if [ -n "${message_id:-}" ] && grep -F -q "\"id\":\"$message_id\"" "$thread_file" 2>/dev/null; then
           exit 0
         fi
-        printf "%s\n" "$line" >> "$session_file"
+        printf "%s\n" "$line" >> "$thread_file"
       else
         exit 124
       fi
@@ -2180,11 +2181,11 @@ session_append() {
       write_success=1
     else
       if [ "${created_marker:-0}" -eq 1 ]; then rm -rf -- "$marker_dir" 2>/dev/null || true; fi
-      log_error "SESSION" "lock-append execution failed (code $append_rc)"
+      log_error "THREAD" "lock-append execution failed (code $append_rc)"
       return 1
     fi
   else
-    local fallback_lockdir="${session_file}.fallback.lockdir"
+    local fallback_lockdir="${thread_file}.fallback.lockdir"
     local start_time now acquired=0
     start_time=$(date +%s 2>/dev/null || echo 0)
     while :; do
@@ -2195,36 +2196,36 @@ session_append() {
     done
 
     if [ "$acquired" -eq 1 ]; then
-      if [ -n "${message_id:-}" ] && grep -F -q "\"id\":\"$message_id\"" "$session_file" 2>/dev/null; then
+      if [ -n "${message_id:-}" ] && grep -F -q "\"id\":\"$message_id\"" "$thread_file" 2>/dev/null; then
         rmdir "$fallback_lockdir" 2>/dev/null || true
         return 0
       fi
-      printf "%s\n" "$line" >> "$session_file"
+      printf "%s\n" "$line" >> "$thread_file"
       write_success=1
       rmdir "$fallback_lockdir" 2>/dev/null || true
     else
       if [ "${created_marker:-0}" -eq 1 ]; then rm -rf -- "$marker_dir" 2>/dev/null || true; fi
-      log_error "SESSION" "fallback directory lock acquisition timed out"
+      log_error "THREAD" "fallback directory lock acquisition timed out"
       return 1
     fi
   fi
 
   if [ "$write_success" -eq 1 ]; then
-    chmod 600 "$session_file" 2>/dev/null || true
+    chmod 600 "$thread_file" 2>/dev/null || true
     touch "${marker_dir}/done" 2>/dev/null || true
 
     if ensure_run_tmpdir >/dev/null 2>&1; then
       msg_count=0
       last_ts=""
-      if [ -f "$session_file" ]; then
-        msg_count="$(wc -l < "$session_file" 2>/dev/null || echo 0)"
-        last_line="$(tail -n 1 "$session_file" 2>/dev/null || true)"
+      if [ -f "$thread_file" ]; then
+        msg_count="$(wc -l < "$thread_file" 2>/dev/null || echo 0)"
+        last_line="$(tail -n 1 "$thread_file" 2>/dev/null || true)"
         if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
           last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
         fi
       fi
 
-      meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${sid}.json"
+      meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${tid}.json"
       current_title=""
       if [ -f "$meta_file" ]; then
         current_title="$(jq -r '.title // empty' "$meta_file" 2>/dev/null || true)"
@@ -2232,38 +2233,38 @@ session_append() {
 
       if [ -z "$current_title" ] && [ "$msg_count" -ge 1 ]; then
         first_content=""
-        if [ -f "$session_file" ]; then
-          first_content="$(jq -r 'select(.role=="user") | .content' "$session_file" | head -n 1 | tr -d '\n\r' | cut -c 1-35)"
+        if [ -f "$thread_file" ]; then
+          first_content="$(jq -r 'select(.role=="user") | .content' "$thread_file" | head -n 1 | tr -d '\n\r' | cut -c 1-35)"
         fi
-        [ -z "$first_content" ] && first_content="Session ${sid:0:8}"
+        [ -z "$first_content" ] && first_content="Thread ${tid:0:8}"
         current_title="$first_content"
       fi
 
-      meta_json="$(jq -c -n --arg id "$sid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" --arg title "${current_title:-}" \
+      meta_json="$(jq -c -n --arg id "$tid" --argjson msg_count "$msg_count" --arg last_ts "${last_ts:-}" --arg title "${current_title:-}" \
         '{id:$id, active:true, msg_count:$msg_count, last_ts:$last_ts, title:$title}')"
 
-      ui_state_write "sessions/${sid}.json" "$meta_json" || log_warn "UI_STATE" "failed to write session meta for $sid"
+      ui_state_write "threads/${tid}.json" "$meta_json" || log_warn "UI_STATE" "failed to write thread meta for $tid"
 
-      lock_exec "$HISTORY_LOCK" 10 -- _update_session_index "$sid"
+      lock_exec "$HISTORY_LOCK" 10 -- _update_thread_index "$tid"
     fi
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    log_info "SESSION" "appended message id ${message_id:-<no-id>} to $session_file"
+    log_info "THREAD" "appended message id ${message_id:-<no-id>} to $thread_file"
   fi
   return 0
 }
 
 : "${LAST_CHECK_LINES:=50}"
-#--4<---[ /SECTION: PRECORE_RUN_SESSION_MVP ]--->4--
-#--5<---[ SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
+#--4<---[ /SECTION: PRECORE_RUN_THREAD_MVP ]--->4--
+#--5<---[ SECTION: PRECORE_RUN_THREAD_CACHE ]--->5--
 # =============================================================================
-# Session cache helpers (Strict-safe under set -u)
+# Thread cache helpers (Strict-safe under set -u)
 # =============================================================================
-SESSION_CACHE_DIR="${BASH4LLM_CONFIG_DIR%/}/session_cache"
-safe_mkdir "$SESSION_CACHE_DIR" 700
+THREAD_CACHE_DIR="${BASH4LLM_CONFIG_DIR%/}/thread_cache"
+safe_mkdir "$THREAD_CACHE_DIR" 700
 
-_session_hash() {
+_thread_hash() {
   local s="${1:-}" h=""
   if command -v sha256sum >/dev/null 2>&1; then
     h="$(printf '%s' "$s" | sha256sum 2>/dev/null | awk '{print $1}' || true)"
@@ -2275,18 +2276,18 @@ _session_hash() {
   printf '%s' "${h:-}"
 }
 
-session_cache_key() {
-  local sid="${1:-}" params="${2:-}"
-  [ -n "$sid" ] || return 1
+thread_cache_key() {
+  local tid="${1:-}" params="${2:-}"
+  [ -n "$tid" ] || return 1
   params="${params:-}"
-  printf '%s|%s' "$sid" "$(_session_hash "$params")"
+  printf '%s|%s' "$tid" "$(_thread_hash "$params")"
 }
 
-session_cache_get() {
-  local sid="${1:-}" params="${2:-}" out="${3:-}"
+thread_cache_get() {
+  local tid="${1:-}" params="${2:-}" out="${3:-}"
   local key="" file="" ts="" now="" ttl=""
-  key="$(session_cache_key "$sid" "$params")" || return 1
-  file="${SESSION_CACHE_DIR%/}/${key}.cache"
+  key="$(thread_cache_key "$tid" "$params")" || return 1
+  file="${THREAD_CACHE_DIR%/}/${key}.cache"
   if [ ! -f "$file" ]; then return 1; fi
   read -r ts < "$file" 2>/dev/null || ts=0
   now="$(date +%s)"
@@ -2302,15 +2303,15 @@ session_cache_get() {
   return 0
 }
 
-session_cache_set() {
-  local sid="${1:-}" params="${2:-}" ttl="${3:-300}" infile="${4:-}"
+thread_cache_set() {
+  local tid="${1:-}" params="${2:-}" ttl="${3:-300}" infile="${4:-}"
   local key="" file="" expiry="" now="" tmp_cache=""
-  key="$(session_cache_key "$sid" "$params")" || return 1
-  file="${SESSION_CACHE_DIR%/}/${key}.cache"
+  key="$(thread_cache_key "$tid" "$params")" || return 1
+  file="${THREAD_CACHE_DIR%/}/${key}.cache"
   now="$(date +%s)"
   expiry=$((now + (ttl + 0)))
 
-  tmp_cache="$(_tmpf file "${SESSION_CACHE_DIR%/}" session.cache 2>/dev/null)" || return 1
+  tmp_cache="$(_tmpf file "${THREAD_CACHE_DIR%/}" thread.cache 2>/dev/null)" || return 1
 
   if {
     printf '%s\n' "$expiry"
@@ -2334,28 +2335,28 @@ session_cache_set() {
   fi
 }
 
-session_cache_invalidate() {
-  local sid="${1:-}" params="${2:-}" key="" f=""
-  if [ -z "$sid" ]; then return 1; fi
+thread_cache_invalidate() {
+  local tid="${1:-}" params="${2:-}" key="" f=""
+  if [ -z "$tid" ]; then return 1; fi
   if [ -n "$params" ]; then
-    key="$(session_cache_key "$sid" "$params")" || return 1
-    rm -f "${SESSION_CACHE_DIR%/}/${key}.cache" 2>/dev/null || true
+    key="$(thread_cache_key "$tid" "$params")" || return 1
+    rm -f "${THREAD_CACHE_DIR%/}/${key}.cache" 2>/dev/null || true
   else
-    for f in "${SESSION_CACHE_DIR%/}/${sid}|"*.cache; do
+    for f in "${THREAD_CACHE_DIR%/}/${tid}|"*.cache; do
       [ -e "$f" ] && rm -f -- "$f" 2>/dev/null || true
     done
   fi
   return 0
 }
-#--5<---[ /SECTION: PRECORE_RUN_SESSION_CACHE ]--->5--
+#--5<---[ /SECTION: PRECORE_RUN_THREAD_CACHE ]--->5--
 #--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 # Runtime globals and normalization (non-destructive defaults)
 # ---------------------------------------------------------------------------
 CONTENT="${CONTENT:-}"
 PROVIDER="${PROVIDER:-groq}"
 JSON_INPUT="${JSON_INPUT:-}"
-SESSION_ID="${SESSION_ID:-}"
-SESSION_WINDOW="${SESSION_WINDOW:-}"
+THREAD_ID="${THREAD_ID:-}"
+THREAD_WINDOW="${THREAD_WINDOW:-}"
 TEMPLATE="${TEMPLATE:-}"
 BATCH_FILE="${BATCH_FILE:-}"
 CHAT_MODE="${CHAT_MODE:-0}"
@@ -3276,7 +3277,7 @@ call_api_once() {
 }
 
 call_api_streaming() {
-  acquire_session_lock || return $?
+  acquire_thread_lock || return $?
 
   local fn="call_api_streaming_${PROVIDER}"
   local rc=""
@@ -3285,7 +3286,7 @@ call_api_streaming() {
       show_payload_head "$PAYLOAD" 200 || true
       log_info "DRYRUN" "DRY-RUN: skipping provider streaming HTTP call"
     fi
-    release_session_lock
+    release_thread_lock
     return 0
   fi
 
@@ -3302,7 +3303,7 @@ call_api_streaming() {
     trap - INT
   fi
 
-  release_session_lock
+  release_thread_lock
   return "$rc"
 }
 
@@ -3430,7 +3431,7 @@ finalize_and_output() {
 }
 
 perform_request_once() {
-  acquire_session_lock || return $?
+  acquire_thread_lock || return $?
 
   local attempt=1 rc="" text="" api_err="" ui_last="" finish_reason="" req_id="" edgecase=0 now_ts="" http_code_fallback="" api_json=""
   local prev_trap=""
@@ -3449,7 +3450,7 @@ perform_request_once() {
     fi
 
     if [ "$rc" -eq 130 ]; then
-      release_session_lock
+      release_thread_lock
       return 130
     fi
 
@@ -3458,7 +3459,7 @@ perform_request_once() {
         if [ "${DEBUG:-0}" -eq 1 ]; then
           log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
         fi
-        release_session_lock
+        release_thread_lock
         return 0
       fi
 
@@ -3487,7 +3488,7 @@ perform_request_once() {
         api_err="$(extract_api_error || true)"
         if [ -n "$api_err" ]; then
           log_error "API" "API error: $api_err"
-          release_session_lock
+          release_thread_lock
           return "$BASH4LLM_ERR_API"
         else
           if [ "${BASH4LLM_EDGE_EMPTY:-0}" -eq 1 ]; then
@@ -3498,7 +3499,7 @@ perform_request_once() {
               "  completion_tokens: ${BASH4LLM_EDGE_COMPLETION_TOKENS:-0}" >&2
 
             log_error "API" "empty completion returned by provider (see previous diagnostic lines)."
-            release_session_lock
+            release_thread_lock
             return "$BASH4LLM_ERR_API"
           fi
 
@@ -3506,13 +3507,13 @@ perform_request_once() {
           if [ "${DEBUG:-0}" -eq 1 ]; then
             head -n 50 "${RESP:-/dev/null}" >&2 || true
           fi
-          release_session_lock
+          release_thread_lock
           return "$BASH4LLM_ERR_API"
         fi
       fi
 
       finalize_and_output "$OUTPUT_MODE" "$text"
-      release_session_lock
+      release_thread_lock
       return 0
     else
       if [ "$rc" -eq "$BASH4LLM_ERR_CURL_FAILED" ]; then
@@ -3522,7 +3523,7 @@ perform_request_once() {
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
-        release_session_lock
+        release_thread_lock
         return "$BASH4LLM_ERR_API"
       else
         printf 'bash4llm: %sWARN%s: Unknown error (code %s). Retrying...\n' "${C_BYELLOW}" "${C_RST}" "$rc" >&2
@@ -3533,7 +3534,7 @@ perform_request_once() {
   done
 
   log_error "REQUEST" "request failed after $MAX_RETRIES attempts."
-  release_session_lock
+  release_thread_lock
   return "$BASH4LLM_ERR_API"
 }
 #--2<---[ /SECTION: CORE_SETUP_API_CALL ]--->2--
@@ -3689,28 +3690,28 @@ FILE_INPUTS=() ARGS=() OUTPUT_MODE="${OUTPUT_MODE:-text}"
 MODEL_CLI_SET="${MODEL_CLI_SET:-0}"
 INSTALL_EXTRAS_SRC=""
 BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
-INIT_SESSION="${INIT_SESSION:-0}"
+INIT_THREAD="${INIT_THREAD:-0}"
 
-DELETE_SESSION=0
-DELETE_SESSION_ID=""
-RENAME_SESSION=0
-RENAME_SESSION_ID=""
+DELETE_THREAD=0
+DELETE_THREAD_ID=""
+RENAME_THREAD=0
+RENAME_THREAD_ID=""
 RENAME_TITLE=""
 
 # Parsed options with robust alias resolutions (--providers, --tui, --diagnostic, --install-extra)
 while [ $# -gt 0 ]; do
   case "$1" in
-    --init-session) INIT_SESSION=1; shift ;;
-    --delete-session)
-      check_required_arg "--delete-session" "$#"
-      DELETE_SESSION_ID="$2"
-      DELETE_SESSION=1
+    --init-thread) INIT_THREAD=1; shift ;;
+    --delete-thread)
+      check_required_arg "--delete-thread" "$#"
+      DELETE_THREAD_ID="$2"
+      DELETE_THREAD=1
       shift 2
       ;;
-    --rename-session)
-      check_required_arg "--rename-session" "$#"
-      RENAME_SESSION_ID="$2"
-      RENAME_SESSION=1
+    --rename-thread)
+      check_required_arg "--rename-thread" "$#"
+      RENAME_THREAD_ID="$2"
+      RENAME_THREAD=1
       shift 2
       ;;
     --title)
@@ -3754,21 +3755,21 @@ while [ $# -gt 0 ]; do
       BATCH_FILE="$2"
       shift 2
       ;;
-    --session)
-      check_required_arg "--session" "$#"
-      SESSION_ID="$2"
-      if [ "${SESSION_ID:0:1}" = "-" ]; then
-        log_error "ARGS" "--session requires a valid session ID argument"
+    --thread)
+      check_required_arg "--thread" "$#"
+      THREAD_ID="$2"
+      if [ "${THREAD_ID:0:1}" = "-" ]; then
+        log_error "ARGS" "--thread requires a valid thread ID argument"
         exit "$BASH4LLM_ERR_TMP"
       fi
       shift 2
       ;;
-    --session-window)
+    --thread-window)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
-        SESSION_WINDOW="$2"
+        THREAD_WINDOW="$2"
         shift 2
       else
-        SESSION_WINDOW="10"
+        THREAD_WINDOW="10"
         shift
       fi
       ;;
@@ -3986,21 +3987,21 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
 fi
 #--7---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->7--
 #--8<---[ SECTION: CORE_SETUP_ACTIONS ]--->8--
-if [ "${DELETE_SESSION:-0}" -eq 1 ]; then
-  if [ -z "${DELETE_SESSION_ID:-}" ]; then
-    log_error "SESSION" "--delete-session requires a valid session ID"
+if [ "${DELETE_THREAD:-0}" -eq 1 ]; then
+  if [ -z "${DELETE_THREAD_ID:-}" ]; then
+    log_error "THREAD" "--delete-thread requires a valid thread ID"
     exit "$BASH4LLM_ERR_TMP"
   fi
-  session_delete_core "$DELETE_SESSION_ID"
+  thread_delete_core "$DELETE_THREAD_ID"
   exit 0
 fi
 
-if [ "${RENAME_SESSION:-0}" -eq 1 ]; then
-  if [ -z "${RENAME_SESSION_ID:-}" ]; then
-    log_error "SESSION" "--rename-session requires a valid session ID"
+if [ "${RENAME_THREAD:-0}" -eq 1 ]; then
+  if [ -z "${RENAME_THREAD_ID:-}" ]; then
+    log_error "THREAD" "--rename-thread requires a valid thread ID"
     exit "$BASH4LLM_ERR_TMP"
   fi
-  session_rename_core "$RENAME_SESSION_ID" "${RENAME_TITLE:-}"
+  thread_rename_core "$RENAME_THREAD_ID" "${RENAME_TITLE:-}"
   exit 0
 fi
 
@@ -4086,31 +4087,31 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   exit 0
 fi
 
-if [ "${INIT_SESSION:-0}" -eq 1 ]; then
-  if [ -z "${SESSION_ID:-}" ]; then
-    log_error "SESSION" "--init-session requires a valid session ID via --session"
+if [ "${INIT_THREAD:-0}" -eq 1 ]; then
+  if [ -z "${THREAD_ID:-}" ]; then
+    log_error "THREAD" "--init-thread requires a valid thread ID via --thread"
     exit "$BASH4LLM_ERR_TMP"
   fi
-  if ! session_validate_id "$SESSION_ID"; then
-    log_error "SESSION" "invalid session id: $SESSION_ID"
+  if ! thread_validate_id "$THREAD_ID"; then
+    log_error "THREAD" "invalid thread id: $THREAD_ID"
     exit "$BASH4LLM_ERR_TMP"
   fi
 
-  safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
-  session_file="${BASH4LLM_HISTORY_DIR}/sessions/${SESSION_ID}.ndjson"
-  if [ ! -f "$session_file" ]; then
-    : > "$session_file"
-    chmod 600 "$session_file"
+  safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
+  thread_file="${BASH4LLM_HISTORY_DIR}/threads/${THREAD_ID}.ndjson"
+  if [ ! -f "$thread_file" ]; then
+    : > "$thread_file"
+    chmod 600 "$thread_file"
   fi
 
-  meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/sessions/${SESSION_ID}.json"
-  meta_json="$(jq -c -n --arg id "$SESSION_ID" --arg title "Session ${SESSION_ID:0:8}" \
+  meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${THREAD_ID}.json"
+  meta_json="$(jq -c -n --arg id "$THREAD_ID" --arg title "Thread ${THREAD_ID:0:8}" \
     '{id:$id, active:true, msg_count:0, last_ts:"", title:$title}')"
-  ui_state_write "sessions/${SESSION_ID}.json" "$meta_json"
+  ui_state_write "threads/${THREAD_ID}.json" "$meta_json"
 
-  lock_exec "$HISTORY_LOCK" 10 -- _update_session_index "$SESSION_ID"
+  lock_exec "$HISTORY_LOCK" 10 -- _update_thread_index "$THREAD_ID"
 
-  log_info_user "SESSION" "Session initialized: $SESSION_ID"
+  log_info_user "THREAD" "Thread initialized: $THREAD_ID"
   exit 0
 fi
 #--8<---[ /SECTION: CORE_SETUP_ACTIONS ]--->8--
@@ -4422,7 +4423,7 @@ fi
 
 if [ -n "${JSON_INPUT:-}" ] && is_valid_json_string "${JSON_INPUT}"; then
   :
-elif [ -z "${CONTENT:-}" ] && [ -z "${BATCH_FILE:-}" ] && [ "${CHAT_MODE:-0}" -ne 1 ] && [ -z "${SET_DEFAULT_MODEL:-}" ] && [ "${REFRESH_MODELS:-0}" -ne 1 ] && [ "${LIST_MODELS:-0}" -ne 1 ] && [ "${INIT_SESSION:-0}" -ne 1 ]; then
+elif [ -z "${CONTENT:-}" ] && [ -z "${BATCH_FILE:-}" ] && [ "${CHAT_MODE:-0}" -ne 1 ] && [ -z "${SET_DEFAULT_MODEL:-}" ] && [ "${REFRESH_MODELS:-0}" -ne 1 ] && [ "${LIST_MODELS:-0}" -ne 1 ] && [ "${INIT_THREAD:-0}" -ne 1 ]; then
   log_error "PROMPT" "prompt content is empty. Please provide a prompt or use chat/batch mode."
   exit "$BASH4LLM_ERR_NO_PROMPT"
 fi
@@ -4432,35 +4433,35 @@ if [ -n "$BATCH_FILE" ]; then
     case "$line" in ''|\#*) continue ;; esac
     CONTENT="$line"
 
-    if [ -n "${SESSION_ID:-}" ]; then
-      if ! session_validate_id "$SESSION_ID"; then
-        log_error "SESSION" "invalid session id: $SESSION_ID"
+    if [ -n "${THREAD_ID:-}" ]; then
+      if ! thread_validate_id "$THREAD_ID"; then
+        log_error "THREAD" "invalid thread id: $THREAD_ID"
         exit "$BASH4LLM_ERR_TMP"
       fi
-      safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
+      safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
 
-      if [ -n "${SESSION_WINDOW:-}" ]; then
-        if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
-          SESSION_WINDOW=10
+      if [ -n "${THREAD_WINDOW:-}" ]; then
+        if ! printf '%s' "$THREAD_WINDOW" | grep -qE '^[0-9]+$'; then
+          THREAD_WINDOW=10
         fi
       else
-        SESSION_WINDOW=10
+        THREAD_WINDOW=10
       fi
-      if [ "$SESSION_WINDOW" -gt 20 ]; then
-        log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
+      if [ "$THREAD_WINDOW" -gt 20 ]; then
+        log_warn "THREAD" "thread-window > 20 requested ($THREAD_WINDOW); recommended <= 20"
       fi
 
-      ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
-      BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/session-${SESSION_ID}-messages.json"
+      ensure_run_tmpdir || { log_error "THREAD" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
+      BUILD_MESSAGES_FILE="${RUN_TMPDIR%/}/thread-${THREAD_ID}-messages.json"
       export BUILD_MESSAGES_FILE
 
       if [ "${_engine_available:-0}" -eq 1 ]; then
-        if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
-          log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
-          session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "SESSION" "legacy session_read_window also failed"
+        if ! session_engine_build_window "$THREAD_ID" "$THREAD_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE" 2>/dev/null; then
+          log_warn "THREAD" "session_engine_build_window failed; falling back to legacy thread_read_window"
+          thread_read_window "$THREAD_ID" "$THREAD_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "THREAD" "legacy thread_read_window also failed"
         fi
       else
-        session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "SESSION" "legacy session_read_window failed"
+        thread_read_window "$THREAD_ID" "$THREAD_WINDOW" "$BUILD_MESSAGES_FILE" 2>/dev/null || log_warn "THREAD" "legacy thread_read_window failed"
       fi
 
       if [ ! -f "${BUILD_MESSAGES_FILE:-}" ] || [ "$(jq -r '.messages | length' "$BUILD_MESSAGES_FILE" 2>/dev/null || echo 0)" -eq 0 ]; then
@@ -4491,7 +4492,7 @@ if [ "$CHAT_MODE" -eq 1 ]; then
   BASH4LLM_CORE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
   export BASH4LLM_CORE_SCRIPT
 
-  export BASH4LLM_ACTIVE_SESSION="${SESSION_ID}"
+  export BASH4LLM_ACTIVE_THREAD="${THREAD_ID}"
   export BASH4LLM_ACTIVE_MODEL="${MODEL}"
   export BASH4LLM_ACTIVE_TEMPERATURE="${TEMPERATURE}"
 
@@ -4511,38 +4512,38 @@ fi
 
 # Single request flow (SSE streaming or classic API call)
 if [ "$STREAM_MODE" -eq 1 ]; then
-  if [ -n "${SESSION_ID:-}" ]; then
-    if ! session_validate_id "$SESSION_ID"; then
-      log_error "SESSION" "invalid session id: $SESSION_ID"
+  if [ -n "${THREAD_ID:-}" ]; then
+    if ! thread_validate_id "$THREAD_ID"; then
+      log_error "THREAD" "invalid thread id: $THREAD_ID"
       exit "$BASH4LLM_ERR_TMP"
     fi
-    safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
+    safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
 
-    if [ -n "${SESSION_WINDOW:-}" ]; then
-      if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
-        SESSION_WINDOW=10
+    if [ -n "${THREAD_WINDOW:-}" ]; then
+      if ! printf '%s' "$THREAD_WINDOW" | grep -qE '^[0-9]+$'; then
+        THREAD_WINDOW=10
       fi
     else
-      SESSION_WINDOW=10
+      THREAD_WINDOW=10
     fi
-    if [ "$SESSION_WINDOW" -gt 20 ]; then
-      log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
+    if [ "$THREAD_WINDOW" -gt 20 ]; then
+      log_warn "THREAD" "thread-window > 20 requested ($THREAD_WINDOW); recommended <= 20"
     fi
 
-    ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
-    BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
+    ensure_run_tmpdir || { log_error "THREAD" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
+    BUILD_MESSAGES_FILE="$RUN_TMPDIR/thread-${THREAD_ID}-messages.json"
 
     if [ "${_engine_available:-0}" -eq 1 ]; then
-      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE"; then
-        log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
-        if ! session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE"; then
-          log_warn "SESSION" "failed to read session window for $SESSION_ID"
+      if ! session_engine_build_window "$THREAD_ID" "$THREAD_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE"; then
+        log_warn "THREAD" "session_engine_build_window failed; falling back to legacy thread_read_window"
+        if ! thread_read_window "$THREAD_ID" "$THREAD_WINDOW" "$BUILD_MESSAGES_FILE"; then
+          log_warn "THREAD" "failed to read thread window for $THREAD_ID"
           rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true
         fi
       fi
     else
-      if ! session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE"; then
-        log_warn "SESSION" "failed to read session window for $SESSION_ID"
+      if ! thread_read_window "$THREAD_ID" "$THREAD_WINDOW" "$BUILD_MESSAGES_FILE"; then
+        log_warn "THREAD" "failed to read thread window for $THREAD_ID"
         rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true
       fi
     fi
@@ -4568,18 +4569,18 @@ if [ "$STREAM_MODE" -eq 1 ]; then
        log_info "STREAM" "Streaming completed; captured response in $RESP"
      fi
 
-     if [ -n "${SESSION_ID:-}" ]; then
+     if [ -n "${THREAD_ID:-}" ]; then
       if [ -n "${CONTENT:-}" ]; then
         meta_source="cli"
-        meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+        meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
         meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
 
         if [ "${_engine_available:-0}" -eq 1 ]; then
-          if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1; then
-            session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+          if ! session_engine_append "$THREAD_ID" "user" "$CONTENT" "$meta_json" >/dev/null 2>&1; then
+            thread_append "$THREAD_ID" "user" "$CONTENT" "$meta_json" || log_warn "THREAD" "failed to append message to thread $THREAD_ID (streaming)"
           fi
         else
-          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID (streaming)"
+          thread_append "$THREAD_ID" "user" "$CONTENT" "$meta_json" || log_warn "THREAD" "failed to append message to thread $THREAD_ID (streaming)"
         fi
       fi
 
@@ -4591,12 +4592,12 @@ if [ "$STREAM_MODE" -eq 1 ]; then
           meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
 
           if [ "${_engine_available:-0}" -eq 1 ]; then
-            if ! session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json"; then
-              log_warn "SESSION" "session_engine_append (assistant) failed; falling back to legacy session_append"
-              session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
+            if ! session_engine_append "$THREAD_ID" "assistant" "$assistant_text" "$meta_json"; then
+              log_warn "THREAD" "session_engine_append (assistant) failed; falling back to legacy thread_append"
+              thread_append "$THREAD_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "THREAD" "failed to append assistant response to thread $THREAD_ID (streaming)"
             fi
           else
-            session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID (streaming)"
+            thread_append "$THREAD_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "THREAD" "failed to append assistant response to thread $THREAD_ID (streaming)"
           fi
         fi
       fi
@@ -4633,41 +4634,41 @@ if is_tty_out && [ "$QUIET" -ne 1 ] && { [ "$OUTPUT_MODE" = "text" ] || [ "$OUTP
   fi
 fi
 
-if [ -n "${SESSION_ID:-}" ]; then
-  if ! session_validate_id "$SESSION_ID"; then
-    log_error "SESSION" "invalid session id: $SESSION_ID"
+if [ -n "${THREAD_ID:-}" ]; then
+  if ! thread_validate_id "$THREAD_ID"; then
+    log_error "THREAD" "invalid thread id: $THREAD_ID"
     exit "$BASH4LLM_ERR_TMP"
   fi
-  safe_mkdir "$BASH4LLM_HISTORY_DIR/sessions" 700
+  safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
 
-  if [ -n "${SESSION_WINDOW:-}" ]; then
-    if ! printf '%s' "$SESSION_WINDOW" | grep -qE '^[0-9]+$'; then
-      SESSION_WINDOW=10
+  if [ -n "${THREAD_WINDOW:-}" ]; then
+    if ! printf '%s' "$THREAD_WINDOW" | grep -qE '^[0-9]+$'; then
+      THREAD_WINDOW=10
     fi
   else
-    SESSION_WINDOW=10
+    THREAD_WINDOW=10
   fi
-  if [ "$SESSION_WINDOW" -gt 20 ]; then
-    log_warn "SESSION" "session-window > 20 requested ($SESSION_WINDOW); recommended <= 20"
+  if [ "$THREAD_WINDOW" -gt 20 ]; then
+    log_warn "THREAD" "thread-window > 20 requested ($THREAD_WINDOW); recommended <= 20"
   fi
 
-  ensure_run_tmpdir || { log_error "SESSION" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
-  BUILD_MESSAGES_FILE="$RUN_TMPDIR/session-${SESSION_ID}-messages.json"
+  ensure_run_tmpdir || { log_error "THREAD" "cannot create run tmpdir"; exit "$BASH4LLM_ERR_TMP"; }
+  BUILD_MESSAGES_FILE="$RUN_TMPDIR/thread-${THREAD_ID}-messages.json"
 
-    if [ "${_engine_available:-0}" -eq 1 ]; then
-      if ! session_engine_build_window "$SESSION_ID" "$SESSION_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE"; then
-        log_warn "SESSION" "session_engine_build_window failed; falling back to legacy session_read_window"
-        if ! session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE"; then
-          log_warn "SESSION" "failed to read session window for $SESSION_ID"
-          rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true
-        fi
-      fi
-    else
-      if ! session_read_window "$SESSION_ID" "$SESSION_WINDOW" "$BUILD_MESSAGES_FILE"; then
-        log_warn "SESSION" "failed to read session window for $SESSION_ID"
+  if [ "${_engine_available:-0}" -eq 1 ]; then
+    if ! session_engine_build_window "$THREAD_ID" "$THREAD_WINDOW" "${BASH4LLM_SESSION_TARGET_BYTES:-}" "$BUILD_MESSAGES_FILE"; then
+      log_warn "THREAD" "session_engine_build_window failed; falling back to legacy thread_read_window"
+      if ! thread_read_window "$THREAD_ID" "$THREAD_WINDOW" "$BUILD_MESSAGES_FILE"; then
+        log_warn "THREAD" "failed to read thread window for $THREAD_ID"
         rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true
       fi
     fi
+  else
+    if ! thread_read_window "$THREAD_ID" "$THREAD_WINDOW" "$BUILD_MESSAGES_FILE"; then
+      log_warn "THREAD" "failed to read thread window for $THREAD_ID"
+      rm -f "$BUILD_MESSAGES_FILE" 2>/dev/null || true
+    fi
+  fi
       
   export BUILD_MESSAGES_FILE
 fi
@@ -4686,19 +4687,19 @@ else
 fi
 
 if perform_request_once; then
-  if [ -n "${SESSION_ID:-}" ]; then
+  if [ -n "${THREAD_ID:-}" ]; then
     if [ -n "${CONTENT:-}" ]; then
       meta_source="cli"
-      meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+      meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
       meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
 
       if [ "${_engine_available:-0}" -eq 1 ]; then
-        if ! session_engine_append "$SESSION_ID" "user" "$CONTENT" "$meta_json"; then
-          log_warn "SESSION" "session_engine_append (user) failed; falling back to legacy session_append"
-          session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+        if ! session_engine_append "$THREAD_ID" "user" "$CONTENT" "$meta_json"; then
+          log_warn "THREAD" "session_engine_append (user) failed; falling back to legacy thread_append"
+          thread_append "$THREAD_ID" "user" "$CONTENT" "$meta_json" || log_warn "THREAD" "failed to append message to thread $THREAD_ID"
         fi
       else
-        session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" || log_warn "SESSION" "failed to append message to session $SESSION_ID"
+        thread_append "$THREAD_ID" "user" "$CONTENT" "$meta_json" || log_warn "THREAD" "failed to append message to thread $THREAD_ID"
       fi
     fi
 
@@ -4710,23 +4711,23 @@ if perform_request_once; then
         meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
 
         if [ "${_engine_available:-0}" -eq 1 ]; then
-          if ! session_engine_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json"; then
-            log_warn "SESSION" "session_engine_append (assistant) failed; falling back to legacy session_append"
-            session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
+          if ! session_engine_append "$THREAD_ID" "assistant" "$assistant_text" "$meta_json"; then
+            log_warn "THREAD" "session_engine_append (assistant) failed; falling back to legacy thread_append"
+            thread_append "$THREAD_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "THREAD" "failed to append assistant response to thread $THREAD_ID"
           fi
         else
-          session_append "$SESSION_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "SESSION" "failed to append assistant response to session $SESSION_ID"
+          thread_append "$THREAD_ID" "assistant" "$assistant_text" "$meta_json" || log_warn "THREAD" "failed to append assistant response to thread $THREAD_ID"
         fi
       fi
     fi
   fi
 else
   rc=$?
-  if [ -n "${SESSION_ID:-}" ] && [ -n "${CONTENT:-}" ]; then
+  if [ -n "${THREAD_ID:-}" ] && [ -n "${CONTENT:-}" ]; then
     meta_source="cli"
-    meta_cmd="$(session_sanitize_cmd "$0 ${ARGS[*]:-}")"
+    meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
     meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
-    session_append "$SESSION_ID" "user" "$CONTENT" "$meta_json" 2>/dev/null || true
+    thread_append "$THREAD_ID" "user" "$CONTENT" "$meta_json" 2>/dev/null || true
   fi
   exit "$rc"
 fi
