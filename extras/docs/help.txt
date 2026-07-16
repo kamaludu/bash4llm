@@ -1,5 +1,5 @@
 --------------------------------------
-Bash4LLM 2.x — Bash-first wrapper for the LLM
+Bash4LLM⁺ 2.x — Bash-first wrapper for the LLM
 --------------------------------------
   --version            Bash4LLM version
   -h, --help           This Help
@@ -43,12 +43,12 @@ Provider & Model:
   --list-providers-raw List providers (raw, one per line)
   --set-default <m>    Set persistent default model
 
-Sessions:
-  --session <id>       Enable persistent session
-  --session-window [n] Session window size (default 10 if omitted)
-  --init-session       Safely initializes an empty session (creating NDJSON and metadata)
-                       and registers it in global session index, without making API calls
-                       Requires joint use with --session <id>
+Threads:
+  --thread <id>        Enable persistent thread
+  --thread-window [n]  Thread window size (default 10 if omitted)
+  --init-thread        Safely initializes an empty thread (creating NDJSON and metadata)
+                       and registers it in global thread index, without making API calls
+                       Requires joint use with --thread <id>
                       
 Generation parameters:
   --system <text>      System prompt
@@ -74,5 +74,5 @@ Examples:
   echo "hello" | bash4llm --model mixtral-8x7b
   bash4llm -f prompt.txt --json
   bash4llm --stream "Generate streaming text"
-  bash4llm --session chat1 "Continue conversation"
+  bash4llm --thread chat1 "Continue conversation"
 --------------------------------------
