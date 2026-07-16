@@ -1,4 +1,4 @@
-# Specifica Tecnica — Modulo TUI (`tui-repl.sh`) per `bash4llm`
+## Specifica Tecnica — Modulo TUI (`tui-repl.sh`) per `bash4llm`
 
 Questo documento definisce le specifiche architettoniche, i flussi di controllo, la gestione dello stato, il sistema di internazionalizzazione e il comportamento interattivo del modulo TUI REPL (`tui-repl.sh`) per lo strumento `bash4llm`.
 
