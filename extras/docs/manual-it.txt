@@ -4,7 +4,7 @@ BASH4LLM(1)                      Bash4LLM Manual .it                 BASH4LLM(1)
 
 NOME
     bash4llm - Wrapper Bash-first resiliente e sicuro per l'interrogazione di 
-    provider LLM esterni (v2.0.0)
+    provider LLM esterni (v2.4.0)
 
 SINTASSI
     bash4llm [OPZIONI] [PROMPT]
@@ -88,34 +88,34 @@ OPZIONI
         Imposta il limite massimo di token generabili nella risposta dal modello 
         LLM (variabile MAX_TOKENS).
 
-  Sezione 3: Gestione delle Sessioni e Conversazioni
-    --session ID_SESSIONE
+  Sezione 3: Gestione dei Thread e Conversazioni
+    --thread ID_THREAD
         Abilita la persistenza del contesto di chat multi-turno associando lo 
         storico a un identificativo alfanumerico univoco. L'ID viene validato 
         formalmente per escludere iniezioni di percorso (directory traversal) o 
         caratteri non ammessi. L'ID deve corrispondere alla regex 
         ^[A-Za-z0-9._-]{1,128}$.
 
-    --session-window [FINESTRA]
+    --thread-window [FINESTRA]
         Specifica il numero massimo di messaggi storici precedenti da recuperare 
-        dal file cronologico della sessione per comporre la finestra di 
+        dal file cronologico del thread per comporre la finestra di 
         contesto. Se il flag viene specificato senza argomenti, il valore di 
         default viene impostato a 10. Per ottimizzare le prestazioni e non 
         saturare il contesto del modello, si raccomandano valori inferiori o 
         uguali a 20; impostando valori superiori a 20, il runtime emette un 
         avviso diagnostico di avvertimento.
 
-    --init-session (Richiede --session <id>)
+    --init-thread (Richiede --thread <id>)
         Consente a componenti esterni (come l'interfaccia grafica CGI) o script 
-        di automazione di pre-registrare una nuova sessione nel sistema prima 
+        di automazione di pre-registrare un nuovo thread nel sistema prima 
         dell'invio del primo prompt. Questa opzione esegue le seguenti 
         operazioni in locale:
         - Crea il file vuoto della cronologia (<id>.ndjson) con permessi 
           restrittivi.
-        - Genera il file di metadati della sessione (<id>.json) con titolo 
+        - Genera il file di metadati del thread (<id>.json) con titolo 
           provvisorio e conteggio messaggi a zero.
-        - Aggiorna l'indice globale (index.json) sotto lock esclusivo per 
-          prevenire race condition.
+        - Aggiorna l'indice globale dei thread (index.json) sotto lock esclusivo 
+          per prevenire race condition.
         - Termina l'esecuzione immediatamente (exit 0) senza effettuare 
           connessioni di rete o richiedere chiavi API.
 
@@ -161,7 +161,7 @@ OPZIONI
   Sezione 5: Flussi di Connessione e Rete
     --stream
         Abilita la ricezione dei token di risposta in tempo reale (streaming dei 
-        dati). Richiede che il provider attivo supporti l'interfaccia di 
+        dati). Richiega che il provider attivo supporti l'interfaccia di 
         connessione SSE (Server-Sent Events). Questa opzione è mutuamente 
         esclusiva e incompatibile con i formati strutturati --json e --pretty; 
         se utilizzate congiuntamente, lo script blocca l'esecuzione.
@@ -179,7 +179,7 @@ OPZIONI
 
   Sezione 6: Selezione dei Moduli e Installazione
     --provider [NOME]
-        Se specificato con un nome (escluding stringhe che iniziano con un 
+        Se specificato con un nome (escludendo stringhe che iniziano con un 
         trattino), seleziona ed imposta il provider attivo, salvando in modo 
         persistente la preferenza nel file di configurazione dell'utente. Se 
         il valore passato è la stringa letterale "list", o se il flag viene 
@@ -189,13 +189,14 @@ OPZIONI
 
     --install-extras [SORGENTE]
         Installa ed estende il runtime copiando i moduli e le risorse della 
-        directory delle estensioni (es. providers, script di sessione, test, 
-        documentazione) all'interno della cartella operativa persistente delle 
-        estensioni utente. Se non specificato, lo script tenta di localizzare 
-        le sorgenti sotto la cartella di origine "extras" relativa alla 
-        posizione dello script. Il modulo esegue rigorose verifiche di 
-        sicurezza per prevenire la copia di collegamenti simbolici o 
-        l'installazione in percorsi annidati non autorizzati.
+        directory delle estensioni (es. provider esterni, script del motore 
+        di sessione, risorse per i thread, test, documentazione) all'interno 
+        della cartella operativa persistente delle estensioni utente. Se non 
+        specificato, lo script tenta di localizzare le sorgenti sotto la cartella 
+        di origine "extras" relativa alla posizione dello script. Il modulo 
+        esegue rigorose verifiche di sicurezza per prevenire la copia di 
+        collegamenti simbolici o l'installazione in percorsi annidati non 
+        autorizzati.
 
   Sezione 7: Gestione Modelli e Configurazione Rapida
     --refresh-models, --refresh-model
@@ -316,9 +317,9 @@ VARIABILI D'AMBIENTE
         Directory contenente i moduli dei provider esterni installati nel 
         sistema (default: $BASH4LLM_EXTRAS_DIR/providers).
 
-    SESSION_CACHE_DIR
+    THREAD_CACHE_DIR
         Directory destinata ad ospitare la cache temporanea cruda dei messaggi 
-        e contesti di sessione (posizionata in $BASH4LLM_CONFIG_DIR/session_cache).
+        e contesti dei thread (default: $BASH4LLM_CONFIG_DIR/thread_cache).
 
   Sezione 3: Configurazione Risorse e Sincronizzazione
     MODELS_FILE
@@ -341,7 +342,7 @@ VARIABILI D'AMBIENTE
 
     HISTORY_LOCK
         File di lock esclusivo per prevenire corruzioni fisiche dovute ad accessi 
-        paralleli o concorrenti alla directory storica e alle sessioni (default: 
+        paralleli o concorrenti alla directory storica e ai thread (default: 
         $BASH4LLM_HISTORY_DIR/history.lock).
 
     TMP_LOCK
@@ -359,7 +360,7 @@ VARIABILI D'AMBIENTE
 
     BASH4LLM_LOCK_TIMEOUT_HISTORY
         Timeout massimo espresso in secondi per acquisire il lock di accesso allo 
-        storico e sessioni (default: 10 secondi).
+        storico e ai thread (default: 10 secondi).
 
   Sezione 4: Manutenzione dello Storico (Rotazione)
     BASH4LLM_ROTATE_HISTORY
@@ -404,7 +405,7 @@ VARIABILI D'AMBIENTE
 
     LAST_CHECK_LINES
         Numero di righe standard da scansionare a ritroso nel file storico di 
-        sessione NDJSON durante l'estrazione dei record (default: 50 righe).
+        thread NDJSON durante l'estrazione dei record (default: 50 righe).
 
     DEBUG
         Variabile di allineamento diagnostico. Se valorizzata a 1, attiva le 
@@ -416,7 +417,7 @@ VARIABILI D'AMBIENTE
         timestamp UTC.
 
     BASH4LLM_SOURCE_ONLY
-        Variabile di esclusione del nucleo operativo (guard di sviluppo). Se 
+        Variabile di exclusion del nucleo operativo (guard di sviluppo). Se 
         impostata a 1 prima di importare lo script, interrompe l'esecuzione 
         principale subito dopo il bootstrap. Consente di caricare e testare 
         isolatamente le sole variabili d'ambiente, definizioni e funzioni di 
@@ -471,7 +472,7 @@ MODALITÀ OPERATIVE
     sincrona o in streaming. Al termine, estrae la risposta testuale, la 
     visualizza a schermo in base al formato di output richiesto, la salva 
     nello storico se supera il limite di caratteri definito e la registra nel 
-    file di sessione (se attiva).
+    file del thread (se attivo).
 
   2. Streaming dei Token (--stream)
     Se abilitato, la connessione HTTP viene stabilita disabilitando qualsiasi 
@@ -493,7 +494,7 @@ MODALITÀ OPERATIVE
   4. Chat Interattiva (--chat)
     Disponibile esclusivamente in presenza di un terminale interattivo (TTY). 
     Apre un ciclo continuo di lettura da console: acquisisce il prompt dell'utente, 
-    compila il payload integrando la cronologia della sessione, esegue 
+    compila il payload integrando la cronologia del thread attivo, esegue 
     l'interrogazione (in streaming o sincrona) e visualizza la risposta dell'assistente. 
     L'interfaccia si aggiorna in tempo reale fino alla cattura del segnale di 
     fine trasmissione.
@@ -530,8 +531,8 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
            ed espansi per generare la stringa di prompt finale.
 
   2. Gestione delle Sessioni ed Integrazione con il Session Engine
-    La gestione delle sessioni multi-turno per la persistenza del contesto opera 
-    su due livelli logici:
+    La gestione delle conversazioni (thread) multi-turno per la persistenza del 
+    contesto opera su due livelli logici:
       - Architettura Estesa (Session Engine): All'avvio, il runtime ricerca la 
         presenza dello script di estensione "session-engine.sh" nella directory 
         delle estensioni. Se rilevato e ritenuto conforme (superamento dell'analisi 
@@ -541,11 +542,11 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
         (session_engine_build_window e session_engine_append).
       - Fallback Integrato (Legacy): Se il Session Engine non è disponibile, lo 
         script ricade sulle funzioni native basate su file NDJSON piatti. La 
-        funzione session_read_window estrae a ritroso le ultime righe per 
-        comporre un array JSON coerente, mentre la funzione session_append registra 
-        i messaggi in append nel file cronologico blindandone i permessi a 600. 
-        Un meccanismo di marcatura basato su hash SHA-256 previene inserimenti 
-        duplicati in caso di concorrenza.
+        funzione thread_read_window estrae a ritroso le ultime righe per 
+        comporre un array JSON coerente, mentre la funzione thread_append registra 
+        i messaggi in append nel file cronologico del thread blindandone i 
+        permessi a 600. Un meccanismo di marcatura basato su hash SHA-256 previene 
+        inserimenti duplicati in caso di concorrenza.
 
   3. Sincronizzazione dei Modelli e Core Whitelisting
     La convalida dei modelli è controllata centralmente dalla funzione 
@@ -557,14 +558,15 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
     vengono bloccati preventivamente per impedire trasmissioni destinate a 
     fallire a causa dell'incompatibilità dei payload testuali di bash4llm.
 
-  4. Cache di Sessione (Session Cache)
+  4. Cache dei Thread (Thread Cache)
     Per evitare ridondanti chiamate di rete o calcoli concorrenti sul file system, 
-    bash4llm implementa un meccanismo di cache locale per le risposte delle 
-    sessioni. Le risposte vengono archiviate nella directory dedicata con permessi 600. 
+    bash4llm implementa un meccanismo di cache locale per le risposte dei 
+    thread. Le risposte vengono archiviate nella directory dedicata con permessi 600. 
     La prima riga del file di cache memorizza il timestamp Unix assoluto di scadenza 
     (TTL, impostabile in secondi, default 300). Ad ogni interrogazione, la funzione 
-    session_cache_get verifica la validità temporale del record confrontandolo 
-    con l'ora di sistema; in caso di scadenza, il file viene rimosso dal disco.
+    thread_cache_get verifica la validità temporale del record confrontandolo 
+    con l'ora di sistema; in caso di scadenza, il file viene rimosso dal disco 
+    tramite thread_cache_invalidate.
 
   5. Manifest Multimodale e Staging Base64
     Per l'inoltro strutturato di allegati o parti di contesto complesse, il 
@@ -579,7 +581,7 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
 
   6. Sincronizzazione Concorrente e File Locking (flock)
     La consistenza fisica delle risorse condivise sul disco (file dei modelli, 
-    file di log della cronologia e directory temporanea) è protetta da un 
+    file di log della cronologia dei thread e directory temporanea) è protetta da un 
     meccanismo di lock esclusivo regolato tramite l'utilità flock. La funzione 
     lock_exec gestisce la mutua esclusione: tenta di acquisire il descrittore 
     di blocco esclusivo sul file di lock associato alla risorsa entro un limite 
