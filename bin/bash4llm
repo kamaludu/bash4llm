@@ -25,8 +25,8 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.3.0"
-SCRIPT_DATE="2026-07-16"
+SCRIPT_VERSION="2.4.0"
+SCRIPT_DATE="2026-07-15"
 
 # =============================================================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
