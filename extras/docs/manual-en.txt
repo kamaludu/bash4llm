@@ -4,7 +4,7 @@ BASH4LLM(1)                      Bash4LLM Manual                    BASH4LLM(1)
 
 NAME
     bash4llm - Resilient and secure Bash-first wrapper for querying external 
-    LLM providers (v2.4.0)
+    LLM providers (v2.3.0)
 
 SYNOPSIS
     bash4llm [OPTIONS] [PROMPT]
