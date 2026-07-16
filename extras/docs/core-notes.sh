@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/docs/core-notes.sh
 # Extra: Core Notes
 # Copyright (C) 2026 Cristian Evangelisti
@@ -21,7 +21,7 @@ Overview
 --------
 bash4llm is a Bash-first orchestrator for LLM provider calls with a Groq-first
 embedded provider. The core provides secure primitives (atomic writes, locks,
-base64 staging), session and history management, provider discovery and a
+base64 staging), thread and history management, provider discovery and a
 provider contract (buildpayload_*, call_api_*). Provider modules live under
 runtime extras and are loaded on demand.
 
@@ -53,7 +53,7 @@ Key primitives (documented)
   Return the path to the active provider API URL file under config.
 - ensure_api_key_for_provider(provider)
   Validate API key presence in environment. If missing in non-interactive TTY, fail with
-  BASH4LLMERRNOAPIKEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
+  BASH4LLMERR_NO_API_KEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
   export to env, and show permanent save instructions.
 - enforce_network_policy()
   Central policy check: returns 0 if network allowed; non-zero if blocked.
@@ -137,11 +137,11 @@ Blocks of Code / Flows
 - PRECORE_BOOT_DETECT_B64_OPTS: Execute _detect_base64_opts.
 
 -------------------------------------------------------------------------------
-PRECORE_RUN (runtime primitives: history, manifest, session, cache)
+PRECORE_RUN (runtime primitives: history, manifest, thread, cache)
 -------------------------------------------------------------------------------
 Purpose
 Provide atomic, lock-protected runtime primitives for history rotation, multimodal
-manifest staging, session NDJSON handling, and session cache.
+manifest staging, thread NDJSON handling, and thread cache.
 
 Key primitives (documented)
 - rotate_history([timeout])
@@ -164,34 +164,34 @@ Key primitives (documented)
   Create unique directory inside $BASH4LLM_TMPDIR under lock with permissions 700.
 - _tmpf(type, base_dir, [prefix])
   Strict temp file (600) or directory (700) generator verifying path containment inside allowed tmp boundaries.
-- session_validate_id(sid)
-  Validate session ID structure (alphanumeric, ".", "-", "_" with length 1 to 128 characters).
-- session_now_ts()
+- thread_validate_id(tid)
+  Validate thread ID structure (alphanumeric, ".", "-", "_" with length 1 to 128 characters).
+- thread_now_ts()
   Return current time as an ISO 8601 UTC timestamp.
-- session_messages_tmp_path(session_id)
+- thread_messages_tmp_path(thread_id)
   Return path to temporary messages file inside RUN_TMPDIR.
-- session_sanitize_cmd(cmd)
+- thread_sanitize_cmd(cmd)
   Mask sensitive env variables, credentials, and API keys with [REDACTED], truncating strings to 256 characters.
-- session_read_window(session_id, [window_size], out_file)
-  Extract last N session lines from NDJSON file, build normalized messages array JSON, and update UI state.
-- session_append(session_id, role, content, meta_json)
-  Idempotent append: generate unique message_id, manage block marker (.lockdir), lock session file,
-  append NDJSON line, update index, and write session metadata via ui_state_write.
-- _session_hash(string)
+- thread_read_window(thread_id, [window_size], out_file)
+  Extract last N thread lines from NDJSON file, build normalized messages array JSON, and update UI state.
+- thread_append(thread_id, role, content, meta_json)
+  Idempotent append: generate unique message_id, manage block marker (.lockdir), lock thread file,
+  append NDJSON line, update index, and write thread metadata via ui_state_write.
+- _thread_hash(string)
   Generate SHA-256 hash or fallback to truncated Base64 if tools are missing.
-- session_cache_key(sid, params)
-  Generate cache key matching sid and SHA-256 of parameters.
-- session_cache_get(sid, params, [out_file])
+- thread_cache_key(tid, params)
+  Generate cache key matching tid and SHA-256 of parameters.
+- thread_cache_get(tid, params, [out_file])
   Retrieve cached response; delete and return 1 if expired based on Unix epoch TTL first-line header.
-- session_cache_set(sid, params, [ttl], [src_file])
-  Write cache atomically with TTL expiration Unix timestamp as first line under session_cache (perms 600).
-- session_cache_invalidate(sid, [params])
-  Selectively or completely purge cache files for a given session.
+- thread_cache_set(tid, params, [ttl], [src_file])
+  Write cache atomically with TTL expiration Unix timestamp as first line under thread_cache (perms 600).
+- thread_cache_invalidate(tid, [params])
+  Selectively or completely purge cache files for a given thread.
 - _normalize_bool_env()
   Convert boolean environment flags (ALLOW_API_CALLS, DRY_RUN, DEBUG) to normalized 0 or 1 integers.
 
 Blocks of Code / Flows
-- block_mkdir_session_cache: Allocate and configure $SESSION_CACHE_DIR with permissions 700.
+- block_mkdir_thread_cache: Allocate and configure $THREAD_CACHE_DIR with permissions 700.
 - block_ensure_config_dir: Ensure configuration directory is present and accessible.
 - block_ensure_run_tmpdir: Invoke ensure_run_tmpdir if BASH4LLM_SOURCE_ONLY=0.
 - block_normalize_bool_env_call: Normalize environment flags.
@@ -211,7 +211,7 @@ Key functions (documented)
   Compile and write Groq-compatible JSON payload from variables (MODEL, TURE, MAX_TOKENS, and message sources:
   JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, or CONTENT). Perform Base64 staging.
 - call_api_groq()
-  Sincronous HTTP call. Handles .b64 payload decoding, appends buffering parameters (stdbuf), builds curl headers with
+  Synchronous HTTP call. Handles .b64 payload decoding, appends buffering parameters (stdbuf), builds curl headers with
   GROQ_API_KEY, isolates clean JSON outputs (cuts trailing non-JSON data), writes RESP (600) or diagnostic JSON.
 - call_api_streaming_groq() / call_api_streaming_groq_legacy() (alias)
   Streaming HTTP SSE call. Pipeline processing of SSE streams, incremental print of tokens to stdout, writes raw stream
@@ -288,7 +288,7 @@ Key flows and functions (documented)
   Check if stdout is a real interactive terminal (TTY).
 
 Blocks of Code / Flows
-- parse_cli_arguments: Process parameters (inputs, batches, sessions, formats, providers, flags). Append unmatched positional arguments to $ARGS.
+- parse_cli_arguments: Process parameters (inputs, batches, threads, formats, providers, flags). Append unmatched positional arguments to $ARGS.
 - source_session_engine: Dry-run and source the external session engine extension if available; set SE_AVAILABLE=1.
 - verify_api_calls_and_rebuild_providers: Intercept network blocks and scan providers/ directory to rebuild $SUPPORTED_PROVIDERS.
 - raw_listings: Intercept and fulfill immediate raw provider or model queries, exiting with status 0.
@@ -320,17 +320,17 @@ Blocks of Code / Flows
 - CORE_PROVIDER_MAIN_EXECUTION: Run prompt assembly and parameter validation. Execute the three main operation tracks: BATCH processing, interactive CHAT_MODE loop (Ctrl+D capture), or Single Prompt standard execution.
 
 -------------------------------------------------------------------------------
-SESSION CACHE (explicit)
+THREAD CACHE (explicit)
 -------------------------------------------------------------------------------
 Purpose
-Reduce repeated work by caching session-derived payloads/responses.
+Reduce repeated work by caching thread-derived payloads/responses.
 
 Key points
-- session_cache_key(sid, params) => sid|sha256(params_string).
+- thread_cache_key(tid, params) => tid|sha256(params_string).
 - Cache file format: first line expiry_epoch; subsequent lines payload JSON.
-- session_cache_get removes expired files and returns 0 on hit; session_cache_set writes atomically.
-- Cache stored under ${BASH4LLM_CONFIG_DIR%/}/session_cache with perms 600.
-- TTL enforced by expiry_epoch; invalidation via session_cache_invalidate() when session changes.
+- thread_cache_get removes expired files and returns 0 on hit; thread_cache_set writes atomically.
+- Cache stored under ${BASH4LLM_CONFIG_DIR%/}/thread_cache with perms 600.
+- TTL enforced by expiry_epoch; invalidation via thread_cache_invalidate() when thread changes.
 
 -------------------------------------------------------------------------------
 HISTORY & MANIFEST (explicit)
@@ -407,14 +407,14 @@ CANONICAL VARIABLES (reference)
 Important names (use exact names):
 BASH4LLM_DIR, BASH4LLM_EXTRAS_DIR, PROVIDERS_DIR, BASH4LLM_CONFIG_DIR,
 MODELS_FILE, MODELS_LOCK, PROVIDER_FILE, RUN_TMPDIR, BASH4LLM_TMP_PAYLOAD,
-PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG, QUIET, SESSION_ID,
-SESSION_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
+PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG, QUIET, THREAD_ID,
+THREAD_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
 BASH4LLM_TMPDIR, BASH4LLM_HISTORY_DIR, BASH4LLM_LOCK_TIMEOUT_*,
 BASH4LLM_ROTATE_HISTORY, BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES,
 BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS, CURL_BASE_OPTS,
 B64_WRAP_OPT, B64_DECODE_OPT, GROQ_API_KEY, PROVIDER_API_ENV_groq,
 SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE, SCRIPTDIR, CANONICAL_EXTRAS_DIR,
-LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR, BASH4LLM_TEMPLATES_DIR, SESSION_DIR,
+LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR, BASH4LLM_TEMPLATES_DIR, THREAD_DIR,
 HISTORY_LOCK, TMP_LOCK, BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS,
 BASH4LLM_LOCK_TIMEOUT_HISTORY, LAST_CHECK_LINES, BOOTSTRAP_ONLY, SE_ENGINE_PATH,
 SE_AVAILABLE, FINAL_MODEL, CONTENT, JSON_INPUT, BATCH_FILE, CHAT_MODE,
@@ -423,13 +423,13 @@ MAX_TOKENS, MODEL, AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER,
 TURE (temperature alias), TEMPERATURE (recommended alias).
 
 Error Code Constants & Direct Alias Mappings:
-- BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERRNOAPIKEY
-- BASH4LLM_ERR_BAD_MODEL (11) / BASH4LLMERRBAD_MODEL
-- BASH4LLM_ERR_CURL_FAILED (12) / BASH4LLMERRCURL_FAILED
-- BASH4LLM_ERR_INVALID_JSON (13) / BASH4LLMERRINVALID_JSON
-- BASH4LLM_ERR_NO_PROMPT (14) / BASH4LLMERRNO_PROMPT
-- BASH4LLM_ERR_TMP (15) / BASH4LLMERRTMP
-- BASH4LLM_ERR_API (16) / BASH4LLMERRAPI
+- BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERR_NO_API_KEY
+- BASH4LLM_ERR_BAD_MODEL (11) / BASH4LLMERR_BAD_MODEL
+- BASH4LLM_ERR_CURL_FAILED (12) / BASH4LLMERR_CURL_FAILED
+- BASH4LLM_ERR_INVALID_JSON (13) / BASH4LLMERR_INVALID_JSON
+- BASH4LLM_ERR_NO_PROMPT (14) / BASH4LLMERR_NO_PROMPT
+- BASH4LLM_ERR_TMP (15) / BASH4LLMERR_TMP
+- BASH4LLM_ERR_API (16) / BASH4LLMERR_API
 
 Notes
 - TURE is retained for backward compatibility; document TEMPERATURE as alias in user-facing docs.
@@ -450,13 +450,13 @@ EXAMPLES (short)
   bash4llm "Summarize this text"
 - Refresh models (embedded groq):
   bash4llm --refresh-models
-- Start session and append:
-  bash4llm --session myid --append "User message"
+- Start thread and query:
+  bash4llm --thread myid "User message"
 
 -------------------------------------------------------------------------------
 CHANGE NOTES (summary)
 -------------------------------------------------------------------------------
-This document is the authoritative core notes aligned to:
+This document provides the reference core notes aligned to:
 - bash4llm_lossless_logic_outline.txt
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
