@@ -4,7 +4,7 @@ BASH4LLM(1)                      Bash4LLM Manual .it                 BASH4LLM(1)
 
 NOME
     bash4llm - Wrapper Bash-first resiliente e sicuro per l'interrogazione di 
-    provider LLM esterni (v2.4.0)
+    provider LLM esterni (v2.3.0)
 
 SINTASSI
     bash4llm [OPZIONI] [PROMPT]
