@@ -4569,7 +4569,8 @@ if [ "$STREAM_MODE" -eq 1 ]; then
        log_info "STREAM" "Streaming completed; captured response in $RESP"
      fi
 
-     if [ -n "${THREAD_ID:-}" ]; then
+     # Prevent simulated runs (--dry-run) from writing to the thread database
+     if [ "${DRY_RUN:-0}" -ne 1 ] && [ -n "${THREAD_ID:-}" ]; then
       if [ -n "${CONTENT:-}" ]; then
         meta_source="cli"
         meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
@@ -4687,7 +4688,8 @@ else
 fi
 
 if perform_request_once; then
-  if [ -n "${THREAD_ID:-}" ]; then
+  # Prevent simulated runs (--dry-run) from writing to the thread database on success
+  if [ "${DRY_RUN:-0}" -ne 1 ] && [ -n "${THREAD_ID:-}" ]; then
     if [ -n "${CONTENT:-}" ]; then
       meta_source="cli"
       meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
@@ -4723,7 +4725,8 @@ if perform_request_once; then
   fi
 else
   rc=$?
-  if [ -n "${THREAD_ID:-}" ] && [ -n "${CONTENT:-}" ]; then
+  # Prevent simulated runs (--dry-run) from writing to the thread database on failure
+  if [ "${DRY_RUN:-0}" -ne 1 ] && [ -n "${THREAD_ID:-}" ] && [ -n "${CONTENT:-}" ]; then
     meta_source="cli"
     meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
     meta_json="$(jq -c -n --arg source "$meta_source" --arg cmd "$meta_cmd" --arg id "" '{source:$source, cmd:$cmd, id:$id}')"
