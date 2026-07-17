@@ -322,6 +322,39 @@ ensure_api_key_for_provider() {
     return 0
   fi
 
+  # -------------------------------------------------------------------------
+  # Secure Key Vault Hook (Prioritize encrypted storage lookup)
+  # -------------------------------------------------------------------------
+  if [ -z "$current_key" ] && [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
+    # Load the vault keys if not already cached in memory during this process session
+    if [ -z "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
+      log_info_user "SECURITY" "Vault file detected. Authenticating to unlock saved API keys..."
+      BASH4LLM_DECRYPTED_VAULT_JSON="$(vault_load_keys 2>/dev/null)" || true
+    fi
+
+    # Attempt to retrieve the specific provider key from the decrypted payload
+    if [ -n "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
+      local extracted_key=""
+      extracted_key="$(printf '%s' "$BASH4LLM_DECRYPTED_VAULT_JSON" | jq -r --arg p "$prov" '.[$p] // empty' 2>/dev/null || true)"
+      
+      if [ -n "$extracted_key" ]; then
+        current_key="$extracted_key"
+        export "$envvar"="$current_key"
+        if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+          export GROQ_API_KEY="$current_key"
+        fi
+        return 0
+      else
+        log_warn "SECURITY" "No saved API key found in vault for provider: $prov"
+      fi
+    else
+      log_warn "SECURITY" "Authentication failed. Falling back to manual input."
+      # Reset memory cache on authentication failure
+      BASH4LLM_DECRYPTED_VAULT_JSON=""
+    fi
+  fi
+  # -------------------------------------------------------------------------
+
   # Non-interactive: fail fast with clear error (do not prompt)
   if [ ! -t 0 ]; then
     printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED}" "${C_RST}" "$prov" "$envvar" >&2
@@ -640,15 +673,25 @@ is_valid_json_string() {
   printf '%s' "$s" | jq -e . >/dev/null 2>&1
 }
 
+# Portable Base64 encoding removing the -A flag issue in LibreSSL/BSD
 b64encode() {
-  base64 2>/dev/null | tr -d '\n'
+  if command -v openssl >/dev/null 2>&1; then
+    openssl enc -base64 2>/dev/null | tr -d '\n'
+  else
+    base64 2>/dev/null | tr -d '\n'
+  fi
 }
 
+# Portable Base64 decoding utilizing standard fallbacks
 b64decode() {
-  if [ -n "${B64_DECODE_OPT:-}" ]; then
-    base64 ${B64_DECODE_OPT}
+  if command -v openssl >/dev/null 2>&1; then
+    openssl enc -base64 -d 2>/dev/null
   else
-    base64 -d
+    if [ -n "${B64_DECODE_OPT:-}" ]; then
+      base64 ${B64_DECODE_OPT}
+    else
+      base64 -d
+    fi
   fi
 }
 
@@ -968,6 +1011,9 @@ extract_text_from_resp() {
 # Globally defined exit handler to guarantee resolution in all sourcing states
 cleanup_run_tmp_on_exit() {
   local rc_in=$?
+
+  # Safely restore terminal echo state on exit or abrupt interruption
+  stty echo 2>/dev/null || true
 
   if type release_thread_lock >/dev/null 2>&1; then
     release_thread_lock 2>/dev/null || true
@@ -1828,6 +1874,7 @@ _get_owner() {
   printf '%s' "$owner"
 }
 
+# Unified secure file signature extraction
 _get_file_signature() {
   local path="${1:-}"
   local hash="" stat_out="" dev="" inode="" size="" ctime="" mtime="" uid="" gid="" mode="" use_hash
@@ -1835,13 +1882,17 @@ _get_file_signature() {
 
   use_hash="${BASH4LLM_SIG_HASH:-1}"
 
-  if [ "${use_hash}" != "0" ] && command -v sha256sum >/dev/null 2>&1; then
-    hash="$(sha256sum "$path" 2>/dev/null | awk '{print $1}' || true)"
+  if [ "${use_hash}" != "0" ]; then
+    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
+      hash="$(_secure_hash_sha256 "$path" 2>/dev/null)"
+    elif command -v sha256sum >/dev/null 2>&1; then
+      hash="$(sha256sum "$path" 2>/dev/null | awk '{print $1}' || true)"
+    fi
   else
     hash=""
   fi
 
-  # Branch format execution based on macOS/BSD format formatting vs generic Linux
+  # Branch format execution based on macOS/BSD formatting vs generic Linux
   if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
     stat_out="$(stat -f '%d %i %z %c %m %u %g %p' "$path" 2>/dev/null || true)"
   else
@@ -4026,6 +4077,20 @@ while [ $# -gt 0 ]; do
       fi
       shift
       ;;
+    # -------------------------------------------------------------------------
+    # Cryptographic Vault CLI Entrypoint Option
+    # -------------------------------------------------------------------------
+    --vault)
+      if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
+        # Ensure temporary runtime environment is ready
+        ensure_run_tmpdir || exit "$BASH4LLM_ERR_TMP"
+        vault_console
+        exit 0
+      else
+        log_error "SECURITY" "The OpenSSL helper module is not active or openssl is missing on this platform. Vault command unavailable."
+        exit 1
+      fi
+      ;;
     --version) printf '%s %s (%s)\n' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_DATE"; exit 0 ;;
     -h|--help)
       help_file="$BASH4LLM_EXTRAS_DIR/docs/help.txt"
@@ -4477,6 +4542,34 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
     allowed_count="$(printf '%s\n' "$ALLOWED_MODELS" | wc -l | tr -d ' ')"
   fi
   printf '  - Allowed Models Count: %d\n' "$allowed_count"
+
+  # -------------------------------------------------------------------------
+  # OpenSSL & TLS Diagnostics Hook
+  # -------------------------------------------------------------------------
+  if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
+    printf '  - Security Extension (OpenSSL): %bACTIVE%b\n' "${C_GREEN:-}" "${C_RST:-}"
+    printf '    * PBKDF2 Support: '
+    if [ "$_BASH4LLM_VAULT_PBKDF2" -eq 1 ]; then printf 'YES\n'; else printf 'NO (Legacy KDF)\n'; fi
+    printf '    * Key Vault Status: '
+    if vault_exists; then printf 'INITIALIZED (%s)\n' "$(basename "$_VAULT_FILE")"; else printf 'NOT INITIALIZED\n'; fi
+    
+    # Check the TLS handshake to the active provider API host
+    resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+    if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
+      local current_host=""
+      current_host="$(printf '%s' "${BASH4LLM_PROVIDER_URL}" | sed -E 's#https?://([^:/]+).*#\1#')"
+      printf '    * TLS Handshake (%s): ' "$current_host"
+      if diagnose_tls_connection "$BASH4LLM_PROVIDER_URL" >/dev/null 2>&1; then
+        printf '%bSUCCESS%b\n' "${C_GREEN:-}" "${C_RST:-}"
+      else
+        printf '%bFAILED%b (Handshake failed, local trust store missing, or connection proxy blocked)\n' "${C_RED:-}" "${C_RST:-}"
+      fi
+    fi
+  else
+    printf '  - Security Extension (OpenSSL): %bINACTIVE%b (Optional module not loaded or openssl is missing)\n' "${C_YELLOW:-}" "${C_RST:-}"
+  fi
+  # -------------------------------------------------------------------------
+
   exit 0
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
