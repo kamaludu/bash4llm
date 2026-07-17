@@ -482,7 +482,7 @@ load_threads_wizard() {
     local new_session_label="<$(_msg wizard_new_session)>"
     local colored_new_session="$(color_attributes "$new_session_label")"
 
-    printf "  ${C_BCYAN:-}[ 1]${C_RST:-} %s\n" "$colored_new_session" >&2
+    printf "  ${C_BCYAN:-}[ 1]${C_RST:-} %s\n\n" "$colored_new_session" >&2
 
     local i
     for ((i = start_idx; i < end_idx; i++)); do
