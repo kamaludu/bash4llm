@@ -1,3 +1,5 @@
+[![Logo 320](../../docs/img/bash4llm320.png "Logo bash4llm")](../../README.md)
+
 # Specifica Tecnica: Modulo di Sicurezza e Cifratura `openssl-helper.sh`
 
 La presente specifica tecnica descrive l'architettura, i flussi crittografici, le misure di tolleranza ai guasti e i dettagli implementativi del modulo opzionale di sicurezza `openssl-helper.sh` per l'applicazione `bash4llm`.
