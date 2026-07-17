@@ -85,6 +85,8 @@ BASH4LLM_ERR_CURL_FAILED=12
 BASH4LLM_ERR_NO_PROMPT=14
 BASH4LLM_ERR_TMP=15
 BASH4LLM_ERR_API=16
+# Dedicated error code for security policy violations
+BASH4LLM_ERR_SEC=17
 
 # Legacy aliases mapped with consistent underscore notation
 BASH4LLMERR_NO_API_KEY=$BASH4LLM_ERR_NO_API_KEY
@@ -93,6 +95,7 @@ BASH4LLMERR_CURL_FAILED=$BASH4LLM_ERR_CURL_FAILED
 BASH4LLMERR_NO_PROMPT=$BASH4LLM_ERR_NO_PROMPT
 BASH4LLMERR_TMP=$BASH4LLM_ERR_TMP
 BASH4LLMERR_API=$BASH4LLM_ERR_API
+BASH4LLMERR_SEC=$BASH4LLM_ERR_SEC
 #--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 #--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
 # ---------------------------------------------------------------------------
@@ -391,6 +394,26 @@ enforce_network_policy() {
 
   return 0
 }
+
+# Private helper to extract a section from core-notes.sh securely without execution (Zero-Eval).
+# Returns 0 on success, or 1 if the core-notes.sh file is missing or unreadable.
+_extract_notes_section() {
+  local target_header="${1:-}"
+  local notes_file="${BASH4LLM_EXTRAS_DIR:-}/docs/core-notes.sh"
+
+  if [ ! -f "$notes_file" ] || [ ! -r "$notes_file" ]; then
+    return 1
+  fi
+
+  # Parse the document using POSIX-compliant awk.
+  # It searches for the header literally, prints subsequent lines, and stops on the first blank line.
+  awk -v header="$target_header" '
+    index($0, header) { flag=1; next }
+    /^[[:space:]]*$/ { if (flag) { flag=0; exit } }
+    flag { print }
+  ' "$notes_file" 2>/dev/null
+}
+
 #--3<---[ /SUBSECTION: API_NET ]--->3--
 
 DEBUG="${DEBUG:-${BASH4LLM_DEBUG:-0}}"
@@ -487,18 +510,18 @@ else
   BASH4LLM_DIR="$SCRIPTDIR/bash4llm.d"
 fi
 
-BASH4LLM_CONFIG_DIR="${BASH4LLM_DIR}/config"
-BASH4LLM_MODELS_DIR="${BASH4LLM_DIR}/models"
-BASH4LLM_TEMPLATES_DIR="${BASH4LLM_DIR}/templates"
-BASH4LLM_HISTORY_DIR="${BASH4LLM_DIR}/history"
-BASH4LLM_TMPDIR="${BASH4LLM_DIR}/tmp"
+BASH4LLM_CONFIG_DIR="${BASH4LLM_CONFIG_DIR:-${BASH4LLM_DIR}/config}"
+BASH4LLM_MODELS_DIR="${BASH4LLM_MODELS_DIR:-${BASH4LLM_DIR}/models}"
+BASH4LLM_TEMPLATES_DIR="${BASH4LLM_TEMPLATES_DIR:-${BASH4LLM_DIR}/templates}"
+BASH4LLM_HISTORY_DIR="${BASH4LLM_HISTORY_DIR:-${BASH4LLM_DIR}/history}"
+BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-${BASH4LLM_DIR}/tmp}"
 sync_models_file_path
 MAX_MODELS="${MAX_MODELS:-200}"
 
 CANONICAL_EXTRAS_DIR="${BASH4LLM_DIR}/extras"
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
-BASH4LLM_EXTRAS_DIR="${CANONICAL_EXTRAS_DIR}"
-PROVIDERS_DIR="${BASH4LLM_EXTRAS_DIR}/providers"
+BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-${CANONICAL_EXTRAS_DIR}}"
+PROVIDERS_DIR="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}"
 export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR
 
 if [ -z "${BASH4LLM_DIR:-}" ]; then
@@ -1102,6 +1125,156 @@ ui_state_write() {
   fi
   return 0
 }
+
+# Verify file permissions and check configuration variables against canonical definitions.
+# Exits with BASH4LLM_ERR_SEC (17) if a security breach is found.
+# Exits with 0 if configuration is valid or contains only non-fatal warnings.
+run_static_config_check() {
+  local config_file="${BASH4LLM_CONFIG_DIR}/config"
+  local notes_file="${BASH4LLM_EXTRAS_DIR:-}/docs/core-notes.sh"
+  local security_failed=0
+  local warnings_found=0
+  local perm_string=""
+  local group_write=""
+  local others_write=""
+  local canonical_vars=""
+  local key=""
+  local val=""
+  local line=""
+  
+  # Declare the associative array for O(1) whitelist lookups
+  declare -A canonical_set=()
+
+  printf '%bChecking Bash4LLM⁺ Configuration Security...%b\n' "${C_BOLD}" "${C_RST}"
+
+  # 1. Inspect file system permissions for the active configuration file
+  if [ -f "$config_file" ]; then
+    # Portable symbolic permissions retrieval matching macOS/BSD and Linux
+    if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
+      perm_string="$(stat -f %Sp "$config_file" 2>/dev/null || true)"
+    else
+      perm_string="$(stat -c %A "$config_file" 2>/dev/null || true)"
+    fi
+
+    if [ -n "$perm_string" ]; then
+      group_write="$(printf '%s' "$perm_string" | awk '{print substr($0,6,1)}')"
+      others_write="$(printf '%s' "$perm_string" | awk '{print substr($0,9,1)}')"
+      
+      # Group/world writable configuration is a critical vulnerability
+      if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
+        printf '  [%sSECURITY ERROR%s] Config file is writable by group/others: %s (%s)\n' \
+          "${C_RED}" "${C_RST}" "$config_file" "$perm_string" >&2
+        security_failed=1
+      else
+        printf '  [%sOK%s] Configuration file permissions are secure.\n' "${C_GREEN}" "${C_RST}"
+      fi
+    fi
+  else
+    printf '  [%sINFO%s] Local config file not present. Using runtime defaults.\n' "${C_CYAN}" "${C_RST}"
+  fi
+  # 2. Extract and parse canonical variables list from core-notes.sh
+  canonical_vars="$(_extract_notes_section "Important names (use exact names):" || true)"
+  
+  if [ -z "$canonical_vars" ]; then
+    printf '  [%sWARNING%s] Unable to read core-notes.sh. Skipping variable linter.\n' "${C_YELLOW}" "${C_RST}" >&2
+    printf '  Please install extras with: %s --install-extras\n\n' "$0" >&2
+  else
+    # Normalize canonical variables to populate the associative array
+    # Removes text inside parentheses, periods, and splits by commas cleanly
+    while IFS= read -r var; do
+      [ -n "$var" ] && canonical_set["$var"]=1
+    done <<EOF
+$(printf '%s' "$canonical_vars" | sed -E 's/\([^)]*\)//g; s/\.//g' | tr -d ' ' | tr ',' '\n' | grep -v '^$')
+EOF
+
+    # Parse the configuration file if it exists and contains data
+    if [ -f "$config_file" ] && [ -s "$config_file" ]; then
+      printf '\n%bLinting Configuration Keys...%b\n' "${C_BOLD}" "${C_RST}"
+      while IFS= read -r line || [ -n "$line" ]; do
+        # Skip empty lines and comments
+        case "$line" in ''|\#*) continue ;; esac
+        
+        # Extract the key before the first '=' sign
+        key="${line%%=*}"
+        # Trim leading/trailing whitespace natively
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        
+        if [ -n "$key" ]; then
+          # Flag 'TEMP' specifically to avoid conflicts with temporary directories/variables
+          if [ "$key" = "TEMP" ]; then
+            printf '  [%sWARNING%s] Restricted variable "TEMP" detected. Please use "TURE" or "TEMPERATURE" to avoid conflicts with temporary paths.\n' \
+              "${C_YELLOW}" "${C_RST}"
+            warnings_found=$((warnings_found + 1))
+          elif [ -z "${canonical_set[$key]:-}" ]; then
+            printf '  [%sWARNING%s] Unknown or typo-prone variable found: "%s"\n' \
+              "${C_YELLOW}" "${C_RST}" "$key"
+            warnings_found=$((warnings_found + 1))
+          fi
+        fi
+      done < "$config_file"
+    fi
+  fi
+
+  # 3. Handle final resolution based on execution flags
+  if [ "$security_failed" -eq 1 ]; then
+    printf '\n%sCRITICAL ERROR%s: Security validation failed. Fix directory/file permissions before running.\n' "${C_RED}" "${C_RST}" >&2
+    exit "$BASH4LLM_ERR_SEC"
+  fi
+
+  if [ "$warnings_found" -gt 0 ]; then
+    printf '\nConfiguration scan completed with %d warnings. Active execution is safe.\n' "$warnings_found"
+  else
+    printf '\n%sConfiguration is secure and valid.%s\n' "${C_GREEN}" "${C_RST}"
+  fi
+}
+
+# Explain numerical error codes or string aliases using core-notes.sh documentation.
+# Accepts an error code (e.g., 15) or an alias (e.g., BASH4LLM_ERR_TMP).
+explain_error_code() {
+  local input_code="${1:-}"
+  local error_defs=""
+  local operational_tips=""
+  local matched=""
+  
+  if [ -z "$input_code" ]; then
+    printf 'bash4llm: %sERROR%s: --explain-error requires an error code or alias.\n' "${C_RED}" "${C_RST}" >&2
+    exit 2
+  fi
+
+  error_defs="$(_extract_notes_section "Error Code Constants & Direct Alias Mappings:" || true)"
+  operational_tips="$(_extract_notes_section "OPERATIONAL TIPS (concise)" || true)"
+
+  if [ -z "$error_defs" ]; then
+    printf 'bash4llm: %sWARNING%s: Unable to load core-notes.sh document. Cannot explain error.\n' "${C_YELLOW}" "${C_RST}" >&2
+    printf 'Please install extras with: %s --install-extras\n' "$0" >&2
+    exit 1
+  fi
+
+  printf '%bEvaluating error code / alias: %s%b\n\n' "${C_BOLD}" "$input_code" "${C_RST}"
+
+  # Perform exact word matching for safety and robustness
+  matched="$(printf '%s' "$error_defs" | grep -E "\b${input_code}\b" || true)"
+
+  if [ -n "$matched" ]; then
+    printf '%sFormal definition found:%s\n' "${C_GREEN}" "${C_RST}"
+    printf '  %s\n\n' "$matched"
+    
+    # Display context-aware operations tip mapping
+    printf '%sOperational Mitigation Advice:%s\n' "${C_CYAN}" "${C_RST}"
+    if [ "$input_code" = "15" ] || [[ "$input_code" == *"BASH4LLM_ERR_TMP"* ]]; then
+      printf '%s\n' "$operational_tips" | grep -Ei "perm|temp|tmp|_tmpf" || printf '%s\n' "$operational_tips"
+    elif [ "$input_code" = "10" ] || [[ "$input_code" == *"BASH4LLM_ERR_NO_API_KEY"* ]]; then
+      printf '%s\n' "$operational_tips" | grep -Ei "api|key|prov" || printf '%s\n' "$operational_tips"
+    elif [ "$input_code" = "17" ] || [[ "$input_code" == *"BASH4LLM_ERR_SEC"* ]]; then
+      printf '%s\n' "$operational_tips" | grep -Ei "perm|chmod|sec|check" || printf '%s\n' "$operational_tips"
+    else
+      printf '%s\n' "$operational_tips"
+    fi
+  else
+    printf 'No exact documentation mapping found for: %s\n' "$input_code" >&2
+  fi
+}
 #--5<---[ /SECTION: PRECORE_BOOT_HELPERS ]--->5--
 #--6<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
 if [ "$#" -gt 0 ]; then
@@ -1109,6 +1282,20 @@ if [ "$#" -gt 0 ]; then
   while [ "$i" -le "$#" ]; do
     arg="${!i}"
     case "$arg" in
+      --check-config)
+        run_static_config_check
+        exit 0
+        ;;
+      --explain-error)
+        next_index=$((i+1))
+        if [ "$next_index" -le "$#" ]; then
+          explain_error_code "${!next_index}"
+          exit 0
+        else
+          printf 'bash4llm: %sERROR%s: usage: --explain-error <error_code_or_alias>\n' "${C_RED}" "${C_RST}" >&2
+          exit 2
+        fi
+        ;;
       --print-config-dir)
         printf '%s\n' "$(canonical_config_dir)"
         exit 0
