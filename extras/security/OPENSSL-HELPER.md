@@ -1,6 +1,6 @@
 [![Logo 320](../../docs/img/bash4llm320.png "Logo bash4llm")](../../README.md)
 
-[![Security](https://img.shields.io/badge/security-OpenSSL%20helper-gold?style=flat-square&logo=securityscorecard&logoColor=white)](#)
+[![Security](https://img.shields.io/badge/security-OpenSSL%20Helper-gold?style=flat-square&logo=securityscorecard&logoColor=white)](#)
 
 # ​🔐 Specifica Tecnica: Modulo di Sicurezza e Cifratura `openssl-helper.sh`
 
