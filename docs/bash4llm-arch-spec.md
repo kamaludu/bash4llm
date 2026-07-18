@@ -14,7 +14,7 @@ Il sistema Bash4LLM⁺ è strutturato in sezioni logiche progettate per operare 
 *   **CORE_PROVIDER**: Dipende da tutte le sezioni precedenti per il caricamento protetto dei moduli provider esterni, l'inizializzazione del menu interattivo, l'allineamento dei modelli e la gestione del ciclo di chat, batch o prompt singolo.
 
 ### 1.2 Requisiti Obbligatori di Sistema
-Prima di consentire qualunque elaborazione, lo script core verifica la presenza nel `PATH` dei seguenti **23 binari ed utility essenziali**. L'assenza di almeno uno di essi causa l'arresto immediato dello script con codice di stato `1`:
+Prima di consentire qualunque prima elaborazione, lo script core verifica la presenza nel `PATH` dei seguenti **23 binari ed utility essenziali**. L'assenza di almeno uno di essi causa l'arresto immediato dello script con codice di stato `1`:
 1. `bash` • 2. `jq` • 3. `curl` • 4. `mktemp` • 5. `stat` • 6. `base64` • 7. `find` • 8. `awk` • 9. `sed` • 10. `grep` • 11. `xargs` • 12. `tr` • 13. `sort` • 14. `head` • 15. `wc` • 16. `tee` • 17. `date` • 18. `mv` • 19. `chmod` • 20. `cp` • 21. `rm` • 22. `printf` • 23. `comm`.
 *Nota: L'utility `flock` è esclusa da questo ciclo di controllo per consentire l'esecuzione e il fallback automatico su piattaforme che non la supportano nativamente (come Termux).*
 
@@ -151,6 +151,7 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, l'analisi
 *   **PRECORE_BOOT_SETUP_ENV_CMDS**: Verifica la presenza dei 23 comandi di sistema obbligatori.
 *   **PRECORE_BOOT_EARLY_HELPERS**: Carica le primitive fondamentali di directory, URL e stringhe.
 *   **PRECORE_BOOT_DIR_PATH**: Configura l'albero delle directory di lavoro operative.
+*   **PRECORE_BOOT_HELPERS**: Expose Base64, staging, and static linting checkers.
 *   **PRECORE_BOOT_CLI_HELPERS**: Intercetta precocemente le opzioni CLI di diagnostica o ispezione percorsi (`--print-*`, `--check-config`, `--explain-error`) ed esegue l'arresto immediato.
 
 ---
@@ -197,10 +198,10 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
 *   **Ruolo**: Meccanismo di blocco esclusivo cross-processo specifico per i thread conversazionali. Previene conflitti o sovrascritture in caso di esecuzioni parallele sullo stesso ID.
 
 #### thread_read_window
-*   **Ruolo**: Estrae la finestra degli ultimi messaggi storici del thread, normalizzandoli in un array strutturato e aggiornando i metadati di lettura in `ui_state/threads/<id>.json`.
+*   **Ruolo**: Estrae la finestra degli ultimi messaggi storici del thread (memorizzati nativamente in `history/threads/<id>.ndjson` nella logica core predefinita), normalizzandoli in un array strutturato e aggiornando i metadati di lettura in `ui_state/threads/<id>.json`.
 
 #### thread_append
-*   **Ruolo**: Accoda un nuovo messaggio al file NDJSON del thread sotto lock concorrente, assicurando l'idempotenza di scrittura tramite generazione di hash del messaggio. Aggiorna l'indice globale e i file di stato UI della sessione.
+*   **Ruolo**: Accoda un nuovo messaggio al file NDJSON del thread (`history/threads/<id>.ndjson`) sotto lock concorrente, assicurando l'idempotenza di scrittura tramite generazione di hash del messaggio. Aggiorna l'indice globale e i file di stato UI della sessione.
 
 #### thread_cache_key / thread_cache_get / thread_cache_set / thread_cache_invalidate
 *   **Ruolo**: Gestiscono il caching delle risposte basato su TTL ed epoch di scadenza memorizzati nella prima riga del file cache.
@@ -209,7 +210,7 @@ Questa macro-sezione si occupa della persistenza a lungo termine, della gestione
 *   **PRECORE_RUN_HISTORY**: Inizializzazione della cronologia e rotazione.
 *   **PRECORE_RUN_MANIFEST**: Generazione e staging dei manifesti Base64.
 *   **PRECORE_RUN_UTIL_HELPERS**: Gestione permessi, proprietari, firme crittografiche e cartelle temporanee protette.
-*   **PRECORE_RUN_THREAD_MVP**: Meccanismi di append, indicizzazione, rinomina e locking esclusivo dei thread conversazionali.
+*   **PRECORE_RUN_THREAD_MVP**: Meccanismi di append, indexing, locks, e appends dei thread.
 *   **PRECORE_RUN_THREAD_CACHE**: Logica di gestione della cache locale.
 *   **PRECORE_RUN_RUNTIME_GLOBALS**: Inizializza i valori predefiniti del runtime (modello, temperatura, token, formati) e normalizza le variabili booleane del core.
 
@@ -268,13 +269,13 @@ Estensione opzionale di ottimizzazione delle sessioni (collocata in `extras/sess
 ### 5.1 Funzioni del Session Engine
 
 #### _se_list_segments
-*   **Ruolo**: Scansiona la directory e restituisce l'elenco ordinato in ordine crescente dei segmenti NDJSON associati alla sessione (es. `chat1.ndjson`, `chat1.001.ndjson`, ecc.).
+*   **Ruolo**: Scansiona la directory dei log della sessione avanzata e restituisce l'elenco ordinato in ordine crescente dei segmenti NDJSON associati alla sessione (es. `chat1.ndjson`, `chat1.001.ndjson`, ecc.).
 
 #### _se_segment_rotate_if_needed
 *   **Ruolo**: Se il file NDJSON principale supera `$BASH4LLM_SESSION_SEGMENT_MAX_BYTES` (default 1MB), acquisisce un lock esclusivo, identifica l'indice di rotazione incrementale successivo e sposta atomicamente il file di log nel segmento numerato. Se il numero di segmenti supera la soglia di mantenimento, applica la compressione tramite `gzip` dei blocchi più obsoleti.
 
 #### session_engine_append
-*   **Ruolo**: Esegue l'accodamento di un messaggio nel registro del thread. Gestisce la deduplicazione dei messaggi duplicati verificando il contenuto nel raggio definito da `BASH4LLM_SESSION_DEDUP_WINDOW` (default 20 righe) ed esegue la scrittura con umask restrittiva prima di invalidare la cache di lettura in memoria.
+*   **Ruolo**: Esegue l'accodamento di un messaggio nel registro del thread (all'interno della cartella avanzata `sessions/` configurata dal modulo). Gestisce la deduplicazione dei messaggi duplicati verificando il contenuto nel raggio definito da `BASH4LLM_SESSION_DEDUP_WINDOW` (default 20 righe) ed esegue la scrittura con umask restrittiva prima di invalidare la cache di lettura in memoria.
 
 #### session_engine_build_window
 *   **Ruolo**: Compila ed assembla la finestra dei messaggi storici da inviare al modello.
@@ -346,8 +347,8 @@ Gestisce l'assemblaggio dei prompt complessi, l'avvio delle modalità interattiv
 *   **CORE_PROVIDER_SHOW**: Gestisce l'elaborazione dei percorsi, la stampa di configurazioni attive (`--show-config`) o l'autoverifica del sistema (`--diagnostics`).
 *   **CORE_PROVIDER_MAIN_EXECUTION**: Esegue l'assemblaggio finale e smista l'esecuzione nei tre rami primari:
     1.  **BATCH**: Scansiona il file batch, allinea l'ambiente di sessione del thread se configurato, compila il payload ed esegue le richieste in sequenza.
-    2.  **CHAT (TUI REPL)**: Verifica il TTY ed esegue il passaggio del controllo all'interfaccia grafica REPL interattiva caricata dalla directory degli extras (`extras/chat/tui-repl.sh`).
-    3.  **STANDARD**: Inizializza l'ambiente del thread (`THREAD_ID`), allinea la cronologia dei messaggi storici tramite il Session Engine o la logica NDJSON core, compila il payload ed esegue la transazione (streaming o non-streaming), provvedendo alla sanificazione ed accodamento dei messaggi in caso di successo.
+    2.  **CHAT (TUI REPL)**: Verifica il TTY ed esegue il passaggio del controllo all'interfaccia di chat REPL interattiva caricata dalla directory degli extras (`extras/chat/tui-repl.sh`).
+    3.  **STANDARD**: Inizializza l'ambiente del thread (`THREAD_ID`), allinea la cronologia dei messaggi storici tramite il Session Engine (nella cartella `sessions/`) o la logica NDJSON core (nella cartella `history/threads/`), compila il payload ed esegue la transazione (streaming o non-streaming), provvedendo alla sanificazione ed accodamento dei messaggi in caso di successo (tramite `session_engine_append` o `thread_append` in base al motore attivo).
 
 ---
 
@@ -375,16 +376,23 @@ bash4llm.d/
 │   └── <provider>.txt                     # Whitelist modelli validati (formato txt)
 ├── templates/                             # Area prompt template riutilizzabili
 ├── history/                               # Archiviazione output delle risposte
-│   └── threads/                           # File NDJSON storici dei thread attivi
-│       └── <thread_id>.ndjson             # Registro NDJSON della conversazione
+│   ├── threads/                           # File NDJSON storici dei thread attivi (Core fallback)
+│   │   └── <thread_id>.ndjson             # Registro NDJSON della conversazione standard
+│   └── sessions/                          # File NDJSON storici avanzati (Session Engine)
+│       ├── <thread_id>.ndjson             # Registro NDJSON principale
+│       ├── <thread_id>.001.ndjson         # Segmento storico rotato
+│       └── <thread_id>.001.ndjson.gz      # Segmento storico rotato e compresso
 ├── tmp/                                   # Area sicura ad accesso esclusivo (700)
 │   ├── .bash4llm.lock                     # Lock di sincronizzazione atomic_write
 │   ├── models.lock                        # Lock di sincronizzazione dei modelli
 │   ├── history.lock                       # Lock di sincronizzazione della cronologia
 │   └── tmp.lock                           # Lock di allocazione file temporanei
 └── extras/                                # Estensioni installate tramite l'installer
+    ├── chat/                              # Interfaccia di chat interattiva (tui-repl.sh)
+    ├── lib/                               # Librerie e moduli helper condivisi
+    ├── security/                          # Sicurezza (openssl-helper.sh, verify.sh)
+    ├── test/                              # Suite di test e diagnostica automatica
     ├── docs/                              # Documentazione (core-notes.sh, help.txt)
-    ├── security/                          # Utility (openssl-helper.sh, verify.sh)
-    ├── session/                           # Ottimizzazione (session-engine.sh)
-    └── chat/                              # Interfaccia grafica (tui-repl.sh)
+    ├── providers/                         # Provider aggiuntivi (gemini.sh, huggingface.sh, mistral.sh)
+    └── session/                           # Ottimizzazione e sessioni (session-engine.sh)
 ```
