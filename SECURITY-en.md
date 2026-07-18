@@ -63,6 +63,7 @@ If you detect a potential vulnerability or security flaw within the core script 
 #### Contact for Private Reporting:
  * **Email:** opensource@cevangel.anonaddy.me
  * **Subject:** [Bash4LLM Security Report]
+
 We kindly ask you to include in your report:
  1. A detailed description of the nature of the vulnerability.
  2. A Proof of Concept (PoC) or the sequence of commands necessary to reproduce the vulnerability scenario.
