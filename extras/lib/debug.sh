@@ -15,9 +15,9 @@
 #   . /path/to/bash4llm.d/extras/lib/debug.sh
 # -----------------------------------------------------------------------------
 
-# Safely handle loading guard preventing terminal exits or warnings
+# Safely handle loading guard preventing terminal exits, warnings or nounset errors
 if [ -n "${BASH4LLM_DEBUG_SH_LOADED:-}" ]; then
-  if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  if [ "${BASH_SOURCE[0]:-}" != "${0:-}" ]; then
     return 0
   else
     exit 0
@@ -89,7 +89,13 @@ dump_state() {
 print_env_subset() {
   local var
   for var in "$@"; do
-    printf '%s=%s\n' "$var" "${!var:-}" >&2
+    [ -n "$var" ] || continue
+    # Mitigate "bad substitution" errors under set -u by enforcing valid variable name patterns
+    if [[ "$var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      printf '%s=%s\n' "$var" "${!var:-}" >&2
+    else
+      printf 'print_env_subset: ERROR: invalid variable name: %s\n' "$var" >&2
+    fi
   done
 }
 
@@ -111,22 +117,19 @@ structured_debug() {
 # trace_cmd: run a command and print it before execution (debug only)
 # Usage: trace_cmd ls -la /tmp
 trace_cmd() {
+  [ $# -gt 0 ] || return 0
   if [ "${DEBUG:-0}" -eq 1 ]; then
     printf '[TRACE] %s\n' "$*" >&2
-    "$@"
-    return $?
-  else
-    "$@"
-    return $?
   fi
+  "$@"
 }
 
 # safe_dump_file_head: print head of a file for quick inspection
 # Avoid following symlinks and skip non-regular files (Mitigates Symlink Attacks)
 safe_dump_file_head() {
-  local f="$1" n="${2:-20}"
+  local f="${1:-}" n="${2:-20}"
   if [ -z "$f" ]; then
-    printf 'safe_dump_file_head: no file provided\n' >&2
+    printf 'safe_dump_file_head: ERROR: no file provided\n' >&2
     return 1
   fi
   # Explicitly reject symbolic links under the safety policy
