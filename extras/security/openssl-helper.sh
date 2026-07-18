@@ -15,10 +15,12 @@ if ! command -v openssl >/dev/null 2>&1; then
   return 0
 fi
 
-# Detect PBKDF2 support safely, bypassing pipefail exit code traps
+# Set active flag once openssl binary presence is verified
+BASH4LLM_OPENSSL_ACTIVE=1
+
+# Detect PBKDF2 support safely via direct execution test
 _BASH4LLM_VAULT_PBKDF2=0
-_openssl_help_text="$(openssl enc -help 2>&1 || true)"
-if [[ "$_openssl_help_text" == *"-pbkdf2"* ]]; then
+if printf 'test' | openssl enc -aes-256-cbc -pbkdf2 -iter 10 -salt -pass pass:test >/dev/null 2>&1; then
   _BASH4LLM_VAULT_PBKDF2=1
 fi
 
@@ -30,15 +32,21 @@ _VAULT_DAT_FILE="${BASH4LLM_CONFIG_DIR:-}/keys.dat"   # Encrypted JSON API Keys 
 # Explicitly declare global array to prevent nounset (set -u) warnings
 declare -a _VAULT_OPTS=()
 
-# Securely read silent password input (signal cleanup is handled by core exit trap)
+# Securely read silent password input with terminal fallback
 _vault_read_password() {
   local prompt="${1:-Password: }"
   local pass=""
   
   printf '%s' "$prompt" >&2
-  stty -echo 2>/dev/null
-  IFS= read -r pass
-  stty echo 2>/dev/null
+  # Read from /dev/tty if available, otherwise fallback to standard input
+  if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+    stty -echo < /dev/tty 2>/dev/null || true
+    IFS= read -r pass < /dev/tty
+    stty echo < /dev/tty 2>/dev/null || true
+  else
+    # Fallback for non-interactive environments
+    IFS= read -r pass
+  fi
   printf '\n' >&2
   printf '%s' "$pass"
 }
@@ -196,15 +204,24 @@ vault_load_keys() {
     return 1
   fi
 
-  master_pass="$(_vault_read_password "Enter Master Password to unlock Vault: ")"
-
-  # 1. Decrypt internal Vault Key using Master Password
-  vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
-  if [ -z "$vault_key" ]; then
-    return 2 # Authentication failed
+  # 1. Try to decrypt using the inherited runtime context token
+  if [ -n "${_B4L_RT_CTX:-}" ]; then
+    vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX")"
   fi
 
-  # 2. Decrypt data payload file using Vault Key
+  # 2. If the context token is empty or decryption failed, prompt user
+  if [ -z "$vault_key" ]; then
+    printf "%bTip: Run '. ./bash4llm' once to unlock your session and bypass password prompts.%b\n" "${C_BYELLOW:-}" "${C_RST:-}" >&2
+    master_pass="$(_vault_read_password "Enter Master Password to unlock Vault: ")"
+    
+    # Decrypt internal Vault Key using Master Password
+    vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
+    if [ -z "$vault_key" ]; then
+      return 2 # Authentication failed
+    fi
+  fi
+
+  # 3. Decrypt data payload file using Vault Key
   decrypted="$(_vault_decrypt_file "$_VAULT_DAT_FILE" "$vault_key")"
   if [ -z "$decrypted" ] || ! printf '%s' "$decrypted" | jq -e . >/dev/null 2>&1; then
     return 2 # Corrupt database payload
@@ -315,7 +332,7 @@ vault_recover() {
   # Decrypt Vault Key using the offline Recovery Key
   vault_key="$(_vault_decrypt_file "$_VAULT_REC_FILE" "$rec_key")"
   if [ -z "$vault_key" ]; then
-    printf '%bError: Invalid Recovery Key or database corruption.%b\n' "${C_RED:-}" "${C_RST:-}" >&2
+    printf '%bError: Invalid Recovery Key or database corruption.%b\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
@@ -348,7 +365,7 @@ vault_recover() {
 
 # Manage API key mappings (Add, Modify, and Delete keys)
 vault_manage_keys() {
-  local current_payload="" master_pass="" vault_key="" choice="" prov="" key_val="" updated_payload="" keys=""
+  local current_payload="" master_pass="" vault_key="" choice="" prov="" key_val="" updated_payload=""
 
   if ! vault_exists; then
     vault_init || return 1
