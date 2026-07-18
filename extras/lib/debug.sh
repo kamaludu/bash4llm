@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/lib/debug.sh
-# Extra: Debug helper
+# Extra: Debug helper (v2.5.0 aligned)
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
@@ -13,9 +13,16 @@
 # Source this file to enable richer diagnostics. The core does not require it.
 # Usage (optional):
 #   . /path/to/bash4llm.d/extras/lib/debug.sh
-# This file intentionally avoids side effects on load.
+# -----------------------------------------------------------------------------
 
-[ -n "${BASH4LLM_DEBUG_SH_LOADED:-}" ] && return 0
+# Safely handle loading guard preventing terminal exits or warnings
+if [ -n "${BASH4LLM_DEBUG_SH_LOADED:-}" ]; then
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    return 0
+  else
+    exit 0
+  fi
+fi
 BASH4LLM_DEBUG_SH_LOADED=1
 
 # verbose_log: controlled verbose logging
@@ -27,7 +34,7 @@ verbose_log() {
   printf '[%s] %s\n' "$level" "$*" >&2
 }
 
-# dump_state: print a compact snapshot of important variables
+# dump_state: print a compact snapshot of important variables (v2.5.0 aligned)
 # Usage: dump_state
 dump_state() {
   {
@@ -36,14 +43,38 @@ dump_state() {
     printf 'MODEL=%s\n' "${MODEL:-}"
     printf 'STREAM_MODE=%s\n' "${STREAM_MODE:-}"
     printf 'OUTPUT_MODE=%s\n' "${OUTPUT_MODE:-}"
+    
+    # Active thread state monitoring
+    printf 'THREAD_ID=%s\n' "${THREAD_ID:-<none>}"
+    printf 'THREAD_WINDOW=%s\n' "${THREAD_WINDOW:-<none>}"
+    
+    # Provider keys status
     if [ -n "${GROQ_API_KEY:-}" ]; then
       printf 'GROQ_API_KEY set? yes\n'
     else
       printf 'GROQ_API_KEY set? no\n'
     fi
+    
+    # Directories
     printf 'BASH4LLM_CONFIG_DIR=%s\n' "${BASH4LLM_CONFIG_DIR:-}"
     printf 'BASH4LLM_MODELS_DIR=%s\n' "${BASH4LLM_MODELS_DIR:-}"
     printf 'BASH4LLM_TMPDIR=%s\n' "${BASH4LLM_TMPDIR:-}"
+    
+    # Cryptographic OpenSSL Vault status
+    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
+      printf 'OPENSSL_VAULT_ACTIVE=yes (enabled:%s)\n' "${BASH4LLM_VAULT_ENABLED:-1}"
+    else
+      printf 'OPENSSL_VAULT_ACTIVE=no\n'
+    fi
+
+    # Session Engine status
+    if [ "${_engine_available:-0}" -eq 1 ]; then
+      printf 'SESSION_ENGINE=active\n'
+    else
+      printf 'SESSION_ENGINE=inactive (legacy fallback)\n'
+    fi
+    
+    # Whitelist status
     if [ -n "${ALLOWED_MODELS:-}" ]; then
       printf 'ALLOWED_MODELS present? yes\n'
     else
@@ -91,20 +122,23 @@ trace_cmd() {
 }
 
 # safe_dump_file_head: print head of a file for quick inspection
-# Avoid following symlinks and skip non-regular files
+# Avoid following symlinks and skip non-regular files (Mitigates Symlink Attacks)
 safe_dump_file_head() {
   local f="$1" n="${2:-20}"
   if [ -z "$f" ]; then
     printf 'safe_dump_file_head: no file provided\n' >&2
     return 1
   fi
+  # Explicitly reject symbolic links under the safety policy
+  if [ -L "$f" ]; then
+    printf 'safe_dump_file_head: ERROR: file is a symbolic link: %s\n' "$f" >&2
+    return 1
+  fi
   if [ ! -f "$f" ] || [ ! -r "$f" ]; then
-    printf 'File not readable or not a regular file: %s\n' "$f" >&2
+    printf 'safe_dump_file_head: ERROR: file not readable or not a regular file: %s\n' "$f" >&2
     return 1
   fi
   printf '--- head of %s (first %s lines) ---\n' "$f" "$n" >&2
   head -n "$n" "$f" >&2 || true
   printf '--- end ---\n' >&2
 }
-
-# End of extras/lib/debug.sh
