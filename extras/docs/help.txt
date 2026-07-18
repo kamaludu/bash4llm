@@ -67,7 +67,18 @@ Extras installation:
   --install-extras           Install extras (all components)
   --install-extras <dir>     Install extras from directory
   --install-extras=<dir>     Inline form
-  # (Selective install supported: bash4llm --install-extras provider1 templateA)
+
+Security & Vault:
+  --vault              Manage encrypted API keys in the vault
+                       (Interactive console tool)
+
+  Unlock your vault session in RAM to bypass password prompts:
+    `. ./bash4llm`                     (exports obfuscated _B4L_RT_CTX , wiped on exit)
+
+  Bypass or disable the vault entirely:
+    `BASH4LLM_VAULT_ENABLED=0`         (add to bash4llm.d/config to disable permanently)
+    `export BASH4LLM_VAULT_ENABLED=0`     (disables vault for the active session)
+    `BASH4LLM_VAULT_ENABLED=0 ./bash4llm` (disables vault for a single execution)
 
 Examples:
   bash4llm "Summarize this text"
