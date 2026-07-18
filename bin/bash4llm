@@ -1419,7 +1419,7 @@ if [ "$#" -gt 0 ]; then
 fi
 
 umask 077
-#--6<---[ /SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
+
 # ---------------------------------------------------------------------------
 # Centralized lock names (co-located with resources)
 # ---------------------------------------------------------------------------
@@ -3445,7 +3445,7 @@ resolve_model() {
     return 0
   fi
 
-  if [ -n "${PROVIDER_CLI:-}" ] && [ "${PROVIDER_CLI:-}" != "list" ]; then
+  if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
     active_provider="${PROVIDER_CLI}"
   elif [ -f "$(canonical_provider_file)" ] && [ -s "$(canonical_provider_file)" ]; then
     active_provider="$(sed -n '1p' "$(canonical_provider_file)" 2>/dev/null || true)"
@@ -3861,7 +3861,6 @@ file_readable() { [ -r "$1" ] && [ -f "$1" ]; }
 trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
 
 is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
-#--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
 
 is_supported_model() {
   local m="${1:-}" l=""
@@ -3969,7 +3968,7 @@ is_tty_out() {
 # Sourcing Guard & Interactive Parent-Shell Sourcing Handler (Session Unlock)
 # ---------------------------------------------------------------------------
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-  # Se non si tratta di caricamento funzioni isolate (BASH4LLM_SOURCE_ONLY=1)
+  # If it is not isolated function loading (BASH4LLM_SOURCE_ONLY=1)
   if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
     if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
       if [ -z "${_B4L_RT_CTX:-}" ]; then
@@ -3996,11 +3995,11 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
       fi
     fi
   fi
-  # Interrompe l'esecuzione per evitare che le azioni CLI girino nel guscio padre
+  # Interrupt execution to prevent CLI actions from running in the parent shell
   return 0 2>/dev/null || exit 0
 fi
-#--4<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->4--
-#--5<---[ SECTION: CORE_SETUP_CLI_PARSE ]--->5--
+#--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
+#--4<---[ SECTION: CORE_SETUP_CLI_PARSE ]--->4--
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}" STREAM_MODE="${STREAM_MODE:-0}" OUTPUT_MODE="${OUTPUT_MODE:-text}" THRESHOLD="${THRESHOLD:-1000}"
@@ -4182,10 +4181,11 @@ while [ $# -gt 0 ]; do
           cat "$help_file"
         else
           sed \
-            -e "s/^\([A-Za-z]\{2,\}:\)/${C_BCYAN}\1${C_RST}/" \
+            -e "s/^\([A-Za-z][A-Za-z[:blank:]&]*:\)/${C_BCYAN}\1${C_RST}/" \
             -e "s/\(--[a-zA-Z0-9-][a-zA-Z0-9-]*\)/${C_BGREEN}\1${C_RST}/g" \
             -e "s/\([[:blank:],]\)\(-[a-zA-Z0-9]\)/\1${C_BGREEN}\2${C_RST}/g" \
             -e "s/\(<[a-zA-Z0-9_]\{1,\}>\)/${C_YELLOW}\1${C_RST}/g" \
+            -e "s/\`\([^\`]*\)\`/${C_BYELLOW}\1${C_RST}/g" \
             "$help_file"
         fi
       else
@@ -4239,8 +4239,8 @@ fi
 # 4. Early synchronization of the models file path
 sync_models_file_path "$PROVIDER"
 
-#--5<---[ /SECTION: CORE_SETUP_CLI_PARSE ]--->5--
-#--6<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->6--
+#--4<---[ /SECTION: CORE_SETUP_CLI_PARSE ]--->4--
+#--5<---[ SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
 _engine_path="${BASH4LLM_EXTRAS_DIR}/session/session-engine.sh"
 _engine_available=0
 if [ -f "$_engine_path" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
@@ -4269,8 +4269,8 @@ if [ -f "$_engine_path" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
 else
   _engine_available=0
 fi
-#--6<---[ /SECTION: CORE_SETUP_SESSION_ENGINE ]--->6--
-#--7<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->7--
+#--5<---[ /SECTION: CORE_SETUP_SESSION_ENGINE ]--->5--
+#--6<---[ SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
 : "${ALLOW_API_CALLS:=1}"
 if [ -n "${GROQ_API_KEY:-}" ] && ! is_truthy "${ALLOW_API_CALLS:-0}" && ! is_truthy "${DRY_RUN:-0}"; then
   log_error "APIKEY" "GROQ_API_KEY is set but ALLOW_API_CALLS!=1 and DRY_RUN!=1."
@@ -4320,8 +4320,8 @@ if [ "${LIST_MODELS_RAW:-0}" -eq 1 ]; then
     exit 2
   fi
 fi
-#--7---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->7--
-#--8<---[ SECTION: CORE_SETUP_ACTIONS ]--->8--
+#--6<---[ /SECTION: CORE_SETUP_NORM_FLAGS ]--->6--
+#--7<---[ SECTION: CORE_SETUP_ACTIONS ]--->7--
 if [ "${DELETE_THREAD:-0}" -eq 1 ]; then
   if [ -z "${DELETE_THREAD_ID:-}" ]; then
     log_error "THREAD" "--delete-thread requires a valid thread ID"
@@ -4449,7 +4449,7 @@ if [ "${INIT_THREAD:-0}" -eq 1 ]; then
   log_info_user "THREAD" "Thread initialized: $THREAD_ID"
   exit 0
 fi
-#--8<---[ /SECTION: CORE_SETUP_ACTIONS ]--->8--
+#--7<---[ /SECTION: CORE_SETUP_ACTIONS ]--->7--
 ########################################
 # SECTION: CORE_SETUP - END
 ########################################
@@ -4458,7 +4458,7 @@ fi
 ########################################
 #--1<---[ SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
 # This section remains exclusively for handling interactive provider requests and 
-# validating provider interface boundaries. Early loading occurred in Passata 3.
+# validating provider interface boundaries. Early loading occurred in Pass 3.
 if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
   IFS=' ' read -r -a _prov_arr <<EOF
 $SUPPORTED_PROVIDERS
@@ -4642,7 +4642,7 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
     printf '    * Key Vault Status: '
     if vault_exists; then printf 'INITIALIZED (%s)\n' "$(basename "${_VAULT_FILE:-keys.enc}")"; else printf 'NOT INITIALIZED\n'; fi
     
-    # Verifica dell'handshake TLS verso l'endpoint attivo
+    # TLS handshake verification to the active endpoint
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
     if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
       current_host=""
