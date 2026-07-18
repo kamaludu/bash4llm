@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "software": "Bash4LLM",
-    "version": "2.0.0",
-    "date": "2026-06-09"
+    "software": "Bash4LLM⁺",
+    "version": "2.5.0",
+    "date": "2026-07-18"
   },
   "variables": [
     {
@@ -15,13 +15,55 @@
       "name": "SCRIPT_VERSION",
       "category": "PRECORE_BOOT",
       "description": "Versione corrente del software.",
-      "value_definition": "Impostata a \"2.0.0\"."
+      "value_definition": "Impostata a \"2.5.0\"."
     },
     {
       "name": "SCRIPT_DATE",
       "category": "PRECORE_BOOT",
       "description": "Data di rilascio dello script.",
-      "value_definition": "Impostata a \"2026-06-09\"."
+      "value_definition": "Impostata a \"2026-07-18\"."
+    },
+    {
+      "name": "BASH4LLM_PLAT_ANDROID",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente impostato a 1 se l'esecuzione avviene sotto ambiente Android/Termux.",
+      "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_PLAT_MACOS",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente impostato a 1 se l'esecuzione avviene sotto sistema macOS/Darwin.",
+      "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_PLAT_WSL",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente impostato a 1 se lo script è in esecuzione sotto Windows Subsystem for Linux.",
+      "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_PLAT_CYGWIN",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente impostato a 1 se l'esecuzione avviene sotto ambienti Windows compatibili Cygwin/MSYS2/MinGW.",
+      "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_PLAT_BSD",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente impostato a 1 se lo script è in esecuzione sotto varianti BSD (FreeBSD, OpenBSD, NetBSD, DragonFly).",
+      "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_PLAT_LINUX",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente impostato a 1 se lo script è in esecuzione sotto sistema Linux generico o WSL.",
+      "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_MODEL_CACHE",
+      "category": "PRECORE_BOOT",
+      "description": "Array associativo interno utilizzato come cache in memoria per evitare chiamate ripetute alla normalizzazione regex dei modelli.",
+      "value_definition": "Inizializzato come array associativo vuoto (declare -A BASH4LLM_MODEL_CACHE)."
     },
     {
       "name": "BASH4LLM_ERR_NO_API_KEY",
@@ -42,12 +84,6 @@
       "value_definition": "Valore 12."
     },
     {
-      "name": "BASH4LLM_ERR_INVALID_JSON",
-      "category": "PRECORE_BOOT",
-      "description": "Costante numerica di errore associata alla ricezione o generazione di un JSON non valido.",
-      "value_definition": "Valore 13."
-    },
-    {
       "name": "BASH4LLM_ERR_NO_PROMPT",
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata alla mancanza di un prompt di input.",
@@ -66,52 +102,58 @@
       "value_definition": "Valore 16."
     },
     {
-      "name": "BASH4LLMERRNOAPIKEY",
+      "name": "BASH4LLM_ERR_SEC",
+      "category": "PRECORE_BOOT",
+      "description": "Costante numerica di errore associata a violazioni di sicurezza (es. permessi di scrittura di altri gruppi sul file di configurazione o dipendenze non sicure).",
+      "value_definition": "Valore 17."
+    },
+    {
+      "name": "BASH4LLMERR_NO_API_KEY",
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_NO_API_KEY.",
       "value_definition": "Valore di BASH4LLM_ERR_NO_API_KEY (10)."
     },
     {
-      "name": "BASH4LLMERRBAD_MODEL",
+      "name": "BASH4LLMERR_BAD_MODEL",
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_BAD_MODEL.",
       "value_definition": "Valore di BASH4LLM_ERR_BAD_MODEL (11)."
     },
     {
-      "name": "BASH4LLMERRCURL_FAILED",
+      "name": "BASH4LLMERR_CURL_FAILED",
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_CURL_FAILED.",
       "value_definition": "Valore di BASH4LLM_ERR_CURL_FAILED (12)."
     },
     {
-      "name": "BASH4LLMERRINVALID_JSON",
-      "category": "PRECORE_BOOT",
-      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_INVALID_JSON.",
-      "value_definition": "Valore di BASH4LLM_ERR_INVALID_JSON (13)."
-    },
-    {
-      "name": "BASH4LLMERRNO_PROMPT",
+      "name": "BASH4LLMERR_NO_PROMPT",
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_NO_PROMPT.",
       "value_definition": "Valore di BASH4LLM_ERR_NO_PROMPT (14)."
     },
     {
-      "name": "BASH4LLMERRTMP",
+      "name": "BASH4LLMERR_TMP",
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_TMP.",
       "value_definition": "Valore di BASH4LLM_ERR_TMP (15)."
     },
     {
-      "name": "BASH4LLMERRAPI",
+      "name": "BASH4LLMERR_API",
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_API.",
       "value_definition": "Valore di BASH4LLM_ERR_API (16)."
     },
     {
+      "name": "BASH4LLMERR_SEC",
+      "category": "PRECORE_BOOT",
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_SEC.",
+      "value_definition": "Valore di BASH4LLM_ERR_SEC (17)."
+    },
+    {
       "name": "DEBUG",
       "category": "PRECORE_BOOT",
       "description": "Flag di configurazione per l'output di tracciamento dello sviluppo.",
-      "value_definition": "Eredita il valore di ambiente ${DEBUG} o viene impostato su 0 (disattivo)."
+      "value_definition": "Eredita il valore di ambiente ${DEBUG} o ${BASH4LLM_DEBUG}, o viene impostato su 0 (disattivo)."
     },
     {
       "name": "BASH4LLM_LOG",
@@ -126,28 +168,10 @@
       "value_definition": "Risolto dinamicamente tramite la funzione resolve_script_dir."
     },
     {
-      "name": "CANONICAL_EXTRAS_DIR",
+      "name": "BASH4LLM_DIR",
       "category": "PRECORE_BOOT",
-      "description": "Percorso della directory canonica delle estensioni.",
-      "value_definition": "Calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras."
-    },
-    {
-      "name": "LEGACY_EXTRAS_DIR",
-      "category": "PRECORE_BOOT",
-      "description": "Percorso storico di fallback delle estensioni.",
-      "value_definition": "Relativo alla cartella dello script (SCRIPTDIR/extras)."
-    },
-    {
-      "name": "BASH4LLM_EXTRAS_DIR",
-      "category": "PRECORE_BOOT",
-      "description": "Directory attiva per l'accesso alle risorse aggiuntive dello script.",
-      "value_definition": "Assegnata a CANONICAL_EXTRAS_DIR."
-    },
-    {
-      "name": "PROVIDERS_DIR",
-      "category": "PRECORE_BOOT",
-      "description": "Percorso assoluto o relativo dei moduli esterni dei provider.",
-      "value_definition": "Impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto la directory delle estensioni alla voce /providers."
+      "description": "Directory principale di installazione dei dati e delle configurazioni di Bash4LLM⁺.",
+      "value_definition": "Dichiarata dall'ambiente o derivata da SCRIPTDIR/bash4llm.d."
     },
     {
       "name": "BASH4LLM_CONFIG_DIR",
@@ -176,14 +200,56 @@
     {
       "name": "BASH4LLM_TMPDIR",
       "category": "PRECORE_BOOT",
-      "description": "Directory radice per l'allocazione dei dati temporanei di Bash4LLM.",
+      "description": "Directory radice per l'allocazione dei dati temporanei di Bash4LLM⁺.",
       "value_definition": "Impostata a BASH4LLM_TMPDIR di ambiente o posizionata sotto $BASH4LLM_DIR/tmp."
+    },
+    {
+      "name": "CANONICAL_EXTRAS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso della directory canonica delle estensioni.",
+      "value_definition": "Calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras."
+    },
+    {
+      "name": "LEGACY_EXTRAS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso storico di fallback delle estensioni.",
+      "value_definition": "Relativo alla cartella dello script (SCRIPTDIR/extras)."
+    },
+    {
+      "name": "BASH4LLM_EXTRAS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory attiva per l'accesso alle risorse aggiuntive dello script.",
+      "value_definition": "Assegnata a CANONICAL_EXTRAS_DIR."
+    },
+    {
+      "name": "PROVIDERS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso assoluto o relativo dei moduli esterni dei provider.",
+      "value_definition": "Impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto la directory delle estensioni alla voce /providers."
+    },
+    {
+      "name": "THREAD_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory dedicata alla registrazione dei log storici NDJSON dei thread.",
+      "value_definition": "Posizionata sotto $BASH4LLM_HISTORY_DIR/threads."
+    },
+    {
+      "name": "BASH4LLM_VAULT_ENABLED",
+      "category": "PRECORE_BOOT",
+      "description": "Variabile che definisce l'attivazione del modulo OpenSSL Key Vault. Se valorizzata a 1, carica openssl-helper.sh.",
+      "value_definition": "Prelevata dal file locale config o impostata su 1 di default."
+    },
+    {
+      "name": "BASH4LLM_OPENSSL_ACTIVE",
+      "category": "PRECORE_BOOT",
+      "description": "Flag booleano interno che attesta se il Key Vault crittografico è correttamente attivo e integrato nel runtime.",
+      "value_definition": "Valore 0 (non attivo) o 1 (attivo, dopo aver importato con successo openssl-helper.sh)."
     },
     {
       "name": "MODELS_FILE",
       "category": "PRECORE_BOOT",
       "description": "File di testo locale in cui memorizzare la lista dei modelli recuperati.",
-      "value_definition": "Impostato su MODELS_FILE di ambiente o posizionato sotto $BASH4LLM_MODELS_DIR/models.txt."
+      "value_definition": "Dichiarato come $BASH4LLM_MODELS_DIR/<provider>.txt."
     },
     {
       "name": "MAX_MODELS",
@@ -196,12 +262,6 @@
       "category": "PRECORE_BOOT",
       "description": "Percorso del file che persiste l'ultimo provider configurato dall'utente.",
       "value_definition": "Determinato tramite canonical_provider_file."
-    },
-    {
-      "name": "SESSION_DIR",
-      "category": "PRECORE_BOOT",
-      "description": "Directory dedicata alla registrazione dei log storici delle chat multi-turno.",
-      "value_definition": "Posizionata in $BASH4LLM_HISTORY_DIR/sessions."
     },
     {
       "name": "MODELS_LOCK",
@@ -264,10 +324,10 @@
       "value_definition": "Default 90."
     },
     {
-      "name": "SESSION_CACHE_DIR",
+      "name": "THREAD_CACHE_DIR",
       "category": "PRECORE_RUN",
-      "description": "Directory destinata a contenere la cache temporanea dei dati e dei messaggi delle sessioni attive.",
-      "value_definition": "Localizzata sotto la directory di configurazione utente."
+      "description": "Directory destinata a contenere la cache dei parametri e delle risposte dei thread attivi.",
+      "value_definition": "Posizionata sotto la cartella di configurazione utente alla voce thread_cache/."
     },
     {
       "name": "CONTENT",
@@ -282,16 +342,16 @@
       "value_definition": "Eredita ${JSON_INPUT} o viene configurato via CLI."
     },
     {
-      "name": "SESSION_ID",
+      "name": "THREAD_ID",
       "category": "PRECORE_RUN",
-      "description": "Identificatore alfanumerico della sessione di chat corrente, utilizzato per raggruppare e persistere il contesto dei messaggi in interazioni multi-turno.",
+      "description": "Identificatore alfanumerico del thread di chat corrente, utilizzato per raggruppare e persistere il contesto dei messaggi in interazioni multi-turno.",
       "value_definition": "Ereditato o configurato via CLI."
     },
     {
-      "name": "SESSION_WINDOW",
+      "name": "THREAD_WINDOW",
       "category": "PRECORE_RUN",
-      "description": "Numero massimo di messaggi storici da estrarre e accodare dal log di sessione per comporre la finestra di contesto della chat.",
-      "value_definition": "Configurato via CLI o impostazioni di sessione."
+      "description": "Numero massimo di messaggi storici da estrarre e accodare dal log di thread per comporre la finestra di contesto della chat.",
+      "value_definition": "Configurato via CLI o impostazioni di thread."
     },
     {
       "name": "TEMPLATE",
@@ -405,7 +465,7 @@
       "name": "MAX_RETRIES",
       "category": "PRECORE_RUN",
       "description": "Limite di tentativi di connessione da effettuare in caso di errori di rete temporanei.",
-      "value_definition": "Default 3."
+      "value_definition": "Default 1 (nella versione 2.5.0)."
     },
     {
       "name": "SUPPORTED_PROVIDERS",
@@ -588,16 +648,58 @@
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
-      "name": "SE_ENGINE_PATH",
+      "name": "INIT_THREAD",
       "category": "CORE_SETUP",
-      "description": "Percorso assoluto del file dello script del Session Engine esterno.",
-      "value_definition": "Impostato su $BASH4LLM_EXTRAS_DIR/session/session-engine.sh."
+      "description": "Flag booleano che richiede l'inizializzazione transazionale di un nuovo thread.",
+      "value_definition": "Valore 1 o 0, default 0."
     },
     {
-      "name": "SE_AVAILABLE",
+      "name": "DELETE_THREAD",
       "category": "CORE_SETUP",
-      "description": "Flag booleano che attesta l'effettiva disponibilità operativa del modulo Session Engine.",
+      "description": "Flag booleano che richiede la rimozione fisica ed atomica di un thread.",
       "value_definition": "Valore 1 o 0, default 0."
+    },
+    {
+      "name": "DELETE_THREAD_ID",
+      "category": "CORE_SETUP",
+      "description": "Identificatore alfanumerico del thread da eliminare passato tramite l'opzione --delete-thread.",
+      "value_definition": "Assegnata a DELETE_THREAD_ID, vuota di default."
+    },
+    {
+      "name": "RENAME_THREAD",
+      "category": "CORE_SETUP",
+      "description": "Flag booleano che richiede la ridenominazione dei metadati storici di un thread.",
+      "value_definition": "Valore 1 o 0, default 0."
+    },
+    {
+      "name": "RENAME_THREAD_ID",
+      "category": "CORE_SETUP",
+      "description": "Identificatore alfanumerico del thread da rinominare passato tramite l'opzione --rename-thread.",
+      "value_definition": "Assegnata a RENAME_THREAD_ID, vuota di default."
+    },
+    {
+      "name": "RENAME_TITLE",
+      "category": "CORE_SETUP",
+      "description": "Titolo testuale da applicare al thread in ridenominazione.",
+      "value_definition": "Assegnata a RENAME_TITLE via opzione --title, vuota di default."
+    },
+    {
+      "name": "_B4L_RT_CTX",
+      "category": "CORE_SETUP",
+      "description": "Variabile d'ambiente temporanea in cui memorizzare in memoria il token di sblocco del Key Vault crittografico durante le sessioni interattive parent-shell.",
+      "value_definition": "Impostata dinamicamente su sblocco del vault."
+    },
+    {
+      "name": "_engine_path",
+      "category": "CORE_SETUP",
+      "description": "Percorso relativo/assoluto dello script del Session Engine esterno.",
+      "value_definition": "Impostato a $BASH4LLM_EXTRAS_DIR/session/session-engine.sh."
+    },
+    {
+      "name": "_engine_available",
+      "category": "CORE_SETUP",
+      "description": "Flag booleano interno che attesta se il Session Engine è caricato ed operativo nel runtime corrente.",
+      "value_definition": "Valore 1 (operativo) o 0 (non caricato o fallito)."
     },
     {
       "name": "_supported_providers_arr",
