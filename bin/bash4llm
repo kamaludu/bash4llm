@@ -329,7 +329,7 @@ ensure_api_key_for_provider() {
     # Load the vault keys if not already cached in memory during this process session
     if [ -z "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
       log_info_user "SECURITY" "Vault file detected. Authenticating to unlock saved API keys..."
-      BASH4LLM_DECRYPTED_VAULT_JSON="$(vault_load_keys 2>/dev/null)" || true
+      BASH4LLM_DECRYPTED_VAULT_JSON="$(vault_load_keys)" || true
     fi
 
     # Attempt to retrieve the specific provider key from the decrypted payload
@@ -582,6 +582,47 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; the
 fi
 
 THREAD_DIR="${BASH4LLM_HISTORY_DIR}/threads"
+
+# ---------------------------------------------------------------------------
+# Optional Cryptographic OpenSSL Helper Module Loading (With Vault Toggle)
+# ---------------------------------------------------------------------------
+_BASH4LLM_OPENSSL_HELPER="${BASH4LLM_EXTRAS_DIR}/security/openssl-helper.sh"
+BASH4LLM_OPENSSL_ACTIVE=0
+
+# Pre-extract BASH4LLM_VAULT_ENABLED from local configuration file if present
+_local_cfg="${BASH4LLM_CONFIG_DIR}/config"
+if [ -f "$_local_cfg" ]; then
+  _cfg_vault_val="$(awk -F= '/^[[:space:]]*BASH4LLM_VAULT_ENABLED=/ {print $2; exit}' "$_local_cfg" 2>/dev/null | tr -d '[:space:]')"
+  if [ -n "$_cfg_vault_val" ]; then
+    BASH4LLM_VAULT_ENABLED="$_cfg_vault_val"
+  fi
+fi
+
+# Check whether the vault is explicitly enabled by the user (default: 1)
+if [ "${BASH4LLM_VAULT_ENABLED:-1}" -eq 1 ]; then
+  if [ -f "$_BASH4LLM_OPENSSL_HELPER" ] && [ -r "$_BASH4LLM_OPENSSL_HELPER" ]; then
+    _is_symlink=0
+    if [ -L "$_BASH4LLM_OPENSSL_HELPER" ]; then
+      _is_symlink=1
+    fi
+
+    _ignore_sec=0
+    case "${BASH4LLM_IGNORE_SEC_CHECKS:-0}" in
+      1|true|TRUE|True|yes|YES|Yes) _ignore_sec=1 ;;
+    esac
+
+    if [ "$_is_symlink" -eq 0 ] || [ "$_ignore_sec" -eq 1 ]; then
+      # Sourcing the helper in the current environment
+      if . "$_BASH4LLM_OPENSSL_HELPER" 2>/dev/null; then
+        if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
+          export BASH4LLM_OPENSSL_ACTIVE
+        fi
+      fi
+    fi
+  fi
+else
+  BASH4LLM_OPENSSL_ACTIVE=0
+fi
 #--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
 ensure_config_dir() {
   safe_mkdir "${BASH4LLM_CONFIG_DIR}" 700
@@ -682,10 +723,11 @@ b64encode() {
   fi
 }
 
-# Portable Base64 decoding utilizing standard fallbacks
+# Portable Base64 decoding utilizing standard fallbacks (folding single-line inputs to avoid -A bugs on macOS/BSD)
 b64decode() {
   if command -v openssl >/dev/null 2>&1; then
-    openssl enc -base64 -d 2>/dev/null
+    # Fold single-line input to 64 chars using POSIX awk, avoiding macOS/BSD LibreSSL -A truncation bugs
+    awk '{gsub(/.{64}/,"&\n")}1' | openssl enc -base64 -d 2>/dev/null
   else
     if [ -n "${B64_DECODE_OPT:-}" ]; then
       base64 ${B64_DECODE_OPT}
@@ -2874,7 +2916,7 @@ call_api_groq() {
 
 # Single jq SSE streaming parser featuring instant HTTP and JSON API errors formatting
 call_api_streaming_groq() {
-  local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 stderr_head="" now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" CURL_CMD=() http_code="" json="" content="" resp_size=0 errf_size=0 resp_text_tmp="" resp_json_tmp="" p_dir="" api_json="" ui_last=""
+  local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 stderr_head="" now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" CURL_CMD=() http_code="" json="" content="" resp_size=0 errf_size=0 resp_json_tmp="" p_dir="" api_json="" ui_last=""
   local curl_err_log=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
@@ -3011,14 +3053,33 @@ call_api_streaming_groq() {
 
   if [ -s "$resp_valid" ]; then
     jq -s '.' "$resp_valid" > "$resp_chunks" 2>/dev/null || true
-    resp_text_tmp="$(_tmpf file "$RUN_TMPDIR" resp.text.txt 2>/dev/null)"
-    jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$resp_chunks" > "$resp_text_tmp" 2>/dev/null || true
     resp_json_tmp="$(_tmpf file "$RUN_TMPDIR" resp.json 2>/dev/null)"
-    if jq -e 'type=="array"' "$resp_chunks" >/dev/null 2>&1; then
-      jq -c '.[-1]' "$resp_chunks" > "$resp_json_tmp" 2>/dev/null || true
-    else
-      cp -f "$resp_chunks" "$resp_json_tmp" 2>/dev/null || true
-    fi
+    
+    # Builds a standard synthetic JSON by unifying all deltas into a single text,
+    # ensuring that thread history and metrics are properly preserved.
+    jq -c '
+      if (length > 0) then
+        .[0] as $first |
+        .[-1] as $last |
+        {
+          id: ($last.id // $first.id // "synthetic"),
+          object: "chat.completion",
+          created: ($last.created // $first.created // 0),
+          model: ($last.model // $first.model // "unknown"),
+          choices: [{
+            index: 0,
+            message: {
+              role: "assistant",
+              content: (map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join(""))
+            },
+            finish_reason: ($last.choices[0]?.finish_reason // "stop")
+          }],
+          usage: ($last.usage // empty)
+        }
+      else
+        {}
+      fi
+    ' "$resp_chunks" > "$resp_json_tmp" 2>/dev/null || true
   else
     resp_json_tmp="$(_tmpf file "$RUN_TMPDIR" resp.json 2>/dev/null)"
     if jq -e . "$resp_raw" >/dev/null 2>&1; then
@@ -3030,7 +3091,6 @@ call_api_streaming_groq() {
   rm -f "$resp_lines" 2>/dev/null || true
   rm -f "$resp_valid" 2>/dev/null || true
   rm -f "$resp_chunks" 2>/dev/null || true
-  rm -f "$resp_text_tmp" 2>/dev/null || true
 
   resp_tmp="$resp_json_tmp"
 
@@ -3528,18 +3588,14 @@ call_api_streaming() {
     return 0
   fi
 
-  local prev_trap=""
-  prev_trap="$(trap -p INT)"
-  trap 'printf "\n[Streaming request interrupted by user]\n" >&2; return 130' INT
+  # Clean interrupt handling without eval (security policy compliant)
+  trap 'printf "\n[Streaming request interrupted by user]\n" >&2; exit 130' INT
 
   call_provider "$fn"
   rc=$?
 
-  if [ -n "$prev_trap" ]; then
-    eval "$prev_trap"
-  else
-    trap - INT
-  fi
+  # Restore default behavior
+  trap - INT
 
   release_thread_lock
   return "$rc"
@@ -3675,17 +3731,14 @@ perform_request_once() {
   local prev_trap=""
 
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
-    prev_trap="$(trap -p INT)"
-    trap 'printf "\n[Request interrupted by user]\n" >&2; return 130' INT
+    # Clean interrupt handling without eval (security policy compliant)
+    trap 'printf "\n[Request interrupted by user]\n" >&2; exit 130' INT
 
     call_api_once
     rc=$?
 
-    if [ -n "$prev_trap" ]; then
-      eval "$prev_trap"
-    else
-      trap - INT
-    fi
+    # Restore default behavior
+    trap - INT
 
     if [ "$rc" -eq 130 ]; then
       release_thread_lock
@@ -3912,8 +3965,38 @@ is_tty_out() {
   [ -t 1 ]
 }
 
-# Sourcing Guard: Stop here if sourced to load functions only.
-if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 1 ]; then
+# ---------------------------------------------------------------------------
+# Sourcing Guard & Interactive Parent-Shell Sourcing Handler (Session Unlock)
+# ---------------------------------------------------------------------------
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  # Se non si tratta di caricamento funzioni isolate (BASH4LLM_SOURCE_ONLY=1)
+  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
+    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
+      if [ -z "${_B4L_RT_CTX:-}" ]; then
+        # Silent request from terminal controller with fallback for headless environments
+        printf "%bUnlock Vault Session: %b" "${C_BCYAN:-}" "${C_RST:-}" >&2
+        if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+          stty -echo 2>/dev/null || true
+          IFS= read -r _B4L_RT_CTX < /dev/tty
+          stty echo 2>/dev/null || true
+        else
+          # Fallback for non-interactive contexts
+          IFS= read -r _B4L_RT_CTX
+        fi
+        printf '\n' >&2
+        
+        if [ -n "$_B4L_RT_CTX" ]; then
+          export _B4L_RT_CTX
+          printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+        else
+          printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+        fi
+      else
+        printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+      fi
+    fi
+  fi
+  # Interrompe l'esecuzione per evitare che le azioni CLI girino nel guscio padre
   return 0 2>/dev/null || exit 0
 fi
 #--4<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->4--
@@ -4544,19 +4627,25 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   printf '  - Allowed Models Count: %d\n' "$allowed_count"
 
   # -------------------------------------------------------------------------
-  # OpenSSL & TLS Diagnostics Hook
+  # OpenSSL & TLS Diagnostics Hook (Updated Status Reporting)
   # -------------------------------------------------------------------------
-  if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
-    printf '  - Security Extension (OpenSSL): %bACTIVE%b\n' "${C_GREEN:-}" "${C_RST:-}"
+  if [ "${BASH4LLM_VAULT_ENABLED:-1}" -eq 0 ]; then
+    printf '  - Security Extension (OpenSSL): %b[DISABLED]%b (By user configuration BASH4LLM_VAULT_ENABLED=0)\n' "${C_BYELLOW:-}" "${C_RST:-}"
+  elif [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
+    if [ -n "${_B4L_RT_CTX:-}" ]; then
+      printf '  - Security Extension (OpenSSL): %b[ACTIVE]%b (Session unlocked via runtime context)\n' "${C_BGREEN:-}" "${C_RST:-}"
+    else
+      printf '  - Security Extension (OpenSSL): %b[ACTIVE]%b (Locked/Ready)\n' "${C_BGREEN:-}" "${C_RST:-}"
+    fi
     printf '    * PBKDF2 Support: '
-    if [ "$_BASH4LLM_VAULT_PBKDF2" -eq 1 ]; then printf 'YES\n'; else printf 'NO (Legacy KDF)\n'; fi
+    if [ "${_BASH4LLM_VAULT_PBKDF2:-0}" -eq 1 ]; then printf 'YES\n'; else printf 'NO (Legacy KDF)\n'; fi
     printf '    * Key Vault Status: '
-    if vault_exists; then printf 'INITIALIZED (%s)\n' "$(basename "$_VAULT_FILE")"; else printf 'NOT INITIALIZED\n'; fi
+    if vault_exists; then printf 'INITIALIZED (%s)\n' "$(basename "${_VAULT_FILE:-keys.enc}")"; else printf 'NOT INITIALIZED\n'; fi
     
-    # Check the TLS handshake to the active provider API host
+    # Verifica dell'handshake TLS verso l'endpoint attivo
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
     if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
-      local current_host=""
+      current_host=""
       current_host="$(printf '%s' "${BASH4LLM_PROVIDER_URL}" | sed -E 's#https?://([^:/]+).*#\1#')"
       printf '    * TLS Handshake (%s): ' "$current_host"
       if diagnose_tls_connection "$BASH4LLM_PROVIDER_URL" >/dev/null 2>&1; then
@@ -4566,10 +4655,10 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
       fi
     fi
   else
-    printf '  - Security Extension (OpenSSL): %bINACTIVE%b (Optional module not loaded or openssl is missing)\n' "${C_YELLOW:-}" "${C_RST:-}"
+    printf '  - Security Extension (OpenSSL): %b[NOT AVAILABLE]%b (openssl-helper.sh or openssl binary missing)\n' "${C_BRED:-}" "${C_RST:-}"
   fi
   # -------------------------------------------------------------------------
-
+  
   exit 0
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
@@ -4584,6 +4673,11 @@ load_whitelist
 if ! ensure_run_tmpdir; then
   log_error "TMP" "cannot create or access RUN_TMPDIR ($BASH4LLM_TMPDIR). Aborting."
   exit "$BASH4LLM_ERR_TMP"
+fi
+
+# Structurally resolve the provider URL before model resolution and request flow
+if [ -z "${BASH4LLM_PROVIDER_URL:-}" ]; then
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
 fi
 
 if ! resolve_model; then
