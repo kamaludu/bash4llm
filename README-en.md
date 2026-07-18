@@ -157,8 +157,8 @@ Using an external provider (if installed and configured):
 ## License
 Bash4LLM⁺ is released under the **GNU GPL v3** license.
 See the **LICENSE** file for more details.
+
 ## Contacts
- * **Author:** Cristian Evangelisti
- * **Email:** opensource@cevangel.anonaddy.me
- * **Repository:** GitHub kamaludu/bash4llm
- 
+*   **Author:** Cristian Evangelisti  
+*   **Email:** `opensource@cevangel.anonaddy.me`  
+*   **Repository:** [GitHub kamaludu/bash4llm](https://github.com/kamaludu/bash4llm)
