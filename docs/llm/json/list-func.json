@@ -1,16 +1,24 @@
 {
   "metadata": {
-    "software": "Bash4LLM",
-    "version": "2.0.0",
-    "date": "2026-06-09"
+    "software": "Bash4LLM⁺",
+    "version": "2.5.0",
+    "date": "2026-07-18"
   },
   "functions": [
     {
       "name": "call_provider",
       "category": "CORE_SETUP",
-      "purpose": "Esegue in modo dinamico e flessibile una specifica funzione dichiarata da un modulo provider esterno, a patto che la funzione risulti regolarmente caricata in memoria.",
+      "purpose": "Esegue in modo dinamico una specifica funzione dichiarata da un modulo provider esterno, a patto che la funzione risulti regolarmente caricata in memoria.",
       "input": "$1 (nome della funzione da richiamare), seguito in coda dai relativi parametri da inoltrare.",
       "output": "Restituisce lo stato d'uscita della funzione eseguita, o il codice di errore 127 se la funzione non è definita nel runtime.",
+      "dependencies": ["type"]
+    },
+    {
+      "name": "validate_provider_key_dispatch",
+      "category": "CORE_SETUP",
+      "purpose": "Dispaccia l'esecuzione della validazione formale della chiave API richiamando la routine dedicata del provider attivo (es. validate_key_groq).",
+      "input": "$1 (chiave API da convalidare).",
+      "output": "Ritorna lo stato d'uscita del validatore specifico, o 127 se la funzione non è implementata dal provider.",
       "dependencies": ["type"]
     },
     {
@@ -30,20 +38,28 @@
       "dependencies": ["type", "log_warn"]
     },
     {
+      "name": "auto_select_model_dispatch",
+      "category": "CORE_SETUP",
+      "purpose": "Dispaccia la selezione automatica del modello chiamando la routine nativa del provider attivo (es. auto_select_model_groq).",
+      "input": "Nessuno.",
+      "output": "Stampa il nome del modello selezionato su stdout. Ritorna stato 0 in caso di successo, 127 se non supportato.",
+      "dependencies": ["type"]
+    },
+    {
       "name": "resolve_model",
       "category": "CORE_SETUP",
-      "purpose": "Risolve ed assegna il modello LLM finale da adottare seguendo un rigoroso ordine di precedenza sequenziale: 1. Se impostato esplicitamente via parametro CLI (-m/--model), adotta direttamente tale scelta. 2. Identifica il provider attivo (analizzando parametri CLI, leggendo il file canonico del provider $PROVIDER_FILE o adottando il fallback standard \"groq\"). 3. Tenta di leggere la prima riga del file di configurazione specifico del modello per tale provider (model.<provider>). Se presente, valido e supportato, lo adotta. 4. Tenta di richiamare la funzione di auto-selezione nativa del provider (auto_select_model_<provider>). Se restituisce un modello valido, lo adotta. 5. Esegue una scansione riga per riga del file dei modelli locali (models.txt) alla ricerca del primo modello valido e supportato. 6. Tenta di recuperare il modello inserito all'interno del file di configurazione globale (config). 7. Cerca all'interno dell'elenco di modelli autorizzati accumulati nella whitelist $ALLOWED_MODELS. Se tutte le ricerche falliscono, restituisce un errore di selezione.",
+      "purpose": "Risolve ed assegna il modello LLM finale da adottare seguendo un rigoroso ordine di precedenza sequenziale: 1. Se impostato esplicitamente via parametro CLI (-m/--model), adotta direttamente tale scelta. 2. Identifica il provider attivo (analizzando parametri CLI, leggendo il file canonico del provider $PROVIDER_FILE o adottando il fallback standard 'groq'). 3. Tenta di leggere la prima riga del file di configurazione specifico del modello per tale provider (model.<provider>). Se presente, valido e supportato, lo adotta dopo averlo normalizzato. 4. Tenta di richiamare la funzione di auto-selezione nativa del provider (auto_select_model_dispatch). Se restituisce un modello valido, lo adotta. 5. Esegue una scansione riga per riga del file dei modelli locali ($MODELS_FILE) fino alla soglia limite $MAX_MODELS alla ricerca del primo modello valido e supportato. 6. Tenta di recuperare il modello inserito all'interno del file di configurazione globale (config). 7. Cerca all'interno dell'elenco di modelli autorizzati accumulati nella whitelist $ALLOWED_MODELS. Se tutte le ricerche falliscono, restituisce un errore di selezione.",
       "input": "Nessuno.",
-      "output": "Ritorna stato 0 se risolto (assegnando il nome del modello alla variabile globale $FINAL_MODEL), 1 in caso di totale fallimento di risoluzione.",
+      "output": "Ritorna stato 0 se risolto (assegnando il nome del modello alla variabile globale $MODEL), 1 in caso di totale fallimento di risoluzione.",
       "side_effects": "Letture multiple sul file-system, invocazione di validatori.",
-      "dependencies": ["canonical_model_file", "canonical_provider_file", "sed", "awk", "validate_model_core", "validate_model_dispatch", "auto_select_model_dispatch", "is_supported_model", "log_warn", "log_error"]
+      "dependencies": ["canonical_model_file", "canonical_provider_file", "sed", "awk", "validate_model_core", "validate_model_dispatch", "auto_select_model_dispatch", "_normalize_model_name", "is_supported_model", "log_warn", "log_error"]
     },
     {
       "name": "build_payload_from_vars",
       "category": "CORE_SETUP",
       "purpose": "Dispaccia ed orchestra la costruzione del file JSON di richiesta API richiamando dinamicamente la routine dedicata del provider attivo (buildpayload_<provider>).",
       "input": "Nessuno.",
-      "output": "Generazione del file di payload. Ritorna stato 0, o termina lo script con codice d'errore API se la funzione non è implementata nel modulo.",
+      "output": "Generazione del file di payload. Ritorna stato 0, o termina lo script con codice d'errore BASH4LLM_ERR_API se la funzione non è implementata nel modulo.",
       "dependencies": ["ensure_run_tmpdir", "call_provider", "log_error"]
     },
     {
@@ -57,10 +73,10 @@
     {
       "name": "call_api_streaming",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione della chiamata API in streaming richiamando la routine dedicata del provider attivo (call_api_streaming_<provider>). Se è attiva la simulazione dry-run, simula la connessione e visualizza l'intestazione del payload d'invio.",
+      "purpose": "Dispaccia l'esecuzione della chiamata API in streaming richiamando la routine dedicata del provider attivo (call_api_streaming_<provider>) sotto lock di thread esclusivo. Implementa un meccanismo di ripristino dei segnali per catturare in sicurezza l'interruzione utente (SIGINT/Ctrl+C) rilasciando tempestivamente il lock di concorrenza del database.",
       "input": "Nessuno.",
-      "output": "Ritorna lo stato dell'esecuzione o 0 se simulato.",
-      "dependencies": ["call_provider", "show_payload_head", "log_info", "log_error"]
+      "output": "Ritorna lo stato dell'esecuzione o 0 se simulato via dry-run.",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "call_provider", "show_payload_head", "log_info", "log_error"]
     },
     {
       "name": "extract_api_error",
@@ -73,7 +89,7 @@
     {
       "name": "detect_empty_edge_case",
       "category": "CORE_SETUP",
-      "purpose": "Algoritmo diagnostico per rilevare ed intercettare \"risposte vuote\" anomale dei provider (situazioni in cui l'API restituisce stato HTTP 200 e termina la generazione con motivo \"stop\" o assenza di token, ma senza produrre alcun testo utile). Analizza il file di risposta $RESP ed estrae metadati come l'ID richiesta, il finish reason e il conteggio dei token generati per classificare l'evento.",
+      "purpose": "Algoritmo diagnostico per rilevare ed intercettare 'risposte vuote' anomale dei provider (situazioni in cui l'API restituisce stato HTTP 200 e termina la generazione con motivo 'stop' o assenza di token, ma senza produrre alcun testo utile). Analizza il file di risposta $RESP ed estrae metadati come l'ID richiesta, il finish reason e il conteggio dei token generati per classificare l'evento.",
       "input": "Nessuno.",
       "output": "Assegna il verdetto booleano a $BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).",
       "side_effects": "Duplicazione temporanea del file per l'analisi sicura.",
@@ -82,27 +98,27 @@
     {
       "name": "finalize_and_output",
       "category": "CORE_SETUP",
-      "purpose": "Formatta e visualizza i risultati finali generati in base alla modalità selezionata in $OUTPUT_MODE. Gestisce la stampa di testo crudo, formati JSON e visualizzazioni strutturate (pretty). Inoltre, se l'output testuale supera la soglia di caratteri autorizzata o se è forzato dall'utente, si occupa di salvare i risultati nel file-system (all'interno di $OUT_PATH o nella directory storica standard $BASH4LLM_HISTORY_DIR), richiamando save_to_history in modo atomico.",
+      "purpose": "Formatta e visualizza i risultati finali generati in base alla modalità selezionata in $OUTPUT_MODE (testo, raw, json o pretty). Inoltre, se l'output testuale supera la soglia di caratteri $THRESHOLD o se è forzato dall'utente via --save, si occupa di salvare i risultati nel file-system in modo transazionale e concorrenziale tramite un file di staging temporaneo e lock esclusivi sul file storico di destinazione.",
       "input": "$1 (formato: json, pretty, raw, text), $2 (stringa di testo del risultato).",
-      "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato fisicamente su disco se abilitato. Ritorna stato 0 o codice d'errore.",
-      "side_effects": "Scrittura a schermo, invocazione di funzioni storiche d'archivio, creazione directory.",
-      "dependencies": ["_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "mkdir", "dirname", "save_to_history", "log_error", "log_warn"]
+      "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato fisicamente su disco se abilitato. Ritorna stato 0 o codice d'errore BASH4LLM_ERR_TMP.",
+      "side_effects": "Scrittura a schermo, generazione e spostamento atomico di file storici temporanei, creazione sicura di directory.",
+      "dependencies": ["_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "safe_mkdir", "dirname", "lock_exec", "log_error"]
     },
     {
       "name": "perform_request_once",
       "category": "CORE_SETUP",
-      "purpose": "Orchestra l'esecuzione complessiva di una chiamata API sincrona, implementando una logica di retry automatico in caso di errori di rete temporanei (fino a $MAX_RETRIES tentativi, applicando un backoff lineare per l'attesa tra i tentativi). Gestisce l'estrazione dei testi, la diagnostica dei casi vuoti anomali (detect_empty_edge_case), la notifica degli errori formali inviati dalle API e la scrittura dello stato dell'ultima transazione in last_api.json. Formatta i risultati e restituisce lo stato d'uscita.",
+      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, applicando una logica concorrente protetta da lock sul thread attivo e ripristino sicuro dei segnali d'interruzione. Gestisce i retry automatici in caso di errori temporanei di rete (fino a $MAX_RETRIES tentativi con backoff), l'estrazione testuale, la diagnostica dei casi vuoti anomali (detect_empty_edge_case) e l'aggiornamento dello stato UI in last_api.json.",
       "input": "Nessuno.",
-      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata, codice d'errore BASH4LLMERRAPI se fallisce.",
-      "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su stderr.",
-      "dependencies": ["call_api_once", "extract_text_from_resp", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
+      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata con successo, o codice d'errore BASH4LLM_ERR_API in caso di fallimento definitivo.",
+      "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su stderr, gestione dei file lock di concorrenza del database dei thread.",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "call_api_once", "extract_text_from_resp", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
     },
     {
       "name": "collect_input_from_files",
       "category": "CORE_SETUP",
-      "purpose": "Legge e concatena in un'unica stringa i contenuti di una lista di file di input, inserendo delimitatori visivi strutturati tra i file per consentire al modello LLM di distinguere nettamente le sorgenti.",
+      "purpose": "Legge e concatena in un'unica stringa i contenuti di una lista di file di input, inserendo delimitatori visivi strutturati tra i file per consentire al modello LLM di distinguere nettamente le sorgenti. (Nota: include una deviazione d'espansione testuale sulla variabile d'ambiente iterativa nel prompt, ereditata direttamente dallo script core).",
       "input": "Array di percorsi di file ($@).",
-      "output": "Stringa di testo unificata stampata su stdout. Interrompe lo script se un file non è leggibile.",
+      "output": "Stringa di testo unificata stampata su stdout. Interrompe lo script con codice d'uscita BASH4LLM_ERR_TMP se un file non è leggibile.",
       "dependencies": ["file_readable", "cat", "log_error"]
     },
     {
@@ -139,7 +155,7 @@
     {
       "name": "is_supported_model",
       "category": "CORE_SETUP",
-      "purpose": "Analizza il nome del modello e ne convalida la compatibilità con Bash4LLM. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
+      "purpose": "Analizza il nome del modello e ne convalida la compatibilità con Bash4LLM⁺. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
       "input": "$1 (nome del modello).",
       "output": "Ritorna stato 0 se supportato, 1 se escluso.",
       "dependencies": ["tr"]
@@ -150,15 +166,15 @@
       "purpose": "Formatta e visualizza sulla console l'elenco dei modelli disponibili memorizzati in locale, evidenziando chiaramente quali modelli non sono supportati (perché richiedono input non-testuali) in modo che l'utente non selezioni configurazioni non ammesse.",
       "input": "Nessuno (scansiona $MODELS_FILE).",
       "output": "Elenco stampato su stderr. Ritorna stato 0 se completato, 1 se il file dei modelli è assente o vuoto.",
-      "dependencies": ["sed", "is_supported_model", "printf"]
+      "dependencies": ["_normalize_model_name", "is_supported_model", "printf"]
     },
     {
       "name": "validate_model_core",
       "category": "CORE_SETUP",
-      "purpose": "Algoritmo centrale di validazione dei modelli. Normalizza il nome rimuovendo prefissi e spazi. Controlla se è registrato nel file dei modelli locali e verifica se è escluso per via di formati non testuali via is_supported_model.",
+      "purpose": "Algoritmo centrale di validazione dei modelli. Normalizza il nome rimuovendo prefissi e spazi tramite il normalizzatore nativo del core. Controlla se è registrato nel file dei modelli locali e verifica se è escluso per via di formati non testuali via is_supported_model.",
       "input": "$1 (nome modello).",
       "output": "Ritorna stato 0 se valido, 1 in caso d'errore (emettendo dettagli su stderr).",
-      "dependencies": ["sed", "grep", "awk", "is_supported_model", "printf"]
+      "dependencies": ["_normalize_model_name", "grep", "awk", "is_supported_model", "printf"]
     },
     {
       "name": "load_local_config",
@@ -170,10 +186,10 @@
     {
       "name": "load_whitelist",
       "category": "CORE_SETUP",
-      "purpose": "Carica in memoria e normalizza l'elenco di tutti i modelli autorizzati o presenti nel file dei modelli locali per comporre la stringa globale di whitelist $ALLOWED_MODELS usata per i filtri di convalida dei modelli.",
+      "purpose": "Carica in memoria e normalizza l'elenco di tutti i modelli autorizzati presenti nel file dei modelli locali per comporre la stringa globale di whitelist $ALLOWED_MODELS usata per i filtri di convalida dei modelli.",
       "input": "Nessuno.",
       "output": "Popola la variabile globale $ALLOWED_MODELS con i nomi normalizzati separati da a capo.",
-      "dependencies": ["awk"]
+      "dependencies": ["_normalize_model_name"]
     },
     {
       "name": "is_tty_out",
@@ -184,8 +200,8 @@
     },
     {
       "name": "validate_provider_interface",
-      "category": "CORE_PROVIDER",
-      "purpose": "Convalida che il modulo del provider caricato implementi correttamente le specifiche dell'interfaccia di Bash4LLM. Verifica la presenza fisica in memoria delle funzioni obbligatorie (buildpayload_<provider> e call_api_<provider>), e traccia a scopo informativo la presenza o assenza di metodi opzionali (streaming, validazione modelli, auto-selezione, refresh modelli).",
+      "category": "CORE_SETUP",
+      "purpose": "Convalida che il modulo del provider caricato in memoria implementi correttamente le specifiche dell'interfaccia di Bash4LLM⁺. Verifica la presenza fisica delle funzioni obbligatorie (buildpayload_<provider> e call_api_<provider>), e traccia a scopo informativo la presenza o assenza di metodi opzionali (streaming, validazione modelli, auto-selezione, refresh modelli).",
       "input": "$1 (nome identificativo del provider da analizzare).",
       "output": "Ritorna stato 0 se l'interfaccia obbligatoria è pienamente implementata, 1 in caso contrario (emettendo errori critici loggati).",
       "dependencies": ["type", "log_error", "log_info"]
