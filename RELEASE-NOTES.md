@@ -4,9 +4,9 @@
 
 **Data / Date:** 2026‑07‑18
 **Stato / Status:** Stable – Feature & Hardening Release (Upgrade from v2.0.0)
-## 💡 EVOLUZIONE ARCHITETTURALE / ARCHITECTURAL EVOLUTION
+## 💡 EVOLUZIONE ARCHITETTURALE / ARCHITECTURAL EVOLUTION. 
 **🇮🇹 Un Framework Estensibile e Blindato**
-La versione 2.5.0 segna il passaggio di **Bash4LLM** da un client lineare a un framework modulare altamente ottimizzato e sicuro. Questa release introduce un ecosistema di estensioni avanzate (extras/) per la gestione crittografica delle credenziali e l'ottimizzazione del contesto delle sessioni. È stato inoltre integrato il supporto nativo per ambienti mobile/Termux e una suite di diagnostica statica ad intercettazione precoce.
+La versione 2.5.0 segna il passaggio di **Bash4LLM** da un client lineare a un framework modulare altamente ottimizzato e sicuro. Questa release introduce un ecosistema di estensioni avanzate (extras/) per la gestione crittografica delle credenziali e l'ottimizzazione del contesto delle sessioni. È stato inoltre integrato il supporto nativo per ambienti mobile/Termux e una suite di diagnostica statica ad intercettazione precoce.  
 **🇬🇧 An Extensible & Hardened Framework**
 Version 2.5.0 marks the evolution of **Bash4LLM** from a linear client into a highly optimized, production-hardened modular framework. This release introduces an advanced extensions ecosystem (extras/) providing at-rest credential encryption and context session optimization. It also brings out-of-the-box support for mobile/Termux environments and a suite of early-interception static diagnostics.
 ## 🇮🇹 Sezione Italiana
