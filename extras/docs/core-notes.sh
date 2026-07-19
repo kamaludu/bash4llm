@@ -69,7 +69,11 @@ Key primitives (documented)
 - ensure_api_key_for_provider(provider)
   Validate API key presence in environment. If missing in non-interactive TTY, fail with
   BASH4LLMERR_NO_API_KEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
-  export to env, and show permanent save instructions.
+  export to env, and set a manual prompt flag to delegate showing permanent save instructions
+  to print_persistence_reminder on transaction success.
+- print_persistence_reminder()
+  Print a friendly guide on how to persist manually entered API keys after a successful transaction
+  (active only if the key was entered manually during this run).
 - enforce_network_policy()
   Central policy check: returns 0 if network allowed; non-zero if blocked.
   Respects DRY_RUN, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET.
@@ -79,6 +83,7 @@ Key primitives (documented)
   Return unified log header prefix: bash4llm:.
 - log_info(code, msg), log_warn(code, msg), log_error(code, msg)
   Structured logging helpers writing to stderr (if DEBUG active) and appending to BASH4LLM_LOG.
+  SECURITY logs are automatically rendered in bold magenta for visual separation.
 - log_info_user(code, msg)
   Structured logging for the user that respects the QUIET mode setting.
 - dbg(...)
@@ -493,7 +498,8 @@ FINAL_MODEL, CONTENT, JSON_INPUT, BATCH_FILE, CHAT_MODE, SET_DEFAULT_MODEL,
 REFRESH_MODELS, LIST_MODELS, OUT_PATH, SYSTEM_PROMPT, MAX_TOKENS, MODEL,
 AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER, TURE (temperature alias),
 TEMPERATURE (recommended alias), BASH4LLM_VAULT_ENABLED, _B4L_RT_CTX,
-BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON.
+BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON,
+C_BOLD, C_NOBOLD, C_UNDERLINE, C_NOUNDERLINE, BASH4LLM_KEY_MANUAL_PROMPT.
 
 Error Code Constants & Direct Alias Mappings:
 - BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERR_NO_API_KEY
