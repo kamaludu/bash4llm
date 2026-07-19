@@ -123,6 +123,9 @@ MAX_TOKENS="${MAX_TOKENS:-4096}"
 THRESHOLD="${THRESHOLD:-1000}"
 OUTPUT_MODE="${OUTPUT_MODE:-text}"
 
+# Synchronize the TUI session window with the core's THREAD_WINDOW CLI parameter
+SESSION_WINDOW="${THREAD_WINDOW:-10}"
+
 # State variable for the Incognito/Private mode
 PRIVATE_MODE=0
 # Backup of the previous HISTFILE to restore when toggling private mode off
