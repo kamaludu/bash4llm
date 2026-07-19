@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/mistral.sh
 # Extra: Provider Mistral
 # Copyright (C) 2026 Cristian Evangelisti
@@ -39,7 +39,7 @@ _get_api_key_mistral() {
     fi
   fi
   if [ -z "$key" ]; then
-    key="${MISTRAL_API_KEY:-}"
+    key="${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}"
   fi
 
   [ "$_set_u_was_on" -eq 1 ] && set -u
@@ -68,7 +68,7 @@ _get_work_tmpdir_mistral() {
 
 _mktemp_in_dir_mistral() {
   local dir="$1"
-  # Delega la creazione sicura alle funzioni del core se disponibili
+  # Delegate secure creation to core functions if available
   if type _tmpf >/dev/null 2>&1; then
     _tmpf file "$dir" mistral
     return $?
@@ -77,7 +77,7 @@ _mktemp_in_dir_mistral() {
     return $?
   fi
 
-  # Fallback robusto locale
+  # Robust local fallback
   local tmpf
   [ -n "$dir" ] || return 1
   [ -d "$dir" ] || return 1
@@ -135,7 +135,7 @@ buildpayload_mistral() {
 
       jq -n --arg model "$model_to_use" \
             --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-            --arg temp "${TURE:-${TEMPERATURE:-${TEMP:-1.0}}}" \
+            --arg temp "${TEMPERATURE:-${TURE:-${TEMP:-1.0}}}" \
             --arg max_tokens "${MAX_TOKENS:-4096}" \
             --arg user "$user_prompt" \
             '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
@@ -159,7 +159,7 @@ buildpayload_mistral() {
     return 0
   fi
 
-  # CORREZIONE: Integrazione completa della logica della cronologia e del prompt OpenAI-compatible
+  # Reconstruct conversation history array natively and safely
   local VALID_MESSAGES_JSON=""
 
   if [ -z "$VALID_MESSAGES_JSON" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
@@ -186,17 +186,17 @@ buildpayload_mistral() {
     VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
   fi
 
-  # Inserimento opzionale del system prompt in testa
+  # Optional system prompt injection in the front of conversation
   if [ -n "${SYSTEM_PROMPT:-}" ]; then
     VALID_MESSAGES_JSON="$(jq -n --argjson messages "$VALID_MESSAGES_JSON" --arg sys "$SYSTEM_PROMPT" '[{role:"system", content:$sys}] + $messages' 2>/dev/null || printf '%s' "$VALID_MESSAGES_JSON")"
   fi
 
-  # Compilazione del payload finale tramite jq (sicuro, senza bisogno di escape manuale Bash)
+  # Secure final compilation using jq args expansion
   local stream_flag=false model temp max_tokens
   is_truthy "${STREAM_MODE:-0}" && stream_flag=true
 
   model="${MODEL:-}"
-  temp="${TURE:-${TEMPERATURE:-${TEMP:-1.0}}}"
+  temp="${TEMPERATURE:-${TURE:-${TEMP:-1.0}}}"
   max_tokens="${MAX_TOKENS:-4096}"
 
   if ! jq -n --arg model "$model" \
@@ -231,7 +231,7 @@ call_api_mistral() {
     *u*) _set_u_was_on=1; set +u ;;
   esac
 
-  # Gestione ed applicazione della policy di rete globale del core
+  # Integrate global core network policies
   if type enforce_network_policy >/dev/null 2>&1; then
     if ! enforce_network_policy; then
       if is_truthy "${DRY_RUN:-0}"; then
@@ -262,7 +262,7 @@ call_api_mistral() {
     return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  # Ensure runtime tmpdir is available and validated by PRECORE
+  # Validate and initialize run tmpdir
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
@@ -274,10 +274,9 @@ call_api_mistral() {
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
   
-  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
 
-  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  # Array argument expansion preventing command injection
   local -a curl_cmd=(curl)
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
     curl_cmd+=("${CURL_BASE_OPTS[@]}")
@@ -291,7 +290,6 @@ call_api_mistral() {
     "$api_url"
   )
 
-  # Esegue la chiamata tramite l'array di comandi
   "${curl_cmd[@]}" 2>"$ERRF" >"$tmpout" || true
 
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
@@ -300,7 +298,6 @@ call_api_mistral() {
   }
 
   if [ -s "$tmpresp" ]; then
-    # Assicura la presenza di un a capo finale per evitare sovrapposizioni del prompt della shell
     local last_char=""
     if command -v tail >/dev/null 2>&1; then
       last_char="$(tail -c 1 "$tmpresp" 2>/dev/null || printf '')"
@@ -339,13 +336,14 @@ call_api_mistral() {
 # -------------------------
 # call_api_streaming_mistral (SSE)
 # -------------------------
+# Optimized Mistral streaming using single unbuffered jq processor
 call_api_streaming_mistral() {
   local _set_u_was_on=0
   case "$-" in
     *u*) _set_u_was_on=1; set +u ;;
   esac
 
-  # Gestione ed applicazione della policy di rete globale del core in modalità streaming
+  # Integrate global core network policies
   if type enforce_network_policy >/dev/null 2>&1; then
     if ! enforce_network_policy; then
       if is_truthy "${DRY_RUN:-0}"; then
@@ -368,14 +366,13 @@ call_api_streaming_mistral() {
     return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
-  # Ensure runtime tmpdir is available and validated by PRECORE
+  # Validate and initialize run tmpdir
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
 
   local api_url rc RESP_RAW workdir
   
-  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
   
   workdir="$(_get_work_tmpdir_mistral)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
@@ -385,7 +382,7 @@ call_api_streaming_mistral() {
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
 
-  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  # Array argument expansion preventing command injection
   local -a curl_cmd=(curl)
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
     curl_cmd+=("${CURL_BASE_OPTS[@]}")
@@ -397,18 +394,23 @@ call_api_streaming_mistral() {
     "$api_url"
   )
 
-  "${curl_cmd[@]}" 2>"$ERRF" | tee -a "$RESP_RAW" | \
-  while IFS= read -r line; do
-    case "$line" in
-      'data: [DONE]'|'data:[DONE]') break ;;
-      data:\ * )
-        json="${line#data: }"
-        chunk="$(printf '%s' "$json" | jq -r '.choices[]?.delta?.content // empty' 2>/dev/null || true)"
-        [ -n "$chunk" ] && printf '%s' "$chunk"
-        ;;
-      *) ;;
-    esac
-  done
+  # Real-time streaming decoder using a single unbuffered jq process
+  "${curl_cmd[@]}" 2>"$ERRF" | \
+  tee -a "$RESP_RAW" | \
+  jq --unbuffered -R -r '
+    if startswith("data: ") then
+      sub("^data:[[:space:]]*"; "") |
+      select(. != "[DONE]") |
+      try (fromjson | .choices[]?.delta?.content // "") catch ""
+    else
+      try (
+        fromjson | 
+        if .error.message then ("\nAPI Error: " + .error.message) 
+        elif .message then ("\nAPI Error: " + .message) 
+        else empty end
+      ) catch empty
+    fi
+  '
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
@@ -417,7 +419,7 @@ call_api_streaming_mistral() {
     return "${BASH4LLM_ERR_CURL_FAILED:-12}"
   }
 
-  # Post-processing: build resp.chunks.json, resp.text.txt and write RESP atomically
+  # Build chunks metadata index atomically
   : > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
   grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$RUN_TMPDIR/resp.lines" 2>/dev/null || true
 
@@ -430,11 +432,26 @@ call_api_streaming_mistral() {
 
   if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
     jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
-    jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    
+    # Extract all delta contents and join them natively to build synthetic OpenAI-style RESP
+    local unified_text
+    unified_text="$(jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true)"
+
+    if [ -n "${unified_text}" ]; then
+      local synthetic_resp="$RUN_TMPDIR/resp.synthetic.json"
+      jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$synthetic_resp" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$synthetic_resp" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      else
+        cp -f "$synthetic_resp" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      fi
+      rm -f "$synthetic_resp" 2>/dev/null || true
     else
-      cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      else
+        cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      fi
     fi
 
     if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${BASH4LLM_TMPDIR:-}"/*) true;; "${BASH4LLM_TMPDIR:-}") true;; *) false;; esac; then
@@ -455,7 +472,6 @@ call_api_streaming_mistral() {
 # refresh_models_mistral
 # -------------------------
 refresh_models_mistral() {
-  # Temporaneamente disattiva set -u (nounset) per sicurezza durante la lettura delle variabili
   local _set_u_was_on=0
   case "$-" in
     *u*) _set_u_was_on=1; set +u ;;
@@ -476,7 +492,7 @@ refresh_models_mistral() {
     return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  # Ensure runtime tmpdir is available and validated by PRECORE
+  # Validate and initialize run tmpdir
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
   fi
@@ -493,10 +509,9 @@ refresh_models_mistral() {
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
   
-  # RISOLUZIONE INLINE: Adeguamento al sandboxing di bash4llm
   api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # Costruisce in modo robusto l'array dei comandi per curl per evitare argomenti vuoti ""
+  # Array argument expansion preventing command injection
   local -a curl_cmd=(curl -s -w "%{http_code}")
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
     curl_cmd+=("${CURL_BASE_OPTS[@]}")
@@ -533,13 +548,12 @@ refresh_models_mistral() {
     end
   ' "$out" | awk 'NF{print}' | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//' | sort -u > "$parsed" 2>/dev/null || true
 
-  # Sanitizzazione e normalizzazione dei modelli (solo caratteri sicuri)
+  # Model sanitization whitelisting safe characters
   local tmp_trim
   tmp_trim="$tmpd/parsed_trimmed.txt"
   awk '{
     g=$0
     sub(/^models\//,"",g)
-    sub(/^mistral[:\/-]*/,"",g)
     if (g ~ /^[[:alnum:]._\/:-]+$/) print g
   }' "$parsed" | awk -v M="${MAX_MODELS:-200}" 'NR<=M{print}' > "$tmp_trim" 2>/dev/null || true
 
@@ -584,4 +598,70 @@ auto_select_model_mistral() {
   fi
   printf ''
   return 0
+}
+
+validate_key_mistral() {
+  local _set_u_was_on=0
+  case "$-" in
+    *u*) _set_u_was_on=1; set +u ;;
+  esac
+
+  local key="${1:-}"
+  local http_code curl_rc=0
+  local tmpout errf workdir
+
+  if [ -z "$key" ]; then
+    [ "$_set_u_was_on" -eq 1 ] && set -u
+    return 1
+  fi
+
+  workdir="$(_get_work_tmpdir_mistral)"
+  [ -n "$workdir" ] || workdir="${BASH4LLM_TMPDIR:-/tmp}"
+
+  tmpout="$(_mktemp_in_dir_mistral "$workdir" 2>/dev/null || true)"
+  [ -n "$tmpout" ] || tmpout="${workdir}/mistral-key-diag.tmp"
+  errf="${tmpout}.err"
+
+  local api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
+
+  # Array argument expansion preventing command injection
+  local -a curl_cmd=(curl -s -w "%{http_code}")
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    curl_cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+  curl_cmd+=(
+    --max-time 10
+    -H "Authorization: Bearer $key"
+    -H "Content-Type: application/json"
+    "$api_url" -o "$tmpout"
+  )
+
+  http_code="$("${curl_cmd[@]}" 2>"$errf" || echo "CURL_ERR")"
+  curl_rc=$?
+
+  rm -f "$tmpout" "$errf" 2>/dev/null || true
+
+  [ "$_set_u_was_on" -eq 1 ] && set -u
+
+  if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
+    return 28
+  fi
+
+  # HTTP 200 = Valid token; HTTP 401 = Invalid token
+  if [ "$http_code" = "200" ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# -------------------------
+# normalize_model_mistral
+# -------------------------
+# Provider-specific model normalization for Mistral
+normalize_model_mistral() {
+  local name="${1:-}"
+  # Preserve the full Mistral model prefix (e.g. mistral-medium)
+  name="${name#models/}"
+  printf '%s' "$name"
 }

@@ -1,17 +1,17 @@
 [![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
-# INSTALLAZIONE  🇮🇹 [🇬🇧](INSTALL-en.md)
+# INSTALLAZIONE 🇮🇹 [🇬🇧](INSTALL-en.md)
 
-Bash4LLM è un wrapper Bash portabile e sicuro per l’API Groq.  
-Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils.
+Bash4LLM⁺ è un wrapper Bash portabile e sicuro per l'API di svariati LLM (con supporto nativo a Groq).  
+Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils e alle utility di base della shell.
 
 ---
 
 ## 1. Requisiti
 
-Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel PATH:
+Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel tuo `PATH`:
 
-- ***bash***
-- coreutils
+- ***bash*** (versione 4.0 o superiore per il supporto agli array associativi)
+- coreutils (comandi stat, chmod, mkdir, ecc.)
 - findutils
 - util-linux
 - gawk
@@ -20,22 +20,22 @@ Bash4LLM richiede che i seguenti pacchetti (o equivalenti) siano disponibili nel
 
 ### Compatibilità
 
-Bash4LLM funziona su:
+Bash4LLM⁺ è testato e supportato su:
 
 - GNU/Linux
-- macOS (con pacchetti GNU installabili via Homebrew)
+- macOS (con utilità standard o pacchetti GNU da Homebrew)
 - WSL e Cygwin (Windows)
 - Termux (Android)
-- BSD
+- BSD (FreeBSD, OpenBSD, NetBSD)
 
 ---
 
-## 2. Installazione di base
+## 2. Installazione rapida (Fast Forward)
 
 > [!TIP]
 > **⏩ FAST FORWARD (Installazione Rapida)**
 > 
-> Esegui questi comandi nel tuo terminale per avviare subito **Bash4LLM⁺**:
+> Esegui questi comandi nel tuo terminale per scaricare e configurare subito **Bash4LLM⁺**:
 > 
 > ```sh
 > # 1. Clona il repository (solo l'ultimo commit per massima velocità)
@@ -51,6 +51,106 @@ Bash4LLM funziona su:
 > ./bash4llm --refresh-models
 > ```
 > 
+> Lo script rileverà l'assenza della chiave e ti chiederà l'inserimento interattivo:
+> `Enter API key for provider groq (env GROQ_API_KEY):`
+> 
+> Inserisci la tua API key di Groq. Per evitare di reinserirla nelle successive esecuzioni della sessione di terminale corrente, esportala:
+> 
+> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
+> 
+> Consigliato: ***installa gli Extras opzionali*** (provider aggiuntivi, chat REPL, template):
+> ```sh
+> # 4. Installazione degli Extras
+> ./bash4llm --install-extras ../repo-bash4llm/extras/
+> ```
+> 
+> Usa Bash4llm ⚡
+> 
+
+### 2.1 Installazione manuale
+
+Rendi eseguibile il file principale dopo averlo scaricato o copiato:
+
+`chmod +x bash4llm`
+
+### 2.2 Impostare la chiave API
+
+Bash4LLM⁺ legge la chiave API dall'ambiente. Esportala nel tuo file di configurazione della shell (es. `~/.bashrc` o `~/.bash_profile`):
+
+`export GROQ_API_KEY="la_tua_chiave_qui"`
+
+---
+
+## 3. Struttura delle directory
+
+Alla prima esecuzione, lo script crea la seguente struttura di lavoro all'interno della directory di runtime (`bash4llm.d/`), applicando permessi restrittivi `700` (cartelle) e `600` (file) per impedire l'accesso ad altri utenti del sistema:
+
+```text
+bash4llm.d/
+    config/                # Configurazione e persistenza provider/modelli default
+        providers/         # Configurazioni specifiche dei provider (es. hf_endpoints)
+        ui_state/          # File JSON di stato per GUI e automazioni
+            threads/       # Metadati e indici delle sessioni attive
+        thread_cache/      # Caching locale delle risposte dei thread (se attivo)
+    models/                # File txt delle whitelist dei modelli per ciascun provider
+    templates/             # Prompt template riutilizzabili
+    history/               # Cronologia degli output salvati automaticamente
+        threads/           # Storico conversazionale dei thread in formato NDJSON
+    tmp/                   # Cartella sicura isolata per i lock e i file temporanei
+    extras/                # Componenti aggiuntivi opzionali (installati con --install-extras)
+        providers/         # Script dei provider esterni (Gemini, Hugging Face, Mistral)
+```
+
+---
+
+## 4. Installazione degli Extras (`--install-extras`)
+
+Per utilizzare le funzioni avanzate (la console di cifratura delle chiavi, i provider aggiuntivi come Gemini o Hugging Face, o l'interfaccia di chat interattiva REPL), installa gli Extras:
+
+`./bash4llm --install-extras`
+
+Se esegui l'eseguibile al di fuori della cartella del repository clonato, specifica il percorso in cui si trova la cartella `extras`:
+
+`./bash4llm --install-extras /percorso/di/sorgente/extras`
+
+L'installer si occuperà di copiare ricorsivamente i file necessari all'interno del perimetro sicuro `bash4llm.d/extras/`, applicando permessi restrittivi `700` ai file eseguibili (come i moduli dei provider e la chat TUI) e `600` ai documenti di aiuto o template.
+
+Se stai operando su un filesystem non nativamente POSIX (ad esempio una condivisione NTFS sotto Windows o determinati montaggi di rete), lo script rileverà i limiti di applicazione dei permessi stampando un avviso non bloccante.
+
+---
+
+## 5. Troubleshooting e risoluzione dei problemi
+
+### Errore di sicurezza (Codice d'uscita 17 - BASH4LLM_ERR_SEC)
+Se lo script si interrompe con l'errore `BASH4LLM_ERR_SEC`, significa che un controllo statico di sicurezza ha rilevato permessi di scrittura troppo permissivi sul file di configurazione locale o sulla cartella del programma. Metti in sicurezza il tuo ambiente di lavoro eseguendo:
+
+```sh
+chmod 700 bash4llm.d
+chmod 600 bash4llm.d/config/config
+```
+
+### Timeout sui lock del filesystem
+Se ricevi un errore di timeout durante la scrittura dei modelli o dei thread a causa di operazioni concorrenti prolungate, puoi aumentare il tempo di attesa massimo (espresso in secondi) esportando la variabile d'ambiente corretta:
+
+`export BASH4LLM_LOCK_TIMEOUT_HISTORY=30`
+
+---
+
+## 6. Disinstallazione
+
+Bash4LLM⁺ è completamente auto-confinato. Per rimuoverlo definitivamente dal sistema è sufficiente eliminare l'eseguibile e la sua cartella di lavoro:
+
+```sh
+rm -rf bash4llm.d
+rm bash4llm
+```
+
+---
+
+## 7. Licenza
+
+Bash4LLM⁺ è un software libero distribuito sotto licenza [**GNU GPL v3**](LICENSE).
+
 > Lo script ti chiederà l'inserimento della tua chiave API per il provider di default (Groq):
 > `Enter API key for provider groq (env GROQ_API_KEY):`
 > 

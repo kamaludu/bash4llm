@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # =============================================================================
-# Bash4LLM+ — Bash-first wrapper for the LLM
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/session/session-engine.sh
 # Extra: Additional Session engine
 # Copyright (C) 2026 Cristian Evangelisti
@@ -396,14 +396,13 @@ session_engine_append() {
 }
 
 # --- Public API: session_engine_build_window <session_id> <N> <target_bytes> <out_file>
-# Option A semantics: if N>0 -> explicit override: build last N messages across segments,
-#                     do NOT apply target_bytes trimming. Exclude meta.ignored messages.
+# Option A: N > 0 -> last N non-ignored messages.
+# Option B: N = 0 -> weight-based accumulation up to target_bytes.
 session_engine_build_window() {
   local sid="$1" N="$2" target_bytes="$3" out="$4"
   local session_file="${SE_SESSION_DIR%/}/${sid}.ndjson"
-  local tmpf out_tmp
+  local tmpf
 
-  # Validate sid if CORE provides validator
   if type session_validate_id >/dev/null 2>&1; then
     if ! session_validate_id "$sid"; then
       _se_log err "build_window: invalid session id: $sid"
@@ -422,12 +421,10 @@ session_engine_build_window() {
   tmpf="$(_se_tmpf)" || return 1
   : > "$tmpf" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
 
-  # Compute params_hash and use it as cache key (sid|params_hash)
   local params_hash
   params_hash="$(printf '%s|%s|%s' "$N" "$target_bytes" "${BASH4LLM_SESSION_TARGET_BYTES:-}" | (command -v sha256sum >/dev/null 2>&1 && sha256sum | awk '{print $1}' || cat) 2>/dev/null || true)"
   local cache_key="${sid}|${params_hash}"
 
-  # Use cache if available, fresh and TTL not expired
   if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
     local cached_mtime stored_ts now
     cached_mtime="$(_se_file_mtime "$session_file")"
@@ -441,7 +438,6 @@ session_engine_build_window() {
           return 0
         fi
       else
-        # no TTL configured, accept cache
         printf '%s' "${SE_CACHE_WINDOW[$cache_key]}" > "$out" 2>/dev/null || true
         rm -f "$tmpf" 2>/dev/null || true
         return 0
@@ -449,129 +445,86 @@ session_engine_build_window() {
     fi
   fi
 
-  # Build list of segments newest-first
-  local segments
-  segments="$(_se_list_segments "$sid" | _se_reverse 2>/dev/null || true)"
-  if [ -z "$segments" ]; then
+  local -a seg_arr=()
+  local seg
+  while IFS= read -r seg; do
+    [ -z "$seg" ] && continue
+    case "$seg" in *.gz) continue ;; esac
+    if [ -f "$seg" ]; then
+      seg_arr+=("$seg")
+    fi
+  done < <(_se_list_segments "$sid" 2>/dev/null)
+
+  # Guard against empty segment array to prevent cat from waiting on stdin
+  if [ "${#seg_arr[@]}" -eq 0 ]; then
     printf '%s' '{"messages":[]}' > "$out" 2>/dev/null || true
     rm -f "$tmpf" 2>/dev/null || true
     return 0
   fi
 
-  # If explicit N provided and >0 -> Option A: last N messages across segments (exclude meta.ignored)
   if printf '%s' "$N" | grep -qE '^[0-9]+$' && [ "$N" -gt 0 ]; then
-    local remaining="$N"
-    local collect_tmp
-    collect_tmp="$(_se_tmpf).collect" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
-    : > "$collect_tmp"
-
-    # iterate segments newest-first, collect lines newest-first into collect_tmp
-    for seg in $segments; do
-      case "$seg" in *.gz) continue ;; esac
-      if [ "$remaining" -le 0 ]; then break; fi
-      # read segment lines newest-first using process substitution so while runs in current shell
-      while IFS= read -r line || [ -n "$line" ]; do
-        # skip ignored messages
-        if printf '%s' "$line" | jq -e '.meta?.ignored == true' >/dev/null 2>&1; then
-          continue
-        fi
-        printf '%s\n' "$line" >> "$collect_tmp"
-        remaining=$((remaining - 1))
-        if [ "$remaining" -le 0 ]; then break; fi
-      done < <(_se_reverse "$seg" 2>/dev/null)
-      if [ "$remaining" -le 0 ]; then break; fi
-    done
-
-    # If we collected nothing, return empty messages
-    if [ ! -s "$collect_tmp" ]; then
-      printf '%s' '{"messages":[]}' > "$out" 2>/dev/null || true
-      rm -f "$collect_tmp" "$tmpf" 2>/dev/null || true
-      return 0
-    fi
-
-    # collect_tmp is newest-first; reverse to oldest->newest
-    _se_reverse "$collect_tmp" > "$tmpf" 2>/dev/null || cp -f "$collect_tmp" "$tmpf" 2>/dev/null || true
-
-    # Build messages[] JSON using jq, preserving only role and content for compatibility
-    if jq -s '{messages: map({role:.role, content:.content})}' "$tmpf" > "$out" 2>/dev/null; then
-      # update cache
-      if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-        local mt
-        mt="$(_se_file_mtime "$session_file")"
-        SE_CACHE_MTIME["$cache_key"]="${mt:-$(date +%s)}"
-        SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
-        SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
-      fi
-      rm -f "$collect_tmp" "$tmpf" 2>/dev/null || true
-      return 0
-    else
-      rm -f "$collect_tmp" "$tmpf" 2>/dev/null || true
-      _se_log err "build_window: jq failed to assemble messages for N override"
-      return 1
-    fi
-  fi
-
-  # Otherwise: use target_bytes / min/max messages logic (existing advanced behavior)
-  local target="${target_bytes:-${BASH4LLM_SESSION_TARGET_BYTES:-32768}}"
-  local min_msgs="${BASH4LLM_SESSION_MIN_MESSAGES:-3}"
-  local max_msgs="${BASH4LLM_SESSION_MAX_MESSAGES:-200}"
-  local total_bytes=0
-  local msg_count=0
-  local msgs_tmp
-  msgs_tmp="$(_se_tmpf).msgs" || { rm -f "$tmpf" 2>/dev/null || true; return 1; }
-  : > "$msgs_tmp"
-
-  for seg in $segments; do
-    case "$seg" in *.gz) continue ;; esac
-    # read newest-first but process in current shell
-    while IFS= read -r line || [ -n "$line" ]; do
-      role="$(printf '%s' "$line" | jq -r '.role // "user"' 2>/dev/null || echo user)"
-      content="$(printf '%s' "$line" | jq -r '.content // ""' 2>/dev/null || echo '')"
-      if printf '%s' "$line" | jq -e '.meta?.ignored == true' >/dev/null 2>&1; then
-        continue
-      fi
-      w="$(_se_compute_weight "$role" "$content")"
-      if [ "$msg_count" -lt "$min_msgs" ]; then
-        printf '%s\n' "$line" >> "$msgs_tmp"
-        total_bytes=$((total_bytes + w))
-        msg_count=$((msg_count + 1))
-      else
-        if [ "$msg_count" -ge "$max_msgs" ]; then
-          break 2
-        fi
-        if [ $((total_bytes + w)) -le "$target" ]; then
-          printf '%s\n' "$line" >> "$msgs_tmp"
-          total_bytes=$((total_bytes + w))
-          msg_count=$((msg_count + 1))
-        else
-          break 2
-        fi
-      fi
-    done < <(_se_reverse "$seg" 2>/dev/null)
-  done
-
-  if [ -s "$msgs_tmp" ]; then
-    _se_reverse "$msgs_tmp" > "$tmpf" 2>/dev/null || cp -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
-    if jq -s '{messages: map({role:.role, content:.content})}' "$tmpf" > "$out" 2>/dev/null; then
-      if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
-        local mt
-        mt="$(_se_file_mtime "$session_file")"
-        SE_CACHE_MTIME["$cache_key"]="${mt:-$(date +%s)}"
-        SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
-        SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
-      fi
-      rm -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
-      return 0
-    else
-      rm -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
-      _se_log err "build_window: jq failed to assemble messages"
+    # Option A: Explicit N override (single jq call, filtering non-objects to prevent crashes)
+    if ! cat "${seg_arr[@]}" 2>/dev/null | jq -s --argjson n "$N" '
+      [ .[] | select(type == "object" and .meta?.ignored != true) ]
+      | (if length <= $n then . else .[-$n:] end)
+      | {messages: map({role: .role, content: .content})}
+    ' > "$tmpf" 2>/dev/null; then
+      _se_log err "build_window: jq failed to assemble messages for explicit N override"
+      rm -f "$tmpf" 2>/dev/null || true
       return 1
     fi
   else
-    printf '%s' '{"messages":[]}' > "$out" 2>/dev/null || true
-    rm -f "$msgs_tmp" "$tmpf" 2>/dev/null || true
-    return 0
+    # Option B: target_bytes limit logic using recursive/reduce logic in a single fork
+    local target="${target_bytes:-${BASH4LLM_SESSION_TARGET_BYTES:-32768}}"
+    local min_msgs="${BASH4LLM_SESSION_MIN_MESSAGES:-3}"
+    local max_msgs="${BASH4LLM_SESSION_MAX_MESSAGES:-200}"
+
+    if ! cat "${seg_arr[@]}" 2>/dev/null | jq -s \
+      --argjson min "$min_msgs" \
+      --argjson max "$max_msgs" \
+      --argjson target "$target" \
+      '
+      [ .[] | select(type == "object" and .meta?.ignored != true) ] | reverse |
+      reduce .[] as $msg (
+        {acc: [], total_bytes: 0, count: 0, stop: false};
+        if .stop then .
+        else
+          ((($msg.role // "") | length) + (($msg.content // "") | length)) as $w |
+          if .count < $min then
+            .acc += [$msg] | .total_bytes += $w | .count += 1
+          elif .count >= $max then
+            .stop = true
+          elif (.total_bytes + $w) <= $target then
+            .acc += [$msg] | .total_bytes += $w | .count += 1
+          else
+            .stop = true
+          end
+        end
+      ) | .acc | reverse | {messages: map({role: .role, content: .content})}
+      ' > "$tmpf" 2>/dev/null; then
+      _se_log err "build_window: jq failed to assemble messages for target_bytes limit"
+      rm -f "$tmpf" 2>/dev/null || true
+      return 1
+    fi
   fi
+
+  if [ -s "$tmpf" ]; then
+    if mv -f "$tmpf" "$out" 2>/dev/null || cp -f "$tmpf" "$out" 2>/dev/null; then
+      chmod 600 "$out" 2>/dev/null || true
+      if [ "${SESSION_CACHE_ENABLED:-1}" -eq 1 ] && [ -f "$session_file" ]; then
+        local mt
+        mt="$(_se_file_mtime "$session_file")"
+        SE_CACHE_MTIME["$cache_key"]="${mt:-$(date +%s)}"
+        SE_CACHE_WINDOW["$cache_key"]="$(cat "$out" 2>/dev/null || true)"
+        SE_CACHE_STORED_TS["$cache_key"]="$(date +%s)"
+      fi
+      rm -f "$tmpf" 2>/dev/null || true
+      return 0
+    fi
+  fi
+
+  rm -f "$tmpf" 2>/dev/null || true
+  return 1
 }
 
 # --- Public API: session_engine_snapshot <session_id> <out_file>

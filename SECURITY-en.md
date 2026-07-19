@@ -2,199 +2,84 @@
 
 # SECURITY POLICY  [🇮🇹](SECURITY.md) 🇬🇧
 
-## Bash4LLM⁺ — Security Policy
-
-Bash4LLM is a single Bash script designed with strong focus on **security**, **portability**, and **transparency**.  
-This document describes the **threat model**, **security assumptions**, **known limitations**, **recommendations**, and the **responsible disclosure** process.
-
----
-
-## 1. Supported versions
-
-Only the latest stable release receives security fixes.
-
----
-
-## 2. Threat model
-
-Bash4LLM is designed for **single‑user** environments, such as:
-
-- personal PCs/laptops  
-- private servers  
-- Termux installations  
-- WSL environments  
-- local development shells  
-
-Bash4LLM is **not** designed for:
-
-- multi‑tenant or hostile servers  
-- environments where untrusted users can modify the filesystem  
-- systems where environment variables can be manipulated by third parties  
-- scenarios requiring strong sandboxing or privilege separation  
-
-### Fundamental assumptions
-
-Bash4LLM assumes that:
-
-- The user **owns** and **controls** the directories where Bash4LLM and extras reside.  
-- No untrusted user can write to:
-  - `$BASH4LLMEXTRASDIR`
-  - `$BASH4LLMTMPDIR`
-  - the directory containing `bash4llm`
-- Environment variables are **trusted configuration**, not untrusted input.
-- Providers are **trusted code**, not plugins from unknown sources.
-
----
-
-## 3. Security principles
-
-### ✔ No execution of model output  
-Bash4LLM **never executes** API responses as shell commands.
-
-### ✔ No `eval`  
-The script does not use `eval` or equivalent constructs.
-
-### ✔ No use of `/tmp`  
-Internal temporary files are **never** created in `/tmp`.  
-Bash4LLM uses:
-
-- `$BASH4LLMTMPDIR` (if set)  
-- a safe fallback in the user’s home directory  
-
-Temporary files are created with:
-
-- `mktemp -d`  
-- permissions `700`
-
-### ✔ No hidden fallback  
-If the model list is empty, Bash4LLM fails safely.
-
-### Provider security:
-verifies that the provider defines required functions  
-(buildpayload_<p>, call_api_<p>, etc.)
-
-### API key security
-The code checks:  
-presence of API key for model refresh, presence of API key for API calls, clear errors: `BASH4LLMERRNOAPIKEY`
-
-### Model security
-The code checks:  
-valid model via `validate_model_core`, allowed model via `ALLOWED_MODELS`
-
-### Input security
-The code handles:  
-`JSON_INPUT`, `FILE_INPUTS`, `TEMPLATE`, `STDIN_CONTENT`
-
-### Session security
-The code:  
-creates session directories with `mkdir -p`, sets permissions 700, uses JSON files for history
-
-### Tmpdir security
-The code:  
-uses `BASH4LLM_TMPDIR`, fails if not writable, does NOT use system `/tmp`
-
----
-
-## 4. Known limitations
-
-Bash4LLM is a Bash script, not a sandboxed runtime.
-
-### ⚠ Residual TOCTOU risks  
-Bash cannot fully eliminate race conditions.
-
-### ⚠ Providers are code  
-Scripts in `extras/providers/` are **executed in the shell**.  
-They must be:
-
-- owned by you  
-- not writable by others  
-- stored in trusted directories  
-
-### ⚠ Environment variables are considered trusted  
-Examples:
-
-- `BASH4LLMEXTRASDIR`
-- `BASH4LLMTMPDIR`
-- `GROQ_API_KEY`
-- `GROQ_MODEL`
-
-### ⚠ No multi‑user isolation  
-Bash4LLM does not attempt to isolate itself from other users on the same system.
-
----
-
-## 5. Recommendations for safe usage
-
-### ✔ Keep Bash4LLM in a directory you own
-
-`CODEON
-mkdir -p "$HOME/.local/bin"
-CODEOFF`
-
-### ✔ Keep extras directories secure
-
-`CODEON
-chmod 700 "$BASH4LLMEXTRASDIR"
-chmod -R go-w "$BASH4LLMEXTRASDIR"
-CODEOFF`
-
-### ✔ Install providers only from trusted sources  
-Providers are shell scripts executed directly.
-
-### ✔ Avoid shared or hostile environments  
-Bash4LLM is not designed for multi‑tenant servers.
-
-### ✔ Use `--debug` only in safe environments  
-Debug mode preserves potentially sensitive temporary files.
-
----
-
-## 6. Reporting vulnerabilities
-
-If you discover a security issue, report it **privately**.
-
-#### Contact (private disclosure)
-- **Email:** opensource​@​cevangel.​anonaddy.​me  
-- **Subject:** `[Bash4LLM Security Report]`
-
-Include:
-
-- clear description of the issue  
-- steps to reproduce  
-- environment details (OS, Bash, Termux/macOS/etc.)  
-- potential impact (code execution, escalation, data exposure)
-
-Typical response time: **within 72 hours**.
-
----
-
-## 7. Responsible Disclosure
-
-- Do not open public issues for vulnerabilities.  
-- Do not publish details before the fix.  
-- Coordinated disclosure is appreciated.  
-- Public acknowledgment is optional.
-
----
-
-## 8. Security extras
-
-Bash4LLM includes optional tools in `extras/security/`:
-
-- `verify.sh` — checks provider integrity  
-- `validate-env.sh` — verifies environment security  
-
-They do not modify core behavior.
-
----
-
-## 9. Final notes
-
-Bash4LLM is built with strong attention to security, but it remains a Bash script.  
-The user must understand its assumptions and limitations before using it in sensitive environments.
-
-Full documentation:
-
-- **[README](README-en.md)**  
-- **[INSTALL](INSTALL-en.md)**  
-- **[CHANGELOG](CHANGELOG.md)**
+## Security Policy for Bash4LLM⁺
+Bash4LLM⁺ was developed by adopting rigorous design principles regarding **variable safety**, **protection of information in transit and locally**, and the **prevention of code injection**.
+This document describes its threat model, core filesystem assumptions, known limitations, and channels for private vulnerability disclosure.
+
+## 1. Supported Versions
+Only the latest official stable version released on the main branch of the repository receives bug fixes and security patches.
+
+## 2. Threat Model
+Bash4LLM⁺ is designed to operate in trusted, **single-user** contexts:
+ * Personal desktop and laptop computers.
+ * Personal servers, private compute nodes, or single-owner Docker instances.
+ * Protected local terminals such as Termux on personal mobile devices (Android).
+ * WSL (Windows) development environments or standard Unix user consoles.
+Bash4LLM⁺ is **not** designed for:
+ * Shared multi-tenant servers with hostile or unauthorized users.
+ * Environments where concurrent unauthorized users have physical write access to the same folders as the script.
+ * Being executed by the root user in exposed network contexts.
+
+### Fundamental Security Assumptions
+The script assumes that:
+ 1. The user running the script is the exclusive owner and holder of write permissions for the main working directory bash4llm.d/ and its configuration and extras folders.
+ 2. The provider modules placed in the extras folder come exclusively from controlled and trusted sources.
+ 3. Local environment variables loaded into memory cannot be intercepted or manipulated by hostile local users with higher privileges.
+
+## 3. Built-In Security Mitigations
+
+### ✔ No Execution of Generated Content (RCE Prevention)
+Bash4LLM⁺ strictly routes, displays, and optionally archives the text output returned by the LLM API. The script **never executes** the model's output within the current shell, completely eliminating at the root the risk of Remote Code Execution (RCE) vulnerabilities arising from indirect Prompt Injection attacks.
+
+### ✔ Absolute Ban on the eval Command
+No part of the internal code of the main script, nor its parsing and module-loading functions, uses the eval command or similar mechanisms for dynamic command-string evaluation, thereby preventing Bash code injection attempts.
+
+### ✔ Temporary File Isolation (No Global /tmp)
+To eliminate hijacking risks based on the use of symbolic links (*Symlink Exploitation*) or write collisions caused by concurrent processes, the script **never uses** the operating system's shared /tmp directory.
+All transactions, network error files, or raw responses are processed inside the isolated execution temporary directory (RUN_TMPDIR), created as a local subdirectory of bash4llm.d/tmp/ with exclusive 700 permissions (umask 077).
+
+### ✔ Provider Module Import Sandbox
+To ensure that optional provider modules loaded from the extras directory cannot pollute the main runtime with unstable global variables or execute arbitrary code at startup, loading occurs within an isolated sandbox subshell.
+**Exclusively authorized function signatures** (buildpayload_*, call_api_*) are extracted and exported to the main shell, ignoring any global instructions placed outside the functions themselves.
+
+### ✔ Symmetric Encryption for API Keys (--vault)
+Bash4LLM⁺ does not require storing API keys in plaintext inside configuration files. By activating the optional OpenSSL module (--vault), authentication keys are placed inside a symmetrically encrypted database (keys.dat).
+Protection is guaranteed by a Master Password with AES-256-CBC encryption, PBKDF2 key derivation (100,000 iterations), and a cryptographic salt, preventing credential theft in the event of physical inspection or disk copying. Unlocking via a session token stored in memory (_B4L_RT_CTX) allows bypassing constant password entry without compromising security at rest.
+
+### ✔ Termux Protection (Atomic Directory Lock)
+On Android/Termux devices, the standard operating system-level flock utility can fail due to kernel security restrictions or SELinux policies.
+Bash4LLM⁺ automatically detects the Termux environment, transparently disabling flock and automatically falling back to an atomic lock mechanism based on the creation of exclusive directories (atomic mkdir), ensuring the absolute integrity of NDJSON thread logs without risks of process locking.
+
+## 4. Known Limitations
+ * **TOCTOU (Time-of-Check to Time-of-Use) Vulnerability:** Although the script performs strict security checks on file write permissions before loading or writing to them, a microscopic window remains at the base POSIX filesystem level where an attacker with root privileges or concurrent physical access to the folder could theoretically attempt file substitution between the check phase and the use phase.
+ * **Debugging Exposes Sensitive Data:** Using debug mode (BASH4LLM_DEBUG=1 or --debug) disables the automatic removal of transaction temporary files to allow inspection of the curl output. It is recommended not to keep debug mode active in production environments, as files in tmp/ would remain stored on disk until the next transaction.
+
+## 5. Hardening Recommendations
+ 1. **Install in a user folder that is inaccessible to others:**
+   ```sh
+   mkdir -p "$HOME/.local/bin"
+   cp bash4llm "$HOME/.local/bin/"
+   chmod 700 "$HOME/.local/bin/bash4llm"
+   
+   ```
+ 2. **Apply restrictive permissions to the runtime folder:**
+   ```sh
+   chmod 700 "$HOME/bash4llm.d"
+   chmod 600 "$HOME/bash4llm.d/config/config"
+   
+   ```
+ 3. **Use --check-config regularly:**
+   Run the built-in static scanner before launching in sensitive environments to ensure that no configuration files can be modified by third parties.
+
+## 6. Private Vulnerability Reporting (Responsible Disclosure)
+If you detect a potential vulnerability or security flaw within the core script or its extensions, please report it in a **confidential and private** manner to protect the integrity of active users.
+
+#### Contact for Private Reporting:
+*   **Email:** `opensource@cevangel.anonaddy.me`
+*   **Subject:** `[Bash4LLM Security Report]`
+
+We kindly ask you to include in your report:
+ 1. A detailed description of the nature of the vulnerability.
+ 2. A Proof of Concept (PoC) or the sequence of commands necessary to reproduce the vulnerability scenario.
+ 3. The estimated impact and any suggestions for a corrective patch.
+We commit to responding for the initial analysis **within 72 hours** of receiving the report and to coordinating the release of the patch together before publicly disclosing the details of the vulnerability.

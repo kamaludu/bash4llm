@@ -82,22 +82,31 @@ hf_remove_endpoint "google/gemma-2-2b-it"
 > 
 > con le seguenti righe:
 > 
-> ```text
-> # Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)
-> google/gemma-2-2b-it|https://router.huggingface.co/v1/chat/completions
-> mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
-> Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
-> Qwen/Qwen2.5-Coder-7B-Instruct|https://router.huggingface.co/v1/chat/completions
-> microsoft/Phi-3-mini-4k-instruct|https://router.huggingface.co/v1/chat/completions
-> microsoft/Phi-3.5-mini-instruct|https://router.huggingface.co/v1/chat/completions
-> HuggingFaceTB/smollm2-1.7b-instruct|https://router.huggingface.co/v1/chat/completions
-> deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
+>
+> **Hugging Face Endpoints - Ultima sincronizzazione con API Live: 2026-07-10**
+>
+> **Modelli Liberi (Accesso immediato con qualsiasi Token HF valido)**
 > 
-> # Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)
-> meta-llama/Llama-3.2-1B-Instruct|https://router.huggingface.co/v1/chat/completions
-> meta-llama/Llama-3.2-3B-Instruct|https://router.huggingface.co/v1/chat/completions
+> ```text
+> # Modelli Liberi (Testati e attivi sul tuo Router di Hugging Face)
+> deepseek-ai/DeepSeek-R1|https://router.huggingface.co/v1/chat/completions
+> microsoft/phi-4|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-7B-Instruct|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-72B-Instruct|https://router.huggingface.co/v1/chat/completions
+> Qwen/Qwen2.5-Coder-32B-Instruct|https://router.huggingface.co/v1/chat/completions
+> deepseek-ai/DeepSeek-R1-Distill-Qwen-7B|https://router.huggingface.co/v1/chat/completions
 > ```
-
+>
+> 
+> **Modelli Gated (Richiedono l'accettazione dei termini d'uso su huggingface.co prima dell'uso)**
+> 
+> ```text
+> # Modelli Gated (Richiedono accettazione licenza sul sito)
+> meta-llama/Llama-3.3-70B-Instruct|https://router.huggingface.co/v1/chat/completions
+> google/gemma-3-12b-it|https://router.huggingface.co/v1/chat/completions
+> google/gemma-3-27b-it|https://router.huggingface.co/v1/chat/completions
+> mistralai/Mistral-7B-Instruct-v0.3|https://router.huggingface.co/v1/chat/completions
+> ```
 ---
 
 ### 4. API key e sicurezza
@@ -112,6 +121,14 @@ Suggerimento:
 ```sh
 export HUGGINGFACE_API_KEY="hf_..."
 ```
+
+---
+
+#### 4.1 Validazione attiva della chiave (Diagnostica)
+Il modulo supporta la convalida proattiva della chiave tramite la funzione `validate_key_huggingface`:
+- **Endpoint interrogato**: `https://huggingface.co/api/whoami-v2` (richiesta GET).
+- **Meccanismo**: Il token viene trasmesso nell'header `Authorization: Bearer <token>`.
+- **Esito**: Un codice di risposta HTTP `200` conferma che il token è valido e l'account è attivo (ritorna `0`). Un codice `401` indica che il token è invalido o scaduto (ritorna `1`). Eventuali problemi di connessione o timeout entro i 10 secondi restituiscono il codice d'errore di rete.
 
 ---
 

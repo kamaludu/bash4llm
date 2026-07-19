@@ -1,5 +1,5 @@
 --------------------------------------
-Bash4LLM 2.x — Bash-first wrapper for the LLM
+Bash4LLM⁺ 2.x — Bash-first wrapper for the LLM
 --------------------------------------
   --version            Bash4LLM version
   -h, --help           This Help
@@ -23,6 +23,7 @@ Output:
   --raw                Raw output (no formatting)
   --json               Raw JSON output
   --pretty             Pretty-print JSON
+  --no-color           Disable color output
   --out <path>         Save output to file or directory
   --save               Force save
   --nosave             Disable save
@@ -43,12 +44,12 @@ Provider & Model:
   --list-providers-raw List providers (raw, one per line)
   --set-default <m>    Set persistent default model
 
-Sessions:
-  --session <id>       Enable persistent session
-  --session-window [n] Session window size (default 10 if omitted)
-  --init-session       Safely initializes an empty session (creating NDJSON and metadata)
-                       and registers it in global session index, without making API calls
-                       Requires joint use with --session <id>
+Threads:
+  --thread <id>        Enable persistent thread
+  --thread-window [n]  Thread window size (default 10 if omitted)
+  --init-thread        Safely initializes an empty thread (creating NDJSON and metadata)
+                       and registers it in global thread index, without making API calls
+                       Requires joint use with --thread <id>
                       
 Generation parameters:
   --system <text>      System prompt
@@ -67,12 +68,23 @@ Extras installation:
   --install-extras           Install extras (all components)
   --install-extras <dir>     Install extras from directory
   --install-extras=<dir>     Inline form
-  # (Selective install supported: bash4llm --install-extras provider1 templateA)
+
+Security & Vault:
+  --vault              Manage encrypted API keys in the vault
+                       (Interactive console tool)
+
+  Unlock your vault session in RAM to bypass password prompts:
+    `. ./bash4llm`                     (exports obfuscated _B4L_RT_CTX , wiped on exit)
+
+  Bypass or disable the vault entirely:
+    `BASH4LLM_VAULT_ENABLED=0`         (add to bash4llm.d/config to disable permanently)
+    `export BASH4LLM_VAULT_ENABLED=0`     (disables vault for the active session)
+    `BASH4LLM_VAULT_ENABLED=0 ./bash4llm` (disables vault for a single execution)
 
 Examples:
   bash4llm "Summarize this text"
   echo "hello" | bash4llm --model mixtral-8x7b
   bash4llm -f prompt.txt --json
   bash4llm --stream "Generate streaming text"
-  bash4llm --session chat1 "Continue conversation"
+  bash4llm --thread chat1 "Continue conversation"
 --------------------------------------

@@ -13,11 +13,35 @@
         },
         {
           "var": "SCRIPT_VERSION",
-          "init": "\"2.0.0\""
+          "init": "\"2.5.0\""
         },
         {
           "var": "SCRIPT_DATE",
-          "init": "\"2026-06-09\""
+          "init": "\"2026-07-18\""
+        },
+        {
+          "var": "BASH4LLM_PLAT_ANDROID",
+          "init": "0"
+        },
+        {
+          "var": "BASH4LLM_PLAT_MACOS",
+          "init": "0"
+        },
+        {
+          "var": "BASH4LLM_PLAT_WSL",
+          "init": "0"
+        },
+        {
+          "var": "BASH4LLM_PLAT_CYGWIN",
+          "init": "0"
+        },
+        {
+          "var": "BASH4LLM_PLAT_BSD",
+          "init": "0"
+        },
+        {
+          "var": "BASH4LLM_PLAT_LINUX",
+          "init": "0"
         },
         {
           "var": "BASH4LLM_ERR_NO_API_KEY",
@@ -32,10 +56,6 @@
           "init": "12"
         },
         {
-          "var": "BASH4LLM_ERR_INVALID_JSON",
-          "init": "13"
-        },
-        {
           "var": "BASH4LLM_ERR_NO_PROMPT",
           "init": "14"
         },
@@ -48,36 +68,40 @@
           "init": "16"
         },
         {
-          "var": "BASH4LLMERRNOAPIKEY",
+          "var": "BASH4LLM_ERR_SEC",
+          "init": "17"
+        },
+        {
+          "var": "BASH4LLMERR_NO_API_KEY",
           "init": "$BASH4LLM_ERR_NO_API_KEY"
         },
         {
-          "var": "BASH4LLMERRBAD_MODEL",
+          "var": "BASH4LLMERR_BAD_MODEL",
           "init": "$BASH4LLM_ERR_BAD_MODEL"
         },
         {
-          "var": "BASH4LLMERRCURL_FAILED",
+          "var": "BASH4LLMERR_CURL_FAILED",
           "init": "$BASH4LLM_ERR_CURL_FAILED"
         },
         {
-          "var": "BASH4LLMERRINVALID_JSON",
-          "init": "$BASH4LLM_ERR_INVALID_JSON"
-        },
-        {
-          "var": "BASH4LLMERRNO_PROMPT",
+          "var": "BASH4LLMERR_NO_PROMPT",
           "init": "$BASH4LLM_ERR_NO_PROMPT"
         },
         {
-          "var": "BASH4LLMERRTMP",
+          "var": "BASH4LLMERR_TMP",
           "init": "$BASH4LLM_ERR_TMP"
         },
         {
-          "var": "BASH4LLMERRAPI",
+          "var": "BASH4LLMERR_API",
           "init": "$BASH4LLM_ERR_API"
         },
         {
+          "var": "BASH4LLMERR_SEC",
+          "init": "$BASH4LLM_ERR_SEC"
+        },
+        {
           "var": "DEBUG",
-          "init": "\"${DEBUG:-0}\""
+          "init": "\"${DEBUG:-${BASH4LLM_DEBUG:-0}}\""
         },
         {
           "var": "BASH4LLM_LOG",
@@ -88,20 +112,8 @@
           "init": "\"$(resolve_script_dir)\""
         },
         {
-          "var": "CANONICAL_EXTRAS_DIR",
-          "init": "\"${BASH4LLM_DIR%/}/extras\""
-        },
-        {
-          "var": "LEGACY_EXTRAS_DIR",
-          "init": "\"${SCRIPTDIR%/}/extras\""
-        },
-        {
-          "var": "BASH4LLM_EXTRAS_DIR",
-          "init": "\"${CANONICAL_EXTRAS_DIR}\""
-        },
-        {
-          "var": "PROVIDERS_DIR",
-          "init": "\"${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR%/}/providers}\""
+          "var": "BASH4LLM_DIR",
+          "init": "\"${BASH4LLM_DIR:-$SCRIPTDIR/bash4llm.d}\""
         },
         {
           "var": "BASH4LLM_CONFIG_DIR",
@@ -124,8 +136,28 @@
           "init": "\"${BASH4LLM_TMPDIR:-$BASH4LLM_DIR/tmp}\""
         },
         {
-          "var": "MODELS_FILE",
-          "init": "\"${MODELS_FILE:-$BASH4LLM_MODELS_DIR/models.txt}\""
+          "var": "CANONICAL_EXTRAS_DIR",
+          "init": "\"${BASH4LLM_DIR}/extras\""
+        },
+        {
+          "var": "LEGACY_EXTRAS_DIR",
+          "init": "\"${SCRIPTDIR%/}/extras\""
+        },
+        {
+          "var": "BASH4LLM_EXTRAS_DIR",
+          "init": "\"${BASH4LLM_EXTRAS_DIR:-${CANONICAL_EXTRAS_DIR}}\""
+        },
+        {
+          "var": "PROVIDERS_DIR",
+          "init": "\"${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}\""
+        },
+        {
+          "var": "THREAD_DIR",
+          "init": "\"${BASH4LLM_HISTORY_DIR}/threads\""
+        },
+        {
+          "var": "BASH4LLM_OPENSSL_ACTIVE",
+          "init": "0"
         },
         {
           "var": "MAX_MODELS",
@@ -134,10 +166,6 @@
         {
           "var": "PROVIDER_FILE",
           "init": "\"$(canonical_provider_file)\""
-        },
-        {
-          "var": "SESSION_DIR",
-          "init": "\"${BASH4LLM_HISTORY_DIR%/}/sessions\""
         },
         {
           "var": "MODELS_LOCK",
@@ -167,7 +195,15 @@
       "functions": [
         {
           "fn": "resolve_script_dir",
-          "body": "local src=\"$0\" rl dir\nif command -v readlink >/dev/null 2>&1 && [ -L \"$src\" ]; then\nrl=\"$(readlink \"$src\" 2>/dev/null || true)\"\n[ -n \"$rl\" ] && case \"$rl\" in /*) src=\"$rl\" ;; *) src=\"$(dirname \"$src\")/$rl\" ;; esac\nfi\ndir=\"$(cd \"$(dirname \"$src\")\" >/dev/null 2>&1 && pwd || printf '%s' \"$(dirname \"$src\")\")\"\nprintf '%s' \"$dir\""
+          "body": "local src=\"${BASH_SOURCE[0]}\" rl=\"\" dir=\"\"\nif command -v readlink >/dev/null 2>&1 && [ -L \"$src\" ]; then\n  rl=\"$(readlink \"$src\" 2>/dev/null || true)\"\n  [ -n \"$rl\" ] && case \"$rl\" in /*) src=\"$rl\" ;; *) src=\"$(dirname \"$src\")/$rl\" ;; esac\nfi\ndir=\"$(cd \"$(dirname \"$src\")\" >/dev/null 2>&1 && pwd || printf '%s' \"$(dirname \"$src\")\")\"\nprintf '%s' \"$dir\""
+        },
+        {
+          "fn": "safe_mkdir",
+          "body": "local dir=\"${1:-}\"\nlocal perm=\"${2:-700}\"\nif [ -z \"$dir\" ]; then\n  return 1\nfi\nif [ -L \"$dir\" ]; then\n  printf 'bash4llm: %sERROR%s: directory is a symlink: %s\\n' \"${C_RED:-}\" \"${C_RST:-}\" \"$dir\" >&2\n  if [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then\n    exit \"${BASH4LLM_ERR_TMP:-15}\"\n  else\n    return \"${BASH4LLM_ERR_TMP:-15}\"\n  fi\nfi\nif [ ! -d \"$dir\" ]; then\n  mkdir -p \"$dir\" 2>/dev/null || {\n    printf 'bash4llm: %sERROR%s: cannot create directory: %s\\n' \"${C_RED:-}\" \"${C_RST:-}\" \"$dir\" >&2\n    if [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then\n      exit \"${BASH4LLM_ERR_TMP:-15}\"\n    else\n      return \"${BASH4LLM_ERR_TMP:-15}\"\n    fi\n  }\n  chmod \"$perm\" \"$dir\" 2>/dev/null || true\nfi"
+        },
+        {
+          "fn": "check_required_arg",
+          "body": "local option=\"${1:-}\"\nlocal count=\"${2:-0}\"\nif [ \"$count\" -lt 2 ]; then\n  log_error \"ARGS\" \"Option $option requires an argument\"\n  exit \"${BASH4LLM_ERR_TMP:-15}\"\nfi"
         },
         {
           "fn": "canonical_config_dir",
@@ -183,111 +219,135 @@
         },
         {
           "fn": "canonical_provider_url_file",
-          "body": "if type canonical_config_dir >/dev/null 2>&1; then\ncfgdir=\"$(canonical_config_dir)\"\nelse\ncfgdir=\"${BASH4LLM_CONFIG_DIR:-${BASH4LLM_DIR%/}/config}\"\nfi\nprintf '%s' \"${cfgdir%/}/provider-url\""
+          "body": "local cfgdir=\"\"\nif type canonical_config_dir >/dev/null 2>&1; then\n  cfgdir=\"$(canonical_config_dir)\"\nelse\n  cfgdir=\"${BASH4LLM_CONFIG_DIR:-${BASH4LLM_DIR%/}/config}\"\nfi\nprintf '%s' \"${cfgdir%/}/provider-url\""
+        },
+        {
+          "fn": "trim_space",
+          "body": "local var=\"${1:-}\"\nvar=\"${var#\"${var%%[![:space:]]*}\"}\"\nvar=\"${var%\"${var##*[![:space:]]}\"}\"\nprintf '%s' \"$var\""
+        },
+        {
+          "fn": "sync_models_file_path",
+          "body": "local prov=\"${1:-${PROVIDER:-groq}}\"\nprov=\"${prov//[^a-zA-Z0-9_-]/}\"\n[ -n \"$prov\" ] || prov=\"groq\"\nMODELS_FILE=\"${BASH4LLM_MODELS_DIR:-}/${prov}.txt\"\nexport MODELS_FILE"
+        },
+        {
+          "fn": "validate_file_input",
+          "body": "local f=\"${1:-}\" size=\"\"\nif [ -z \"$f\" ]; then\n  return 1\nfi\nif [ ! -f \"$f\" ] || [ ! -r \"$f\" ]; then\n  return 2\nfi\nsize=\"$(file_size \"$f\" 2>/dev/null || echo 0)\"\nif [ \"$size\" -eq 0 ]; then\n  return 3\nfi\nif [ -n \"$(LC_ALL=C tr -d '\\t\\r\\n\\x20-\\x7E\\x80-\\xFF' < \"$f\" | head -c 1)\" ]; then\n  return 4\nfi\nreturn 0"
+        },
+        {
+          "fn": "_normalize_model_name",
+          "body": "local prov=\"${PROVIDER:-groq}\"\nlocal name=\"${1:-}\"\nlocal cache_key=\"${prov}||${name}\"\nif [ -n \"${BASH4LLM_MODEL_CACHE[$cache_key]:-}\" ]; then\n  printf '%s' \"${BASH4LLM_MODEL_CACHE[$cache_key]}\"\n  return 0\nfi\nlocal normalized=\"\"\nlocal trimmed=\"${name#\"${name%%[![:space:]]*}\"}\"\ntrimmed=\"${trimmed%\"${trimmed##*[![:space:]]}\"}\"\ntrimmed=\"${trimmed//$'\\r'/}\"\nif type \"normalize_model_${prov}\" >/dev/null 2>&1; then\n  normalized=\"$( \"normalize_model_${prov}\" \"$trimmed\" 2>/dev/null || true )\"\nfi\nif [ -z \"$normalized\" ]; then\n  normalized=\"$trimmed\"\n  normalized=\"${normalized#models/}\"\n  if [ \"$prov\" != \"gemini\" ]; then\n    normalized=\"${normalized#$prov}\"\n  fi\n  while [[ \"$normalized\" == [[:space:]:/~_-]* ]]; do\n    normalized=\"${normalized#?}\"\n  done\nfi\nnormalized=\"${normalized//[^a-zA-Z0-9._\\/:+@=-]/}\"\nBASH4LLM_MODEL_CACHE[\"$cache_key\"]=\"$normalized\"\nprintf '%s' \"$normalized\""
         },
         {
           "fn": "ensure_api_key_for_provider",
-          "body": "local prov=\"$1\"\nlocal envvar current_key input_key custom_var custom_env\n[ -n \"$prov\" ] || return 1\nenvvar=\"$(provider_api_env_var_name \"$prov\")\"\ncustom_var=\"PROVIDER_API_ENV_${prov}\"\ncustom_env=\"${!custom_var:-}\"\nif [ -n \"$custom_env\" ]; then\nenvvar=\"$custom_env\"\nfi\ncurrent_key=\"${!envvar:-}\"\nif [ -n \"$current_key\" ]; then\nif [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\nexport GROQ_API_KEY=\"$current_key\"\nfi\nreturn 0\nfi\nif [ ! -t 0 ]; then\nprintf 'bash4llm: ERROR: missing API key for provider %s (env %s) in non-interactive mode\\n' \"$prov\" \"$envvar\" >&2\nreturn \"$BASH4LLMERRNOAPIKEY\"\nfi\nprintf 'Enter API key for provider %s (env %s): ' \"$prov\" \"$envvar\" >&2\nif ! IFS= read -r input_key; then\nprintf '\\nbash4llm: ERROR: no input received. Aborting.\\n' >&2\nreturn \"$BASH4LLMERRNOAPIKEY\"\nfi\ninput_key=\"$(printf '%s' \"$input_key\" | tr -d '\\r\\n')\"\ninput_key=\"$(printf '%s' \"$input_key\" | sed -E 's/^[[:space:]]*export[[:space:]]+//I')\"\nif printf '%s' \"$input_key\" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*='; then\ninput_key=\"$(printf '%s' \"$input_key\" | sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[\\\"\\x27]?([^\\\"\\x27]*).*$/\\1/')\"\nfi\nif [ -z \"$input_key\" ]; then\nprintf 'bash4llm: ERROR: API key required. Aborting.\\n' >&2\nreturn \"$BASH4LLMERRNOAPIKEY\"\nfi\nexport \"$envvar\"=\"$input_key\"\nif [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\nexport GROQ_API_KEY=\"$input_key\"\nfi\nprintf '\\n--------------------------------------\\n' >&2\nprintf '\\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\\n' >&2\nprintf '\\n export %s=\"%s\"\\n' \"$envvar\" \"$input_key\" >&2\nprintf '\\nYou can add that line to your shell profile (e.g., ~/.bashrc or ~/.profile) to persist it across sessions.\\n' >&2\nprintf '\\n--------------------------------------\\n' >&2\nreturn 0"
+          "body": "local prov=\"${1:-}\"\nlocal envvar=\"\" current_key=\"\" input_key=\"\" custom_var=\"\" custom_env=\"\"\n[ -n \"$prov\" ] || return 1\nenvvar=\"$(provider_api_env_var_name \"$prov\")\"\ncustom_var=\"PROVIDER_API_ENV_${prov}\"\nif [ -n \"${custom_var:-}\" ] && declare -p \"$custom_var\" >/dev/null 2>&1; then\n  custom_env=\"${!custom_var:-}\"\nfi\nif [ -n \"${custom_env:-}\" ]; then\n  envvar=\"$custom_env\"\nfi\ncurrent_key=\"\"\nif declare -p \"$envvar\" >/dev/null 2>&1; then\n  current_key=\"${!envvar:-}\"\nfi\nif [ -n \"$current_key\" ]; then\n  if [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\n    export GROQ_API_KEY=\"$current_key\"\n  fi\n  return 0\nfi\nif [ -z \"$current_key\" ] && [ \"${BASH4LLM_OPENSSL_ACTIVE:-0}\" -eq 1 ] && vault_exists; then\n  if [ -z \"${BASH4LLM_DECRYPTED_VAULT_JSON:-}\" ]; then\n    log_info_user \"SECURITY\" \"Vault file detected. Authenticating to unlock saved API keys...\"\n    BASH4LLM_DECRYPTED_VAULT_JSON=\"$(vault_load_keys)\" || true\n  fi\n  if [ -n \"${BASH4LLM_DECRYPTED_VAULT_JSON:-}\" ]; then\n    local extracted_key=\"\"\n    extracted_key=\"$(printf '%s' \"$BASH4LLM_DECRYPTED_VAULT_JSON\" | jq -r --arg p \"$prov\" '.[$p] // empty' 2>/dev/null || true)\"\n    if [ -n \"$extracted_key\" ]; then\n      current_key=\"$extracted_key\"\n      export \"$envvar\"=\"$current_key\"\n      if [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\n        export GROQ_API_KEY=\"$current_key\"\n      fi\n      return 0\n    else\n      log_warn \"SECURITY\" \"No saved API key found in vault for provider: $prov\"\n    fi\n  else\n    log_warn \"SECURITY\" \"Authentication failed. Falling back to manual input.\"\n    BASH4LLM_DECRYPTED_VAULT_JSON=\"\"\n  fi\nfi\nif [ ! -t 0 ]; then\n  printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\\n' \"${C_RED}\" \"${C_RST}\" \"$prov\" \"$envvar\" >&2\n  return \"$BASH4LLM_ERR_NO_API_KEY\"\nfi\nprintf 'Enter API key for provider %s (env %s): ' \"$prov\" \"$envvar\" >&2\nif ! IFS= read -r input_key; then\n  printf '\\nbash4llm: %sERROR%s: no input received. Aborting.\\n' \"${C_RED}\" \"${C_RST}\" >&2\n  return \"$BASH4LLM_ERR_NO_API_KEY\"\nfi\ninput_key=\"${input_key//$$'\\r'/}\"\ninput_key=\"${input_key//$$'\\n'/}\"\nlocal rx_export='^[[:space:]]*[eE][xX][pO][rR][tT][[:space:]]+(.*)$'\nif [[ \"$input_key\" =~ $rx_export ]]; then\n  input_key=\"${BASH_REMATCH[1]}\"\nfi\nlocal rx_assign='^[A-Za-z_][A-Za-z0-9_]*=['\"'\"'\"]?([^'\"'\"'\"]*).*$'\nif [[ \"$input_key\" =~ $rx_assign ]]; then\n  input_key=\"${BASH_REMATCH[1]}\"\nfi\nif [ -z \"$input_key\" ]; then\n  printf 'bash4llm: %sERROR%s: API key required. Aborting.\\n' \"${C_RED}\" \"${C_RST}\" >&2\n  return \"$BASH4LLM_ERR_NO_API_KEY\"\nfi\nexport \"$envvar\"=\"$input_key\"\nif [ \"$prov\" = \"groq\" ] && [ \"$envvar\" != \"GROQ_API_KEY\" ]; then\n  export GROQ_API_KEY=\"$input_key\"\nfi\nprintf '%b' \"\\n${C_BCYAN}----------------------------------------${C_RST}\\n\\nTo avoid re-entering the key for subsequent invocations, run this in your shell:\\n\\n  ${C_BGREEN}export ${envvar}=\\\"${input_key}\\\"${C_RST}\\n\\nYou can add that line to your shell profile (e.g., ${C_YELLOW}~/.bashrc${C_RST} or ${C_YELLOW}~/.profile${C_RST}) to persist it across sessions.\\n\\n${C_BCYAN}----------------------------------------${C_RST}\\n\\n\" >&2\nreturn 0"
         },
         {
           "fn": "enforce_network_policy",
-          "body": "if is_truthy \"${DRY_RUN:-0}\" || is_truthy \"${BASH4LLM_SKIP_NETWORK:-0}\"; then\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"NETWORK\" \"Network calls disabled by DRY_RUN or BASH4LLM_SKIP_NETWORK; skipping HTTP.\"\nfi\nreturn 1\nfi\nif is_truthy \"${BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET:-0}\" && is_truthy \"${QUIET:-0}\"; then\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"NETWORK\" \"Network calls disabled due to QUIET policy.\"\nfi\nreturn 1\nfi\nreturn 0"
+          "body": "if is_truthy \"${DRY_RUN:-0}\" || is_truthy \"${BASH4LLM_SKIP_NETWORK:-0}\"; then\n  if [ \"${DEBUG:-0}\" -eq 1 ]; then\n    log_info \"NETWORK\" \"Network calls disabled by DRY_RUN or BASH4LLM_SKIP_NETWORK; skipping HTTP.\"\n  fi\n  return 1\nfi\nif is_truthy \"${BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET:-0}\" && is_truthy \"${QUIET:-0}\"; then\n  if [ \"${DEBUG:-0}\" -eq 1 ]; then\n    log_info \"NETWORK\" \"Network calls disabled due to QUIET policy.\"\n  fi\n  return 1\nfi\nreturn 0"
+        },
+        {
+          "fn": "_extract_notes_section",
+          "body": "local target_header=\"${1:-}\"\nlocal notes_file=\"${BASH4LLM_EXTRAS_DIR:-}/docs/core-notes.sh\"\nif [ ! -f \"$notes_file\" ] || [ ! -r \"$notes_file\" ]; then\n  return 1\nfi\nawk -v header=\"$target_header\" '\n  index($0, header) { flag=1; next }\n  /^[[:space:]]*$/ { if (flag) { flag=0; exit } }\n  flag { print }\n' \"$notes_file\" 2>/dev/null"
         },
         {
           "fn": "log_prefix",
-          "body": "printf 'bash4llm: %s: ' \"$SCRIPT_NAME\""
+          "body": "printf '%s: ' \"$SCRIPT_NAME\""
         },
         {
           "fn": "log_info",
-          "body": "local code=\"${1:-INFO}\" msg=\"${2:-}\"\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nprintf '%sINFO: %s: %s\\n' \"$(log_prefix)\" \"$code\" \"$msg\" >&2\nfi\nif [ -n \"$BASH4LLM_LOG\" ]; then printf '%s INFO %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true; fi"
+          "body": "local code=\"${1:-INFO}\" msg=\"${2:-}\"\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\n  printf '%s%sINFO%s: %s: %s\\n' \"$(log_prefix)\" \"${C_GREEN}\" \"${C_RST}\" \"$code\" \"$msg\" >&2\nfi\nif [ -n \"$BASH4LLM_LOG\" ]; then printf '%s INFO %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true; fi"
         },
         {
           "fn": "log_warn",
-          "body": "local code=\"${1:-WARN}\" msg=\"${2:-}\"\nprintf '%sWARN: %s: %s\\n' \"$(log_prefix)\" \"$code\" \"$msg\" >&2\nif [ -n \"$BASH4LLM_LOG\" ]; then printf '%s WARN %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true; fi"
+          "body": "local code=\"${1:-WARN}\" msg=\"${2:-}\"\nprintf '%s%sWARN%s: %s: %s\\n' \"$(log_prefix)\" \"${C_BYELLOW}\" \"${C_RST}\" \"$code\" \"$msg\" >&2\nif [ -n \"$BASH4LLM_LOG\" ]; then printf '%s WARN %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true; fi"
         },
         {
           "fn": "log_error",
-          "body": "local code=\"${1:-ERROR}\" msg=\"${2:-}\"\nprintf '%sERROR: %s: %s\\n' \"$(log_prefix)\" \"$code\" \"$msg\" >&2\nif [ -n \"$BASH4LLM_LOG\" ]; then printf '%s ERROR %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true; fi"
+          "body": "local code=\"${1:-ERROR}\" msg=\"${2:-}\"\nprintf '%s%sERROR%s: %s: %s\\n' \"$(log_prefix)\" \"${C_RED}\" \"${C_RST}\" \"$code\" \"$msg\" >&2\nif [ -n \"$BASH4LLM_LOG\" ]; then printf '%s ERROR %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true; fi"
+        },
+        {
+          "fn": "log_info_user",
+          "body": "local code=\"${1:-INFO}\" msg=\"${2:-}\"\nif [ \"${QUIET:-0}\" -ne 1 ]; then\n  printf '%s%sINFO%s: %s: %s\\n' \"$(log_prefix)\" \"${C_GREEN}\" \"${C_RST}\" \"$code\" \"$msg\" >&2\nfi\nif [ -n \"$BASH4LLM_LOG\" ]; then\n  printf '%s INFO_USER %s %s\\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" \"$msg\" >>\"$BASH4LLM_LOG\" 2>/dev/null || true\nfi"
         },
         {
           "fn": "dbg",
-          "body": "if [ \"${DEBUG:-0}\" -ne 0 ]; then\nprintf '%s\\n' \"$*\" >&2\nfi"
+          "body": "if [ \"${DEBUG:-0}\" -ne 0 ]; then\n  printf '%s\\n' \"$*\" >&2\nfi"
         },
         {
           "fn": "ensure_config_dir",
-          "body": "BASH4LLM_CONFIG_DIR=\"${BASH4LLM_CONFIG_DIR%/}\"\nif [ -z \"$BASH4LLM_CONFIG_DIR\" ]; then\nBASH4LLM_CONFIG_DIR=\"${BASH4LLM_DIR%/}/config\"\nfi\nif ! mkdir -p \"${BASH4LLM_CONFIG_DIR}\" 2>/dev/null; then\nlog_error \"CONFIG\" \"cannot create config dir: ${BASH4LLM_CONFIG_DIR}\"\nreturn 1\nfi\nchmod 700 \"${BASH4LLM_CONFIG_DIR}\" 2>/dev/null || true\nif ! : > \"${BASH4LLM_CONFIG_DIR%/}/.bash4llm_tmp_check\" 2>/dev/null; then\nlog_error \"CONFIG\" \"config dir not writable: ${BASH4LLM_CONFIG_DIR}\"\nreturn 1\nelse\nrm -f \"${BASH4LLM_CONFIG_DIR%/}/.bash4llm_tmp_check\" 2>/dev/null || true\nfi\nreturn 0"
+          "body": "safe_mkdir \"${BASH4LLM_CONFIG_DIR}\" 700\nif ! : > \"${BASH4LLM_CONFIG_DIR}/.bash4llm_tmp_check\" 2>/dev/null; then\n  log_error \"CONFIG\" \"config dir not writable: ${BASH4LLM_CONFIG_DIR}\"\n  return 1\nelse\n  rm -f \"${BASH4LLM_CONFIG_DIR}/.bash4llm_tmp_check\" 2>/dev/null || true\nfi\nreturn 0"
         },
         {
           "fn": "write_provider_url_if_missing",
-          "body": "local prov=\"$1\" url=\"$2\" file dir tmp\n[ -z \"$prov\" ] && return 1\n[ -z \"$url\" ] && return 1\nfile=\"$(canonical_provider_url_file)\"\ndir=\"$(dirname \"$file\")\"\nmkdir -p \"$dir\" 2>/dev/null || return 1\nif [ -f \"$file\" ] && [ -s \"$file\" ]; then\nreturn 0\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\ntmp=\"$(mktemp \"${RUN_TMPDIR%/}/provider-url.XXXX\" 2>/dev/null || true)\"\nelse\ntmp=\"$(mktemp 2>/dev/null || true)\"\nfi\nif [ -n \"$tmp\" ]; then\nprintf '%s\\n' \"$url\" > \"$tmp\"\nmv -f \"$tmp\" \"$file\" 2>/dev/null || cp -f \"$tmp\" \"$file\" 2>/dev/null || { rm -f \"$tmp\" 2>/dev/null || true; return 1; }\nchmod 600 \"$file\" 2>/dev/null || true\nreturn 0\nelse\nprintf '%s\\n' \"$url\" > \"$file\" 2>/dev/null || return 1\nchmod 600 \"$file\" 2>/dev/null || true\nreturn 0\nfi"
+          "body": "local prov=\"${1:-}\" url=\"${2:-}\" file=\"\" dir=\"\" tmp=\"\"\n[ -z \"$prov\" ] && return 1\n[ -z \"$url\" ] && return 1\nfile=\"$(canonical_provider_url_file)\"\ndir=\"$(dirname \"$file\")\"\nsafe_mkdir \"$dir\" 700\nif [ -f \"$file\" ] && [ -s \"$file\" ]; then\n  return 0\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\n  tmp=\"$(mktemp \"${RUN_TMPDIR%/}/provider-url.XXXXXX\" 2>/dev/null || true)\"\nelse\n  tmp=\"$(mktemp 2>/dev/null || true)\"\nfi\nif [ -n \"$tmp\" ]; then\n  printf '%s\\n' \"$url\" > \"$tmp\"\n  mv -f \"$tmp\" \"$file\" 2>/dev/null || cp -f \"$tmp\" \"$file\" 2>/dev/null || { rm -f \"$tmp\" 2>/dev/null || true; return 1; }\n  chmod 600 \"$file\" 2>/dev/null || true\n  return 0\nelse\n  printf '%s\\n' \"$url\" > \"$file\" 2>/dev/null || return 1\n  chmod 600 \"$file\" 2>/dev/null || true\n  return 0\nfi"
         },
         {
           "fn": "resolve_provider_url",
-          "body": "local prov=\"${1:-$PROVIDER}\" prov_file prov_val\nif [ -n \"${BASH4LLM_API_URL:-}\" ]; then\nBASH4LLM_PROVIDER_URL=\"${BASH4LLM_API_URL}\"\nexport BASH4LLM_PROVIDER_URL\nreturn 0\nfi\nif [ -n \"${BASH4LLM_PROVIDER_URL:-}\" ]; then\nreturn 0\nfi\nprov_file=\"$(canonical_provider_url_file)\"\nif [ -f \"$prov_file\" ] && [ -s \"$prov_file\" ]; then\nprov_val=\"$(sed -n '1p' \"$prov_file\" 2>/dev/null | awk '{$1=$1;print}')\"\nif [ -n \"$prov_val\" ]; then\nBASH4LLM_PROVIDER_URL=\"$prov_val\"\nexport BASH4LLM_PROVIDER_URL\nreturn 0\nfi\nfi\nif [ \"${prov:-}\" = \"groq\" ]; then\nBASH4LLM_PROVIDER_URL=\"https://api.groq.com/openai/v1/chat/completions\"\nexport BASH4LLM_PROVIDER_URL\nreturn 0\nfi\nreturn 1"
+          "body": "local prov=\"${1:-${PROVIDER:-}}\" prov_file=\"\" prov_val=\"\" cfgdir=\"\"\nif [ -n \"${BASH4LLM_API_URL:-}\" ]; then\n  BASH4LLM_PROVIDER_URL=\"${BASH4LLM_API_URL}\"\n  export BASH4LLM_PROVIDER_URL\n  return 0\nfi\nif [ -n \"${BASH4LLM_PROVIDER_URL:-}\" ]; then\n  return 0\nfi\nprov_file=\"$(canonical_provider_url_file)\"\nif [ -f \"$prov_file\" ] && [ -s \"$prov_file\" ]; then\n  prov_val=\"$(sed -n '1p' \"$prov_file\" 2>/dev/null | awk '{$1=$1;print}')\"\n  if [ -n \"$prov_val\" ]; then\n    BASH4LLM_PROVIDER_URL=\"$prov_val\"\n    export BASH4LLM_PROVIDER_URL\n    return 0\n  fi\nfi\nif [ \"${prov:-}\" = \"groq\" ]; then\n  BASH4LLM_PROVIDER_URL=\"https://api.groq.com/openai/v1/chat/completions\"\n  export BASH4LLM_PROVIDER_URL\n  return 0\nfi\nreturn 1"
         },
         {
           "fn": "provider_api_env_var_name",
-          "body": "local prov=\"$1\"\nlocal prov_upper\nprov_upper=\"$(printf '%s' \"$prov\" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')\"\nprintf '%s' \"${prov_upper}_API_KEY\""
+          "body": "local prov=\"${1:-}\" prov_upper=\"\"\nprov_upper=\"${prov^^}\"\nprov_upper=\"${prov_upper//[!A-Z0-9_]/_}\"\nprintf '%s' \"${prov_upper}_API_KEY\""
         },
         {
           "fn": "is_valid_json_string",
-          "body": "local s=\"$1\"\n[ -n \"${s:-}\" ] || return 1\nprintf '%s' \"$s\" | jq -e . >/dev/null 2>&1"
+          "body": "local s=\"${1:-}\"\n[ -n \"${s:-}\" ] || return 1\nprintf '%s' \"$s\" | jq -e . >/dev/null 2>&1"
         },
         {
           "fn": "b64encode",
-          "body": "if base64 2>/dev/null | tr -d '\\n'; then\n:\nelse\nreturn 1\nfi"
+          "body": "if command -v openssl >/dev/null 2>&1; then\n  openssl enc -base64 2>/dev/null | tr -d '\\n'\nelse\n  base64 2>/dev/null | tr -d '\\n'\nfi"
         },
         {
           "fn": "b64decode",
-          "body": "if [ -n \"${B64_DECODE_OPT:-}\" ]; then\nbase64 ${B64_DECODE_OPT}\nelse\nbase64 -d\nfi"
+          "body": "if command -v openssl >/dev/null 2>&1; then\n  awk '{gsub(/.{64}/,\"&\\n\")}1' | openssl enc -base64 -d 2>/dev/null\nelse\n  if [ -n \"${B64_DECODE_OPT:-}\" ]; then\n    base64 ${B64_DECODE_OPT}\n  else\n    base64 -d\n  fi\nfi"
         },
         {
           "fn": "is_truthy",
-          "body": "case \"${1:-}\" in\n1|true|TRUE|True|yes|YES|Yes) return 0 ;;\n*) return 1 ;;\nesac"
+          "body": "case \"${1:-}\" in\n  1|true|TRUE|True|yes|YES|Yes) return 0 ;;\n  *) return 1 ;;\nesac"
         },
         {
           "fn": "file_size",
-          "body": "local f=\"$1\"\nif [ -z \"$f\" ] || [ ! -f \"$f\" ]; then\nprintf '0'\nreturn 0\nfi\ncase \"$(uname 2>/dev/null || echo Linux)\" in\nDarwin) stat -f %z \"$f\" 2>/dev/null || printf '0' ;;\n*) stat -c %s \"$f\" 2>/dev/null || printf '0' ;;\nesac"
+          "body": "local f=\"${1:-}\"\nif [ -z \"$f\" ] || [ ! -f \"$f\" ]; then\n  printf '0'\n  return 0\nfi\nif [ \"$BASH4LLM_PLAT_MACOS\" -eq 1 ] || [ \"$BASH4LLM_PLAT_BSD\" -eq 1 ]; then\n  stat -f %z \"$f\" 2>/dev/null || printf '0'\nelse\n  stat -c %s \"$f\" 2>/dev/null || printf '0'\nfi"
         },
         {
           "fn": "is_valid_json_file",
-          "body": "local f=\"$1\"\n[ -f \"$f\" ] || return 1\n[ -s \"$f\" ] || return 1\njq -e . \"$f\" >/dev/null 2>&1"
+          "body": "local f=\"${1:-}\"\n[ -f \"$f\" ] || return 1\n[ -s \"$f\" ] || return 1\njq -e . \"$f\" >/dev/null 2>&1"
         },
         {
           "fn": "stage_b64",
-          "body": "local src dst max_bytes tmp_local tmp_b64 workdir size tmp_local_is_temp=0 lockfile\nif [ \"$#\" -eq 2 ]; then\nsrc=\"$1\"; dst=\"$2\"\nelif [ \"$#\" -eq 1 ]; then\ndst=\"$1\"; src=\"\"\nelse\nlog_error \"STAGE\" \"stage_b64 usage: stage_b64 [src] dst\"\nreturn 1\nfi\nmax_bytes=\"${MAX_STAGE_BYTES:-10485760}\"\n[ -n \"$dst\" ] || return 1\nworkdir=\"$(dirname \"$dst\")\"\nmkdir -p \"$workdir\" 2>/dev/null || {\nlog_error \"STAGE\" \"cannot create workdir $workdir\"\nreturn 1\n}\nif [ -n \"$src\" ]; then\nif [ ! -f \"$src\" ] || [ ! -s \"$src\" ]; then\nlog_error \"STAGE\" \"stage_b64: source payload missing or empty: $src\"\nreturn 1\nfi\ntmp_local=\"$src\"\nelse\ntmp_local=\"$(_tmpf file \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" payload.tmp 2>/dev/null)\" || {\nlog_error \"STAGE\" \"failed to allocate tmp_local\"\nreturn 1\n}\nif ! cat - > \"$tmp_local\" 2>/dev/null; then\nrm -f -- \"$tmp_local\" 2>/dev/null || true\nlog_error \"STAGE\" \"failed to write staging payload from stdin\"\nreturn 1\nfi\ntmp_local_is_temp=1\nfi\nsize=\"$(file_size \"$tmp_local\" 2>/dev/null || echo 0)\"\nif [ \"$size\" -gt \"$max_bytes\" ]; then\nlog_error \"STAGE\" \"staged payload exceeds max allowed size ($size > $max_bytes)\"\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nreturn 1\nfi\ntmp_b64=\"$(_tmpf file \"$BASH4LLM_TMPDIR\" .groq-b64 2>/dev/null)\" || {\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nlog_error \"STAGE\" \"failed to allocate tmp_b64\"\nreturn 1\n}\nif base64 \"$tmp_local\" 2>/dev/null | tr -d '\\n' > \"$tmp_b64\"; then\n:\nelse\nrm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\nreturn 1\nfi\nchmod 600 \"$tmp_b64\" 2>/dev/null || true\nlockfile=\"${workdir%/}/.bash4llm.lock\"\nif type lock_exec >/dev/null 2>&1; then\nlock_exec \"$lockfile\" 10 -- mv -f -- \"$tmp_b64\" \"$dst\" || {\nrm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\nreturn 1\n}\nelse\nmv -f \"$tmp_b64\" \"$dst\" 2>/dev/null || {\nrm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\nreturn 1\n}\nfi\nchmod 600 \"$dst\" 2>/dev/null || true\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"STAGE\" \"staged base64 payload: $dst (size $(wc -c < \"$dst\" 2>/dev/null)B)\"\nfi\nreturn 0"
+          "body": "local src=\"\" dst=\"\" max_bytes=\"\" tmp_local=\"\" tmp_b64=\"\" workdir=\"\" size=\"\" tmp_local_is_temp=0 lockfile=\"\"\nif [ \"$#\" -eq 2 ]; then\n  src=\"$1\"; dst=\"$2\"\nelif [ \"$#\" -eq 1 ]; then\n  dst=\"$1\"; src=\"\"\nelse\n  log_error \"STAGE\" \"stage_b64 usage: stage_b64 [src] dst\"\n  return 1\nfi\nmax_bytes=\"${MAX_STAGE_BYTES:-10485760}\"\n[ -n \"$dst\" ] || return 1\nworkdir=\"$(dirname \"$dst\")\"\nsafe_mkdir \"$workdir\" 700\nif [ -n \"$src\" ]; then\n  if [ ! -f \"$src\" ] || [ ! -s \"$src\" ]; then\n    log_error \"STAGE\" \"stage_b64: source payload missing or empty: $src\"\n    return 1\n  fi\n  tmp_local=\"$src\"\nelse\n  tmp_local=\"$(_tmpf file \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" payload.tmp 2>/dev/null)\" || {\n    log_error \"STAGE\" \"failed to allocate tmp_local\"\n    return 1\n  }\n  if ! cat - > \"$tmp_local\" 2>/dev/null; then\n    rm -f -- \"$tmp_local\" 2>/dev/null || true\n    log_error \"STAGE\" \"failed to write staging payload from stdin\"\n    return 1\n  fi\n  tmp_local_is_temp=1\nfi\nsize=\"$(file_size \"$tmp_local\" 2>/dev/null || echo 0)\"\nif [ \"$size\" -gt \"$max_bytes\" ]; then\n  log_error \"STAGE\" \"staged payload exceeds max allowed size ($size > $max_bytes)\"\n  [ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\n  return 1\nfi\ntmp_b64=\"$(_tmpf file \"$BASH4LLM_TMPDIR\" .groq-b64 2>/dev/null)\" || {\n  [ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\n  log_error \"STAGE\" \"failed to allocate tmp_b64\"\n  return 1\n}\nif base64 \"$tmp_local\" 2>/dev/null | tr -d '\\n' > \"$tmp_b64\"; then\n  :\nelse\n  rm -f -- \"$tmp_b64\" 2>/dev/null || true\n  if [ \"$tmp_local_is_temp\" -eq 1 ]; then\n    rm -f -- \"$tmp_local\" 2>/dev/null || true\n  fi\n  return 1\nfi\nchmod 600 \"$tmp_b64\" 2>/dev/null || true\nlockfile=\"${workdir%/}/.bash4llm.lock\"\nlock_exec \"$lockfile\" 10 -- mv -f -- \"$tmp_b64\" \"$dst\" || {\n  rm -f -- \"$tmp_local\" \"$tmp_b64\" 2>/dev/null || true\n  return 1\n}\nchmod 600 \"$dst\" 2>/dev/null || true\n[ \"$tmp_local_is_temp\" -eq 1 ] && rm -f -- \"$tmp_local\" 2>/dev/null || true\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\n  log_info \"STAGE\" \"staged base64 payload: $dst (size $(wc -c < \"$dst\" 2>/dev/null)B)\"\nfi\nreturn 0"
         },
         {
           "fn": "lock_exec",
-          "body": "local lockfile=\"$1\"\nlocal timeout=\"${2:-10}\"\nshift 2\nif [ \"$1\" != \"--\" ]; then\nlog_error \"USAGE\" \"lock_exec <lockfile> <timeout> -- <cmd> [args...]\"\nreturn 2\nfi\nshift\nmkdir -p \"$(dirname \"$lockfile\")\" 2>/dev/null || { log_error \"LOCKFAIL\" \"cannot create lockfile dir: $(dirname \"$lockfile\")\"; return 2; }\nif command -v flock >/dev/null 2>&1; then\n(\nexec 9>\"$lockfile\"\nif ! flock -x -w \"$timeout\" 9; then\nprintf '%sERROR: LOCKTIMEOUT: could not acquire lock on %s within %s seconds\\n' \"$(log_prefix)\" \"$lockfile\" \"$timeout\" >&2\nexit 124\nfi\nset -e\n\"$@\"\n)\nrc=$?\nreturn \"$rc\"\nfi\nlog_error \"LOCK\" \"flock not available; cannot acquire lock on $lockfile. Install util-linux/coreutils or run on supported platform.\"\nreturn 2"
+          "body": "local lockfile=\"${1:-}\"\nlocal timeout=\"${2:-10}\"\nlocal rc=\"\"\nshift 2\nif [ \"$1\" != \"--\" ]; then\n  log_error \"USAGE\" \"lock_exec <lockfile> <timeout> -- <cmd> [args...]\"\n  return 2\nfi\nshift\nif [ -L \"$lockfile\" ]; then\n  log_error \"SEC\" \"lockfile is a symlink: $lockfile. Aborting.\"\n  exit 15\nfi\nsafe_mkdir \"$(dirname \"$lockfile\")\" 700\nlocal use_flock=0\nif command -v flock >/dev/null 2>&1 && [ \"$BASH4LLM_PLAT_ANDROID\" -eq 0 ] && [ \"$BASH4LLM_PLAT_MACOS\" -eq 0 ] && [ \"$BASH4LLM_PLAT_BSD\" -eq 0 ]; then\n  use_flock=1\nfi\nif [ \"$use_flock\" -eq 1 ]; then\n  (\n    exec 9>\"$lockfile\"\n    if flock -x -w \"$timeout\" 9 2>/dev/null; then\n      set -e\n      \"$@\"\n    else\n      log_error \"LOCKTIMEOUT\" \"could not acquire lock on $lockfile within $timeout seconds\"\n      exit 124\n    fi\n  )\n  rc=$?\n  return \"$rc\"\nelse\n  local lockdir=\"${lockfile}.lockdir\"\n  local start_time=\"\" now=\"\" acquired=0 lock_mtime=\"\" age=\"\"\n  lock_mtime=$(_file_mtime \"$lockdir\")\n  if [ \"$lock_mtime\" -gt 0 ]; then\n    now=$(date +%s 2>/dev/null || echo 0)\n    age=$((now - lock_mtime))\n    if [ \"$age\" -gt 15 ]; then\n      rmdir \"$lockdir\" 2>/dev/null || rm -rf \"$lockdir\" 2>/dev/null || true\n    fi\n  fi\n  start_time=$(date +%s 2>/dev/null || echo 0)\n  acquired=0\n  while :; do\n    if mkdir \"$lockdir\" 2>/dev/null; then\n      acquired=1\n      break\n    fi\n    now=$(date +%s 2>/dev/null || echo 0)\n    if [ $((now - start_time)) -ge \"$timeout\" ]; then\n      break\n    fi\n    sleep 0.1 2>/dev/null || sleep 1\n  done\n  if [ \"$acquired\" -eq 1 ]; then\n    (\n      set -e\n      \"$@\"\n    )\n    rc=$?\n    rmdir \"$lockdir\" 2>/dev/null || true\n    return \"$rc\"\n  else\n    log_error \"LOCKTIMEOUT\" \"could not acquire directory-based lock on $lockdir within $timeout seconds\"\n    return 124\n  fi\nfi"
         },
         {
           "fn": "_mktemp_in_dir",
-          "body": "local base=\"${1:-}\" prefix=\"${2:-groq}\" tmp\nif [ -z \"$base\" ]; then\nlog_error \"TMP\" \"_mktemp_in_dir: base dir required\"\nreturn \"$BASH4LLMERRTMP\"\nfi\ntmp=\"$(_tmpf file \"$base\" \"$prefix\" 2>/dev/null)\"\nif [ -z \"$tmp\" ]; then\nlog_error \"TMP\" \"_mktemp_in_dir: failed to create temp in $base\"\nreturn \"$BASH4LLMERRTMP\"\nfi\nprintf '%s' \"$tmp\"\nreturn 0"
+          "body": "local base=\"${1:-}\" prefix=\"${2:-groq}\" tmp=\"\"\nif [ -z \"$base\" ]; then\n  log_error \"TMP\" \"_mktemp_in_dir: base dir required\"\n  return \"$BASH4LLM_ERR_TMP\"\nfi\ntmp=\"$(_tmpf file \"$base\" \"$prefix\" 2>/dev/null)\"\nif [ -z \"$tmp\" ]; then\n  log_error \"TMP\" \"_mktemp_in_dir: failed to create temp in $base\"\n  return \"$BASH4LLM_ERR_TMP\"\nfi\nprintf '%s' \"$tmp\"\nreturn 0"
         },
         {
           "fn": "show_payload_head",
-          "body": "local path=\"${1:-$PAYLOAD}\" lines=\"${2:-200}\"\nif [ -z \"${path:-}\" ]; then\nprintf 'bash4llm: ERROR: payload file missing: %s\\n' \"<unset>\" >&2\nexit \"$BASH4LLMERRTMP\"\nfi\nif [ ! -e \"$path\" ]; then\nprintf 'bash4llm: ERROR: payload file missing: %s\\n' \"$path\" >&2\nexit \"$BASH4LLMERRTMP\"\nfi\nif [ ! -s \"$path\" ]; then\nprintf 'bash4llm: INFO: payload exists but is empty: %s\\n' \"$path\" >&2\nreturn 0\nfi\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nprintf 'bash4llm: INFO: payload path: %s\\n' \"$path\" >&2\nprintf 'bash4llm: INFO: payload (head %d lines):\\n' \"$lines\" >&2\nif printf '%s' \"$path\" | grep -qE '\\.b64$'; then\nb64decode < \"$path\" 2>/dev/null | head -n \"$lines\" >&2 || true\nelse\nhead -n \"$lines\" \"$path\" 2>/dev/null >&2 || true\nfi\nfi\nreturn 0"
+          "body": "local path=\"${1:-$PAYLOAD}\" lines=\"${2:-200}\"\nif [ -z \"${path:-}\" ]; then\n  printf 'bash4llm: %sERROR%s: payload file missing: %s\\n' \"${C_RED}\" \"${C_RST}\" \"<unset>\" >&2\n  exit \"$BASH4LLM_ERR_TMP\"\nfi\nif [ ! -e \"$path\" ]; then\n  printf 'bash4llm: %sERROR%s: payload file missing: %s\\n' \"${C_RED}\" \"${C_RST}\" \"$path\" >&2\n  exit \"$BASH4LLM_ERR_TMP\"\nfi\nif [ ! -s \"$path\" ]; then\n  printf 'bash4llm: %sINFO%s: payload exists but is empty: %s\\n' \"${C_GREEN}\" \"${C_RST}\" \"$path\" >&2\n  return 0\nfi\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\n  printf 'bash4llm: %sINFO%s: payload path: %s\\n' \"${C_GREEN}\" \"${C_RST}\" \"$path\" >&2\n  printf 'bash4llm: %sINFO%s: payload (head %d lines):\\n' \"${C_GREEN}\" \"${C_RST}\" \"$lines\" >&2\n  if [[ \"$path\" == *.b64 ]]; then\n    b64decode < \"$path\" 2>/dev/null | head -n \"$lines\" >&2 || true\n  else\n    head -n \"$lines\" \"$path\" 2>/dev/null >&2 || true\n  fi\nfi\nreturn 0"
         },
         {
           "fn": "atomic_write",
-          "body": "local dest=\"$1\"\nlocal timeout=\"${2:-10}\"\n[ -n \"$dest\" ] || return \"$BASH4LLMERRTMP\"\nlocal destdir tmp lockfile rc\ndestdir=\"$(dirname -- \"$dest\")\"\nmkdir -p \"$destdir\" 2>/dev/null || { log_error \"ATOMICFAIL\" \"cannot create dir $destdir\"; return \"$BASH4LLMERRTMP\"; }\nlockfile=\"${destdir}/.bash4llm.lock\"\ntmp=\"$(mktemp \"$destdir/.groq-atomic.XXXXXX\" 2>/dev/null || true)\"\n[ -n \"$tmp\" ] || tmp=\"$destdir/.groq-atomic.$$.$RANDOM\"\nif ! cat - > \"$tmp\"; then\nrm -f -- \"$tmp\" 2>/dev/null || true\nlog_error \"ATOMICFAIL\" \"writing to temp failed\"\nreturn \"$BASH4LLMERRTMP\"\nfi\nchmod 600 \"$tmp\" 2>/dev/null || true\nif type lock_exec >/dev/null 2>&1; then\nlock_exec \"$lockfile\" \"$timeout\" -- mv -f -- \"$tmp\" \"$dest\" || { rc=$?; rm -f -- \"$tmp\" 2>/dev/null || true; return \"$rc\"; }\nchmod 600 \"$dest\" 2>/dev/null || true\nelse\nif mv -f -- \"$tmp\" \"$dest\" 2>/dev/null; then\nchmod 600 \"$dest\" 2>/dev/null || true\nelse\nrc=$?\nrm -f -- \"$tmp\" 2>/dev/null || true\nlog_error \"ATOMICFAIL\" \"mv failed with rc $rc\"\nreturn \"$rc\"\nfi\nfi\nreturn 0"
+          "body": "local dest=\"$1\"\nlocal timeout=\"${2:-10}\"\n[ -n \"$dest\" ] || return \"$BASH4LLM_ERR_TMP\"\nlocal destdir=\"\" tmp=\"\" lockfile=\"\" rc=\"\"\ndestdir=\"$(dirname -- \"$dest\")\"\nsafe_mkdir \"$destdir\" 700\nlockfile=\"${destdir}/.bash4llm.lock\"\ntmp=\"$(mktemp \"${destdir}/.groq-atomic.XXXXXX\" 2>/dev/null || mktemp \"${BASH4LLM_TMPDIR:-$destdir}/.groq-atomic.XXXXXX\" 2>/dev/null || true)\"\nif [ -z \"$tmp\" ]; then\n  log_error \"ATOMICFAIL\" \"failed to create secure temporary file\"\n  return \"$BASH4LLM_ERR_TMP\"\nfi\nif ! cat - > \"$tmp\"; then\n  rm -f -- \"$tmp\" 2>/dev/null || true\n  log_error \"ATOMICFAIL\" \"writing to temp failed\"\n  return \"$BASH4LLM_ERR_TMP\"\nfi\nchmod 600 \"$tmp\" 2>/dev/null || true\nlock_exec \"$lockfile\" \"$timeout\" -- mv -f -- \"$tmp\" \"$dest\" || {\n  rc=$?\n  rm -f -- \"$tmp\" 2>/dev/null || true\n  return \"$rc\"\n}\nchmod 600 \"$dest\" 2>/dev/null || true\nreturn 0"
         },
         {
           "fn": "extract_text_from_resp",
-          "body": "local resp_file=\"${RESP:-}\"\nif [ -z \"${resp_file:-}\" ]; then\nlog_error \"EXTRACT\" \"RESP path not set\"\nreturn 1\nfi\nlocal tmp_copy\ntmp_copy=\"$(_tmpf file \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" resp_copy 2>/dev/null)\" || return 1\ncp -f \"$resp_file\" \"$tmp_copy\" 2>/dev/null || return 1\nresp_file=\"$tmp_copy\"\nif ! is_valid_json_file \"$resp_file\"; then\nlog_warn \"EXTRACT\" \"RESP missing or not valid JSON: $resp_file\"\nif [ -f \"$resp_file\" ]; then\ncat \"$resp_file\" 2>/dev/null || true\nreturn 0\nfi\nreturn 1\nfi\nif jq -e 'has(\"diagnostic\") and .diagnostic==true' \"$resp_file\" >/dev/null 2>&1; then\nlog_warn \"EXTRACT\" \"RESP is diagnostic JSON; skipping text extraction\"\nreturn 2\nfi\nif jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.message?.content // .delta?.content // \"\") ] | map(select(.!=\"\")) | length > 0 )' \"$resp_file\" >/dev/null 2>&1; then\njq -r '[.choices[]? | (.message?.content // .delta?.content // \"\")] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nif jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.text? // \"\") ] | map(select(.!=\"\")) | length > 0 )' \"$resp_file\" >/dev/null 2>&1; then\njq -r '[.choices[]?.text? // empty] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nif jq -e '(.output_text? // empty) != \"\" or (.data and (.data|length>0) and ( [ .data[]? | (.text? // \"\") ] | map(select(.!=\"\")) | length > 0 ))' \"$resp_file\" >/dev/null 2>&1; then\nif [ \"$(jq -r '.output_text // empty' \"$resp_file\" 2>/dev/null)\" != \"\" ]; then\njq -r '.output_text' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nelse\njq -r '[.data[]?.text? // empty] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nfi\nif jq -e 'paths(scalars) as $p | getpath($p) | type==\"string\"' \"$resp_file\" >/dev/null 2>&1; then\njq -r '[.. | scalars | select(type==\"string\")] | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\nreturn 0\nfi\nlog_warn \"EXTRACT\" \"No textual content found in RESP\"\nreturn 1"
+          "body": "local resp_file=\"${RESP:-}\" tmp_copy=\"\"\nif [ -z \"${resp_file:-}\" ]; then\n  log_error \"EXTRACT\" \"RESP path not set\"\n  return 1\nfi\ntmp_copy=\"$(_tmpf file \"${RUN_TMPDIR:-$BASH4LLM_TMPDIR}\" resp_copy 2>/dev/null)\" || return 1\ncp -f \"$resp_file\" \"$tmp_copy\" 2>/dev/null || return 1\nresp_file=\"$tmp_copy\"\nif ! is_valid_json_file \"$resp_file\"; then\n  log_warn \"EXTRACT\" \"RESP missing or not valid JSON: $resp_file\"\n  if [ -f \"$resp_file\" ]; then\n    cat \"$resp_file\" 2>/dev/null || true\n    return 0\n  fi\n  return 1\nfi\nif jq -e 'has(\"diagnostic\") and .diagnostic==true' \"$resp_file\" >/dev/null 2>&1; then\n  log_warn \"EXTRACT\" \"RESP is diagnostic JSON; skipping text extraction\"\n  return 2\nfi\nif jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.message?.content // .delta?.content // \"\") ] | map(select(.!=\"\")) | length > 0 )' \"$resp_file\" >/dev/null 2>&1; then\n  jq -r '[.choices[]? | (.message?.content // .delta?.content // \"\")] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\n  return 0\nfi\nif jq -e '.choices and (.choices|length>0) and ( [ .choices[]? | (.text? // \"\") ] | map(select(.!=\"\")) | length > 0 )' \"$resp_file\" >/dev/null 2>&1; then\n  jq -r '[.choices[]?.text? // empty] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\n  return 0\nfi\nif jq -e '(.output_text? // empty) != \"\" or (.data and (.data|length>0) and ( [ .data[]? | (.text? // \"\") ] | map(select(.!=\"\")) | length > 0 ))' \"$resp_file\" >/dev/null 2>&1; then\n  if [ \"$(jq -r '.output_text // empty' \"$resp_file\" 2>/dev/null)\" != \"\" ]; then\n    jq -r '.output_text' \"$resp_file\" 2>/dev/null || return 1\n    return 0\n  else\n    jq -r '[.data[]?.text? // empty] | map(select(.!=\"\")) | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\n    return 0\n  fi\nfi\nif jq -e 'paths(scalars) as $p | getpath($p) | type==\"string\"' \"$resp_file\" >/dev/null 2>&1; then\n  jq -r '[.. | scalars | select(type==\"string\")] | join(\"\\n\\n\")' \"$resp_file\" 2>/dev/null || return 1\n  return 0\nfi\nlog_warn \"EXTRACT\" \"No textual content found in RESP\"\nreturn 1"
+        },
+        {
+          "fn": "cleanup_run_tmp_on_exit",
+          "body": "local rc_in=$?\nstty echo 2>/dev/null || true\nif type release_thread_lock >/dev/null 2>&1; then\n  release_thread_lock 2>/dev/null || true\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ]; then\n  rm -rf \"${RUN_TMPDIR:-}\"/thread-msg-*.lockdir 2>/dev/null || true\nfi\nif [ \"${DEBUG_PRESERVE:-0}\" -eq 1 ]; then\n  [ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR\"\n  return \"$rc_in\"\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ]; then\n  case \"$RUN_TMPDIR\" in\n    \"$BASH4LLM_TMPDIR\"/*|\"$BASH4LLM_TMPDIR\")\n      rm -rf -- \"$RUN_TMPDIR\" 2>/dev/null || true\n      [ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"Cleaned RUN_TMPDIR: $RUN_TMPDIR\"\n      ;;\n    *)\n      [ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"RUN_TMPDIR outside BASH4LLM_TMPDIR; not removed: $RUN_TMPDIR\"\n      ;;\n  esac\nfi\nreturn \"$rc_in\""
         },
         {
           "fn": "ensure_run_tmpdir",
-          "body": "local print_only=0 subshell=0 tmpdir\nif [ \"${1:-}\" = \"--print\" ]; then print_only=1; fi\nif [ -n \"${BASHPID:-}\" ] && [ \"${BASHPID:-}\" != \"$$\" ]; then\nsubshell=1\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\ncase \"$RUN_TMPDIR\" in\n\"$BASH4LLM_TMPDIR\"/*|\"$BASH4LLM_TMPDIR\")\nchmod 700 \"$RUN_TMPDIR\" 2>/dev/null || true\n: \"${PAYLOAD:=$RUN_TMPDIR/payload}\"\n: \"${RESP:=$RUN_TMPDIR/resp.json}\"\n: \"${ERRF:=$RUN_TMPDIR/err.log}\"\nif [ \"$print_only\" -eq 0 ] && [ \"$subshell\" -eq 0 ]; then\n: > \"$RESP\" 2>/dev/null || true\nchmod 600 \"$RESP\" 2>/dev/null || true\n: > \"$ERRF\" 2>/dev/null || true\nchmod 600 \"$ERRF\" 2>/dev/null || true\nexport RUN_TMPDIR PAYLOAD RESP ERRF\nfi\n[ \"$print_only\" -eq 1 ] && printf '%s' \"$RUN_TMPDIR\"\nreturn 0\n;;\n*)\nlog_warn \"TMP\" \"existing RUN_TMPDIR outside BASH4LLM_TMPDIR; discarding: $RUN_TMPDIR\"\nRUN_TMPDIR=\"\"\n;;\nesac\nfi\nif [ -z \"${BASH4LLM_TMPDIR:-}\" ]; then\nlog_error \"TMP\" \"BASH4LLM_TMPDIR not set\"\nreturn \"$BASH4LLMERRTMP\"\nfi\nmkdir -p \"$BASH4LLM_TMPDIR\" 2>/dev/null || {\nlog_error \"TMP\" \"cannot create base tmpdir $BASH4LLM_TMPDIR\"\nreturn \"$BASH4LLMERRTMP\"\n}\nchmod 700 \"$BASH4LLM_TMPDIR\" 2>/dev/null || true\nif [ -L \"$BASH4LLM_TMPDIR\" ]; then\nlog_error \"TMP\" \"BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR\"\nreturn \"$BASH4LLMERRTMP\"\nfi\ntmpdir=\"$(_tmpf dir \"$BASH4LLM_TMPDIR\" run 2>/dev/null)\" || {\nlog_error \"TMP\" \"ensure_run_tmpdir: _tmpf failed to create run tmpdir\"\nreturn \"$BASH4LLMERRTMP\"\n}\nRUN_TMPDIR=\"$tmpdir\"\n: \"${PAYLOAD:=$RUN_TMPDIR/payload}\"\n: \"${RESP:=$RUN_TMPDIR/resp.json}\"\n: \"${ERRF:=$RUN_TMPDIR/err.log}\"\nif [ \"$print_only\" -eq 0 ] && [ \"$subshell\" -eq 0 ]; then\n: > \"$RESP\" 2>/dev/null || true\nchmod 600 \"$RESP\" 2>/dev/null || true\n: > \"$ERRF\" 2>/dev/null || true\nchmod 600 \"$ERRF\" 2>/dev/null || true\nfi\ncleanup_run_tmp_on_exit() {\nrc_in=$?\nif [ \"${DEBUG_PRESERVE:-0}\" -eq 1 ]; then\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"DEBUG_PRESERVE set; preserving RUN_TMPDIR=$RUN_TMPDIR\"\nreturn \"$rc_in\"\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ]; then\ncase \"$RUN_TMPDIR\" in\n\"$BASH4LLM_TMPDIR\"/*|\"$BASH4LLM_TMPDIR\")\nrm -rf -- \"$RUN_TMPDIR\" 2>/dev/null || true\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"Cleaned RUN_TMPDIR: $RUN_TMPDIR\"\n;;\n*)\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"RUN_TMPDIR outside BASH4LLM_TMPDIR; not removed: $RUN_TMPDIR\"\n;;\nesac\nfi\nreturn \"$rc_in\"\n}\nif [ \"$subshell\" -eq 0 ] && [ \"$print_only\" -eq 0 ]; then\ntrap cleanup_run_tmp_on_exit EXIT INT TERM\nfi\nif [ \"$print_only\" -eq 0 ]; then\nexport RUN_TMPDIR PAYLOAD RESP ERRF\n[ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"Created RUN_TMPDIR: $RUN_TMPDIR\"\nelse\nprintf '%s' \"$RUN_TMPDIR\"\nfi\nreturn 0"
-        },
-        {
-          "fn": "cleanup_tmp",
-          "body": "if [ -n \"${RUN_TMPDIR:-}\" ]; then\ncase \"$RUN_TMPDIR\" in\n\"$BASH4LLM_TMPDIR\"/*|\"$BASH4LLM_TMPDIR\")\nrm -rf -- \"$RUN_TMPDIR\" 2>/dev/null || true\n;;\n*)\n;;\nesac\nfi"
+          "body": "local print_only=0 subshell=0 tmpdir=\"\"\nif [ \"${1:-}\" = \"--print\" ]; then print_only=1; fi\nif [ -n \"${BASHPID:-}\" ] && [ \"${BASHPID:-}\" != \"$$\" ]; then\n  subshell=1\nfi\nif [ -n \"${RUN_TMPDIR:-}\" ] && [ -d \"${RUN_TMPDIR:-}\" ]; then\n  case \"$RUN_TMPDIR\" in\n    \"$BASH4LLM_TMPDIR\"/*|\"$BASH4LLM_TMPDIR\")\n      chmod 700 \"$RUN_TMPDIR\" 2>/dev/null || true\n      : \"${PAYLOAD:=$RUN_TMPDIR/payload}\"\n      : \"${RESP:=$RUN_TMPDIR/resp.json}\"\n      : \"${ERRF:=$RUN_TMPDIR/err.log}\"\n      if [ \"$print_only\" -eq 0 ] && [ \"$subshell\" -eq 0 ]; then\n        : > \"$RESP\" 2>/dev/null || true\n        chmod 600 \"$RESP\" 2>/dev/null || true\n        : > \"$ERRF\" 2>/dev/null || true\n        chmod 600 \"$ERRF\" 2>/dev/null || true\n        export RUN_TMPDIR PAYLOAD RESP ERRF\n      fi\n      [ \"$print_only\" -eq 1 ] && printf '%s' \"$RUN_TMPDIR\"\n      return 0\n      ;;\n    *)\n      log_warn \"TMP\" \"existing RUN_TMPDIR outside BASH4LLM_TMPDIR; discarding: $RUN_TMPDIR\"\n      RUN_TMPDIR=\"\"\n      ;;\n  esac\nfi\nif [ -z \"${BASH4LLM_TMPDIR:-}\" ]; then\n  log_error \"TMP\" \"BASH4LLM_TMPDIR not set\"\n  return \"$BASH4LLM_ERR_TMP\"\nfi\nsafe_mkdir \"$BASH4LLM_TMPDIR\" 700\ntmpdir=\"$(_tmpf dir \"$BASH4LLM_TMPDIR\" run 2>/dev/null)\" || {\n  log_error \"TMP\" \"ensure_run_tmpdir: _tmpf failed to create run tmpdir\"\n  return \"$BASH4LLM_ERR_TMP\"\n}\nRUN_TMPDIR=\"$tmpdir\"\n: \"${PAYLOAD:=$RUN_TMPDIR/payload}\"\n: \"${RESP:=$RUN_TMPDIR/resp.json}\"\n: \"${ERRF:=$RUN_TMPDIR/err.log}\"\nif [ \"$print_only\" -eq 0 ] && [ \"$subshell\" -eq 0 ]; then\n  : > \"$RESP\" 2>/dev/null || true\n  chmod 600 \"$RESP\" 2>/dev/null || true\n  : > \"$ERRF\" 2>/dev/null || true\n  chmod 600 \"$ERRF\" 2>/dev/null || true\nfi\nif [ \"$subshell\" -eq 0 ] && [ \"$print_only\" -eq 0 ]; then\n  trap cleanup_run_tmp_on_exit EXIT INT TERM\nfi\nif [ \"$print_only\" -eq 0 ]; then\n  export RUN_TMPDIR PAYLOAD RESP ERRF\n  [ \"${DEBUG:-0}\" -eq 1 ] && log_info \"TMP\" \"Created RUN_TMPDIR: $RUN_TMPDIR\"\nelse\n  printf '%s' \"$tmpdir\"\nfi\nreturn 0"
         },
         {
           "fn": "b64_atomic_write",
-          "body": "local dest=\"$1\"\nlocal timeout=\"${2:-10}\"\nshift 2 || true\n[ -n \"$dest\" ] || {\nlog_error \"B64FAIL\" \"b64_atomic_write: dest required\"\nreturn \"$BASH4LLMERRTMP\"\n}\nlocal destdir tmp lockfile\ndestdir=\"$(dirname -- \"$dest\")\"\nmkdir -p \"$destdir\" 2>/dev/null || {\nlog_error \"B64FAIL\" \"cannot create dir $destdir\"\nreturn \"$BASH4LLMERRTMP\"\n}\nlockfile=\"${destdir%/}/.bash4llm.lock\"\ntmp=\"$(_tmpf file \"$BASH4LLM_TMPDIR\" .groq-b64 2>/dev/null)\" || {\nlog_error \"B64FAIL\" \"failed to allocate tmp for b64_atomic_write\"\nreturn \"$BASH4LLMERRTMP\"\n}\nif ! b64encode > \"$tmp\"; then\nrm -f -- \"$tmp\" 2>/dev/null || true\nlog_error \"B64FAIL\" \"base64 encoding failed\"\nreturn \"$BASH4LLMERRTMP\"\nfi\nchmod 600 \"$tmp\" 2>/dev/null || true\nlock_exec \"$lockfile\" \"$timeout\" -- mv -f -- \"$tmp\" \"$dest\" || {\nrc=$?\nrm -f -- \"$tmp\" 2>/dev/null || true\nreturn \"$rc\"\n}\nchmod 600 \"$dest\" 2>/dev/null || true\nreturn 0"
+          "body": "local dest=\"$1\"\nlocal timeout=\"${2:-10}\"\n[ -n \"$dest\" ] || {\n  log_error \"B64FAIL\" \"b64_atomic_write: dest required\"\n  return \"$BASH4LLM_ERR_TMP\"\n}\nlocal tmp=\"\"\ntmp=\"$(_tmpf file \"$BASH4LLM_TMPDIR\" .groq-b64 2>/dev/null)\" || {\n  log_error \"B64FAIL\" \"failed to allocate tmp for b64_atomic_write\"\n  return \"$BASH4LLM_ERR_TMP\"\n}\nif ! b64encode > \"$tmp\"; then\n  rm -f -- \"$tmp\" 2>/dev/null || true\n  log_error \"B64FAIL\" \"base64 encoding failed\"\n  return \"$BASH4LLM_ERR_TMP\"\nfi\natomic_write \"$dest\" \"$timeout\" < \"$tmp\"\nlocal rc=$?\nrm -f -- \"$tmp\" 2>/dev/null || true\nreturn \"$rc\""
         },
         {
           "fn": "b64_atomic_read",
@@ -295,77 +355,65 @@
         },
         {
           "fn": "ui_state_write",
-          "body": "local name=\"$1\"; local content=\"$2\"\nlocal dir target\nif [ -n \"${BASH4LLM_CONFIG_DIR:-}\" ]; then\ndir=\"${BASH4LLM_CONFIG_DIR%/}/ui_state\"\nelse\ndir=\"${RUN_TMPDIR%/}/ui_state\"\nfi\nif [ -z \"${name:-}\" ]; then\nlog_error \"UI_STATE\" \"ui_state_write requires a filename\"\nreturn 1\nfi\nmkdir -p \"$dir\" 2>/dev/null || { log_warn \"UI_STATE\" \"failed to create ui_state dir: $dir\"; return 1; }\nchmod 700 \"$dir\" 2>/dev/null || true\ntarget=\"$dir/$name\"\nprintf '%s' \"$content\" | atomic_write \"$target\" 10 || { log_warn \"UI_STATE\" \"atomic write failed for $target\"; return 1; }\nchmod 600 \"$target\" 2>/dev/null || true\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\nlog_info \"UI_STATE\" \"wrote $target (size $(wc -c < \"$target\" 2>/dev/null)B)\"\nfi\nreturn 0"
+          "body": "local name=\"${1:-}\" content=\"${2:-}\" dir=\"\" target=\"\"\nif [ -n \"${BASH4LLM_CONFIG_DIR:-}\" ]; then\n  dir=\"${BASH4LLM_CONFIG_DIR%/}/ui_state\"\nelse\n  dir=\"${RUN_TMPDIR%/}/ui_state\"\nfi\nif [ -z \"${name:-}\" ]; then\n  log_error \"UI_STATE\" \"ui_state_write requires a filename\"\n  return 1\nfi\nsafe_mkdir \"$dir\" 700\ntarget=\"$dir/$name\"\nprintf '%s' \"$content\" | atomic_write \"$target\" 10 || { log_warn \"UI_STATE\" \"atomic write failed for $target\"; return 1; }\nchmod 600 \"$target\" 2>/dev/null || true\nif [ \"${DEBUG:-0}\" -eq 1 ]; then\n  log_info \"UI_STATE\" \"wrote $target (size $(wc -c < \"$target\" 2>/dev/null)B)\"\nfi\nreturn 0"
+        },
+        {
+          "fn": "run_static_config_check",
+          "body": "local config_file=\"${BASH4LLM_CONFIG_DIR}/config\"\nlocal notes_file=\"${BASH4LLM_EXTRAS_DIR:-}/docs/core-notes.sh\"\nlocal security_failed=0\nlocal warnings_found=0\nlocal perm_string=\"\"\nlocal group_write=\"\"\nlocal others_write=\"\"\nlocal canonical_vars=\"\"\nlocal key=\"\"\nlocal val=\"\"\nlocal line=\"\"\ndeclare -A canonical_set=()\nprintf '%bChecking Bash4LLM⁺ Configuration Security...%b\\n' \"${C_BOLD}\" \"${C_RST}\"\nif [ -f \"$config_file\" ]; then\n  if [ \"$BASH4LLM_PLAT_MACOS\" -eq 1 ] || [ \"$BASH4LLM_PLAT_BSD\" -eq 1 ]; then\n    perm_string=\"$(stat -f %Sp \"$config_file\" 2>/dev/null || true)\"\n  else\n    perm_string=\"$(stat -c %A \"$config_file\" 2>/dev/null || true)\"\n  fi\n  if [ -n \"$perm_string\" ]; then\n    group_write=\"$(printf '%s' \"$perm_string\" | awk '{print substr($0,6,1)}')\"\n    others_write=\"$(printf '%s' \"$perm_string\" | awk '{print substr($0,9,1)}')\"\n    if [ \"$group_write\" = \"w\" ] || [ \"$others_write\" = \"w\" ]; then\n      printf '  [%sSECURITY ERROR%s] Config file is writable by group/others: %s (%s)\\n' \"${C_RED}\" \"${C_RST}\" \"$config_file\" \"$perm_string\" >&2\n      security_failed=1\n    else\n      printf '  [%sOK%s] Configuration file permissions are secure.\\n' \"${C_GREEN}\" \"${C_RST}\"\n    fi\n  fi\nelse\n  printf '  [%sINFO%s] Local config file not present. Using runtime defaults.\\n' \"${C_CYAN}\" \"${C_RST}\"\nfi\ncanonical_vars=\"$(_extract_notes_section \"Important names (use exact names):\" || true)\"\nif [ -z \"$canonical_vars\" ]; then\n  printf '  [%sWARNING%s] Unable to read core-notes.sh. Skipping variable linter.\\n' \"${C_YELLOW}\" \"${C_RST}\" >&2\n  printf '  Please install extras with: %s --install-extras\\n\\n' \"$0\" >&2\nelse\n  while IFS= read -r var; do\n    [ -n \"$var\" ] && canonical_set[\"$var\"]=1\n  done <<EOF\n$(printf '%s' \"$canonical_vars\" | sed -E 's/\\([^)]*\\)//g; s/\\.//g' | tr -d ' ' | tr ',' '\\n' | grep -v '^$')\nEOF\n  if [ -f \"$config_file\" ] && [ -s \"$config_file\" ]; then\n    printf '\\n%bLinting Configuration Keys...%b\\n' \"${C_BOLD}\" \"${C_RST}\"\n    while IFS= read -r line || [ -n \"$line\" ]; do\n      case \"$line\" in ''|\\#*) continue ;; esac\n      key=\"${line%%=*}\"\n      key=\"${key#\"${key%%[![:space:]]*}\"}\"\n      key=\"${key%\"${key##*[![:space:]]}\"}\"\n      if [ -n \"$key\" ]; then\n        if [ \"$key\" = \"TEMP\" ]; then\n          printf '  [%sWARNING%s] Restricted variable \"TEMP\" detected. Please use \"TURE\" or \"TEMPERATURE\" to avoid conflicts with temporary paths.\\n' \"${C_YELLOW}\" \"${C_RST}\"\n          warnings_found=$((warnings_found + 1))\n        elif [ -z \"${canonical_set[$key]:-}\" ]; then\n          printf '  [%sWARNING%s] Unknown or typo-prone variable found: \"%s\"\\n' \"${C_YELLOW}\" \"${C_RST}\" \"$key\"\n          warnings_found=$((warnings_found + 1))\n        fi\n      fi\n    done < \"$config_file\"\n  fi\nfi\nif [ \"$security_failed\" -eq 1 ]; then\n  printf '\\n%sCRITICAL ERROR%s: Security validation failed. Fix directory/file permissions before running.\\n' \"${C_RED}\" \"${C_RST}\" >&2\n  exit \"$BASH4LLM_ERR_SEC\"\nfi\nif [ \"$warnings_found\" -gt 0 ]; then\n  printf '\\nConfiguration scan completed with %d warnings. Active execution is safe.\\n' \"$warnings_found\"\nelse\n  printf '\\n%sConfiguration is secure and valid.%s\\n' \"${C_GREEN}\" \"${C_RST}\"\nfi"
+        },
+        {
+          "fn": "explain_error_code",
+          "body": "local input_code=\"${1:-}\"\nlocal error_defs=\"\"\nlocal operational_tips=\"\"\nlocal matched=\"\"\nif [ -z \"$input_code\" ]; then\n  printf 'bash4llm: %sERROR%s: --explain-error requires an error code or alias.\\n' \"${C_RED}\" \"${C_RST}\" >&2\n  exit 2\nfi\nerror_defs=\"$(_extract_notes_section \"Error Code Constants & Direct Alias Mappings:\" || true)\"\noperational_tips=\"$(_extract_notes_section \"OPERATIONAL TIPS (concise)\" || true)\"\nif [ -z \"$error_defs\" ]; then\n  printf 'bash4llm: %sWARNING%s: Unable to load core-notes.sh document. Cannot explain error.\\n' \"${C_YELLOW}\" \"${C_RST}\" >&2\n  printf 'Please install extras with: %s --install-extras\\n' \"$0\" >&2\n  exit 1\nfi\nprintf '%bEvaluating error code / alias: %s%b\\n\\n' \"${C_BOLD}\" \"$input_code\" \"${C_RST}\"\nmatched=\"$(printf '%s' \"$error_defs\" | grep -E \"\\b${input_code}\\b\" || true)\"\nif [ -n \"$matched\" ]; then\n  printf '%sFormal definition found:%s\\n' \"${C_GREEN}\" \"${C_RST}\"\n  printf '  %s\\n\\n' \"$matched\"\n  printf '%sOperational Mitigation Advice:%s\\n' \"${C_CYAN}\" \"${C_RST}\"\n  if [ \"$input_code\" = \"15\" ] || [[ \"$input_code\" == *\"BASH4LLM_ERR_TMP\"* ]]; then\n    printf '%s\\n' \"$operational_tips\" | grep -Ei \"perm|temp|tmp|_tmpf\" || printf '%s\\n' \"$operational_tips\"\n  elif [ \"$input_code\" = \"10\" ] || [[ \"$input_code\" == *\"BASH4LLM_ERR_NO_API_KEY\"* ]]; then\n    printf '%s\\n' \"$operational_tips\" | grep -Ei \"api|key|prov\" || printf '%s\\n' \"$operational_tips\"\n  elif [ \"$input_code\" = \"17\" ] || [[ \"$input_code\" == *\"BASH4LLM_ERR_SEC\"* ]]; then\n    printf '%s\\n' \"$operational_tips\" | grep -Ei \"perm|chmod|sec|check\" || printf '%s\\n' \"$operational_tips\"\n  else\n    printf '%s\\n' \"$operational_tips\"\n  fi\nelse\n  printf 'No exact documentation mapping found for: %s\\n' \"$input_code\" >&2\nfi"
         },
         {
           "fn": "load_provider_module",
-          "body": "local provider=\"$1\"\nif [ \"${LOADED_PROVIDER_NAME:-}\" = \"$provider\" ] && [ \"${PROVIDER_MODULE_LOADED:-0}\" -eq 1 ]; then\nreturn 0\nfi\nLOADED_PROVIDER_NAME=\"$provider\"\nPROVIDER_MODULE_LOADED=0\nPROVIDER_MODULE_PATH=\"$PROVIDERS_DIR/${provider}.sh\"\nPROVIDER_DIR=\"$PROVIDERS_DIR\"\nif [ ! -d \"$PROVIDER_DIR\" ]; then\nmkdir -p \"$PROVIDER_DIR\" 2>/dev/null || { log_error \"PROVIDER\" \"cannot create provider directory.\"; return 1; }\nfi\nif _is_world_writable \"$PROVIDER_DIR\"; then\nlog_error \"SEC\" \"provider directory is world-writable.\"\nreturn 1\nfi\nlocal current_user owner file_owner perms group_write others_write beforesig aftersig invalid_provider _req\ncurrent_user=\"$(id -un 2>/dev/null || printf '')\"\nowner=\"$(_get_owner \"$PROVIDER_DIR\")\"\n[ -n \"$owner\" ] && [ \"$owner\" != \"$current_user\" ] && log_warn \"SEC\" \"provider directory owned by $owner\"\nif [ ! -f \"$PROVIDER_MODULE_PATH\" ]; then\nif [ \"$provider\" != \"groq\" ]; then\nprintf 'Provider %s is not installed.\\n' \"$provider\" >&2\nPROVIDER_MODULE_LOADED=0\nreturn 0\nelse\nPROVIDER_MODULE_LOADED=1\nreturn 0\nfi\nfi\nif [ -L \"$PROVIDER_MODULE_PATH\" ]; then\nlog_error \"SEC\" \"provider file is symlink.\"\nreturn 1\nfi\nfile_owner=\"$(_get_owner \"$PROVIDER_MODULE_PATH\")\"\n[ -n \"$file_owner\" ] && [ \"$file_owner\" != \"$current_user\" ] && { log_error \"SEC\" \"wrong owner for provider file.\"; return 1; }\nperms=\"$(_get_perm_string \"$PROVIDER_MODULE_PATH\")\"\ngroup_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,6,1)}')\"\nothers_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,9,1)}')\"\nif [ \"$group_write\" = \"w\" ] || [ \"$others_write\" = \"w\" ]; then\nlog_error \"SEC\" \"provider file writable by group/world.\"\nreturn 1\nfi\nbeforesig=\"$(getfile_signature \"$PROVIDER_MODULE_PATH\" 2>/dev/null || true)\"\nif bash -n \"$PROVIDER_MODULE_PATH\" 2>/dev/null; then\ndump_file=\"$(_mktemp_in_dir \"$BASH4LLM_TMPDIR\" \"provdump.${provider}.XXXXXX\" 2>/dev/null)\"\n[ -z \"$dump_file\" ] && { log_error \"SEC\" \"cannot create provider dump file\"; return 1; }\n(\nset -e\ndeclare -F | awk '{print $3}' | sort > \"$dump_file.before.$$\" 2>/dev/null || true\n. \"$PROVIDER_MODULE_PATH\"\ndeclare -F | awk '{print $3}' | sort > \"$dump_file.after.$$\" 2>/dev/null || true\ncomm -13 \"$dump_file.before.$$\" \"$dump_file.after.$$\" > \"$dump_file.funcs.$$\" 2>/dev/null || true\nreq1=\"buildpayload_${provider}\"\nreq2=\"call_api_${provider}\"\nfor f in \"$req1\" \"$req2\"; do\nif ! grep -xq \"$f\" \"$dump_file.funcs.$$\" 2>/dev/null; then\nif ! type \"$f\" >/dev/null 2>&1; then\nprintf 'ERROR: provider %s missing required function: %s\\n' \"$provider\" \"$f\" >&2\nexit 99\nfi\nfi\ndone\n: > \"$dump_file\"\nwhile IFS= read -r fn; do\n[ -z \"$fn\" ] && continue\nif type \"$fn\" >/dev/null 2>&1; then\ndeclare -f \"$fn\" >> \"$dump_file\"\nfi\ndone < \"$dump_file.funcs.$$\"\nrm -f \"$dump_file.before.$$\" \"$dump_file.after.$$\" \"$dump_file.funcs.$$\" 2>/dev/null || true\n)\nrc=$?\nif [ \"$rc\" -ne 0 ]; then\nlog_error \"PROVIDER\" \"provider module failed isolation load (rc=$rc)\"\nrm -f \"$dump_file\" 2>/dev/null || true\nreturn 1\nfi\nlocal _nounset_was_on=0\nif (set -o | awk '/^nounset/ {print $2}' 2>/dev/null | grep -q on); then\n_nounset_was_on=1\nset +u\nfi\n. \"$dump_file\"\nif [ \"$_nounset_was_on\" -eq 1 ]; then\nset -u\nfi\nunset _nounset_was_on\nPROVIDER_MODULE_LOADED=1\nrm -f \"$dump_file\" 2>/dev/null || true\naftersig=\"$(getfile_signature \"$PROVIDER_MODULE_PATH\" 2>/dev/null || true)\"\n[ \"$beforesig\" != \"$aftersig\" ] && { log_error \"SEC\" \"provider file changed.\"; return 1; }\nelse\nlog_warn \"PROVIDER\" \"provider module invalid; falling back to embedded provider.\"\nPROVIDER_MODULE_LOADED=0\nfi\nif [ -n \"${provider:-}\" ]; then\nsupports_streaming=0\nsupports_refresh_models=0\nif type \"call_api_streaming_${provider}\" >/dev/null 2>&1; then supports_streaming=1; fi\nif type \"refresh_models_${provider}\" >/dev/null 2>&1; then supports_refresh_models=1; fi\nloaded_from=\"${PROVIDER_MODULE_PATH:-embedded}\"\nprov_json=\"$(jq -c -n --arg p \"$provider\" --arg loaded \"$loaded_from\" --argjson sstream \"$supports_streaming\" --argjson srefresh \"$supports_refresh_models\" '{provider:$p, supports_streaming:$sstream, supports_refresh_models:$srefresh, loaded_from:$loaded}')\"\nui_state_write \"provider_capabilities.json\" \"$prov_json\" || log_warn \"UI_STATE\" \"failed to write provider_capabilities for $provider\"\nfi\nreturn 0"
+          "body": "local provider=\"${1:-}\"\nlocal current_user=\"\" owner=\"\" file_owner=\"\" perms=\"\" group_write=\"\" others_write=\"\" beforesig=\"\" aftersig=\"\" dump_file=\"\" rc=0 _nounset_was_on=0 supports_streaming=0 supports_refresh_models=0 loaded_from=\"\" prov_json=\"\"\nif [ \"${LOADED_PROVIDER_NAME:-}\" = \"$provider\" ] && [ \"${PROVIDER_MODULE_LOADED:-0}\" -eq 1 ]; then\n  sync_models_file_path \"$provider\"\n  return 0\nfi\nLOADED_PROVIDER_NAME=\"$provider\"\nPROVIDER_MODULE_LOADED=0\nPROVIDER_MODULE_PATH=\"$PROVIDERS_DIR/${provider}.sh\"\nPROVIDER_DIR=\"$PROVIDERS_DIR\"\nsafe_mkdir \"$PROVIDER_DIR\" 700\nlocal ignore_sec=0\nif [ \"${BASH4LLM_PLAT_WSL:-0}\" -eq 1 ] || is_truthy \"${BASH4LLM_IGNORE_SEC_CHECKS:-0}\"; then\n  ignore_sec=1\nfi\nif _is_world_writable \"$PROVIDER_DIR\"; then\n  if [ \"$ignore_sec\" -eq 1 ]; then\n    log_warn \"SEC\" \"provider directory is world-writable (ignored due to WSL/policy).\"\n  else\n    log_error \"SEC\" \"provider directory is world-writable.\"\n    return 1\n  fi\nfi\ncurrent_user=\"$(id -un 2>/dev/null || printf '')\"\nowner=\"$(_get_owner \"$PROVIDER_DIR\")\"\n[ -n \"$owner\" ] && [ \"$owner\" != \"$current_user\" ] && log_warn \"SEC\" \"provider directory owned by $owner\"\nif [ ! -f \"$PROVIDER_MODULE_PATH\" ]; then\n  if [ \"$provider\" != \"groq\" ]; then\n    printf 'Provider %s is not installed.\\n' \"$provider\" >&2\n    PROVIDER_MODULE_LOADED=0\n    return 0\n  else\n    PROVIDER_MODULE_LOADED=1\n    return 0\n  fi\nfi\nif [ -L \"$PROVIDER_MODULE_PATH\" ]; then\n  log_error \"SEC\" \"provider file is symlink.\"\n  return 1\nfi\nfile_owner=\"$(_get_owner \"$PROVIDER_MODULE_PATH\")\"\nif [ -n \"$file_owner\" ] && [ \"$file_owner\" != \"$current_user\" ]; then\n  if [ \"$ignore_sec\" -eq 1 ]; then\n    log_warn \"SEC\" \"wrong owner for provider file: $file_owner (ignored due to WSL/policy).\"\n  else\n    log_error \"SEC\" \"wrong owner for provider file.\"\n    return 1\n  fi\nfi\nperms=\"$(_get_perm_string \"$PROVIDER_MODULE_PATH\")\"\ngroup_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,6,1)}')\"\nothers_write=\"$(printf '%s' \"$perms\" | awk '{print substr($0,9,1)}')\"\nif [ \"$group_write\" = \"w\" ] || [ \"$others_write\" = \"w\" ]; then\n  if [ \"$ignore_sec\" -eq 1 ]; then\n    log_warn \"SEC\" \"provider file writable by group/world (ignored due to WSL/policy).\"\n  else\n    log_error \"SEC\" \"provider file writable by group/world.\"\n    return 1\n  fi\nfi\nbeforesig=\"$(getfile_signature \"$PROVIDER_MODULE_PATH\" 2>/dev/null || true)\"\nif bash -n \"$PROVIDER_MODULE_PATH\" 2>/dev/null; then\n  dump_file=\"$(_mktemp_in_dir \"$BASH4LLM_TMPDIR\" \"provdump.${provider}.XXXXXX\" 2>/dev/null)\"\n  [ -z \"$dump_file\" ] && { log_error \"SEC\" \"cannot create provider dump file\"; return 1; }\n  (\n    set -e\n    trap 'rm -f \"$dump_file.before.$$\" \"$dump_file.after.$$\" \"$dump_file.funcs.$$\" 2>/dev/null' EXIT\n    declare -F | awk '{print $3}' | sort > \"$dump_file.before.$$\" 2>/dev/null || true\n    . \"$PROVIDER_MODULE_PATH\"\n    declare -F | awk '{print $3}' | sort > \"$dump_file.after.$$\" 2>/dev/null || true\n    comm -13 \"$dump_file.before.$$\" \"$dump_file.after.$$\" > \"$dump_file.funcs.$$\" 2>/dev/null || true\n    req1=\"buildpayload_${provider}\"\n    req2=\"call_api_${provider}\"\n    for f in \"$req1\" \"$req2\"; do\n      if ! grep -xq \"$f\" \"$dump_file.funcs.$$\" 2>/dev/null; then\n        if ! type \"$f\" >/dev/null 2>&1; then\n          printf 'ERROR: provider %s missing required function: %s\\n' \"$provider\" \"$f\" >&2\n          exit 99\n        fi\n      fi\n    done\n    : > \"$dump_file\"\n    while IFS= read -r fn; do\n      [ -z \"$fn\" ] && continue\n      if type \"$fn\" >/dev/null 2>&1; then\n        declare -f \"$fn\" >> \"$dump_file\"\n      fi\n    done < \"$dump_file.funcs.$$\"\n  )\n  rc=$?\n  if [ \"$rc\" -ne 0 ]; then\n    log_error \"PROVIDER\" \"provider module failed isolation load (rc=$rc)\"\n    rm -f \"$dump_file\" 2>/dev/null || true\n    return 1\n  fi\n  _nounset_was_on=0\n  if (set -o | awk '/^nounset/ {print $2}' 2>/dev/null | grep -q on); then\n    _nounset_was_on=1\n    set +u\n  fi\n  . \"$dump_file\"\n  if [ \"$_nounset_was_on\" -eq 1 ]; then\n    set -u\n  fi\n  PROVIDER_MODULE_LOADED=1\n  rm -f \"$dump_file\" 2>/dev/null || true\n  aftersig=\"$(getfile_signature \"$PROVIDER_MODULE_PATH\" 2>/dev/null || true)\"\n  [ \"$beforesig\" != \"$aftersig\" ] && { log_error \"SEC\" \"provider file changed.\"; return 1; }\nelse\n  log_warn \"PROVIDER\" \"provider module invalid; falling back to embedded provider.\"\n  PROVIDER_MODULE_LOADED=0\nfi\nif [ -n \"${provider:-}\" ]; then\n  supports_streaming=0\n  supports_refresh_models=0\n  if type \"call_api_streaming_groq\" >/dev/null 2>&1 || type \"call_api_streaming_${provider}\" >/dev/null 2>&1; then supports_streaming=1; fi\n  if type \"refresh_models_${provider}\" >/dev/null 2>&1; then supports_refresh_models=1; fi\n  loaded_from=\"${PROVIDER_MODULE_PATH:-embedded}\"\n  prov_json=\"$(jq -c -n --arg p \"$provider\" --arg loaded \"$loaded_from\" --argjson sstream \"$supports_streaming\" --argjson srefresh \"$supports_refresh_models\" '{provider:$p, supports_streaming:$sstream, supports_refresh_models:$srefresh, loaded_from:$loaded}')\"\n  ui_state_write \"provider_capabilities.json\" \"$prov_json\" || log_warn \"UI_STATE\" \"failed to write provider_capabilities for $provider\"\nfi\nsync_models_file_path \"$provider\"\nreturn 0"
         },
         {
           "fn": "_detect_base64_opts",
-          "body": "B64_WRAP_OPT=\"\"\nB64_DECODE_OPT=\"-d\"\nif printf '' | base64 -w0 >/dev/null 2>&1; then\nB64_WRAP_OPT=\"-w0\"\nelse\nB64_WRAP_OPT=\"\"\nfi\nif printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then\nB64_DECODE_OPT=\"-d\"\nelif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then\nB64_DECODE_OPT=\"-D\"\nelse\nB64_DECODE_OPT=\"-d\"\nfi\nexport B64_WRAP_OPT B64_DECODE_OPT"
+          "body": "B64_WRAP_OPT=\"\"\nB64_DECODE_OPT=\"-d\"\nif printf '' | base64 -w0 >/dev/null 2>&1; then\n  B64_WRAP_OPT=\"-w0\"\nelse\n  B64_WRAP_OPT=\"\"\nfi\nif printf 'dGVzdA==' | base64 -d 2>/dev/null | grep -q 'test'; then\n  B64_DECODE_OPT=\"-d\"\nelif printf 'dGVzdA==' | base64 -D 2>/dev/null | grep -q 'test'; then\n  B64_DECODE_OPT=\"-D\"\nelse\n  B64_DECODE_OPT=\"-d\"\nfi\nexport B64_WRAP_OPT B64_DECODE_OPT"
         },
         {
           "fn": "list_files_sorted_by_mtime",
-          "body": "local dir=\"$1\"\nfind \"$dir\" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do\ncase \"$(uname 2>/dev/null || echo Linux)\" in\nDarwin) mtime=\"$(stat -f %m \"$f\" 2>/dev/null || echo 0)\" ;;\n*) mtime=\"$(stat -c %Y \"$f\" 2>/dev/null || echo 0)\" ;;\nesac\nprintf '%s|%s\\n' \"$mtime\" \"$f\"\ndone | sort -n"
+          "body": "local dir=\"${1:-}\"\nfind \"$dir\" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do\n  local mtime=\"\"\n  if [ \"$BASH4LLM_PLAT_MACOS\" -eq 1 ] || [ \"$BASH4LLM_PLAT_BSD\" -eq 1 ]; then\n    mtime=\"$(stat -f %m \"$f\" 2>/dev/null || echo 0)\"\n  else\n    mtime=\"$(stat -c %Y \"$f\" 2>/dev/null || echo 0)\"\n  fi\n  printf '%s|%s\\n' \"$mtime\" \"$f\"\ndone | sort -n"
         },
         {
           "fn": "tac_fallback",
-          "body": "local f=\"$1\"\nif command -v tac >/dev/null 2>&1; then\ntac \"$f\"\nreturn $?\nfi\nawk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' \"$f\"\nreturn 0"
+          "body": "local f=\"${1:-}\"\nif command -v tac >/dev/null 2>&1; then\n  tac \"$f\"\n  return $?\nfi\nawk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' \"$f\"\nreturn 0"
         },
         {
           "fn": "_file_mtime",
-          "body": "local f=\"$1\"\nif [ ! -e \"$f\" ]; then printf '0'; return 0; fi\ncase \"$(uname 2>/dev/null || echo Linux)\" in\nDarwin) stat -f %m \"$f\" 2>/dev/null || printf '0' ;;\n*) stat -c %Y \"$f\" 2>/dev/null || printf '0' ;;\nesac"
+          "body": "local f=\"${1:-}\"\nif [ ! -e \"$f\" ]; then printf '0'; return 0; fi\nif [ \"$BASH4LLM_PLAT_MACOS\" -eq 1 ] || [ \"$BASH4LLM_PLAT_BSD\" -eq 1 ]; then\n  stat -f %m \"$f\" 2>/dev/null || printf '0'\nelse\n  stat -c %Y \"$f\" 2>/dev/null || printf '0'\nfi"
         },
         {
           "fn": "jq_safe",
-          "body": "local filter=\"$1\" file=\"$2\" rc\nif [ -z \"$file\" ] || [ ! -s \"$file\" ]; then\nreturn 1\nfi\nif ! jq -e \"$filter\" \"$file\" >/dev/null 2>&1; then\nrc=$?\nif [ -n \"${ERRF:-}\" ]; then\njq \"$filter\" \"$file\" 2>>\"$ERRF\" >/dev/null 2>&1 || true\nfi\nreturn \"$rc\"\nfi\nreturn 0"
+          "body": "local filter=\"${1:-}\" file=\"${2:-}\" rc=\"\"\nif [ -z \"$file\" ] || [ ! -s \"$file\" ]; then\n  return 1\nfi\nif ! jq -e \"$filter\" \"$file\" >/dev/null 2>&1; then\n  rc=$?\n  if [ -n \"${ERRF:-}\" ]; then\n    jq \"$filter\" \"$file\" 2>>\"$ERRF\" >/dev/null 2>&1 || true\n  fi\n  return \"$rc\"\nfi\nreturn 0"
         }
       ],
       "blocks": [
         {
           "blk": "PRECORE_BOOT_SETUP_SHELL",
-          "body": "set -euo pipefail"
+          "body": "if [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then\n  set -euo pipefail\nfi\nulimit -c 0 2>/dev/null || true\nSCRIPT_NAME=\"bash4llm\"\nSCRIPT_VERSION=\"2.5.0\"\nSCRIPT_DATE=\"2026-07-18\""
         },
         {
-          "blk": "PRECORE_BOOT_SOURCE_ONLY_CHECK",
-          "body": "if [ \"${BASH4LLM_SOURCE_ONLY:-0}\" -eq 1 ]; then\nreturn 0 2>/dev/null || exit 0\nfi"
+          "blk": "PRECORE_BOOT_ENVIRONMENT_AUTODETECTION",
+          "body": "BASH4LLM_PLAT_ANDROID=0\nBASH4LLM_PLAT_MACOS=0\nBASH4LLM_PLAT_WSL=0\nBASH4LLM_PLAT_CYGWIN=0\nBASH4LLM_PLAT_BSD=0\nBASH4LLM_PLAT_LINUX=0\n_uname_s=\"$(uname -s 2>/dev/null || echo \"Linux\")\"\n_uname_o=\"$(uname -o 2>/dev/null || echo \"\")\"\n_uname_r=\"$(uname -r 2>/dev/null || echo \"\")\"\nif [ -n \"${TERMUX_VERSION:-}\" ] || [ -d \"/data/data/com.termux\" ] || [[ \"$_uname_o\" == *\"Android\"* ]] || [[ \"$(uname -a 2>/dev/null)\" == *\"Android\"* ]] || [ -f /system/build.prop ]; then\n  BASH4LLM_PLAT_ANDROID=1\nelif [ \"$_uname_s\" = \"Darwin\" ]; then\n  BASH4LLM_PLAT_MACOS=1\nelif [[ \"$_uname_s\" == *\"CYGWIN\"* ]] || [[ \"$_uname_s\" == *\"MSYS\"* ]] || [[ \"$_uname_s\" == *\"MINGW\"* ]]; then\n  BASH4LLM_PLAT_CYGWIN=1\nelif [[ \"$_uname_s\" == *\"BSD\"* ]] || [ \"$_uname_s\" = \"DragonFly\" ]; then\n  BASH4LLM_PLAT_BSD=1\nelif [[ \"$_uname_r\" == *\"microsoft\"* ]] || [[ \"$_uname_r\" == *\"Microsoft\"* ]]; then\n  BASH4LLM_PLAT_WSL=1\n  BASH4LLM_PLAT_LINUX=1\nelse\n  BASH4LLM_PLAT_LINUX=1\nfi\nexport BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX\ndeclare -A BASH4LLM_MODEL_CACHE=()"
         },
         {
-          "blk": "PRECORE_BOOT_VERIFY_CMDS",
-          "body": "for cmd in bash jq curl mktemp stat flock base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf; do\nif ! command -v \"$cmd\" >/dev/null 2>&1; then\nprintf 'bash4llm: ERROR: required command not found: %s\\n' \"$cmd\" >&2\nexit 1\nfi\ndone"
+          "blk": "PRECORE_BOOT_SETUP_ENV_CMDS",
+          "body": "for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf comm; do\n  if ! command -v \"$cmd\" >/dev/null 2>&1; then\n    printf 'bash4llm: %sERROR%s: required command not found: %s\\n' \"${C_RED}\" \"${C_RST}\" \"$cmd\" >&2\n    exit 1\n  fi\ndone"
         },
         {
-          "blk": "PRECORE_BOOT_DIR_RESOLUTION",
-          "body": "if [ -n \"${BASH4LLM_DIR:-}\" ]; then\n:\nelif [ -n \"${BASH4LLM_ROOT:-}\" ]; then\nBASH4LLM_DIR=\"${BASH4LLM_ROOT%/}/bash4llm.d\"\nelse\nBASH4LLM_DIR=\"$SCRIPTDIR/bash4llm.d\"\nfi"
+          "blk": "PRECORE_BOOT_DIR_PATH",
+          "body": "SCRIPTDIR=\"$(resolve_script_dir)\"\nif [ -n \"${BASH4LLM_DIR:-}\" ]; then\n  :\nelif [ -n \"${BASH4LLM_ROOT:-}\" ]; then\n  BASH4LLM_DIR=\"${BASH4LLM_ROOT%/}/bash4llm.d\"\nelse\n  BASH4LLM_DIR=\"$SCRIPTDIR/bash4llm.d\"\nfi\nBASH4LLM_CONFIG_DIR=\"${BASH4LLM_CONFIG_DIR:-${BASH4LLM_DIR}/config}\"\nBASH4LLM_MODELS_DIR=\"${BASH4LLM_MODELS_DIR:-${BASH4LLM_DIR}/models}\"\nBASH4LLM_TEMPLATES_DIR=\"${BASH4LLM_TEMPLATES_DIR:-${BASH4LLM_DIR}/templates}\"\nBASH4LLM_HISTORY_DIR=\"${BASH4LLM_HISTORY_DIR:-${BASH4LLM_DIR}/history}\"\nBASH4LLM_TMPDIR=\"${BASH4LLM_TMPDIR:-${BASH4LLM_DIR}/tmp}\"\nsync_models_file_path\nMAX_MODELS=\"${MAX_MODELS:-200}\"\nCANONICAL_EXTRAS_DIR=\"${BASH4LLM_DIR}/extras\"\nLEGACY_EXTRAS_DIR=\"${SCRIPTDIR%/}/extras\"\nBASH4LLM_EXTRAS_DIR=\"${BASH4LLM_EXTRAS_DIR:-${CANONICAL_EXTRAS_DIR}}\"\nPROVIDERS_DIR=\"${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}\"\nexport BASH4LLM_EXTRAS_DIR PROVIDERS_DIR\nif [ -z \"${BASH4LLM_DIR:-}\" ]; then\n  printf 'bash4llm: ERROR: BASH4LLM_DIR is empty; cannot derive directories\\n' >&2\n  exit \"${BASH4LLM_ERR_TMP:-15}\"\nfi\ncase \"${BASH4LLM_DIR:-}\" in\n  /tmp|/tmp/*)\n    printf 'bash4llm: ERROR: BASH4LLM_DIR must not be /tmp or under /tmp: %s\\n' \"${BASH4LLM_DIR}\" >&2\n    exit \"${BASH4LLM_ERR_TMP:-15}\"\n    ;;\nesac\nif [ \"${BASH4LLM_SOURCE_ONLY:-0}\" -ne 1 ] && [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then\n  safe_mkdir \"$BASH4LLM_DIR\" 700\n  safe_mkdir \"$BASH4LLM_CONFIG_DIR\" 700\n  safe_mkdir \"$BASH4LLM_MODELS_DIR\" 700\n  safe_mkdir \"$BASH4LLM_TEMPLATES_DIR\" 700\n  safe_mkdir \"$BASH4LLM_HISTORY_DIR\" 700\n  safe_mkdir \"$BASH4LLM_TMPDIR\" 700\n  safe_mkdir \"$BASH4LLM_EXTRAS_DIR\" 700\n  safe_mkdir \"$BASH4LLM_CONFIG_DIR/providers\" 700\n  safe_mkdir \"$BASH4LLM_HISTORY_DIR/threads\" 700\nfi\nTHREAD_DIR=\"${BASH4LLM_HISTORY_DIR}/threads\""
         },
         {
-          "blk": "PRECORE_BOOT_FALLBACK_PROVIDERS",
-          "body": ": \"${PROVIDERS_DIR:=$(canonical_config_dir)/providers}\"\nexport BASH4LLM_EXTRAS_DIR PROVIDERS_DIR"
+          "blk": "PRECORE_BOOT_CRYPTOGRAPHIC_VAULT_LOAD",
+          "body": "_BASH4LLM_OPENSSL_HELPER=\"${BASH4LLM_EXTRAS_DIR}/security/openssl-helper.sh\"\nBASH4LLM_OPENSSL_ACTIVE=0\n_local_cfg=\"${BASH4LLM_CONFIG_DIR}/config\"\nif [ -f \"$_local_cfg\" ]; then\n  _cfg_vault_val=\"$(awk -F= '/^[[:space:]]*BASH4LLM_VAULT_ENABLED=/ {print $2; exit}' \"$_local_cfg\" 2>/dev/null | tr -d '[:space:]')\"\n  if [ -n \"$_cfg_vault_val\" ]; then\n    BASH4LLM_VAULT_ENABLED=\"$_cfg_vault_val\"\n  fi\nfi\nif [ \"${BASH4LLM_VAULT_ENABLED:-1}\" -eq 1 ]; then\n  if [ -f \"$_BASH4LLM_OPENSSL_HELPER\" ] && [ -r \"$_BASH4LLM_OPENSSL_HELPER\" ]; then\n    _is_symlink=0\n    if [ -L \"$_BASH4LLM_OPENSSL_HELPER\" ]; then\n      _is_symlink=1\n    fi\n    _ignore_sec=0\n    case \"${BASH4LLM_IGNORE_SEC_CHECKS:-0}\" in\n      1|true|TRUE|True|yes|YES|Yes) _ignore_sec=1 ;;\n    esac\n    if [ \"$_is_symlink\" -eq 0 ] || [ \"$_ignore_sec\" -eq 1 ]; then\n      if . \"$_BASH4LLM_OPENSSL_HELPER\" 2>/dev/null; then\n        if [ \"${BASH4LLM_OPENSSL_ACTIVE:-0}\" -eq 1 ]; then\n          export BASH4LLM_OPENSSL_ACTIVE\n        fi\n      fi\n    fi\n  fi\nelse\n  BASH4LLM_OPENSSL_ACTIVE=0\nfi"
         },
         {
-          "blk": "PRECORE_BOOT_DIR_INVARIANTS",
-          "body": "if [ -z \"${BASH4LLM_DIR:-}\" ]; then\nlog_error \"TMP\" \"BASH4LLM_DIR is empty; cannot derive BASH4LLM_TMPDIR\"\nexit \"${BASH4LLMERRTMP:-1}\"\nfi\ncase \"${BASH4LLM_TMPDIR:-}\" in\n/tmp|/tmp/*)\nlog_error \"TMP\" \"BASH4LLM_TMPDIR must not be /tmp or under /tmp: ${BASH4LLM_TMPDIR}\"\nexit \"${BASH4LLMERRTMP:-1}\"\n;;\nesac\ncase \"${BASH4LLM_TMPDIR:-}\" in\n\"${BASH4LLM_DIR}\"|\"${BASH4LLM_DIR}\"/*)\n:\n;;\n*)\nlog_error \"TMP\" \"BASH4LLM_TMPDIR must be inside BASH4LLM_DIR: ${BASH4LLM_TMPDIR} (root: ${BASH4LLM_DIR})\"\nexit \"${BASH4LLMERRTMP:-1}\"\n;;\nesac\nBASH4LLM_CONFIG_DIR=\"${BASH4LLM_CONFIG_DIR%/}\"\nif [ -z \"$BASH4LLM_CONFIG_DIR\" ]; then\nBASH4LLM_CONFIG_DIR=\"${BASH4LLM_DIR%/}/config\"\nfi"
-        },
-        {
-          "blk": "PRECORE_BOOT_ENSURE_CONFIG_DIR",
-          "body": "ensure_config_dir || { log_error \"CONFIG\" \"config dir unavailable; aborting.\"; exit \"$BASH4LLMERRTMP\"; }"
-        },
-        {
-          "blk": "PRECORE_BOOT_FAILFAST_CONFIG_DIR",
-          "body": "if [ -z \"$(canonical_config_dir)\" ]; then\nprintf 'bash4llm: ERROR: CONFIG: canonical config dir is empty; aborting.\\n' >&2\nexit 1\nfi"
-        },
-        {
-          "blk": "PRECORE_BOOT_NORMALIZE_DEBUG",
-          "body": "if [ -n \"${BASH4LLM_DEBUG:-}\" ] && [ -z \"${DEBUG:-}\" ]; then\nDEBUG=\"${BASH4LLM_DEBUG}\"\nfi\nDEBUG=\"${DEBUG:-0}\""
-        },
-        {
-          "blk": "PRECORE_BOOT_EARLY_PRINT_CONFIG",
-          "body": "if [ \"$#\" -gt 0 ]; then\ni=1\nwhile [ \"$i\" -le \"$#\" ]; do\narg=\"${!i}\"\ncase \"$arg\" in\n--print-config-dir)\nprintf '%s\\n' \"$(canonical_config_dir)\"\nexit 0\n;;\n--print-provider-file)\nprintf '%s\\n' \"$(canonical_provider_file)\"\nexit 0\n;;\n--print-model-file)\nnext_index=$((i+1))\nif [ \"$next_index\" -le \"$#\" ]; then\nprov=\"${!next_index}\"\nprintf '%s\\n' \"$(canonical_model_file \"$prov\")\"\nexit 0\nelse\nprintf 'bash4llm: ERROR: usage: --print-model-file <provider>\\n' >&2\nexit 2\nfi\n;;\n--print-model-file=*)\nprov=\"${arg#--print-model-file=}\"\nprintf '%s\\n' \"$(canonical_model_file \"$prov\")\"\nexit 0\n;;\n--help|-h)\nbreak\n;;\n*)\n;;\nesac\ni=$((i+1))\ndone\nfi"
-        },
-        {
-          "blk": "PRECORE_BOOT_MKDIR_PERMS",
-          "body": "mkdir -p \"$BASH4LLM_HISTORY_DIR/sessions\" 2>/dev/null || true\nmkdir -p \"$BASH4LLM_TMPDIR\" 2>/dev/null || true\nchmod 700 \"$BASH4LLM_HISTORY_DIR\" \"$BASH4LLM_TMPDIR\" 2>/dev/null || true\nSESSION_DIR=\"${BASH4LLM_HISTORY_DIR%/}/sessions\"\nmkdir -p \"$SESSION_DIR\" 2>/dev/null || true\nchmod 700 \"$SESSION_DIR\" 2>/dev/null || true\numask 077\nmkdir -p \"$(canonical_config_dir)\" \"$BASH4LLM_MODELS_DIR\" \"$BASH4LLM_TEMPLATES_DIR\" \"$BASH4LLM_HISTORY_DIR\" \"$BASH4LLM_TMPDIR\" \"$BASH4LLM_EXTRAS_DIR\" \"$(canonical_config_dir)/providers\" 2>/dev/null || true\nfor d in \"$BASH4LLM_DIR\" \"$(canonical_config_dir)\" \"$BASH4LLM_MODELS_DIR\" \"$BASH4LLM_TEMPLATES_DIR\" \"$BASH4LLM_HISTORY_DIR\" \"$BASH4LLM_TMPDIR\" \"$BASH4LLM_EXTRAS_DIR\" \"$(canonical_config_dir)/providers\"; do\nif [ -L \"$d\" ]; then\nprintf 'bash4llm: ERROR: directory is a symlink: %s\\n' \"$d\" >&2\nexit \"$BASH4LLMERRTMP\"\nfi\nmkdir -p \"$d\" 2>/dev/null || { printf 'bash4llm: ERROR: cannot create directory: %s\\n' \"$d\" >&2; exit \"$BASH4LLMERRTMP\"; }\nchmod 700 \"$d\" 2>/dev/null || true\ndone"
+          "blk": "PRECORE_BOOT_CLI_HELPERS",
+          "body": "if [ \"$#\" -gt 0 ]; then\n  i=1\n  while [ \"$i\" -le \"$#\" ]; do\n    arg=\"${!i}\"\n    case \"$arg\" in\n      --check-config)\n        run_static_config_check\n        exit 0\n        ;;\n      --explain-error)\n        next_index=$((i+1))\n        if [ \"$next_index\" -le \"$#\" ]; then\n          explain_error_code \"${!next_index}\"\n          exit 0\n        else\n          printf 'bash4llm: %sERROR%s: usage: --explain-error <error_code_or_alias>\\n' \"${C_RED}\" \"${C_RST}\" >&2\n          exit 2\n        fi\n        ;;\n      --print-config-dir)\n        printf '%s\\n' \"$(canonical_config_dir)\"\n        exit 0\n        ;;\n      --print-provider-file)\n        printf '%s\\n' \"$(canonical_provider_file)\"\n        exit 0\n        ;;\n      --print-model-file)\n        next_index=$((i+1))\n        if [ \"$next_index\" -le \"$#\" ]; then\n          prov=\"${!next_index}\"\n          printf '%s\\n' \"$(canonical_model_file \"$prov\")\"\n          exit 0\n        else\n          printf 'bash4llm: %sERROR%s: usage: --print-model-file <provider>\\n' \"${C_RED}\" \"${C_RST}\" >&2\n          exit 2\n        fi\n        ;;\n      --print-model-file=*)\n        prov=\"${arg#--print-model-file=}\"\n        printf '%s\\n' \"$(canonical_model_file \"$prov\")\"\n        exit 0\n        ;;\n      --help|-h)\n        break\n        ;;\n      *)\n        ;;\n    esac\n    i=$((i+1))\n  done\nfi\numask 077"
         },
         {
           "blk": "PRECORE_BOOT_DETECT_B64_OPTS",
