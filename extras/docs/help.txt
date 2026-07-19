@@ -23,6 +23,7 @@ Output:
   --raw                Raw output (no formatting)
   --json               Raw JSON output
   --pretty             Pretty-print JSON
+  --no-color           Disable color output
   --out <path>         Save output to file or directory
   --save               Force save
   --nosave             Disable save
