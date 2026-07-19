@@ -207,12 +207,16 @@ buildpayload_huggingface() {
     local messages_arr="[]"
     if [ -n "${JSON_INPUT:-}" ]; then
       if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-        jq --arg model "$MODEL" --argjson max_tokens "${MAX_TOKENS:-256}" \
-           '.model = $model | .max_tokens = ($max_tokens|tonumber)' "$JSON_INPUT" > "$tmp_payload"
+        jq --arg model "$MODEL" \
+           --argjson max_tokens "${MAX_TOKENS:-256}" \
+           --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
+           '.model = $model | .max_tokens = ($max_tokens|tonumber) | .temperature = ($temp|tonumber)' "$JSON_INPUT" > "$tmp_payload"
       elif jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
         user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
-        jq -n --arg model "$MODEL" --arg prompt "$user_prompt" --argjson max_tokens "${MAX_TOKENS:-256}" \
-           '{model:$model, messages:[{role:"user", content:$prompt}], max_tokens:($max_tokens|tonumber)}' > "$tmp_payload"
+        jq -n --arg model "$MODEL" --arg prompt "$user_prompt" \
+              --argjson max_tokens "${MAX_TOKENS:-256}" \
+              --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
+           '{model:$model, messages:[{role:"user", content:$prompt}], max_tokens:($max_tokens|tonumber), temperature:($temp|tonumber)}' > "$tmp_payload"
       else
         cat "$JSON_INPUT" > "$tmp_payload"
       fi
@@ -245,18 +249,25 @@ buildpayload_huggingface() {
       if [ "${STREAM_MODE:-0}" -eq 1 ]; then
         stream_val="true"
       fi
-      jq -n --arg model "$MODEL" --argjson messages "$messages_arr" --argjson max_tokens "${MAX_TOKENS:-256}" --argjson stream "$stream_val" \
-         '{model:$model, messages:$messages, max_tokens:($max_tokens|tonumber), stream:$stream}' > "$tmp_payload"
+      jq -n --arg model "$MODEL" \
+            --argjson messages "$messages_arr" \
+            --argjson max_tokens "${MAX_TOKENS:-256}" \
+            --argjson stream "$stream_val" \
+            --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
+         '{model:$model, messages:$messages, max_tokens:($max_tokens|tonumber), stream:$stream, temperature:($temp|tonumber)}' > "$tmp_payload"
     fi
   else
     # Legacy text-generation payload
     if [ -n "${JSON_INPUT:-}" ]; then
       if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-        jq --arg model "$MODEL" --argjson max_tokens "${MAX_TOKENS:-256}" \
-           '.model = $model | .max_tokens = ($max_tokens|tonumber)' "$JSON_INPUT" > "$tmp_payload"
+        jq --arg model "$MODEL" \
+           --argjson max_tokens "${MAX_TOKENS:-256}" \
+           --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
+           '.model = $model | .max_tokens = ($max_tokens|tonumber) | .temperature = ($temp|tonumber)' "$JSON_INPUT" > "$tmp_payload"
       elif jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
         user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
-        jq -n --arg inputs "$user_prompt" --argjson params "$(jq -n '{max_new_tokens:('"${MAX_TOKENS:-256}"')}' 2>/dev/null)" \
+        jq -n --arg inputs "$user_prompt" \
+              --argjson params "$(jq -n --argjson max_t "${MAX_TOKENS:-256}" --arg t "${TEMPERATURE:-${TURE:-1.0}}" '{max_new_tokens:$max_t, temperature:($t|tonumber)}' 2>/dev/null)" \
            '{inputs:$inputs, parameters:$params}' > "$tmp_payload"
       else
         cat "$JSON_INPUT" > "$tmp_payload"
@@ -267,7 +278,8 @@ buildpayload_huggingface() {
       else
         joined="$CONTENT"
       fi
-      jq -n --arg inputs "$joined" --argjson params "$(jq -n '{max_new_tokens:('"${MAX_TOKENS:-256}"')}' 2>/dev/null)" \
+      jq -n --arg inputs "$joined" \
+            --argjson params "$(jq -n --argjson max_t "${MAX_TOKENS:-256}" --arg t "${TEMPERATURE:-${TURE:-1.0}}" '{max_new_tokens:$max_t, temperature:($t|tonumber)}' 2>/dev/null)" \
          '{inputs:$inputs, parameters:$params}' > "$tmp_payload"
     fi
   fi
@@ -309,9 +321,9 @@ call_api_huggingface() {
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "huggingface")"
     if [ -n "$prov_env" ]; then
-      HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+      HFAPIKEY="${!prov_env:-${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}}"
     else
-      HFAPIKEY="${HUGGINGFACE_API_KEY:-${HFAPIKEY:-}}"
+      HFAPIKEY="${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}"
     fi
   fi
 
@@ -497,9 +509,9 @@ call_api_streaming_huggingface() {
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "huggingface")"
     if [ -n "$prov_env" ]; then
-      HFAPIKEY="${!prov_env:-${HFAPIKEY:-}}"
+      HFAPIKEY="${!prov_env:-${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}}"
     else
-      HFAPIKEY="${HUGGINGFACE_API_KEY:-${HFAPIKEY:-}}"
+      HFAPIKEY="${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}"
     fi
   fi
 
@@ -581,10 +593,26 @@ call_api_streaming_huggingface() {
 
   if [ -s "$workdir/resp.valid.jsons" ]; then
     jq -s '.' "$workdir/resp.valid.jsons" > "$workdir/resp.chunks.json" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$workdir/resp.chunks.json" | atomic_write "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+    
+    # Extract all delta contents and join them natively to build synthetic OpenAI-style RESP
+    local unified_text
+    unified_text="$(jq -r 'map(.choices[]?.delta?.content // .choices[]?.message?.content // "") | join("")' "$workdir/resp.chunks.json" 2>/dev/null || true)"
+
+    if [ -n "${unified_text}" ]; then
+      local synthetic_resp="$workdir/resp.synthetic.json"
+      jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$synthetic_resp" | atomic_write "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$synthetic_resp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      else
+        cp -f "$synthetic_resp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      fi
+      rm -f "$synthetic_resp" 2>/dev/null || true
     else
-      cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$workdir/resp.chunks.json" | atomic_write "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      else
+        cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
+      fi
     fi
   else
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
