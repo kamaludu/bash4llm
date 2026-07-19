@@ -115,6 +115,13 @@ OPTIONS
         Disables text extraction and displays the raw JSON response payload 
         from the provider exactly as received from the external API.
 
+    --no-color
+        Disables the use of ANSI colors and text styles on both
+        standard output and standard error. This option prevents
+        the insertion of non-printing control sequences when redirecting
+        output to files or pipes, ensuring clean logs
+        and readability in non-interactive or headless environments.
+
     --pretty
         Performs structured formatting (pretty-print) on the JSON response 
         before displaying it on standard output.
