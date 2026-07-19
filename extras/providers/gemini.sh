@@ -97,7 +97,7 @@ buildpayload_gemini() {
   # Safe under set -u: passing message array to jq via pipeline instead of --argjson
   if ! printf '%s' "${input_messages_json}" | jq \
          --arg system_prompt "${sys_prompt}" \
-         --arg temp "${TURE:-}" \
+         --arg temp "${TEMPERATURE:-${TURE:-}}" \
          --arg max_tok "${MAX_TOKENS:-}" \
          '
          . as $messages |
@@ -476,8 +476,9 @@ call_api_streaming_gemini() {
 
   rm -f "$decoded_payload" 2>/dev/null || true
 
+  local resp_path="${RESP:-$workdir/resp.json}"
+
   if [ "$rc" -ne 0 ]; then
-    local resp_path="${RESP:-${workdir%/}/resp.json}"
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
       gemini_report_error "$RESP_RAW" "$errf"
       if ! jq -e . "${resp_path}" >/dev/null 2>&1; then
@@ -495,27 +496,31 @@ call_api_streaming_gemini() {
     return "${BASH4LLM_ERR_API:-16}"
   fi
 
-  local resp_path="${RESP:-$workdir/resp.json}"
+  # Transactional streaming reconstruction to OpenAI-compliant JSON format
+  local clean_chunks
+  clean_chunks="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null)" || clean_chunks="${workdir%/}/gemini-chunks.$$.tmp"
+  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' | jq -s '.' > "$clean_chunks" 2>/dev/null || true
 
-  if [ -n "${resp_path:-}" ]; then
-    _gemini_write_atomic "$RESP_RAW" "${resp_path}"
-  fi
-
-  if [ -n "${resp_path:-}" ] && [ -s "${resp_path}" ] && jq -e . "${resp_path}" >/dev/null 2>&1; then
-    extracted_text="$(jq -r '([(.candidates[]?.content?.parts[]?.text), (.content?.parts[]?.text), (.outputs[]?.content?.parts[]?.text)] | map(select(.!=null and .!="")) | .[0]) // empty' "${resp_path}" 2>/dev/null || true)"
-    if [ -n "${extracted_text}" ]; then
-      tmpconv="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null || true)"
-      if [ -z "$tmpconv" ]; then
-        tmpconv="${workdir%/}/gemini-conv.$$"
-        : > "$tmpconv" 2>/dev/null || true
-      fi
+  if [ -s "$clean_chunks" ] && jq -e . "$clean_chunks" >/dev/null 2>&1; then
+    local unified_text
+    unified_text="$(jq -r 'map(.candidates[]?.content?.parts[]?.text // .content?.parts[]?.text // .outputs[]?.content?.parts[]?.text // "") | join("")' "$clean_chunks" 2>/dev/null || true)"
+    
+    if [ -n "${unified_text}" ]; then
+      local synthetic_resp
+      synthetic_resp="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null)" || synthetic_resp="${workdir%/}/gemini-synthetic.$$.json"
       umask 077
-      jq -n --arg text "$extracted_text" '{choices:[{message:{content:$text}}]}' > "$tmpconv"
-      _gemini_write_atomic "$tmpconv" "${resp_path}" || { cp -f "$tmpconv" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
-      rm -f "$tmpconv" 2>/dev/null || true
+      jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
+      _gemini_write_atomic "$synthetic_resp" "${resp_path}" || { cp -f "$synthetic_resp" "${resp_path}" 2>/dev/null || true; chmod 600 "${resp_path}" 2>/dev/null || true; }
+      rm -f "$synthetic_resp" 2>/dev/null || true
+    fi
+  else
+    if [ -s "$RESP_RAW" ]; then
+      _gemini_write_atomic "$RESP_RAW" "${resp_path}"
     fi
   fi
 
+  rm -f "$clean_chunks" 2>/dev/null || true
+  rm -f "$RESP_RAW" "$errf" 2>/dev/null || true
   return 0
 }
 
