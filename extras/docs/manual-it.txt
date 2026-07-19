@@ -124,6 +124,13 @@ OPZIONI
         Disabilita l'estrazione testuale e visualizza a schermo il payload JSON 
         di risposta grezzo del provider così come ricevuto dalle API esterne.
 
+    --no-color
+        Disabilita l'uso dei colori ANSI e degli stili di testo sia sullo 
+        standard output che sullo standard error. Questa opzione previene 
+        l'inserimento di sequenze di controllo non stampabili quando si 
+        reindirizza l'output su file o pipe, garantendo la pulizia dei log 
+        e la leggibilità in ambienti non interattivi o headless.
+
     --pretty
         Esegue la formattazione avanzata strutturata (pretty-print) del JSON di 
         risposta prima di visualizzarlo sullo standard output.
