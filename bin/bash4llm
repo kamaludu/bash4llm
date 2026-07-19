@@ -493,7 +493,19 @@ dbg() {
 # ---------------------------------------------------------------------------
 # Terminal Color Theme Initialization (conforms to NO_COLOR standard)
 # ---------------------------------------------------------------------------
-if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
+# Pre-parse arguments to intercept --no-color early and set the standard env variable
+if [ "$#" -gt 0 ]; then
+  for _arg in "$@"; do
+    if [ "$_arg" = "--no-color" ]; then
+      export NO_COLOR=1
+      break
+    fi
+  done
+  unset _arg
+fi
+
+# The color check remains extremely clean, with only the safe 'dumb' terminal check added
+if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
   C_RST=$'\e[0m'
   C_BOLD=$'\e[1m'
 
@@ -531,6 +543,11 @@ if { [ -t 1 ] || [ -t 2 ]; } && [ -z "${NO_COLOR:-}" ]; then
   BG_MAGENTA=$'\e[45m'
   BG_CYAN=$'\e[46m'
   BG_WHITE=$'\e[47m'
+else
+  C_RST="" C_BOLD="" C_LOGO="" C_BANNER="" C_GBOLD=""
+  C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
+  C_BBLACK="" C_BRED="" C_BGREEN="" C_BYELLOW="" C_BBLUE="" C_BMAGENTA="" C_BCYAN="" C_BWHITE=""
+  BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN="" BG_WHITE=""
 fi
 #--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
 #--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
@@ -4021,6 +4038,9 @@ RENAME_TITLE=""
 # Parsed options with robust alias resolutions (--providers, --tui, --diagnostic, --install-extra)
 while [ $# -gt 0 ]; do
   case "$1" in
+    --no-color)
+      shift
+      ;;
     --init-thread) INIT_THREAD=1; shift ;;
     --delete-thread)
       check_required_arg "--delete-thread" "$#"
