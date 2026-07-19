@@ -12,7 +12,11 @@
 
 # Soft dependency check: gracefully exit if openssl is missing
 if ! command -v openssl >/dev/null 2>&1; then
-  return 0
+  if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    exit 0
+  else
+    return 0
+  fi
 fi
 
 # Set active flag once openssl binary presence is verified
@@ -24,20 +28,67 @@ if printf 'test' | openssl enc -aes-256-cbc -pbkdf2 -iter 10 -salt -pass pass:te
   _BASH4LLM_VAULT_PBKDF2=1
 fi
 
-# Cryptographic Vault File Layout
-_VAULT_FILE="${BASH4LLM_CONFIG_DIR:-}/keys.enc"       # Encrypted Vault Key (using Master Password)
-_VAULT_REC_FILE="${BASH4LLM_CONFIG_DIR:-}/keys.rec"   # Encrypted Vault Key (using Recovery Key)
-_VAULT_DAT_FILE="${BASH4LLM_CONFIG_DIR:-}/keys.dat"   # Encrypted JSON API Keys Payload (using Vault Key)
+# Safe configuration directory resolution with isolated fallback
+_B4L_CFG_DIR="${BASH4LLM_CONFIG_DIR:-}"
+if [ -z "$_B4L_CFG_DIR" ]; then
+  _B4L_CFG_DIR="./bash4llm.d/config"
+fi
+
+# Cryptographic Vault File Layout (fully secured paths)
+_VAULT_FILE="${_B4L_CFG_DIR%/}/keys.enc"       # Encrypted Vault Key (using Master Password)
+_VAULT_REC_FILE="${_B4L_CFG_DIR%/}/keys.rec"   # Encrypted Vault Key (using Recovery Key)
+_VAULT_DAT_FILE="${_B4L_CFG_DIR%/}/keys.dat"   # Encrypted JSON API Keys Payload (using Vault Key)
 
 # Explicitly declare global array to prevent nounset (set -u) warnings
 declare -a _VAULT_OPTS=()
 
+# -----------------------------------------------------------------------------
+# Fail-safe fallbacks for core shell helpers to ensure independent solidity
+# -----------------------------------------------------------------------------
+if ! type trim_space >/dev/null 2>&1; then
+  trim_space() {
+    local var="${1:-}"
+    var="${var#"${var%%[![:space:]]*}"}"
+    var="${var%"${var##*[![:space:]]}"}"
+    printf '%s' "$var"
+  }
+fi
+
+if ! type safe_mkdir >/dev/null 2>&1; then
+  safe_mkdir() {
+    local dir="${1:-}" perm="${2:-700}"
+    if [ -n "$dir" ] && [ ! -d "$dir" ]; then
+      mkdir -p "$dir" 2>/dev/null
+      chmod "$perm" "$dir" 2>/dev/null || true
+    fi
+  }
+fi
+
+if ! type _tmpf >/dev/null 2>&1; then
+  _tmpf() {
+    local mode="${1:-}" base="${2:-}" prefix="${3:-groq}" tmp=""
+    # Fallback to standard system temp directories if base is unset or empty
+    if [ -z "$base" ]; then
+      base="${TMPDIR:-/tmp}"
+    fi
+    if [ "$mode" = "file" ]; then
+      tmp="$(mktemp "${base%/}/${prefix}.XXXXXX" 2>/dev/null)"
+      [ -n "$tmp" ] && chmod 600 "$tmp" 2>/dev/null
+      printf '%s' "$tmp"
+    fi
+  }
+fi
+
+# -----------------------------------------------------------------------------
 # Securely read silent password input with terminal fallback
+# -----------------------------------------------------------------------------
 _vault_read_password() {
-  local prompt="${1:-Password: }"
+  local prompt="${1:-Password}"
   local pass=""
   
-  printf '%s' "$prompt" >&2
+  # Linear Prompt UX: display warning in magenta and invitation on next line
+  printf '%s  %s[input is hidden]%s:\n  > ' "$prompt" "${C_MAGENTA:-}" "${C_RST:-}" >&2
+
   # Read from /dev/tty if available, otherwise fallback to standard input
   if [ -r /dev/tty ] && [ -c /dev/tty ]; then
     stty -echo < /dev/tty 2>/dev/null || true
@@ -116,8 +167,8 @@ _vault_decrypt_file() {
   _vault_set_opts "decrypt"
   export BASH4LLM_VAULT_PASS="$key_material"
   
-  decrypted="$(openssl enc "${_VAULT_OPTS[@]}" < "$src_file" 2>/dev/null)"
-  rc=$? # Capture exit status immediately before executing unset
+  decrypted="$(openssl enc "${_VAULT_OPTS[@]}" < "$src_file" 2>/dev/null | tr -d '\0')"
+  rc=${PIPESTATUS[0]} # Capture the exit status of the first command in the pipeline (openssl)
   unset BASH4LLM_VAULT_PASS
 
   if [ "$rc" -eq 0 ] && [ -n "$decrypted" ]; then
@@ -137,21 +188,21 @@ vault_init() {
   local pass1="" pass2="" recovery_key="" vault_key="" initial_json='{}'
 
   if vault_exists; then
-    printf 'Vault is already initialized.\n' >&2
+    printf '  %sError: Vault is already initialized.%s\n' "${C_RED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf '\n=== INITIALIZING SECURE KEY VAULT ===\n' >&2
+  printf '\n  %s=== INITIALIZING SECURE KEY VAULT ===%s\n\n' "${C_BANNER:-}" "${C_RST:-}" >&2
   
   while :; do
-    pass1="$(_vault_read_password "Create a Master Password (min 8 chars): ")"
+    pass1="$(_vault_read_password "  Create a Master Password (min 8 chars)")"
     if [ ${#pass1} -lt 8 ]; then
-      printf 'Error: Password must be at least 8 characters long.\n' >&2
+      printf '  %sError: Password must be at least 8 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
       continue
     fi
-    pass2="$(_vault_read_password "Confirm Master Password: ")"
+    pass2="$(_vault_read_password "  Confirm Master Password")"
     if [ "$pass1" != "$pass2" ]; then
-      printf 'Error: Passwords do not match. Try again.\n' >&2
+      printf '  %sError: Passwords do not match. Try again.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
     else
       break
     fi
@@ -165,33 +216,33 @@ vault_init() {
   vault_key="$(openssl rand -hex 32 2>/dev/null)"
   [ -n "$vault_key" ] || vault_key="vk-$(date +%s)-$RANDOM-$RANDOM-$RANDOM"
 
-  safe_mkdir "$(dirname "$_VAULT_FILE")" 700
+  safe_mkdir "$_B4L_CFG_DIR" 700
 
   # 1. Encrypt Vault Key with Master Password -> keys.enc
   if ! _vault_encrypt_to_file "$vault_key" "$_VAULT_FILE" "$pass1"; then
-    printf 'Fatal: Failed to write master key file.\n' >&2
+    printf '  %sFatal: Failed to write master key file.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
   # 2. Encrypt Vault Key with Recovery Key -> keys.rec
   if ! _vault_encrypt_to_file "$vault_key" "$_VAULT_REC_FILE" "$recovery_key"; then
-    printf 'Fatal: Failed to write recovery key file.\n' >&2
+    printf '  %sFatal: Failed to write recovery key file.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
   # 3. Encrypt initial empty JSON payload with Vault Key -> keys.dat
   if ! _vault_encrypt_to_file "$initial_json" "$_VAULT_DAT_FILE" "$vault_key"; then
-    printf 'Fatal: Failed to write data file.\n' >&2
+    printf '  %sFatal: Failed to write data file.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf '\n%b[SUCCESS] Key Vault initialized successfully.%b\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
-  printf '%b--------------------------------------------------------%b\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
-  printf 'CRITICAL: Record your emergency Recovery Key offline!\n' >&2
-  printf 'You will need this key if you forget your Master Password.\n\n' >&2
-  printf '  RECOVERY KEY: %b%s%b\n\n' "${C_BGREEN:-}" "$recovery_key" "${C_RST:-}" >&2
-  printf '%b--------------------------------------------------------%b\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
-  printf 'Press ENTER to continue...' >&2
+  printf '\n  %s[SUCCESS] Key Vault initialized successfully.%s\n\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
+  printf '%s========================================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
+  printf '  %sCRITICAL WARNING: Record your emergency Recovery Key offline!%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
+  printf '  You will need this key if you forget your Master Password.\n\n' >&2
+  printf '    RECOVERY KEY:  %s%s%s\n\n' "${C_BGREEN:-}" "$recovery_key" "${C_RST:-}" >&2
+  printf '%s========================================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
+  printf '  Press ENTER to continue...' >&2
   read -r _
   return 0
 }
@@ -211,8 +262,9 @@ vault_load_keys() {
 
   # 2. If the context token is empty or decryption failed, prompt user
   if [ -z "$vault_key" ]; then
-    printf "%bTip: Run '. ./bash4llm' once to unlock your session and bypass password prompts.%b\n" "${C_BYELLOW:-}" "${C_RST:-}" >&2
-    master_pass="$(_vault_read_password "Enter Master Password to unlock Vault: ")"
+    printf "  %sTip: Run %b%s. ./bash4llm%s%b once to unlock your session and bypass password prompts.%b\n\n" \
+      "${C_BMAGENTA:-}" "${C_BGREEN:-}" "${C_UNDERLINE:-}" "${C_NOUNDERLINE:-}" "${C_RST:-}" "${C_RST:-}" >&2
+    master_pass="$(_vault_read_password "  Enter Master Password to unlock Vault")"
     
     # Decrypt internal Vault Key using Master Password
     vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
@@ -235,29 +287,29 @@ vault_change_password() {
   local master_pass="" vault_key="" pass1="" pass2="" recovery_key=""
 
   if ! vault_exists; then
-    printf 'Vault is not initialized. Please initialize it first.\n' >&2
+    printf '  %sError: Vault is not initialized. Please initialize it first.%s\n' "${C_RED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf '\n--- CHANGE MASTER PASSWORD ---\n' >&2
-  master_pass="$(_vault_read_password "Enter CURRENT Master Password: ")"
+  printf '\n  %s--- CHANGE MASTER PASSWORD ---%s\n\n' "${C_BANNER:-}" "${C_RST:-}" >&2
+  master_pass="$(_vault_read_password "  Enter CURRENT Master Password")"
 
   # Decrypt existing internal Vault Key to preserve it
   vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
   if [ -z "$vault_key" ]; then
-    printf 'Authentication failed. Password modification aborted.\n' >&2
+    printf '  %sError: Authentication failed. Password modification aborted.%s\n' "${C_RED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
   while :; do
-    pass1="$(_vault_read_password "Enter NEW Master Password (min 8 chars): ")"
+    pass1="$(_vault_read_password "  Enter NEW Master Password (min 8 chars)")"
     if [ ${#pass1} -lt 8 ]; then
-      printf 'Error: Password must be at least 8 characters long.\n' >&2
+      printf '  %sError: Password must be at least 8 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
       continue
     fi
-    pass2="$(_vault_read_password "Confirm NEW Master Password: ")"
+    pass2="$(_vault_read_password "  Confirm NEW Master Password")"
     if [ "$pass1" != "$pass2" ]; then
-      printf 'Error: Passwords do not match. Try again.\n' >&2
+      printf '  %sError: Passwords do not match. Try again.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
     else
       break
     fi
@@ -269,19 +321,19 @@ vault_change_password() {
 
   # Re-encrypt Vault Key with NEW Master Password -> keys.enc
   if ! _vault_encrypt_to_file "$vault_key" "$_VAULT_FILE" "$pass1"; then
-    printf 'Error: Failed to update master key file.\n' >&2
+    printf '  %sError: Failed to update master key file.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
   # Re-encrypt Vault Key with NEW Recovery Key -> keys.rec
   if ! _vault_encrypt_to_file "$vault_key" "$_VAULT_REC_FILE" "$recovery_key"; then
-    printf 'Error: Failed to update recovery key file.\n' >&2
+    printf '  %sError: Failed to update recovery key file.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf '\n%bNotice: A new Recovery Key has been generated for your safety.%b\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
-  printf 'NEW RECOVERY KEY: %b%s%b\n\n' "${C_BGREEN:-}" "$recovery_key" "${C_RST:-}" >&2
-  printf 'Press ENTER to continue...' >&2
+  printf '\n  %sNotice: A new Recovery Key has been generated for your safety.%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
+  printf '  NEW RECOVERY KEY:  %s%s%s\n\n' "${C_BGREEN:-}" "$recovery_key" "${C_RST:-}" >&2
+  printf '  Press ENTER to continue...' >&2
   read -r _
   return 0
 }
@@ -290,12 +342,12 @@ vault_change_password() {
 vault_destroy() {
   local confirm=""
 
-  printf '\n%bWARNING: This will permanently delete ALL saved API keys and credentials.%b\n' "${C_BRED:-}" "${C_RST:-}" >&2
-  printf 'Type "DESTROY" to confirm absolute database purge: ' >&2
+  printf '\n  %sWARNING: This will permanently delete ALL saved API keys and credentials.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
+  printf '  Type "DESTROY" to confirm absolute database purge:\n  > ' >&2
   
   read -r confirm
   if [ "$confirm" != "DESTROY" ]; then
-    printf 'Aborted.\n' >&2
+    printf '  %sAborted.%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
     return 1
   fi
 
@@ -310,7 +362,7 @@ vault_destroy() {
   fi
 
   rm -f -- "$_VAULT_FILE" "$_VAULT_REC_FILE" "$_VAULT_DAT_FILE" 2>/dev/null || true
-  printf '\nVault successfully destroyed. All saved configurations have been wiped.\n' >&2
+  printf '\n  %sVault successfully destroyed. All saved configurations have been wiped.%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
   return 0
 }
 
@@ -319,12 +371,12 @@ vault_recover() {
   local rec_key="" vault_key="" pass1="" pass2=""
 
   if [ ! -f "$_VAULT_REC_FILE" ]; then
-    printf 'Error: Recovery database keys.rec is missing. System unrecoverable.\n' >&2
+    printf '  %sError: Recovery database keys.rec is missing. System unrecoverable.%s\n' "${C_RED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf '\n=== KEY VAULT PASSCODE RECOVERY ===\n' >&2
-  printf 'Enter your offline Recovery Key:\n> ' >&2
+  printf '\n  %s=== KEY VAULT PASSCODE RECOVERY ===%s\n' "${C_BCYAN:-}" "${C_RST:-}" >&2
+  printf '  Enter your offline Recovery Key:\n  > ' >&2
   
   read -r rec_key
   rec_key="$(trim_space "$rec_key")"
@@ -332,22 +384,22 @@ vault_recover() {
   # Decrypt Vault Key using the offline Recovery Key
   vault_key="$(_vault_decrypt_file "$_VAULT_REC_FILE" "$rec_key")"
   if [ -z "$vault_key" ]; then
-    printf '%bError: Invalid Recovery Key or database corruption.%b\n' "${C_BRED:-}" "${C_RST:-}" >&2
+    printf '  %sError: Invalid Recovery Key or database corruption.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf '\n%bRecovery authorization successful!%b\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
-  printf 'Define a new Master Password to restore standard vault operations.\n' >&2
+  printf '\n  %sRecovery authorization successful!%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
+  printf '  Define a new Master Password to restore standard vault operations.\n\n' >&2
 
   while :; do
-    pass1="$(_vault_read_password "Enter NEW Master Password (min 8 chars): ")"
+    pass1="$(_vault_read_password "  Enter NEW Master Password (min 8 chars)")"
     if [ ${#pass1} -lt 8 ]; then
-      printf 'Error: Password must be at least 8 characters long.\n' >&2
+      printf '  %sError: Password must be at least 8 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
       continue
     fi
-    pass2="$(_vault_read_password "Confirm NEW Master Password: ")"
+    pass2="$(_vault_read_password "  Confirm NEW Master Password")"
     if [ "$pass1" != "$pass2" ]; then
-      printf 'Error: Passwords do not match. Try again.\n' >&2
+      printf '  %sError: Passwords do not match. Try again.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
     else
       break
     fi
@@ -355,11 +407,11 @@ vault_recover() {
 
   # Re-encrypt Vault Key with new Master Password -> keys.enc
   if ! _vault_encrypt_to_file "$vault_key" "$_VAULT_FILE" "$pass1"; then
-    printf 'Error: Failed to write recovered database files.\n' >&2
+    printf '  %sError: Failed to write recovered database files.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
-  printf 'Access recovered successfully. Master Password restored.\n' >&2
+  printf '  %sAccess recovered successfully. Master Password restored.%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
   return 0
 }
 
@@ -371,48 +423,48 @@ vault_manage_keys() {
     vault_init || return 1
   fi
 
-  master_pass="$(_vault_read_password "Enter Master Password to access Key Manager: ")"
+  master_pass="$(_vault_read_password "  Enter Master Password to access Key Manager")"
   
   # Decrypt internal Vault Key
   vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
   if [ -z "$vault_key" ]; then
-    printf 'Access Denied: Incorrect Master Password.\n' >&2
+    printf '  %sAccess Denied: Incorrect Master Password.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
   # Decrypt payload JSON database using Vault Key
   current_payload="$(_vault_decrypt_file "$_VAULT_DAT_FILE" "$vault_key")"
   if [ -z "$current_payload" ]; then
-    printf 'Error: Failed to decrypt database payload.\n' >&2
+    printf '  %sError: Failed to decrypt database payload.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
     return 1
   fi
 
   while :; do
-    printf '\n=== KEY VAULT OPERATIONS ===\n' >&2
-    printf '1) List Configured Providers\n' >&2
-    printf '2) Add / Update Provider API Key\n' >&2
-    printf '3) Delete Provider API Key\n' >&2
-    printf '4) Return to Security Console\n' >&2
-    printf 'Choice: ' >&2
+    printf '\n  %s=== KEY VAULT OPERATIONS ===%s\n' "${C_BANNER:-}" "${C_RST:-}" >&2
+    printf "    %s1)%s List Configured Providers\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s2)%s Add / Update Provider API Key\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s3)%s Delete Provider API Key\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s4)%s Return to Security Console\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf '  Choice:\n  > ' >&2
     
     read -r choice
     
     case "$choice" in
       1)
-        printf '\n--- CONFIGURED PROVIDERS ---\n' >&2
+        printf '\n  %s--- CONFIGURED PROVIDERS ---%s\n' "${C_BCYAN:-}" "${C_RST:-}" >&2
         # Use line-buffered read redirection to process keys safely, preventing word splitting
         while IFS= read -r k; do
-          [ -n "$k" ] && printf '  - %s: [SECURED CARD SAVED]\n' "$k" >&2
+          [ -n "$k" ] && printf '    - %s:  %s[SECURED CARD SAVED]%s\n' "$k" "${C_BGREEN:-}" "${C_RST:-}" >&2
         done < <(printf '%s' "$current_payload" | jq -r 'keys[]' 2>/dev/null)
         ;;
       2)
-        printf '\nEnter Provider Name (e.g., groq, gemini, huggingface):\n> ' >&2
+        printf '\n  Enter Provider Name (e.g., groq, gemini, huggingface):\n  > ' >&2
         
         read -r prov
         prov="$(trim_space "$prov" | tr '[:upper:]' '[:lower:]')"
         [ -n "$prov" ] || continue
 
-        printf 'Enter API Key for %s:\n> ' "$prov" >&2
+        printf '  Enter API Key for %s:\n  > ' "$prov" >&2
         
         read -r key_val
         key_val="$(trim_space "$key_val")"
@@ -425,16 +477,16 @@ vault_manage_keys() {
           current_payload="$updated_payload"
           # Update dat file using the immutable Vault Key with write integrity check
           if _vault_encrypt_to_file "$current_payload" "$_VAULT_DAT_FILE" "$vault_key"; then
-            printf 'Key for "%s" saved securely.\n' "$prov" >&2
+            printf '  %sKey for "%s" saved securely.%s\n' "${C_BGREEN:-}" "$prov" "${C_RST:-}" >&2
           else
-            printf 'Error: Failed to write database update. Keys not saved.\n' >&2
+            printf '  %sError: Failed to write database update. Keys not saved.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
           fi
         else
-          printf 'Error: Internal database formatting failed. Operation aborted.\n' >&2
+          printf '  %sError: Internal database formatting failed. Operation aborted.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
         fi
         ;;
       3)
-        printf '\nEnter Provider Name to remove:\n> ' >&2
+        printf '\n  Enter Provider Name to remove:\n  > ' >&2
         
         read -r prov
         prov="$(trim_space "$prov" | tr '[:upper:]' '[:lower:]')"
@@ -447,19 +499,19 @@ vault_manage_keys() {
           current_payload="$updated_payload"
           # Update dat file using the immutable Vault Key with write integrity check
           if _vault_encrypt_to_file "$current_payload" "$_VAULT_DAT_FILE" "$vault_key"; then
-            printf 'Key for "%s" deleted.\n' "$prov" >&2
+            printf '  %sKey for "%s" deleted.%s\n' "${C_BGREEN:-}" "$prov" "${C_RST:-}" >&2
           else
-            printf 'Error: Failed to save changes to database. Deletion aborted.\n' >&2
+            printf '  %sError: Failed to save changes to database. Deletion aborted.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
           fi
         else
-          printf 'Error: Internal database formatting failed. Operation aborted.\n' >&2
+          printf '  %sError: Internal database formatting failed. Operation aborted.%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
         fi
         ;;
       4)
         break
         ;;
       *)
-        printf 'Invalid selection.\n' >&2
+        printf '  %sInvalid selection.%s\n' "${C_RED:-}" "${C_RST:-}" >&2
         ;;
     esac
   done
@@ -489,15 +541,16 @@ vault_get_provider_key() {
 
 # Primary Interactive Console Entrypoint
 vault_console() {
+  local choice=""
   while :; do
-    printf '\n=== SECURITY & ENCRYPTION CONSOLE ===\n' >&2
-    printf '1) Access Key Vault Manager\n' >&2
-    printf '2) Change Master Password\n' >&2
-    printf '3) Emergency Access Recovery (Forgotten Password)\n' >&2
-    printf '4) WIPE Vault (Destroy all credentials)\n' >&2
-    printf '5) Close Console\n' >&2
-    printf 'Choice: ' >&2
-    local choice=""
+    printf '\n  %s=== SECURITY & ENCRYPTION CONSOLE ===%s\n' "${C_BANNER:-}" "${C_RST:-}" >&2
+    printf "    %s1)%s Access Key Vault Manager\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s2)%s Change Master Password\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s3)%s Emergency Access Recovery (Forgotten Password)\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s4)%s WIPE Vault (Destroy all credentials)\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf "    %s5)%s Close Console\n" "${C_BCYAN:-}" "${C_RST:-}" >&2
+    printf '  Choice:\n  > ' >&2
+    
     read -r choice
     
     case "$choice" in
@@ -513,7 +566,7 @@ vault_console() {
         break 
         ;;
       *) 
-        printf 'Invalid selection.\n' >&2 
+        printf '  %sInvalid selection.%s\n' "${C_RED:-}" "${C_RST:-}" >&2 
         ;;
     esac
   done
@@ -532,7 +585,8 @@ _secure_hash_sha256() {
 # Diagnostically test network handshakes to API endpoints
 diagnose_tls_connection() {
   local url="${1:-}"
-  local target_host="" t_cmd=""
+  local target_host=""
+  declare -a t_cmd=()
 
   if [ -z "$url" ]; then 
     return 1
@@ -541,10 +595,10 @@ diagnose_tls_connection() {
   target_host="$(printf '%s' "$url" | sed -E 's#https?://([^:/]+).*#\1#')"
 
   if command -v timeout >/dev/null 2>&1; then 
-    t_cmd="timeout 5"
+    t_cmd=( timeout 5 )
   fi
 
-  if $t_cmd openssl s_client -connect "${target_host}:443" -servername "$target_host" </dev/null >/dev/null 2>&1; then
+  if "${t_cmd[@]}" openssl s_client -connect "${target_host}:443" -servername "$target_host" </dev/null >/dev/null 2>&1; then
     return 0
   else
     return 2
