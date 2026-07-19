@@ -7,24 +7,58 @@
 
 # Bash4LLM⁺ [🇮🇹](README.md) 🇬🇧
 
-**Bash4LLM⁺** — A secure, Bash-first, modular, and fully controllable CLI wrapper for interfacing with OpenAI-compatible LLM APIs (featuring a built-in Groq provider out of the box and extendable to others via external modules).
-Bash4LLM⁺ is a single, self-contained, readable script designed to have no external dependencies outside standard POSIX commands and basic shell utilities.
-It works natively on: Linux, macOS, WSL, Cygwin, Termux (Android), and BSD.
-## Key Features
- * **Dynamic and future-proof model list**
-   Obtained by querying live endpoints (GET /v1/models). No model names are hardcoded inside the core script.
- * **Filesystem-level Security and Sandboxing**
-   No use of global shared folders like /tmp. Isolated temporary files via process-exclusive directories (RUN_TMPDIR) with restrictive 700 permissions (umask 077). Strict prohibition of the use of eval.
- * **Built-in Cryptographic Vault (--vault)**
-   Optional OpenSSL-based integration to safely store and manage API keys on the filesystem. Keys are encrypted with the AES-256-CBC algorithm using a Master Password and PBKDF2 key derivation (100,000 iterations). It supports an offline emergency Recovery Key and shell session unlocking (_B4L_RT_CTX) to avoid constant password prompts.
- * **Termux / Android Portability**
-   Automatic detection of the Android Termux environment to bypass kernel or SELinux limitations on using flock. File concurrency management is transparently rerouted to the atomic directory lock mechanism (mkdir).
- * **UI State System (ui_state)**
-   The CORE exposes real-time operational metadata in an atomic JSON format (lock-protected writes) to facilitate structured integration with external control panels, GUIs, or third-party automations (e.g., Home Assistant).
- * **Conversational Caching and Advanced Session Engine**
-   Supports multi-turn sessions and thread history management in NDJSON format. Integration of the optional session-engine.sh module allows automatic segmentation of history files (automatic rotation and compression of blocks larger than 1MB) and in-memory caching with TTL to maximize responsiveness.
- * **Modular Extensibility**
-   On-demand loading of external providers (Gemini, Hugging Face, Mistral) located in the extras folder, featuring dynamic isolation of function definitions only and integrity checks.
+**Bash4LLM⁺** — a secure, Bash‑first, fully auditable CLI wrapper for Groq’s OpenAI‑compatible Chat Completions API (and extendable to other providers).
+
+Bash4LLM⁺ is a single, self‑contained Bash script that is readable and verifiable. Download it, make it executable, export your API key, and start using it.
+
+Compatible with Unix‑like environments: Linux, macOS, WSL, Cygwin, Termux (Android), BSD.
+
+---
+
+## Key features
+
+- **Dynamic model list**  
+  via `GET https://api.groq.com/openai/v1/models` → no hardcoded models.
+
+- **Security by design**  
+  → no use of `/tmp`, no `eval`, restrictive permissions, advanced provider validation.
+
+- **Modular sectioned structure**  
+  → PRECORE_BOOT, PRECORE_RUN, PROVIDER, CORE_SETUP, CORE_PROVIDER.
+
+- **UI State System (ui_state)**  
+  → the CORE continuously exposes atomic JSON metadata for integration with GUIs or external tools (e.g., Home Assistant).
+
+- **Streaming and non‑streaming**  
+  → real‑time output or full response at the end.
+
+- **Automatic saving**  
+  → for outputs longer than a configurable threshold.
+
+- **Advanced model management**  
+  → refresh, list, persistent default, dynamic whitelist, auto‑selection.
+
+- **Optional extras**  
+  → additional providers (Gemini, Hugging Face, Mistral), templates, documentation, security tools.
+
+- **Termux / Android ready**  
+  → automatically detects Termux and bypasses `flock` (often unstable or limited at kernel/SELinux level on Android) and transparently falls back to a robust directory‑lock mechanism (`mkdir` atomic).
+
+---
+
+## Threat model (short)
+
+Bash4LLM⁺ is designed for single‑user environments (PC/laptop, personal servers).
+
+- Providers are code executed in your shell: they must reside in secure directories you own.  
+- Variables such as `BASH4LLM_EXTRAS_DIR` and `BASH4LLM_TMPDIR` are considered trusted configuration.  
+- The script never executes model output.  
+- TOCTOU risks and JSON/SSE parsing limits are mitigated and documented.
+
+Full details in **[SECURITY](SECURITY-en.md)**.
+
+---
+
 ## Requirements
 Bash4LLM⁺ requires the following packages to be available in your PATH:
  * ***bash*** (version 4.0 or higher)
