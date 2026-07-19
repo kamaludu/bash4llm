@@ -51,6 +51,9 @@ fi
 tui_cleanup() {
   local rc=$?
   
+  # Ensure terminal echo is restored in case of abnormal interruption
+  stty echo 2>/dev/null || true
+  
   # Disable Bracketed Paste Mode safely before exiting to restore standard TTY state
   printf '\e[?2004l' >&2
   
@@ -68,6 +71,8 @@ tui_cleanup() {
     esac
   fi
   
+  # Unset EXIT trap before calling exit to prevent redundant recursion
+  trap - EXIT
   exit "$rc"
 }
 
@@ -1221,6 +1226,10 @@ run_repl() {
       printf '\n%s\n' "$(_msg exited)" >&2
       break
     fi
+
+    # Clean bracketed paste marker sequences if they leak into the variable
+    userline="${userline//$'\e'[200~/}"
+    userline="${userline//$'\e'[201~/}"
 
     userline="$(trim_space "$userline")"
     [ -z "$userline" ] && continue
