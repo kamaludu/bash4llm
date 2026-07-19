@@ -68,7 +68,7 @@ export BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT
 declare -A BASH4LLM_MODEL_CACHE=()
 
 # Initialize style and color variables to prevent set -u (nounset) errors if referenced early
-C_LOGO="" C_BANNER="" C_RST="" C_BOLD="" C_GBOLD=""
+C_LOGO="" C_BANNER="" C_RST="" C_BOLD="" C_NOBOLD="" C_UNDERLINE="" C_NOUNDERLINE=""
 # Foreground - Normal
 C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
 # Foreground - Bold
@@ -394,18 +394,9 @@ ensure_api_key_for_provider() {
     export GROQ_API_KEY="$input_key"
   fi
 
-  printf '%b' "
-${C_BCYAN}----------------------------------------${C_RST}
-
-To avoid re-entering the key for subsequent invocations, run this in your shell:
-
-  ${C_BGREEN}export ${envvar}=\"${input_key}\"${C_RST}
-
-You can add that line to your shell profile (e.g., ${C_YELLOW}~/.bashrc${C_RST} or ${C_YELLOW}~/.profile${C_RST}) to persist it across sessions.
-
-${C_BCYAN}----------------------------------------${C_RST}
-
-" >&2
+  # Set flag indicating the key was typed manually during this run
+  BASH4LLM_KEY_MANUAL_PROMPT=1
+  export BASH4LLM_KEY_MANUAL_PROMPT
 
   return 0
 }
@@ -457,7 +448,11 @@ log_prefix() { printf '%s: ' "$SCRIPT_NAME"; }
 log_info() {
   local code="${1:-INFO}" msg="${2:-}"
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
+    if [ "$code" = "SECURITY" ]; then
+      printf '%s%sSECURITY%s: %s\n' "$(log_prefix)" "${C_BMAGENTA:-}" "${C_RST}" "$msg" >&2
+    else
+      printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
+    fi
   fi
   if [ -n "$BASH4LLM_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
@@ -477,7 +472,11 @@ log_error() {
 log_info_user() {
   local code="${1:-INFO}" msg="${2:-}"
   if [ "${QUIET:-0}" -ne 1 ]; then
-    printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
+    if [ "$code" = "SECURITY" ]; then
+      printf '%s%sSECURITY%s: %s\n' "$(log_prefix)" "${C_BMAGENTA:-}" "${C_RST}" "$msg" >&2
+    else
+      printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
+    fi
   fi
   if [ -n "$BASH4LLM_LOG" ]; then
     printf '%s INFO_USER %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true
@@ -508,11 +507,13 @@ fi
 if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
   C_RST=$'\e[0m'
   C_BOLD=$'\e[1m'
+  C_NOBOLD=$'\e[22m'
+  C_UNDERLINE=$'\e[4m'
+  C_NOUNDERLINE=$'\e[24m'
 
   # Semantic / UI Styles
   C_LOGO=$'\e[1;37;42m'
   C_BANNER=$'\e[1;37;44m'
-  C_GBOLD=$'\e[1;32m' # Green Bold
 
   # Foreground - Normal
   C_BLACK=$'\e[0;30m'
@@ -544,7 +545,7 @@ if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}
   BG_CYAN=$'\e[46m'
   BG_WHITE=$'\e[47m'
 else
-  C_RST="" C_BOLD="" C_LOGO="" C_BANNER="" C_GBOLD=""
+  C_RST="" C_BOLD="" C_NOBOLD="" C_UNDERLINE="" C_NOUNDERLINE="" C_LOGO="" C_BANNER=""
   C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
   C_BBLACK="" C_BRED="" C_BGREEN="" C_BYELLOW="" C_BBLUE="" C_BMAGENTA="" C_BCYAN="" C_BWHITE=""
   BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN="" BG_WHITE=""
@@ -723,6 +724,32 @@ provider_api_env_var_name() {
   prov_upper="${prov^^}"
   prov_upper="${prov_upper//[!A-Z0-9_]/_}"
   printf '%s' "${prov_upper}_API_KEY"
+}
+
+# Print a friendly guide on how to persist manually entered API keys after a successful transaction
+print_persistence_reminder() {
+  if [ "${BASH4LLM_KEY_MANUAL_PROMPT:-0}" -eq 1 ]; then
+    local envvar="" current_val=""
+    envvar="$(provider_api_env_var_name "${PROVIDER:-groq}")"
+    current_val="${!envvar:-}"
+    
+    printf '%b' "
+${C_BCYAN}----------------------------------------${C_RST}
+
+To avoid re-entering the key for subsequent invocations, run this in your shell:
+
+  ${C_BGREEN}export ${envvar}=\"${current_val}\"${C_RST}
+
+You can add that line to your shell profile (e.g., ${C_YELLOW}~/.bashrc${C_RST} or ${C_YELLOW}~/.profile${C_RST}) to persist it across sessions.
+
+${C_BCYAN}----------------------------------------${C_RST}
+
+" >&2
+
+    # Reset the flag so the message is printed only once per session
+    BASH4LLM_KEY_MANUAL_PROMPT=0
+    export BASH4LLM_KEY_MANUAL_PROMPT
+  fi
 }
 
 is_valid_json_string() {
@@ -3020,6 +3047,11 @@ call_api_streaming_groq() {
     CURL_CMD+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
   fi
 
+  # Print a safe terminal-only separation newline to stderr to prevent visual clutter before streaming
+  if [ "${QUIET:-0}" -ne 1 ] && [ -t 2 ]; then
+    printf '\n' >&2
+  fi
+
   # Single-pass unbuffered jq pipeline preserving stream raw telemetry
   "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$curl_err_log" | \
   tee "$resp_raw" | \
@@ -3401,6 +3433,7 @@ refresh_models_dispatch() {
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER -> $destfile"
     fi
+    print_persistence_reminder
     return 0
   fi
 
@@ -3409,6 +3442,7 @@ refresh_models_dispatch() {
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER (no explicit dest)"
     fi
+    print_persistence_reminder
     return 0
   fi
 
@@ -3693,6 +3727,11 @@ finalize_and_output() {
     return "$BASH4LLM_ERR_TMP"
   fi
 
+  # Print a safe terminal-only separation newline to stderr to prevent visual clutter
+  if [ "${QUIET:-0}" -ne 1 ] && [ -t 2 ]; then
+    printf '\n' >&2
+  fi
+
   case "$mode" in
     json) cat "$resp_file" ;;
     pretty) if jq -e . "$resp_file" >/dev/null 2>&1; then jq . "$resp_file"; else cat "$resp_file"; fi ;;
@@ -3821,6 +3860,7 @@ perform_request_once() {
       fi
 
       finalize_and_output "$OUTPUT_MODE" "$text"
+      print_persistence_reminder
       release_thread_lock
       return 0
     else
@@ -3941,7 +3981,7 @@ validate_model_core() {
   fi
 
   if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_GBOLD}Bash4LLM⁺${C_RST}" >&2
+    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_BGREEN}Bash4LLM⁺${C_RST}" >&2
     return 1
   fi
 
@@ -3985,25 +4025,35 @@ is_tty_out() {
 # Sourcing Guard & Interactive Parent-Shell Sourcing Handler (Session Unlock)
 # ---------------------------------------------------------------------------
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-  # If it is not isolated function loading (BASH4LLM_SOURCE_ONLY=1)
+  # Skip execution if only loading functions (BASH4LLM_SOURCE_ONLY=1)
   if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
     if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
       if [ -z "${_B4L_RT_CTX:-}" ]; then
-        # Silent request from terminal controller with fallback for headless environments
-        printf "%bUnlock Vault Session: %b" "${C_BCYAN:-}" "${C_RST:-}" >&2
+        # Display session unlock prompt with inline hidden input warning
+        printf "%bUnlock Vault Session: %b[input is hidden]%b " "${C_BCYAN:-}" "${C_MAGENTA:-}" "${C_RST:-}" >&2
         if [ -r /dev/tty ] && [ -c /dev/tty ]; then
           stty -echo 2>/dev/null || true
           IFS= read -r _B4L_RT_CTX < /dev/tty
           stty echo 2>/dev/null || true
         else
-          # Fallback for non-interactive contexts
+          # Fallback for headless or non-interactive environments
           IFS= read -r _B4L_RT_CTX
         fi
         printf '\n' >&2
         
         if [ -n "$_B4L_RT_CTX" ]; then
-          export _B4L_RT_CTX
-          printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+          # Attempt to decrypt the master vault key to validate the password
+          _test_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
+          
+          # Validate key format: must be successful and output a 64-character hex string
+          if [ -n "$_test_key" ] && [[ "$_test_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            export _B4L_RT_CTX
+            printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+          else
+            unset _B4L_RT_CTX
+            printf "%bUnlock failed: incorrect Master Password.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+          fi
+          unset _test_key
         else
           printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
         fi
@@ -4012,7 +4062,52 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
       fi
     fi
   fi
-  # Interrupt execution to prevent CLI actions from running in the parent shell
+
+  # === AUTOMATIC NAMESPACE CLEANUP ===
+  # Unset all internal functions and non-persistent variables to prevent parent shell pollution
+  unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
+           canonical_provider_file canonical_model_file canonical_provider_url_file \
+           trim_space sync_models_file_path validate_file_input _normalize_model_name \
+           ensure_api_key_for_provider enforce_network_policy _extract_notes_section \
+           log_prefix log_info log_warn log_error log_info_user dbg ensure_config_dir \
+           write_provider_url_if_missing resolve_provider_url provider_api_env_var_name \
+           is_valid_json_string b64encode b64decode is_truthy file_size is_valid_json_file \
+           stage_b64 lock_exec _mktemp_in_dir show_payload_head atomic_write \
+           extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir b64_atomic_write \
+           b64_atomic_read ui_state_write run_static_config_check explain_error_code \
+           load_provider_module _detect_base64_opts list_files_sorted_by_mtime tac_fallback \
+           _file_mtime jq_safe rotate_history save_to_history manifest_create \
+           manifest_add_part manifest_read _get_perm_string _get_owner _get_file_signature \
+           getfile_signature _is_world_writable make_tmpdir _tmpf thread_validate_id \
+           thread_now_ts thread_messages_tmp_path thread_sanitize_cmd _update_thread_index \
+           _thread_delete_locked thread_delete_core _thread_rename_locked thread_rename_core \
+           acquire_thread_lock release_thread_lock _thread_read_window_locked thread_read_window \
+           thread_append _thread_hash thread_cache_key thread_cache_get thread_cache_set \
+           thread_cache_invalidate _normalize_bool_env \
+               _vault_read_password _vault_set_opts _vault_encrypt_to_file _vault_decrypt_file \
+               vault_exists vault_init vault_load_keys vault_change_password vault_destroy \
+               vault_recover vault_manage_keys vault_get_provider_key vault_console \
+               _secure_hash_sha256 diagnose_tls_connection 2>/dev/null || true
+
+  unset BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN \
+        BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX SCRIPT_NAME SCRIPT_VERSION SCRIPT_DATE \
+        C_LOGO C_BANNER C_RST C_BOLD C_NOBOLD C_UNDERLINE C_NOUNDERLINE C_BLACK C_RED C_GREEN C_YELLOW C_BLUE \
+        C_MAGENTA C_CYAN C_WHITE C_BBLACK C_BRED C_BGREEN C_BYELLOW C_BBLUE C_BMAGENTA \
+        C_BCYAN C_BWHITE BG_BLACK BG_RED BG_GREEN BG_YELLOW BG_BLUE BG_MAGENTA BG_CYAN \
+        BG_WHITE BASH4LLM_ERR_NO_API_KEY BASH4LLM_ERR_BAD_MODEL BASH4LLM_ERR_CURL_FAILED \
+        BASH4LLM_ERR_NO_PROMPT BASH4LLM_ERR_TMP BASH4LLM_ERR_API BASH4LLM_ERR_SEC \
+        BASH4LLMERR_NO_API_KEY BASH4LLMERR_BAD_MODEL BASH4LLMERR_CURL_FAILED BASH4LLMERR_NO_PROMPT \
+        BASH4LLMERR_TMP BASH4LLMERR_API BASH4LLMERR_SEC SCRIPTDIR BASH4LLM_DIR \
+        BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR BASH4LLM_TEMPLATES_DIR BASH4LLM_HISTORY_DIR \
+        BASH4LLM_TMPDIR MAX_MODELS CANONICAL_EXTRAS_DIR LEGACY_EXTRAS_DIR BASH4LLM_EXTRAS_DIR \
+        PROVIDERS_DIR THREAD_DIR MODELS_LOCK HISTORY_LOCK TMP_LOCK BASH4LLM_LOCK_TIMEOUT_TMP \
+        BASH4LLM_LOCK_TIMEOUT_MODELS BASH4LLM_LOCK_TIMEOUT_HISTORY BASH4LLM_OPENSSL_ACTIVE \
+        _BASH4LLM_OPENSSL_HELPER BASH4LLM_VAULT_ENABLED B64_WRAP_OPT B64_DECODE_OPT \
+        BASH4LLM_ROTATE_HISTORY BASH4LLM_HISTORY_MAX_FILES BASH4LLM_HISTORY_MAX_BYTES \
+        BASH4LLM_HISTORY_KEEP_DAYS MODELS_FILE LAST_CHECK_LINES THREAD_CACHE_DIR \
+        _VAULT_FILE _VAULT_REC_FILE _VAULT_DAT_FILE _BASH4LLM_VAULT_PBKDF2 _B4L_CFG_DIR 2>/dev/null || true
+
+  # Interrupt parent-shell execution to prevent CLI action processing
   return 0 2>/dev/null || exit 0
 fi
 #--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
@@ -4618,7 +4713,7 @@ fi
 
 if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf '%s configuration:\n' "${C_GBOLD}Bash4LLM⁺${C_RST}"
+  printf '%s configuration:\n' "${C_BGREEN}Bash4LLM⁺${C_RST}"
   printf '  - Name: %s\n' "$SCRIPT_NAME"
   printf '  - Version: %s\n' "$SCRIPT_VERSION"
   printf '  - Date: %s\n' "$SCRIPT_DATE"
@@ -4633,7 +4728,7 @@ fi
 
 if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   : "${ALLOWED_MODELS:=}"
-  printf '%s diagnostics:\n' "${C_GBOLD}Bash4LLM⁺${C_RST}"
+  printf '%s diagnostics:\n' "${C_BGREEN}Bash4LLM⁺${C_RST}"
   printf '  - Config Dir: %s\n' "$(canonical_config_dir)"
   printf '  - Provider File: %s\n' "$(canonical_provider_file)"
   printf '  - History Dir: %s\n' "$BASH4LLM_HISTORY_DIR"
@@ -4876,6 +4971,7 @@ if [ -n "$BATCH_FILE" ]; then
       perform_request_once || true
     fi
 
+    print_persistence_reminder
     printf '\n----\n'
   done < "$BATCH_FILE"
   exit 0
@@ -4959,12 +5055,12 @@ if [ "$STREAM_MODE" -eq 1 ]; then
   fi
 
   if call_api_streaming; then
-     if [ "${DEBUG:-0}" -eq 1 ]; then
+    if [ "${DEBUG:-0}" -eq 1 ]; then
        log_info "STREAM" "Streaming completed; captured response in $RESP"
-     fi
+    fi
 
-     # Prevent simulated runs (--dry-run) from writing to the thread database
-     if [ "${DRY_RUN:-0}" -ne 1 ] && [ -n "${THREAD_ID:-}" ]; then
+    # Prevent simulated runs (--dry-run) from writing to the thread database
+    if [ "${DRY_RUN:-0}" -ne 1 ] && [ -n "${THREAD_ID:-}" ]; then
       if [ -n "${CONTENT:-}" ]; then
         meta_source="cli"
         meta_cmd="$(thread_sanitize_cmd "$0 ${ARGS[*]:-}")"
@@ -4996,7 +5092,8 @@ if [ "$STREAM_MODE" -eq 1 ]; then
           fi
         fi
       fi
-     fi
+    fi
+    print_persistence_reminder
   else
     rc=$?
     log_error "STREAM" "streaming request failed with code $rc"
