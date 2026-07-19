@@ -39,7 +39,7 @@ _get_api_key_mistral() {
     fi
   fi
   if [ -z "$key" ]; then
-    key="${MISTRAL_API_KEY:-}"
+    key="${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}"
   fi
 
   [ "$_set_u_was_on" -eq 1 ] && set -u
@@ -135,7 +135,7 @@ buildpayload_mistral() {
 
       jq -n --arg model "$model_to_use" \
             --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-            --arg temp "${TURE:-${TEMPERATURE:-${TEMP:-1.0}}}" \
+            --arg temp "${TEMPERATURE:-${TURE:-${TEMP:-1.0}}}" \
             --arg max_tokens "${MAX_TOKENS:-4096}" \
             --arg user "$user_prompt" \
             '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
@@ -196,7 +196,7 @@ buildpayload_mistral() {
   is_truthy "${STREAM_MODE:-0}" && stream_flag=true
 
   model="${MODEL:-}"
-  temp="${TURE:-${TEMPERATURE:-${TEMP:-1.0}}}"
+  temp="${TEMPERATURE:-${TURE:-${TEMP:-1.0}}}"
   max_tokens="${MAX_TOKENS:-4096}"
 
   if ! jq -n --arg model "$model" \
@@ -432,11 +432,26 @@ call_api_streaming_mistral() {
 
   if [ -s "$RUN_TMPDIR/resp.valid.jsons" ]; then
     jq -s '.' "$RUN_TMPDIR/resp.valid.jsons" > "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true
-    jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" > "$RUN_TMPDIR/resp.text.txt" 2>/dev/null || true
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    
+    # Extract all delta contents and join them natively to build synthetic OpenAI-style RESP
+    local unified_text
+    unified_text="$(jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$RUN_TMPDIR/resp.chunks.json" 2>/dev/null || true)"
+
+    if [ -n "${unified_text}" ]; then
+      local synthetic_resp="$RUN_TMPDIR/resp.synthetic.json"
+      jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$synthetic_resp" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$synthetic_resp" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      else
+        cp -f "$synthetic_resp" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      fi
+      rm -f "$synthetic_resp" 2>/dev/null || true
     else
-      cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      if type atomic_write >/dev/null 2>&1; then
+        cat "$RUN_TMPDIR/resp.chunks.json" | atomic_write "${RESP:-$RUN_TMPDIR/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      else
+        cp -f "$RUN_TMPDIR/resp.chunks.json" "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+      fi
     fi
 
     if [ -n "${RUN_TMPDIR:-}" ] && case "$RUN_TMPDIR" in "${BASH4LLM_TMPDIR:-}"/*) true;; "${BASH4LLM_TMPDIR:-}") true;; *) false;; esac; then
