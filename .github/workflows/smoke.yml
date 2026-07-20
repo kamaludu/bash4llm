@@ -1,96 +1,4 @@
-name: Smoke tests
-
-on:
-  workflow_dispatch:
-  push:
-    branches: ["main", "release-v1.3"]
-  pull_request:
-    branches: ["main"]
-
-concurrency:
-  group: smoke-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-jobs:
-  smoke:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
-    env:
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      HOME: /home/runner
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-          sudo apt-get -yq update
-          sudo apt-get -yq install --no-install-recommends bash curl jq python3
-
-      - name: Ensure GROQ_API_KEY is present
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${GROQ_API_KEY:-}" ]; then
-            echo "ERROR: GROQ_API_KEY secret is not set or is empty."
-            exit 2
-          fi
-
-      - name: Prepare whitelist and config directories
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # XDG whitelist (aggiornato a groq.txt)
-          mkdir -p /home/runner/.config/groq
-          echo "llama-3.3-70b-versatile" > /home/runner/.config/groq/groq.txt
-          chmod 600 /home/runner/.config/groq/groq.txt || true
-
-          # Internal whitelist (aggiornato a groq.txt per compatibilità v2.5)
-          mkdir -p ./bin/bash4llm.d/models
-          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
-          chmod 600 ./bin/bash4llm.d/models/groq.txt || true
-
-          # REQUIRED: internal config file (even empty)
-          mkdir -p ./bin/bash4llm.d/config
-          touch ./bin/bash4llm.d/config/config
-          chmod 600 ./bin/bash4llm.d/config/config || true
-
-      - name: Make bash4llm executable
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x bin/bash4llm || true
-
-      - name: Persist runner temp as TMPDIR
-        shell: bash
-        run: |
-          set -euo pipefail
-          TMPDIR="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$TMPDIR"
-          chmod 700 "$TMPDIR"
-          echo "TMPDIR=$TMPDIR" >> "$GITHUB_ENV"
-
-      - name: Create test JSON
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p tests
-          jq -n \
-            --arg model "llama-3.3-70b-versatile" \
-            --arg content "Test automatico: rispondi con una frase breve." \
-            '{model:$model,stream:false,temperature:0.0,max_tokens:16,messages:[{role:"user",content:$content}]}' \
-            > tests/good.json
-          chmod 600 tests/good.json || true
-
-      - name: Run smoke test
+- name: Run smoke test
         shell: bash
         run: |
           set -euo pipefail
@@ -107,6 +15,10 @@ jobs:
           export TMP="$TMPDIR"
           export TEMP="$TMPDIR"
           export XDG_CONFIG_HOME="${HOME}/.config"
+
+          echo "=== DEBUG BASH4LLM DIAGNOSTICS ==="
+          "$GROQ_BIN" --diagnostics || true
+          echo "=================================="
 
           OUTFILE="$(mktemp)"
           set +e
