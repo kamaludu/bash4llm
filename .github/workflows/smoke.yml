@@ -105,14 +105,31 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "=== DEBUG: DIRECTORY ATTUALE ==="
-          pwd
+          # Comandi di diagnostica tramite Annotations
+          echo "::warning::[DEBUG] PWD attuale: $(pwd)"
+          echo "::warning::[DEBUG] Valore BASH4LLM_DIR: ${BASH4LLM_DIR:-vuoto}"
 
-          echo "=== DEBUG: CONTENUTO DI BIN ==="
-          ls -R bin || echo "bin non trovata o vuota"
+          if [ -d "./bin/bash4llm.d" ]; then
+            echo "::warning::[DEBUG] Cartella ./bin/bash4llm.d TROVATA"
+            if [ -f "./bin/bash4llm.d/models/groq.txt" ]; then
+              echo "::warning::[DEBUG] File groq.txt in ./bin/bash4llm.d TROVATO"
+            else
+              echo "::warning::[DEBUG] File groq.txt in ./bin/bash4llm.d NON TROVATO"
+            fi
+          else
+            echo "::warning::[DEBUG] Cartella ./bin/bash4llm.d NON TROVATA"
+          fi
 
-          echo "=== DEBUG: CONTENUTO DI HOME CONFIG ==="
-          ls -R /home/runner/.config || echo "config non trovata"
+          if [ -d "./bash4llm.d" ]; then
+            echo "::warning::[DEBUG] Cartella ./bash4llm.d TROVATA"
+            if [ -f "./bash4llm.d/models/groq.txt" ]; then
+              echo "::warning::[DEBUG] File groq.txt in ./bash4llm.d TROVATO"
+            else
+              echo "::warning::[DEBUG] File groq.txt in ./bash4llm.d NON TROVATO"
+            fi
+          else
+            echo "::warning::[DEBUG] Cartella ./bash4llm.d NON TROVATA"
+          fi
 
           if [ -x "./bin/bash4llm" ]; then
             GROQ_BIN="./bin/bash4llm"
