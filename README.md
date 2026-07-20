@@ -89,7 +89,7 @@ Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel `PATH`:
 > Usa Bash4llm ⚡
 >
 
-Istruzioni di installazione dettagliate sono disponibili in **[INSTALLATION](INSTALL.md)**.
+Istruzioni di installazione dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
 
 ---
 
@@ -136,6 +136,8 @@ Per chiudere questa sessione protetta e cancellare istantaneamente e in modo irr
 exit
 ```
 Questo comando ti riporterà in totale sicurezza al tuo terminale di partenza (puoi digitare nuovamente `exit` se desideri chiudere definitivamente la scheda del terminale).
+
+Altre nformazioni sulla sicurezza in: **[SECURITY](SECURITY.md)**.
 
 ---
 

@@ -1,4 +1,4 @@
-[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README-en.md)
 # INSTALLATION [🇮🇹](INSTALL.md) 🇬🇧
 
 Bash4LLM⁺ is a portable and secure Bash wrapper for the API of various LLMs (with native support for Groq).
