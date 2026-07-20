@@ -237,11 +237,11 @@ vault_init() {
   fi
 
   printf '\n  %s[SUCCESS] Key Vault initialized successfully.%s\n\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
-  printf '%s========================================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
+  printf '%s=======================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
   printf '  %sCRITICAL WARNING: Record your emergency Recovery Key offline!%s\n' "${C_BRED:-}" "${C_RST:-}" >&2
   printf '  You will need this key if you forget your Master Password.\n\n' >&2
-  printf '    RECOVERY KEY:  %s%s%s\n\n' "${C_BGREEN:-}" "$recovery_key" "${C_RST:-}" >&2
-  printf '%s========================================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
+  printf '  RECOVERY KEY:  %s%s%s\n\n' "${C_BGREEN:-}" "$recovery_key" "${C_RST:-}" >&2
+  printf '%s========================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
   printf '  Press ENTER to continue...' >&2
   read -r _
   return 0
