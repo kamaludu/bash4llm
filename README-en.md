@@ -105,7 +105,7 @@ Bash4LLM⁺ requires the following packages to be available in your PATH:
 > ```
 > Use Bash4llm ⚡
 > 
-Detailed installation instructions are available in **INSTALLATION**.
+Detailed installation instructions are available in **[INSTALL](INSTALL-en.md)**.
 
 ## Quick Usage and Examples
 Direct prompt:
