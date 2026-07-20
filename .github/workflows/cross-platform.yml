@@ -60,25 +60,25 @@ jobs:
       - name: Checkout del codice
         uses: actions/checkout@v4
 
-      - name: Configurazione WSL (Ubuntu)
-        uses: VassilisV/setup-wsl@v1
-        with:
-          distribution: Ubuntu-22.04
+      - name: Installazione ed avvio WSL Ubuntu
+        shell: powershell
+        run: |
+          wsl --install -d Ubuntu --no-launch
+          wsl --set-default Ubuntu
 
       - name: Esecuzione Test dentro WSL
-        shell: wsl-bash {0}
+        shell: powershell
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
-          mkdir -p "$HOME/.config/bash4llm/groq"
-          mkdir -p "$HOME/.config/groq"
-          mkdir -p ./bin/bash4llm.d/models
-          mkdir -p ./bash4llm.d/models
-          echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
-          echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
-          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
-          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
-          chmod +x bin/bash4llm
-          ./bin/bash4llm --dry-run tests/good.json
+          wsl -u root -- exec bash -c "
+            set -euo pipefail
+            apt-get update && apt-get install -y bash coreutils findutils util-linux gawk curl jq
+            mkdir -p /root/.config/bash4llm/groq /root/.config/groq ./bin/bash4llm.d/models ./bash4llm.d/models
+            echo 'llama-3.3-70b-versatile' > /root/.config/bash4llm/groq/models.txt
+            echo 'llama-3.3-70b-versatile' > /root/.config/groq/models.txt
+            echo 'llama-3.3-70b-versatile' > ./bin/bash4llm.d/models/models.txt
+            echo 'llama-3.3-70b-versatile' > ./bash4llm.d/models/models.txt
+            chmod +x bin/bash4llm
+            ./bin/bash4llm --dry-run tests/good.json
+          "
