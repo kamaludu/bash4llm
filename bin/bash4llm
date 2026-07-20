@@ -3408,7 +3408,7 @@ call_provider() {
   local fn="${1:-}"
   local -a shift_args=("${@:2}")
   if type "$fn" >/dev/null 2>&1; then
-    "$fn" "${shift_args[@]}"
+    "$fn" ${shift_args[@]+"${shift_args[@]}"}
     return $?
   fi
   return 127
