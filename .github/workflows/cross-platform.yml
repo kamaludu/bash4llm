@@ -30,22 +30,28 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install bash coreutils findutils util-linux gawk curl jq
-          # Mette il Bash aggiornato di Homebrew (>= 4.0) in cima al PATH
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
 
-      - name: Verifica dipendenze e versione Bash
+      - name: Prepariamo le cartelle e la whitelist dei modelli
         shell: bash
         run: |
-          echo "Bash eseguito: $(which bash)"
-          bash --version | head -n 1
-          gawk --version | head -n 1
+          set -euo pipefail
+          mkdir -p "$HOME/.config/bash4llm/groq"
+          mkdir -p "$HOME/.config/groq"
+          mkdir -p ./bin/bash4llm.d/models
+          mkdir -p ./bash4llm.d/models
+          echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
+          echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
 
       - name: Esecuzione Smoke Test / Dry-Run
         shell: bash
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
           chmod +x bin/bash4llm
-          # Inserisci il tuo comando di test (es. dry-run)
-          ./bin/bash4llm --dry-run tests/good.json || exit 1
+          ./bin/bash4llm --dry-run tests/good.json
 
   test-windows-wsl:
     name: Test su Windows (WSL)
@@ -61,9 +67,18 @@ jobs:
 
       - name: Esecuzione Test dentro WSL
         shell: wsl-bash {0}
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
-          echo "Versione Bash in WSL: $(bash --version | head -n 1)"
+          mkdir -p "$HOME/.config/bash4llm/groq"
+          mkdir -p "$HOME/.config/groq"
+          mkdir -p ./bin/bash4llm.d/models
+          mkdir -p ./bash4llm.d/models
+          echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
+          echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
           chmod +x bin/bash4llm
-          ./bin/bash4llm --dry-run tests/good.json || exit 1
+          ./bin/bash4llm --dry-run tests/good.json
