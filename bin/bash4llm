@@ -25,8 +25,8 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.5.0"
-SCRIPT_DATE="2026-07-18"
+SCRIPT_VERSION="2.5.1"
+SCRIPT_DATE="2026-07-20"
 
 # =============================================================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -99,12 +99,17 @@ BASH4LLMERR_SEC=$BASH4LLM_ERR_SEC
 #--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 #--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
 # ---------------------------------------------------------------------------
-# Verify mandatory commands (flock is excluded to allow macOS fallback)
+# Strict verification of the execution environment (Fail-Fast)
 # ---------------------------------------------------------------------------
-for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf comm; do
+if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  printf 'bash4llm: ERROR: Bash 4.0 or superior is required to run this script.\n' >&2
+  exit 15
+fi
+
+for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf comm shred flock; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    printf 'bash4llm: %sERROR%s: required command not found: %s\n' "${C_RED}" "${C_RST}" "$cmd" >&2
-    exit 1
+    printf 'bash4llm: ERROR: required system utility not found in PATH: %s\n' "$cmd" >&2
+    exit 15
   fi
 done
 #--2<---[ /SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
@@ -368,9 +373,18 @@ ensure_api_key_for_provider() {
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
-  # Interactive prompt
-  printf 'Enter API key for provider %s (env %s): ' "$prov" "$envvar" >&2
-  if ! IFS= read -r input_key; then
+  # Interactive prompt with robust password/input masking
+  printf 'Enter API key for provider %s (env %s) [input is hidden]: ' "$prov" "$envvar" >&2
+  if [ -t 0 ]; then
+    stty -echo 2>/dev/null || true
+    IFS= read -r input_key
+    stty echo 2>/dev/null || true
+    printf '\n' >&2
+  else
+    IFS= read -r input_key
+  fi
+
+  if [ -z "$input_key" ]; then
     printf '\nbash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED}" "${C_RST}" >&2
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
@@ -911,7 +925,7 @@ lock_exec() {
   safe_mkdir "$(dirname "$lockfile")" 700
 
   local use_flock=0
-  if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
+  if command -v flock >/dev/null 2>&1 && [ "${BASH4LLM_PLAT_ANDROID:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_BSD:-0}" -eq 0 ]; then
     use_flock=1
   fi
 
@@ -929,26 +943,38 @@ lock_exec() {
     rc=$?
     return "$rc"
   else
+    # Fallback deterministico per Android/macOS/BSD immune a instabilità filesystem/mtime
     local lockdir="${lockfile}.lockdir"
-    local start_time="" now="" acquired=0 lock_mtime="" age=""
-
-    lock_mtime=$(_file_mtime "$lockdir")
-    if [ "$lock_mtime" -gt 0 ]; then
-      now=$(date +%s 2>/dev/null || echo 0)
-      age=$((now - lock_mtime))
-      if [ "$age" -gt 15 ]; then
-        rmdir "$lockdir" 2>/dev/null || rm -rf "$lockdir" 2>/dev/null || true
-      fi
-    fi
+    local start_time="" now="" acquired=0 lock_pid=0 lock_ts=0 age=0
 
     start_time=$(date +%s 2>/dev/null || echo 0)
-    acquired=0
 
     while :; do
+      if [ -d "$lockdir" ]; then
+        lock_pid=$(cat "$lockdir/owner.pid" 2>/dev/null || echo 0)
+        lock_ts=$(cat "$lockdir/owner.ts" 2>/dev/null || echo 0)
+        now=$(date +%s 2>/dev/null || echo 0)
+        age=$((now - lock_ts))
+
+        local is_orphan=0
+        if [ "$age" -gt 15 ]; then
+          is_orphan=1
+        elif [[ "$lock_pid" =~ ^[0-9]+$ ]] && [ "$lock_pid" -gt 0 ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+          is_orphan=1
+        fi
+
+        if [ "$is_orphan" -eq 1 ]; then
+          rm -rf -- "$lockdir" 2>/dev/null || true
+        fi
+      fi
+
       if mkdir "$lockdir" 2>/dev/null; then
+        printf '%s\n' "$$" > "$lockdir/owner.pid" 2>/dev/null
+        printf '%s\n' "$(date +%s)" > "$lockdir/owner.ts" 2>/dev/null
         acquired=1
         break
       fi
+
       now=$(date +%s 2>/dev/null || echo 0)
       if [ $((now - start_time)) -ge "$timeout" ]; then
         break
@@ -962,7 +988,7 @@ lock_exec() {
         "$@"
       )
       rc=$?
-      rmdir "$lockdir" 2>/dev/null || true
+      rm -rf -- "$lockdir" 2>/dev/null || true
       return "$rc"
     else
       log_error "LOCKTIMEOUT" "could not acquire directory-based lock on $lockdir within $timeout seconds"
@@ -4071,48 +4097,50 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
   fi
 
   # === AUTOMATIC NAMESPACE CLEANUP ===
-  # Unset all internal functions and non-persistent variables to prevent parent shell pollution
-  unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
-           canonical_provider_file canonical_model_file canonical_provider_url_file \
-           trim_space sync_models_file_path validate_file_input _normalize_model_name \
-           ensure_api_key_for_provider enforce_network_policy _extract_notes_section \
-           log_prefix log_info log_warn log_error log_info_user dbg ensure_config_dir \
-           write_provider_url_if_missing resolve_provider_url provider_api_env_var_name \
-           is_valid_json_string b64encode b64decode is_truthy file_size is_valid_json_file \
-           stage_b64 lock_exec _mktemp_in_dir show_payload_head atomic_write \
-           extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir b64_atomic_write \
-           b64_atomic_read ui_state_write run_static_config_check explain_error_code \
-           load_provider_module _detect_base64_opts list_files_sorted_by_mtime tac_fallback \
-           _file_mtime jq_safe rotate_history save_to_history manifest_create \
-           manifest_add_part manifest_read _get_perm_string _get_owner _get_file_signature \
-           getfile_signature _is_world_writable make_tmpdir _tmpf thread_validate_id \
-           thread_now_ts thread_messages_tmp_path thread_sanitize_cmd _update_thread_index \
-           _thread_delete_locked thread_delete_core _thread_rename_locked thread_rename_core \
-           acquire_thread_lock release_thread_lock _thread_read_window_locked thread_read_window \
-           thread_append _thread_hash thread_cache_key thread_cache_get thread_cache_set \
-           thread_cache_invalidate _normalize_bool_env \
-               _vault_read_password _vault_set_opts _vault_encrypt_to_file _vault_decrypt_file \
-               vault_exists vault_init vault_load_keys vault_change_password vault_destroy \
-               vault_recover vault_manage_keys vault_get_provider_key vault_console \
-               _secure_hash_sha256 diagnose_tls_connection 2>/dev/null || true
+  # Run cleanup only if the user has not explicitly requested feature import
+  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
+    unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
+             canonical_provider_file canonical_model_file canonical_provider_url_file \
+             trim_space sync_models_file_path validate_file_input _normalize_model_name \
+             ensure_api_key_for_provider enforce_network_policy _extract_notes_section \
+             log_prefix log_info log_warn log_error log_info_user dbg ensure_config_dir \
+             write_provider_url_if_missing resolve_provider_url provider_api_env_var_name \
+             is_valid_json_string b64encode b64decode is_truthy file_size is_valid_json_file \
+             stage_b64 lock_exec _mktemp_in_dir show_payload_head atomic_write \
+             extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir b64_atomic_write \
+             b64_atomic_read ui_state_write run_static_config_check explain_error_code \
+             load_provider_module _detect_base64_opts list_files_sorted_by_mtime tac_fallback \
+             _file_mtime jq_safe rotate_history save_to_history manifest_create \
+             manifest_add_part manifest_read _get_perm_string _get_owner _get_file_signature \
+             getfile_signature _is_world_writable make_tmpdir _tmpf thread_validate_id \
+             thread_now_ts thread_messages_tmp_path thread_sanitize_cmd _update_thread_index \
+             _thread_delete_locked thread_delete_core _thread_rename_locked thread_rename_core \
+             acquire_thread_lock release_thread_lock _thread_read_window_locked thread_read_window \
+             thread_append _thread_hash thread_cache_key thread_cache_get thread_cache_set \
+             thread_cache_invalidate _normalize_bool_env \
+                 _vault_read_password _vault_set_opts _vault_encrypt_to_file _vault_decrypt_file \
+                 vault_exists vault_init vault_load_keys vault_change_password vault_destroy \
+                 vault_recover vault_manage_keys vault_get_provider_key vault_console \
+                 _secure_hash_sha256 diagnose_tls_connection 2>/dev/null || true
 
-  unset BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN \
-        BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX SCRIPT_NAME SCRIPT_VERSION SCRIPT_DATE \
-        C_LOGO C_BANNER C_RST C_BOLD C_NOBOLD C_UNDERLINE C_NOUNDERLINE C_BLACK C_RED C_GREEN C_YELLOW C_BLUE \
-        C_MAGENTA C_CYAN C_WHITE C_BBLACK C_BRED C_BGREEN C_BYELLOW C_BBLUE C_BMAGENTA \
-        C_BCYAN C_BWHITE BG_BLACK BG_RED BG_GREEN BG_YELLOW BG_BLUE BG_MAGENTA BG_CYAN \
-        BG_WHITE BASH4LLM_ERR_NO_API_KEY BASH4LLM_ERR_BAD_MODEL BASH4LLM_ERR_CURL_FAILED \
-        BASH4LLM_ERR_NO_PROMPT BASH4LLM_ERR_TMP BASH4LLM_ERR_API BASH4LLM_ERR_SEC \
-        BASH4LLMERR_NO_API_KEY BASH4LLMERR_BAD_MODEL BASH4LLMERR_CURL_FAILED BASH4LLMERR_NO_PROMPT \
-        BASH4LLMERR_TMP BASH4LLMERR_API BASH4LLMERR_SEC SCRIPTDIR BASH4LLM_DIR \
-        BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR BASH4LLM_TEMPLATES_DIR BASH4LLM_HISTORY_DIR \
-        BASH4LLM_TMPDIR MAX_MODELS CANONICAL_EXTRAS_DIR LEGACY_EXTRAS_DIR BASH4LLM_EXTRAS_DIR \
-        PROVIDERS_DIR THREAD_DIR MODELS_LOCK HISTORY_LOCK TMP_LOCK BASH4LLM_LOCK_TIMEOUT_TMP \
-        BASH4LLM_LOCK_TIMEOUT_MODELS BASH4LLM_LOCK_TIMEOUT_HISTORY BASH4LLM_OPENSSL_ACTIVE \
-        _BASH4LLM_OPENSSL_HELPER BASH4LLM_VAULT_ENABLED B64_WRAP_OPT B64_DECODE_OPT \
-        BASH4LLM_ROTATE_HISTORY BASH4LLM_HISTORY_MAX_FILES BASH4LLM_HISTORY_MAX_BYTES \
-        BASH4LLM_HISTORY_KEEP_DAYS MODELS_FILE LAST_CHECK_LINES THREAD_CACHE_DIR \
-        _VAULT_FILE _VAULT_REC_FILE _VAULT_DAT_FILE _BASH4LLM_VAULT_PBKDF2 _B4L_CFG_DIR 2>/dev/null || true
+    unset BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN \
+          BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX SCRIPT_NAME SCRIPT_VERSION SCRIPT_DATE \
+          C_LOGO C_BANNER C_RST C_BOLD C_NOBOLD C_UNDERLINE C_NOUNDERLINE C_BLACK C_RED C_GREEN C_YELLOW C_BLUE \
+          C_MAGENTA C_CYAN C_WHITE C_BBLACK C_BRED C_BGREEN C_BYELLOW C_BBLUE C_BMAGENTA \
+          C_BCYAN C_BWHITE BG_BLACK BG_RED BG_GREEN BG_YELLOW BG_BLUE BG_MAGENTA BG_CYAN \
+          BG_WHITE BASH4LLM_ERR_NO_API_KEY BASH4LLM_ERR_BAD_MODEL BASH4LLM_ERR_CURL_FAILED \
+          BASH4LLM_ERR_NO_PROMPT BASH4LLM_ERR_TMP BASH4LLM_ERR_API BASH4LLM_ERR_SEC \
+          BASH4LLMERR_NO_API_KEY BASH4LLMERR_BAD_MODEL BASH4LLMERR_CURL_FAILED BASH4LLMERR_NO_PROMPT \
+          BASH4LLMERR_TMP BASH4LLMERR_API BASH4LLMERR_SEC SCRIPTDIR BASH4LLM_DIR \
+          BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR BASH4LLM_TEMPLATES_DIR BASH4LLM_HISTORY_DIR \
+          BASH4LLM_TMPDIR MAX_MODELS CANONICAL_EXTRAS_DIR LEGACY_EXTRAS_DIR BASH4LLM_EXTRAS_DIR \
+          PROVIDERS_DIR THREAD_DIR MODELS_LOCK HISTORY_LOCK TMP_LOCK BASH4LLM_LOCK_TIMEOUT_TMP \
+          BASH4LLM_LOCK_TIMEOUT_MODELS BASH4LLM_LOCK_TIMEOUT_HISTORY BASH4LLM_OPENSSL_ACTIVE \
+          _BASH4LLM_OPENSSL_HELPER BASH4LLM_VAULT_ENABLED B64_WRAP_OPT B64_DECODE_OPT \
+          BASH4LLM_ROTATE_HISTORY BASH4LLM_HISTORY_MAX_FILES BASH4LLM_HISTORY_MAX_BYTES \
+          BASH4LLM_HISTORY_KEEP_DAYS MODELS_FILE LAST_CHECK_LINES THREAD_CACHE_DIR \
+          _VAULT_FILE _VAULT_REC_FILE _VAULT_DAT_FILE _BASH4LLM_VAULT_PBKDF2 _B4L_CFG_DIR 2>/dev/null || true
+  fi
 
   # Interrupt parent-shell execution to prevent CLI action processing
   return 0 2>/dev/null || exit 0
