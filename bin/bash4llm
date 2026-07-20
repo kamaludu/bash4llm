@@ -64,6 +64,9 @@ else
 fi
 export BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX
 
+# Hard reset of the manual prompt state to prevent environment variable leakage
+BASH4LLM_KEY_MANUAL_PROMPT=0
+
 # Initialize cache for model normalization
 declare -A BASH4LLM_MODEL_CACHE=()
 
@@ -375,19 +378,30 @@ ensure_api_key_for_provider() {
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
-  # Interactive prompt with robust password/input masking
-  printf 'Enter API key for provider %s (env %s) [input is hidden]: ' "$prov" "$envvar" >&2
+  # Prompt with colors (Green for provider, Yellow for env, Magenta for hidden input note)
+  printf 'Enter API key for provider %s%s%s (env %s%s%s) %s[input is hidden]%s: ' \
+    "${C_BGREEN:-}" "$prov" "${C_RST:-}" \
+    "${C_BYELLOW:-}" "$envvar" "${C_RST:-}" \
+    "${C_BMAGENTA:-}" "${C_RST:-}" >&2
+
+  # Secure input read wrapped inside conditional checks to prevent set -e shell termination
+  local read_success=0
   if [ -t 0 ]; then
     stty -echo 2>/dev/null || true
-    IFS= read -r input_key
+    if IFS= read -r input_key; then
+      read_success=1
+    fi
     stty echo 2>/dev/null || true
     printf '\n' >&2
   else
-    IFS= read -r input_key
+    if IFS= read -r input_key; then
+      read_success=1
+    fi
   fi
 
-  if [ -z "$input_key" ]; then
-    printf '\nbash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED}" "${C_RST}" >&2
+  # Validate that the read operation succeeded and is not empty
+  if [ "$read_success" -ne 1 ] || [ -z "$input_key" ]; then
+    printf 'bash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED}" "${C_RST}" >&2
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
@@ -756,20 +770,49 @@ print_persistence_reminder() {
     envvar="$(provider_api_env_var_name "${PROVIDER:-groq}")"
     current_val="${!envvar:-}"
     
+    # 1. Print the standard 40-character wide security header
     printf '%b' "
 ${C_BCYAN}----------------------------------------${C_RST}
-
-To avoid re-entering the key for subsequent invocations, run this in your shell:
-
-  ${C_BGREEN}export ${envvar}=\"${current_val}\"${C_RST}
-
-You can add that line to your shell profile (e.g., ${C_YELLOW}~/.bashrc${C_RST} or ${C_YELLOW}~/.profile${C_RST}) to persist it across sessions.
-
+ ${C_BYELLOW}SECURITY ADVISORY: API Key Persistence${C_RST}
 ${C_BCYAN}----------------------------------------${C_RST}
-
 " >&2
 
-    # Reset the flag so the message is printed only once per session
+    # 2. Ask the user if they want to export the key to the current active session
+    printf '  %sExport this API key to your current terminal session? [y/N]:%s ' \
+      "${C_BCYAN:-}" "${C_RST:-}" >&2
+    
+    local choice=""
+    if IFS= read -r choice; then
+      choice="${choice,,}"
+      if [[ "$choice" =~ ^[yY](es)?$ ]]; then
+        # Check if the script is currently sourced or executed directly
+        if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+          # Sourced context: we can export directly to the active parent shell
+          export "${envvar}=${current_val}"
+          [ "${PROVIDER:-groq}" = "groq" ] && export GROQ_API_KEY="${current_val}"
+          printf '\n  %sSUCCESS: Key exported directly to the current session.%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
+        else
+          # Executed context: export and replace the process with a new active shell
+          export "${envvar}=${current_val}"
+          [ "${PROVIDER:-groq}" = "groq" ] && export GROQ_API_KEY="${current_val}"
+          printf '\n  %sSUCCESS: Spawning a new secure shell session with the active key...%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
+          printf '  %s(Type "exit" when done to return to your base shell)%s\n\n' "${C_CYAN:-}" "${C_RST:-}" >&2
+          
+          # Replace the process with the active user shell
+          exec "${SHELL:-bash}"
+        fi
+      else
+        # If the user declines, show a safe offline reminder (with no raw secrets printed)
+        printf '\n  %sKey export declined. You can manually set it by running:%s\n' "${C_YELLOW:-}" "${C_RST:-}" >&2
+        printf '  %sread -rs %s && export %s%s\n' "${C_BGREEN:-}" "$envvar" "$envvar" "${C_RST:-}" >&2
+      fi
+    else
+      printf '\n' >&2
+    fi
+
+    printf '%b\n' "${C_BCYAN}----------------------------------------${C_RST}" >&2
+
+    # Reset the manual prompt flag so the reminder is shown only once per session
     BASH4LLM_KEY_MANUAL_PROMPT=0
     export BASH4LLM_KEY_MANUAL_PROMPT
   fi
