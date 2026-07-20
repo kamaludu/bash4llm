@@ -1,0 +1,69 @@
+name: Cross-Platform Matrix
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  test-linux-macos:
+    name: Test su ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Installazione dipendenze (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
+
+      - name: Installazione dipendenze (macOS via Homebrew)
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash coreutils findutils util-linux gawk curl jq
+          # Mette il Bash aggiornato di Homebrew (>= 4.0) in cima al PATH
+          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+
+      - name: Verifica dipendenze e versione Bash
+        shell: bash
+        run: |
+          echo "Bash eseguito: $(which bash)"
+          bash --version | head -n 1
+          gawk --version | head -n 1
+
+      - name: Esecuzione Smoke Test / Dry-Run
+        shell: bash
+        run: |
+          chmod +x bin/bash4llm
+          # Inserisci il tuo comando di test (es. dry-run)
+          ./bin/bash4llm --dry-run tests/good.json || exit 1
+
+  test-windows-wsl:
+    name: Test su Windows (WSL)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Configurazione WSL (Ubuntu)
+        uses: VassilisV/setup-wsl@v1
+        with:
+          distribution: Ubuntu-22.04
+
+      - name: Esecuzione Test dentro WSL
+        shell: wsl-bash {0}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
+          echo "Versione Bash in WSL: $(bash --version | head -n 1)"
+          chmod +x bin/bash4llm
+          ./bin/bash4llm --dry-run tests/good.json || exit 1
