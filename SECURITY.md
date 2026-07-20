@@ -56,6 +56,20 @@ Vengono estratte ed esportate nel guscio principale **esclusivamente le firme de
 Bash4LLM⁺ non richiede di memorizzare le chiavi API in chiaro nei file di configurazione. Attivando il modulo opzionale OpenSSL (`--vault`), le chiavi di autenticazione vengono inserite all'interno di un database crittografato simmetricamente (`keys.dat`). 
 La protezione è garantita da Master Password con cifratura AES-256-CBC, derivazione PBKDF2 (100.000 iterazioni) e sale crittografico, prevenendo la sottrazione delle credenziali in caso di ispezione fisica o copia del disco. Il sblocco tramite token di sessione memorizzato in memoria (`_B4L_RT_CTX`) consente di bypassare l'inserimento costante della password senza compromettere la sicurezza a riposo.
 
+### ✔ Isolamento della sessione (Session Sandboxing in RAM)
+Le esportazioni standard delle variabili d'ambiente (es. `export KEY="valore"`) eseguite direttamente dall'utente nel prompt dei comandi introducono gravi minacce di sottrazione dei segreti per inquinamento della cronologia della shell (*Command History Leak*) o per persistenza nel buffer visivo dell'emulatore di terminale (*Scrollback Leak*).
+
+Per azzerare queste minacce senza compromettere l'usabilità dello strumento in contesti transitori, Bash4LLM⁺ implementa un meccanismo nativo di **Session Sandboxing** in RAM:
+*   **Mascheramento dell'input a livello TTY**: L'acquisizione manuale della chiave avviene tramite una chiamata `read` interna accoppiata temporaneamente a `stty -echo`. Questo inibisce l'eco a schermo dei caratteri digitati o incollati, impedendo qualsiasi persistenza visiva.
+*   **Sostituzione del processo (exec)**: Se l'utente richiede di voler esportare la chiave nella sessione corrente tramite la scelta interattiva `y/N` in contesto non-sourced, lo script carica la chiave nella memoria del processo ed esegue una sostituzione del processo a livello di sistema operativo:
+    ```bash
+    # Executed context: export key and replace the process with a new active shell
+    export GROQ_API_KEY="typed_value"
+    exec "${SHELL:-bash}"
+    ```
+*   **Ciclo di vita a impronta zero**: Questa istruzione rimpiazza istantaneamente l'immagine del processo `./bash4llm` in esecuzione con una nuova shell interattiva nidificata. La chiave d'ambiente è attiva in RAM esclusivamente all'interno di questa sotto-sessione. Poiché il comando di `export` non viene mai digitato nel prompt originale del terminale dell'utente, **nessuna traccia della chiave viene scritta nel file della cronologia dei comandi**.
+*   **Deallocazione istantanea**: Digitando il comando `exit`, la sub-shell viene terminata e lo spazio di memoria RAM contenente la chiave API viene immediatamente deallocato e distrutto dal sistema operativo, riportando l'utente al terminale base in modo del tutto pulito.
+
 ### ✔ Protezione Termux (Directory Lock atomico)
 Sui dispositivi Android/Termux, l'utility standard `flock` a livello di sistema operativo può fallire a causa di restrizioni di sicurezza del kernel o politiche di SELinux. 
 Bash4LLM⁺ rileva automaticamente l'ambiente Termux disabilitando in trasparenza `flock` ed effettuando il fallback automatico sul meccanismo di lock atomico basato sulla creazione di directory esclusive (`mkdir` atomico), garantendo l'assoluta integrità dei log di thread NDJSON senza rischi di blocco del processo.
