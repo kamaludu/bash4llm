@@ -89,7 +89,7 @@ Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel `PATH`:
 > Usa Bash4llm ⚡
 >
 
-Istruzioni di installazione dettagliate sono disponibili in **[INSTALLATION](INSTALL.md)**.
+Istruzioni di installazione dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
 
 ---
 
