@@ -137,6 +137,8 @@ exit
 ```
 Questo comando ti riporterà in totale sicurezza al tuo terminale di partenza (puoi digitare nuovamente `exit` se desideri chiudere definitivamente la scheda del terminale).
 
+Altre nformazioni sulla sicurezza in: **[SECURITY](SECURITY.md)**.
+
 ---
 
 ## Comandi, flag e opzioni disponibili
