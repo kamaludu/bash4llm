@@ -351,17 +351,28 @@ vault_destroy() {
     return 1
   fi
 
-  # Zero out file nodes prior to system link unlinking (Termux/BSD/Linux safe)
-  if command -v shred >/dev/null 2>&1; then
-    shred -u -n 3 "$_VAULT_FILE" "$_VAULT_REC_FILE" "$_VAULT_DAT_FILE" 2>/dev/null || true
-  else
-    # Fallback to zero-filling dd operations if shred is absent
-    [ -f "$_VAULT_FILE" ] && dd if=/dev/zero of="$_VAULT_FILE" bs=1024 count=10 conv=notrunc 2>/dev/null || true
-    [ -f "$_VAULT_REC_FILE" ] && dd if=/dev/zero of="$_VAULT_REC_FILE" bs=1024 count=10 conv=notrunc 2>/dev/null || true
-    [ -f "$_VAULT_DAT_FILE" ] && dd if=/dev/zero of="$_VAULT_DAT_FILE" bs=1024 count=10 conv=notrunc 2>/dev/null || true
-  fi
+  local file_to_wipe=""
+  local wipe_list=()
+  wipe_list=("$_VAULT_FILE" "$_VAULT_REC_FILE" "$_VAULT_DAT_FILE")
 
-  rm -f -- "$_VAULT_FILE" "$_VAULT_REC_FILE" "$_VAULT_DAT_FILE" 2>/dev/null || true
+  for file_to_wipe in "${wipe_list[@]}"; do
+    if [ -f "$file_to_wipe" ]; then
+      # Attempt native cryptographic removal via shred first
+      if ! shred -u -n 3 "$file_to_wipe" 2>/dev/null; then
+        # Secure fallback: Determine byte size and calculate real blocks
+        local sz=0
+        sz=$(wc -c < "$file_to_wipe" 2>/dev/null || echo 0)
+        if [ "$sz" -gt 0 ]; then
+          local blocks=$(( (sz + 1023) / 1024 ))
+          dd if=/dev/zero of="$file_to_wipe" bs=1024 count="$blocks" conv=notrunc 2>/dev/null || true
+        fi
+        # Flush the file to release the logical inode to disk
+        : > "$file_to_wipe" 2>/dev/null || true
+      fi
+      rm -f -- "$file_to_wipe" 2>/dev/null || true
+    fi
+  done
+
   printf '\n  %sVault successfully destroyed. All saved configurations have been wiped.%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
   return 0
 }
