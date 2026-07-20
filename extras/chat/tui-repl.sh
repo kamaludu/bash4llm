@@ -112,6 +112,18 @@ color_attributes() {
   fi
 }
 
+# Stream Cleaning Function
+sanitize_llm_output() {
+  # Protects the terminal emulator by removing OSC (Operating System Command)
+  # and DCS (Device Control String) sequences and escapes that are dangerous to terminal 
+  # security, while preserving native ANSI SGR color code formatting (\e[...m).
+  sed -E '
+    s/\x1b\][0-9]*;[^\x07]*(\x07|\x1b\\)//g;
+    s/\x1bP[0-9]*;[^\x1b]*\x1b\\//g;
+    s/\x1b\[[0-9;?]*[a-df-gi-ln-xzAD-Z]//g
+  '
+}
+
 # --- PHASE 3: REPL STATE AND VARIABLE INITIALIZATION ---
 THREAD_ID="${BASH4LLM_ACTIVE_THREAD:-}"
 MODEL="${BASH4LLM_ACTIVE_MODEL:-}"
@@ -1671,7 +1683,11 @@ run_repl() {
       if [ -s "${RESP:-}" ]; then
         local assistant_text
         assistant_text="$(extract_text_from_resp 2>/dev/null || true)"
+        
+        # Security sanitization before writing to the thread database
+        assistant_text="$(printf '%s' "$assistant_text" | sanitize_llm_output)"
         assistant_text="$(printf '%s' "$assistant_text" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d' || true)"
+        
         if [ -n "$assistant_text" ]; then
           meta_source="provider"
           meta_json="$(jq -c -n --arg source "$meta_source" --arg model "$MODEL" --arg id "" '{source:$source, model:$model, id:$id}')"
