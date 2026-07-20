@@ -49,29 +49,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1. XDG whitelist (aggiornato a groq.txt)
-          mkdir -p /home/runner/.config/groq
-          echo "llama-3.3-70b-versatile" > /home/runner/.config/groq/groq.txt
-          chmod 600 /home/runner/.config/groq/groq.txt || true
-
-          # 2. Whitelist interna (percorso sotto ./bin/)
+          # Configurazione della cartella dei modelli standard (./bin/bash4llm.d)
           mkdir -p ./bin/bash4llm.d/models
-          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
-          chmod 600 ./bin/bash4llm.d/models/groq.txt || true
 
-          # 3. Whitelist interna fallback (percorso sotto radice ./)
-          mkdir -p ./bash4llm.d/models
-          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/groq.txt
-          chmod 600 ./bash4llm.d/models/groq.txt || true
+          # Creazione di entrambe le whitelist (nuova groq.txt e legacy models.txt)
+          # Questo assicura che entrambi i flussi di risoluzione dei modelli funzionino correttamente.
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
+          chmod 600 ./bin/bash4llm.d/models/groq.txt ./bin/bash4llm.d/models/models.txt || true
 
           # Configurazione minima richiesta per evitare warning o controlli di sicurezza
           mkdir -p ./bin/bash4llm.d/config
           touch ./bin/bash4llm.d/config/config
           chmod 600 ./bin/bash4llm.d/config/config || true
-
-          mkdir -p ./bash4llm.d/config
-          touch ./bash4llm.d/config/config
-          chmod 600 ./bash4llm.d/config/config || true
 
       - name: Make bash4llm executable
         shell: bash
@@ -105,32 +95,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Comandi di diagnostica tramite Annotations
-          echo "::warning::[DEBUG] PWD attuale: $(pwd)"
-          echo "::warning::[DEBUG] Valore BASH4LLM_DIR: ${BASH4LLM_DIR:-vuoto}"
-
-          if [ -d "./bin/bash4llm.d" ]; then
-            echo "::warning::[DEBUG] Cartella ./bin/bash4llm.d TROVATA"
-            if [ -f "./bin/bash4llm.d/models/groq.txt" ]; then
-              echo "::warning::[DEBUG] File groq.txt in ./bin/bash4llm.d TROVATO"
-            else
-              echo "::warning::[DEBUG] File groq.txt in ./bin/bash4llm.d NON TROVATO"
-            fi
-          else
-            echo "::warning::[DEBUG] Cartella ./bin/bash4llm.d NON TROVATA"
-          fi
-
-          if [ -d "./bash4llm.d" ]; then
-            echo "::warning::[DEBUG] Cartella ./bash4llm.d TROVATA"
-            if [ -f "./bash4llm.d/models/groq.txt" ]; then
-              echo "::warning::[DEBUG] File groq.txt in ./bash4llm.d TROVATO"
-            else
-              echo "::warning::[DEBUG] File groq.txt in ./bash4llm.d NON TROVATO"
-            fi
-          else
-            echo "::warning::[DEBUG] Cartella ./bash4llm.d NON TROVATA"
-          fi
-
           if [ -x "./bin/bash4llm" ]; then
             GROQ_BIN="./bin/bash4llm"
           else
@@ -142,7 +106,6 @@ jobs:
           export TMPDIR="${TMPDIR:-${RUNNER_TEMP:-/tmp}}"
           export TMP="$TMPDIR"
           export TEMP="$TMPDIR"
-          export XDG_CONFIG_HOME="${HOME}/.config"
 
           OUTFILE="$(mktemp)"
           set +e
