@@ -151,22 +151,29 @@ _se_compute_weight() {
 
 # dedupe check in last N lines (returns 0 if duplicate found)
 _se_dedupe_check() {
-  local session_file="$1" role="$2" content="$3" window="${4:-$BASH4LLM_SESSION_DEDUP_WINDOW}"
+  local session_file="${1:-}"
+  local role="${2:-}"
+  local content="${3:-}"
+  local window="${4:-$BASH4LLM_SESSION_DEDUP_WINDOW}"
+
   [ -f "$session_file" ] || return 1
 
-  local tmp
+  local tmp=""
   tmp="$(_se_tmpf)" || return 1
-  tail -n "$window" "$session_file" 2>/dev/null > "$tmp" || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+  
+  if ! tail -n "$window" "$session_file" 2>/dev/null > "$tmp"; then
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
 
-  while IFS= read -r line || [ -n "$line" ]; do
-    if printf '%s' "$line" | jq -e --arg r "$role" --arg c "$content" '(.role == $r) and ((.content // "") == $c)' >/dev/null 2>&1; then
-      rm -f "$tmp" 2>/dev/null || true
-      return 0
-    fi
-  done < "$tmp"
+  # Performs deduplication with a single jq invocation (O(1) fork overhead)
+  jq -e --arg r "$role" --arg c "$content" '
+    try ( select(.role == $r and (.content // "") == $c) )
+  ' "$tmp" >/dev/null 2>&1
+  local rc=$?
 
   rm -f "$tmp" 2>/dev/null || true
-  return 1
+  return "$rc"
 }
 
 # compress segment if enabled and tool exists (non-destructive)
