@@ -71,12 +71,14 @@ Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel `PATH`:
 > ./bash4llm --refresh-models
 > ```
 > 
-> Lo script rileverà l'assenza della chiave e ti chiederà l'inserimento interattivo:
-> `Enter API key for provider groq (env GROQ_API_KEY):`
-> 
-> Inserisci la tua API key di Groq. Per evitare di reinserirla nelle successive esecuzioni della sessione di terminale corrente, esportala:
-> 
-> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
+> Lo script rileverà l'assenza della chiave e ti chiederà l'inserimento interattivo mascherato:
+> `Enter API key for provider groq (env GROQ_API_KEY) [input is hidden]:`
+>
+> Inserisci la tua API key di Groq (la digitazione rimarrà invisibile a schermo). Subito dopo, lo script ti proporrà in modo sicuro di esportarla automaticamente per la sessione corrente tramite l'avviso interattivo (Session Sandboxing):
+>
+> `Export this API key to your current terminal session? [y/N]: y`
+>
+> Rispondi **`y` (Sì)** per caricare la chiave in memoria RAM e iniziare subito a utilizzare lo script senza inserire nuovamente la password in questa sessione.
 > 
 > Consigliato: ***installa gli Extras opzionali*** (provider aggiuntivi, chat REPL, template):
 > ```sh
@@ -117,6 +119,23 @@ Uso di un provider esterno (se installato e configurato):
 ```sh
 ./bash4llm --provider gemini "Traduci in inglese il seguente testo"
 ```
+
+---
+
+## Session Sandboxing (RAM Volatile)
+
+Se decidi di non salvare in modo permanente le tue chiavi sul disco fisso (tramite il Vault Cifrato o i file di configurazione), `Bash4LLM⁺` ti permette di lavorare interamente in memoria RAM in modo sicuro, esente da registrazioni a schermo o inquinamento della cronologia della shell (*Command History Leak*).
+
+Quando rispondi **`y` (Sì)** all'avviso di esportazione nella sessione corrente:
+1. Lo script carica la chiave segreta nella memoria d'ambiente del processo.
+2. Sostituisce il processo corrente aprendo una nuova shell nidificata (*Session Sandbox*) in cui la chiave è attiva.
+3. Puoi eseguire qualsiasi comando di `./bash4llm` liberamente senza che ti venga mai più chiesta la chiave.
+
+Per chiudere questa sessione protetta e cancellare istantaneamente e in modo irreversibile la chiave dalla memoria RAM del computer, digita:
+```bash
+exit
+```
+Questo comando ti riporterà in totale sicurezza al tuo terminale di partenza (puoi digitare nuovamente `exit` se desideri chiudere definitivamente la scheda del terminale).
 
 ---
 

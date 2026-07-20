@@ -88,10 +88,15 @@ Bash4LLM⁺ requires the following packages to be available in your PATH:
 > ./bash4llm --refresh-models
 > 
 > ```
-> The script will detect the missing key and prompt you for interactive input:
-> Enter API key for provider groq (env GROQ_API_KEY):
-> Enter your Groq API key. To avoid re-entering it in subsequent executions within the current terminal session, export it:
-> export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"
+> The script will detect the missing key and prompt you for interactive inThe script will detect the missing key and prompt you for a masked interactive input:
+> `Enter API key for provider groq (env GROQ_API_KEY) [input is hidden]:`
+>
+> Type or paste your Groq API key (characters will remain invisible on your screen). Immediately after, the script will securely offer to export it for your current terminal session via the interactive prompt (Session Sandboxing):
+>
+> `Export this API key to your current terminal session? [y/N]: y`
+>
+> Answer **`y` (Yes)** to load the key into active RAM and start using the script right away without entering your key again in this session.
+>
 > Recommended: ***install the optional Extras*** (additional providers, REPL chat, templates):
 > ```sh
 > # 4. Install Extras
@@ -101,6 +106,7 @@ Bash4LLM⁺ requires the following packages to be available in your PATH:
 > Use Bash4llm ⚡
 > 
 Detailed installation instructions are available in **INSTALLATION**.
+
 ## Quick Usage and Examples
 Direct prompt:
 ```sh
@@ -122,7 +128,28 @@ Using an external provider (if installed and configured):
 ```sh
 ./bash4llm --provider gemini "Translate the following text into English"
 ```
+
+---
+
+## Session Sandboxing (Volatile RAM)
+
+If you choose not to persist your API keys on disk (via the Encrypted Vault or configuration files), `Bash4LLM⁺` allows you to work entirely in active RAM safely, protecting you from screen recording or command history pollution (*Command History Leak*).
+
+When you answer **`y` (Yes)** to the current session export prompt:
+1. The script loads the secret key into the process environment memory.
+2. It replaces the current process by spawning a new nested shell (*Session Sandbox*) where the key is active.
+3. You can now run `./bash4llm` freely without ever being prompted for your key again.
+
+To close this secure session and instantly wipe the key from active memory, simply run:
+```bash
+exit
+```
+This returns you safely to your base terminal (you can type `exit` once more if you wish to close the terminal window/tab entirely).
+
+---
+
 ## Available Commands, Flags, and Options
+
 ### Models and Providers
 
 | Flag | Argument | Effect |
