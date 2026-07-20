@@ -1,4 +1,4 @@
-name: Bash Compatibility Matrix
+name: Bash Compatibility
 
 on:
   push:
