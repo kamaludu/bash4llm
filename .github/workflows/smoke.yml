@@ -24,6 +24,11 @@ jobs:
 
     steps:
       - name: Checkout repository
+        uses: actions/with@v4
+        with:
+          repository: ${{ github.repository }}
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -48,15 +53,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          # XDG whitelist
+          # XDG whitelist (aggiornato a groq.txt)
           mkdir -p /home/runner/.config/groq
-          echo "llama-3.3-70b-versatile" > /home/runner/.config/groq/models.txt
-          chmod 600 /home/runner/.config/groq/models.txt || true
+          echo "llama-3.3-70b-versatile" > /home/runner/.config/groq/groq.txt
+          chmod 600 /home/runner/.config/groq/groq.txt || true
 
-          # Internal whitelist
+          # Internal whitelist (aggiornato a groq.txt per compatibilità v2.5)
           mkdir -p ./bin/bash4llm.d/models
-          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
-          chmod 600 ./bin/bash4llm.d/models/models.txt || true
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
+          chmod 600 ./bin/bash4llm.d/models/groq.txt || true
 
           # REQUIRED: internal config file (even empty)
           mkdir -p ./bin/bash4llm.d/config
