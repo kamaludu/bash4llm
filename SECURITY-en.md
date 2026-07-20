@@ -46,6 +46,20 @@ To ensure that optional provider modules loaded from the extras directory cannot
 Bash4LLM⁺ does not require storing API keys in plaintext inside configuration files. By activating the optional OpenSSL module (--vault), authentication keys are placed inside a symmetrically encrypted database (keys.dat).
 Protection is guaranteed by a Master Password with AES-256-CBC encryption, PBKDF2 key derivation (100,000 iterations), and a cryptographic salt, preventing credential theft in the event of physical inspection or disk copying. Unlocking via a session token stored in memory (_B4L_RT_CTX) allows bypassing constant password entry without compromising security at rest.
 
+### ✔ Volatile RAM Session Sandboxing
+Standard environment variable exports (e.g., `export KEY="value"`) executed directly at the user's terminal prompt pose significant security threats, specifically command history harvesting (*Command History Leak*) and scrollback buffer persistence (*Scrollback Leak*).
+
+To eliminate these threat vectors in transient environments without sacrificing usability, Bash4LLM⁺ implements a native **Volatile RAM Session Sandboxing** mechanism:
+*   **TTY-level Input Masking**: Manual key ingestion is performed using an internal `read` builtin temporarily coupled with `stty -echo`. This disables character echoing during pasting or typing, preventing any visual persistence in the terminal emulator's buffer.
+*   **Process Image Replacement (exec)**: If the user opts to export the key to the current session via the interactive `y/N` prompt in a non-sourced execution context, the script injects the key into its process environment and triggers an OS-level process replacement:
+    ```bash
+    # Executed context: export key and replace the process with a new active shell
+    export GROQ_API_KEY="typed_value"
+    exec "${SHELL:-bash}"
+    ```
+*   **Zero-Footprint Lifecycle**: This instruction instantly replaces the active `./bash4llm` child process with a fresh, nested interactive shell session. The environment key is inherited strictly inside the volatile RAM of this sub-shell. Because the `export` command was never typed directly in the parent terminal's prompt, **no secret key records are ever written to the user's command history file**.
+*   **Instant Memory Deallocation**: Typing the `exit` command terminates the sub-shell, causing the operating system to immediately deallocate and wipe the volatile RAM segment containing the key. The user is returned to their pristine base terminal session.
+
 ### ✔ Termux Protection (Atomic Directory Lock)
 On Android/Termux devices, the standard operating system-level flock utility can fail due to kernel security restrictions or SELinux policies.
 Bash4LLM⁺ automatically detects the Termux environment, transparently disabling flock and automatically falling back to an atomic lock mechanism based on the creation of exclusive directories (atomic mkdir), ensuring the absolute integrity of NDJSON thread logs without risks of process locking.
