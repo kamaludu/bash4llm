@@ -207,6 +207,13 @@ sync_models_file_path() {
   
   # Uniform and isolated mapping for each provider
   MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/${prov}.txt"
+
+  # Fallback di retrocompatibilità: se il file specifico del provider è vuoto o assente,
+  # ma esiste il vecchio file cumulativo 'models.txt', usa quest'ultimo come ripiego.
+  if [ ! -s "$MODELS_FILE" ] && [ -s "${BASH4LLM_MODELS_DIR:-}/models.txt" ]; then
+    MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/models.txt"
+  fi
+  
   export MODELS_FILE
 }
 
