@@ -208,164 +208,121 @@ trim_space() {
 # Function: read_secure_input
 # Purpose:  Read sensitive input securely using canonical mode (no stty -icanon),
 #           preventing terminal corruption. Assigns result directly to a parent
-#           variable via 'printf -v' without triggering subshell execution.
-#
-# Arguments:
-#   1: _target_var      (Required) Name of the parent variable to store the result
-#   2: _prompt_msg      (Optional) Prompt text displayed to the user
-#   3: _min_len         (Optional) Minimum required input length (default: 0)
-#   4: _allow_verify    (Optional) Enable obfuscated preview prompt (1=Yes, 0=No, default: 0)
-#
-# Returns:
-#   0 = Success (Valid input received and set)
-#   1 = Validation error or user cancellation
+#           variable via 'printf -v' without subshell execution or eval.
 # ==================================================
 read_secure_input() {
   local _target_var="${1:-}"
   local _prompt_msg="${2:-Enter sensitive value}"
   local _min_len="${3:-0}"
-  local _allow_verify="${4:-0}"  # Default: Strictly Blind (No preview prompt)
+  local _allow_verify="${4:-0}"
 
-  if [[ -z "$_target_var" ]]; then
+  if [ -z "$_target_var" ]; then
     printf 'bash4llm: ERROR [read_secure_input]: Target variable name required.\n' >&2
     return 1
   fi
 
-  # ---------------------------------------------------------------------------
-  # Capture existing parent traps to prevent clobbering the parent shell state
-  # ---------------------------------------------------------------------------
-  local _saved_trap_int _saved_trap_term _saved_trap_exit
-  _saved_trap_int="$(trap -p INT)"
-  _saved_trap_term="$(trap -p TERM)"
-  _saved_trap_exit="$(trap -p EXIT)"
+  # Preserve terminal echo state and interrupt signal integrity without eval
+  local _stty_orig=""
+  _stty_orig="$(stty -g 2>/dev/null || true)"
 
-  local _cleanup_done=0
-
-  # Internal cleanup and trap restoration handler
-  _restore_terminal_and_traps() {
-    if [[ "$_cleanup_done" -eq 1 ]]; then
-      return 0
+  # Local signal handler helper for clean cleanup on interrupt
+  _read_secure_cleanup() {
+    if [ -n "$_stty_orig" ]; then
+      stty "$_stty_orig" 2>/dev/null || stty echo 2>/dev/null || true
+    else
+      stty echo 2>/dev/null || true
     fi
-    _cleanup_done=1
-
-    # Always ensure terminal echo is re-enabled
-    stty echo 2>/dev/null || true
-
-    # Restore captured parent traps cleanly
-    if [[ -n "$_saved_trap_int" ]]; then eval "$_saved_trap_int"; else trap - INT; fi
-    if [[ -n "$_saved_trap_term" ]]; then eval "$_saved_trap_term"; else trap - TERM; fi
-    if [[ -n "$_saved_trap_exit" ]]; then eval "$_saved_trap_exit"; else trap - EXIT; fi
   }
 
-  # Register safe interrupt traps
-  trap '_restore_terminal_and_traps; return 1 2>/dev/null || exit 1' INT TERM EXIT
+  # Register local traps ONLY for interactive interrupt signals (DO NOT TRAP EXIT)
+  trap '_read_secure_cleanup; trap - INT TERM; return 1' INT TERM
 
-  # ---------------------------------------------------------------------------
-  # Read Input Safely (Canonical Mode, Hidden Echo Only)
-  # ---------------------------------------------------------------------------
   local _raw_input=""
   local _clean_input=""
 
   printf -- '%s %s[input hidden]%s: ' "$_prompt_msg" "${C_MAGENTA:-}" "${C_RST:-}" >&2
 
-  # Disable terminal echo safely (keeps canonical signal processing active)
+  # Safely disable terminal echo
   stty -echo 2>/dev/null || true
 
-  if [[ -r /dev/tty && -c /dev/tty ]]; then
-    IFS= read -r _raw_input < /dev/tty
+  if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+    IFS= read -r _raw_input < /dev/tty || _raw_input=""
   else
-    IFS= read -r _raw_input
+    IFS= read -r _raw_input || _raw_input=""
   fi
 
-  # Re-enable echo immediately and print a clean newline
-  stty echo 2>/dev/null || true
+  # Immediately restore terminal echo and print a newline
+  _read_secure_cleanup
+  trap - INT TERM 2>/dev/null || true
   printf '\n' >&2
 
-  # ---------------------------------------------------------------------------
-  # Sanitization (Pure Bash Parameter Expansion - Zero External Forks)
-  # ---------------------------------------------------------------------------
-  # Remove trailing carriage returns (\r) introduced by copy-pasting across systems
+  # Sanitization (Pure Parameter Expansion)
   _clean_input="${_raw_input//$'\r'/}"
-  # Trim leading/trailing whitespace
   _clean_input="${_clean_input#"${_clean_input%%[![:space:]]*}"}"
   _clean_input="${_clean_input%"${_clean_input##*[![:space:]]}"}"
 
   local _input_len="${#_clean_input}"
 
-  # Enforce minimum length constraint
-  if [[ "$_input_len" -lt "$_min_len" ]]; then
+  if [ "$_input_len" -lt "$_min_len" ]; then
     printf '  %s[ERROR] Input is too short (%d chars). Minimum required: %d.%s\n' \
       "${C_RED:-}" "$_input_len" "$_min_len" "${C_RST:-}" >&2
-    _restore_terminal_and_traps
     return 1
   fi
 
-  # ---------------------------------------------------------------------------
-  # Obfuscated Preview on Primary Screen (Voluntary Verification Flow)
-  # ---------------------------------------------------------------------------
-  if [[ "$_allow_verify" -eq 1 && "$_input_len" -gt 0 ]]; then
+  # Obfuscated Preview Verification Flow
+  if [ "$_allow_verify" -eq 1 ] && [ "$_input_len" -gt 0 ]; then
     local _confirm_choice=""
 
     printf -- '  %s[INPUT CAPTURED]%s Press %s[v + Enter]%s to verify preview, or %s[Enter]%s to accept: ' \
       "${C_BGREEN:-}" "${C_RST:-}" "${C_BYELLOW:-}" "${C_RST:-}" "${C_BCYAN:-}" "${C_RST:-}" >&2
 
-    if [[ -r /dev/tty && -c /dev/tty ]]; then
-      IFS= read -r _confirm_choice < /dev/tty
+    if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+      IFS= read -r _confirm_choice < /dev/tty || _confirm_choice=""
     else
-      IFS= read -r _confirm_choice
+      IFS= read -r _confirm_choice || _confirm_choice=""
     fi
 
-    # Trim choice
     _confirm_choice="${_confirm_choice//$'\r'/}"
     _confirm_choice="${_confirm_choice#"${_confirm_choice%%[![:space:]]*}"}"
 
-    if [[ "$_confirm_choice" == "v" || "$_confirm_choice" == "V" ]]; then
+    if [ "$_confirm_choice" = "v" ] || [ "$_confirm_choice" = "V" ]; then
       local _obfuscated_preview=""
 
-      if [[ "$_input_len" -le 20 ]]; then
-        # Password Policy (<= 20 chars): Show first 3 chars + bullets for remaining
+      if [ "$_input_len" -le 20 ]; then
         local _first_three="${_clean_input:0:3}"
         local _num_dots=$(( _input_len - 3 ))
-        local _bullets=""
+        local _bullets="" _i
 
-        if [[ "$_num_dots" -gt 0 ]]; then
-          local _i
+        if [ "$_num_dots" -gt 0 ]; then
           for (( _i=0; _i<_num_dots; _i++ )); do
             _bullets+="●"
           done
         fi
         _obfuscated_preview="${_first_three}${_bullets}"
-
       else
-        # API Key Policy (> 20 chars): Show first 6 chars + "..." + last 4 chars
         local _prefix="${_clean_input:0:6}"
         local _suffix="${_clean_input: -4}"
         _obfuscated_preview="${_prefix}...${_suffix}"
       fi
 
       printf -- '\n  %s============== SECURE PREVIEW ==============%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
-      printf -- '  Registered value : %s%s%s \n. (Length: %d chars)\n' \
+      printf -- '  Registered value : %s%s%s (Length: %d chars)\n' \
         "${C_BGREEN:-}" "$_obfuscated_preview" "${C_RST:-}" "$_input_len" >&2
       printf -- '  %s============================================%s\n' "${C_BYELLOW:-}" "${C_RST:-}" >&2
       printf -- '  Press %s[Enter]%s to confirm and proceed: ' "${C_BCYAN:-}" "${C_RST:-}" >&2
 
       local _dummy=""
-      if [[ -r /dev/tty && -c /dev/tty ]]; then
-        IFS= read -r _dummy < /dev/tty
+      if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+        IFS= read -r _dummy < /dev/tty || true
       else
-        IFS= read -r _dummy
+        IFS= read -r _dummy || true
       fi
       printf '\n' >&2
     fi
   fi
 
-  # ---------------------------------------------------------------------------
   # Assign to parent variable in-memory without subshell forks
-  # ---------------------------------------------------------------------------
   printf -v "$_target_var" '%s' "$_clean_input"
-
-  # Restore parent traps and cleanup state
-  _restore_terminal_and_traps
   return 0
 }
 
@@ -382,8 +339,8 @@ sync_models_file_path() {
   # Uniform and isolated mapping for each provider
   MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/${prov}.txt"
 
-  # Fallback di retrocompatibilità: se il file specifico del provider è vuoto o assente,
-  # ma esiste il vecchio file cumulativo 'models.txt', usa quest'ultimo come ripiego.
+  # Backward compatibility fallback: If the provider-specific file is empty or missing,
+  # but the old cumulative file 'models.txt' exists, use that as a fallback.
   if [ ! -s "$MODELS_FILE" ] && [ -s "${BASH4LLM_MODELS_DIR:-}/models.txt" ]; then
     MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/models.txt"
   fi
@@ -480,20 +437,22 @@ _normalize_model_name() {
 # ensure_api_key_for_provider (robust, non-interactive safe, unbound variable proof)
 ensure_api_key_for_provider() {
   local prov="${1:-}"
-  local envvar="" current_key="" input_key="" custom_var="" custom_env=""
+  local envvar="" current_key="" input_key="" custom_var="" custom_env="" prompt_msg="" read_success=0
   [ -n "$prov" ] || return 1
   envvar="$(provider_api_env_var_name "$prov")"
   custom_var="PROVIDER_API_ENV_${prov}"
   
-  # Safe indirect variable loading avoiding set -u (nounset) errors
   if [ -n "${custom_var:-}" ] && declare -p "$custom_var" >/dev/null 2>&1; then
     custom_env="${!custom_var:-}"
   fi
+
   if [ -n "${custom_env:-}" ]; then
-    # Strictly sanitize variable name to prevent injection/unexpected behavior
     custom_env="${custom_env//[!a-zA-Z0-9_]/}"
     if [[ "$custom_env" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-      envvar="$custom_env"
+      # CRITICAL FIX: Verify target variable existence before indirect expansion under set -u
+      if declare -p "$custom_env" >/dev/null 2>&1; then
+        envvar="$custom_env"
+      fi
     fi
   fi
   
@@ -502,7 +461,6 @@ ensure_api_key_for_provider() {
     current_key="${!envvar:-}"
   fi
 
-  # If key present, sync groq alias and return
   if [ -n "$current_key" ]; then
     if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
       export GROQ_API_KEY="$current_key"
@@ -510,17 +468,13 @@ ensure_api_key_for_provider() {
     return 0
   fi
 
-  # -------------------------------------------------------------------------
-  # Secure Key Vault Hook (Prioritize encrypted storage lookup)
-  # -------------------------------------------------------------------------
+  # Secure Key Vault Lookup
   if [ -z "$current_key" ] && [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
-    # Load the vault keys if not already cached in memory during this process session
     if [ -z "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
       log_info_user "SECURITY" "Vault file detected. Authenticating to unlock saved API keys..."
       BASH4LLM_DECRYPTED_VAULT_JSON="$(vault_load_keys)" || true
     fi
 
-    # Attempt to retrieve the specific provider key from the decrypted payload
     if [ -n "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
       local extracted_key=""
       extracted_key="$(printf '%s' "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" | jq -r --arg p "$prov" '.[$p] // empty' 2>/dev/null || true)"
@@ -537,24 +491,19 @@ ensure_api_key_for_provider() {
       fi
     else
       log_warn "SECURITY" "Authentication failed. Falling back to manual input."
-      # Reset memory cache on authentication failure
       BASH4LLM_DECRYPTED_VAULT_JSON=""
     fi
   fi
-  # -------------------------------------------------------------------------
 
-  # Non-interactive: fail fast with clear error (do not prompt)
   if [ ! -t 0 ]; then
     printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED:-}" "${C_RST:-}" "$prov" "$envvar" >&2
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
-  # Secure Input Read with Voluntary Alternate Screen Verification (Subshell-Free)
-  local prompt_msg=""
   prompt_msg="Enter API key for provider $(printf '%b%s%b' "${C_BGREEN:-}" "$prov" "${C_RST:-}") (env $(printf '%b%s%b' "${C_BYELLOW:-}" "$envvar" "${C_RST:-}"))"
 
   read_secure_input "input_key" "$prompt_msg" 1
-  local read_success=$?
+  read_success=$?
 
   if [ "$read_success" -ne 0 ] || [ -z "$input_key" ]; then
     printf 'bash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED:-}" "${C_RST:-}" >&2
@@ -566,7 +515,6 @@ ensure_api_key_for_provider() {
     export GROQ_API_KEY="$input_key"
   fi
 
-  # Set flag indicating the key was typed manually during this run
   BASH4LLM_KEY_MANUAL_PROMPT=1
   export BASH4LLM_KEY_MANUAL_PROMPT
 
@@ -738,6 +686,11 @@ BASH4LLM_MODELS_DIR="${BASH4LLM_MODELS_DIR:-${BASH4LLM_DIR}/models}"
 BASH4LLM_TEMPLATES_DIR="${BASH4LLM_TEMPLATES_DIR:-${BASH4LLM_DIR}/templates}"
 BASH4LLM_HISTORY_DIR="${BASH4LLM_HISTORY_DIR:-${BASH4LLM_DIR}/history}"
 BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-${BASH4LLM_DIR}/tmp}"
+
+# New isolated runtime and lock directories
+BASH4LLM_RUN_DIR="${BASH4LLM_RUN_DIR:-${BASH4LLM_DIR}/var/run}"
+BASH4LLM_LOCKS_DIR="${BASH4LLM_LOCKS_DIR:-${BASH4LLM_RUN_DIR}/locks}"
+
 sync_models_file_path
 MAX_MODELS="${MAX_MODELS:-200}"
 
@@ -745,7 +698,7 @@ CANONICAL_EXTRAS_DIR="${BASH4LLM_DIR}/extras"
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-${CANONICAL_EXTRAS_DIR}}"
 PROVIDERS_DIR="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}"
-export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR
+export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BASH4LLM_RUN_DIR BASH4LLM_LOCKS_DIR
 
 if [ -z "${BASH4LLM_DIR:-}" ]; then
   printf 'bash4llm: ERROR: BASH4LLM_DIR is empty; cannot derive directories\n' >&2
@@ -766,6 +719,8 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; the
   safe_mkdir "$BASH4LLM_TEMPLATES_DIR" 700
   safe_mkdir "$BASH4LLM_HISTORY_DIR" 700
   safe_mkdir "$BASH4LLM_TMPDIR" 700
+  safe_mkdir "$BASH4LLM_RUN_DIR" 700
+  safe_mkdir "$BASH4LLM_LOCKS_DIR" 700
   safe_mkdir "$BASH4LLM_EXTRAS_DIR" 700
   safe_mkdir "$BASH4LLM_CONFIG_DIR/providers" 700
   safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
@@ -855,11 +810,16 @@ write_provider_url_if_missing() {
   if [ -f "$file" ] && [ -s "$file" ]; then
     return 0
   fi
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    tmp="$(mktemp "${RUN_TMPDIR%/}/provider-url.XXXXXX" 2>/dev/null || true)"
-  else
-    tmp="$(mktemp -t provider-url.XXXXXX 2>/dev/null || mktemp "${TMPDIR:-/tmp}/provider-url.XXXXXX" 2>/dev/null || true)"
+
+  # CRITICAL FIX: Ensure temporary allocation resides strictly within local isolated runtime directory
+  local target_tmpdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  if [ -z "$target_tmpdir" ] || [ ! -d "$target_tmpdir" ]; then
+    log_error "TMP" "write_provider_url_if_missing: local runtime tmpdir unavailable"
+    return 1
   fi
+
+  tmp="$(_tmpf file "$target_tmpdir" provider-url 2>/dev/null || true)"
+
   if [ -n "$tmp" ]; then
     printf '%s\n' "$url" > "$tmp"
     mv -f "$tmp" "$file" 2>/dev/null || cp -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
@@ -1091,7 +1051,11 @@ lock_exec() {
 
   if [ -L "$lockfile" ]; then
     log_error "SEC" "lockfile is a symlink: $lockfile. Aborting."
-    exit 15
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+      exit "${BASH4LLM_ERR_TMP:-15}"
+    else
+      return "${BASH4LLM_ERR_TMP:-15}"
+    fi
   fi
 
   safe_mkdir "$(dirname "$lockfile")" 700
@@ -1109,15 +1073,15 @@ lock_exec() {
         "$@"
       else
         log_error "LOCKTIMEOUT" "could not acquire lock on $lockfile within $timeout seconds"
-        exit 124
+        exit 124 # Subshell isolation: safe exit inside subshell context
       fi
     )
     rc=$?
     return "$rc"
   else
-    # Fallback deterministico per Android/macOS/BSD immune a instabilità filesystem/mtime
+    # Robust POSIX directory fallback immune to timestamp race conditions
     local lockdir="${lockfile}.lockdir"
-    local start_time="" now="" acquired=0 lock_pid=0 lock_ts=0 age=0
+    local start_time="" now="" acquired=0 lock_pid=0 lock_ts=0 age=0 is_orphan=0
 
     start_time=$(date +%s 2>/dev/null || echo 0)
 
@@ -1126,13 +1090,20 @@ lock_exec() {
         lock_pid=$(cat "$lockdir/owner.pid" 2>/dev/null || echo 0)
         lock_ts=$(cat "$lockdir/owner.ts" 2>/dev/null || echo 0)
         now=$(date +%s 2>/dev/null || echo 0)
-        age=$((now - lock_ts))
 
-        local is_orphan=0
-        if [ "$age" -gt 15 ]; then
-          is_orphan=1
-        elif [[ "$lock_pid" =~ ^[0-9]+$ ]] && [ "$lock_pid" -gt 0 ] && ! kill -0 "$lock_pid" 2>/dev/null; then
-          is_orphan=1
+        is_orphan=0
+        # CRITICAL FIX: Only evaluate age if owner.ts was actually written (> 0)
+        if [ "$lock_ts" -gt 0 ]; then
+          age=$((now - lock_ts))
+          if [ "$age" -gt 15 ]; then
+            is_orphan=1
+          fi
+        fi
+
+        if [ "$is_orphan" -eq 0 ] && [[ "$lock_pid" =~ ^[0-9]+$ ]] && [ "$lock_pid" -gt 0 ]; then
+          if ! kill -0 "$lock_pid" 2>/dev/null; then
+            is_orphan=1
+          fi
         fi
 
         if [ "$is_orphan" -eq 1 ]; then
@@ -1685,12 +1656,11 @@ fi
 umask 077
 
 # --------------------------------------------------
-# Centralized lock names (co-located with resources)
+# Centralized lock names (stored inside isolated var/run/locks)
 # --------------------------------------------------
-MODELS_LOCK="${MODELS_LOCK:-$BASH4LLM_MODELS_DIR/models.lock}"
+MODELS_LOCK="${MODELS_LOCK:-$BASH4LLM_LOCKS_DIR/models.lock}"
 HISTORY_LOCK="${HISTORY_LOCK:-$BASH4LLM_HISTORY_DIR/history.lock}"
-TMP_LOCK="${TMP_LOCK:-$BASH4LLM_TMPDIR/tmp.lock}"
-
+TMP_LOCK="${TMP_LOCK:-$BASH4LLM_LOCKS_DIR/tmp.lock}"
 # Lock timeouts (configurable via env)
 BASH4LLM_LOCK_TIMEOUT_TMP="${BASH4LLM_LOCK_TIMEOUT_TMP:-10}"
 BASH4LLM_LOCK_TIMEOUT_MODELS="${BASH4LLM_LOCK_TIMEOUT_MODELS:-10}"
@@ -1871,9 +1841,9 @@ _detect_base64_opts() {
 _detect_base64_opts
 
 list_files_sorted_by_mtime() {
-  local dir="${1:-}"
+  local dir="${1:-}" mtime="" f=""
   find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
-    local mtime=""
+    mtime=""
     if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
       mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)"
     else
@@ -1881,6 +1851,97 @@ list_files_sorted_by_mtime() {
     fi
     printf '%s|%s\n' "$mtime" "$f"
   done | sort -n
+}
+
+rotate_history() {
+  local timeout="${1:-$BASH4LLM_LOCK_TIMEOUT_HISTORY}"
+  local dir="${BASH4LLM_HISTORY_DIR:-$PWD/bash4llm.d/history}"
+  local max_files="${BASH4LLM_HISTORY_MAX_FILES:-100}"
+  local max_bytes="${BASH4LLM_HISTORY_MAX_BYTES:-104857600}"
+  local keep_days="${BASH4LLM_HISTORY_KEEP_DAYS:-90}"
+
+  local now_epoch="" cutoff="" f="" f_mtime="" entry=""
+  now_epoch=$(date +%s)
+  cutoff=$(( now_epoch - (keep_days * 86400) ))
+  
+  while IFS= read -r -d '' f; do
+    f_mtime=$(_file_mtime "$f")
+    if [ "$f_mtime" -gt 0 ] && [ "$f_mtime" -lt "$cutoff" ]; then
+      lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$f" || true
+    fi
+  done < <(find "$dir" -type f -print0 2>/dev/null)
+
+  local total=0
+  local -a entries=()
+  local oldest_mtime="" oldest_size="" oldest_path=""
+
+  while IFS='|' read -r oldest_mtime oldest_size oldest_path; do
+    [ -z "$oldest_path" ] && continue
+    total=$(( total + oldest_size ))
+    entries+=( "$oldest_size|$oldest_path" )
+  done < <(
+    find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
+      printf '%s|%s|%s\n' "$(_file_mtime "$f")" "$(file_size "$f")" "$f"
+    done | sort -t'|' -k1,1n
+  )
+
+  if [ "$total" -gt "$max_bytes" ] && [ "${#entries[@]}" -gt 0 ]; then
+    for entry in "${entries[@]}"; do
+      oldest_size="${entry%%|*}"
+      oldest_path="${entry#*|}"
+      if [ -f "$oldest_path" ] && lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$oldest_path"; then
+        total=$(( total - oldest_size ))
+        [ "$total" -le "$max_bytes" ] && break
+      fi
+    done
+  fi
+
+  local count="${#entries[@]}"
+  if [ "$count" -gt "$max_files" ] && [ "${#entries[@]}" -gt 0 ]; then
+    for entry in "${entries[@]}"; do
+      oldest_path="${entry#*|}"
+      if [ -f "$oldest_path" ] && lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$oldest_path"; then
+        count=$(( count - 1 ))
+        [ "$count" -le "$max_files" ] && break
+      fi
+    done
+  fi
+
+  return 0
+}
+
+validate_model_core() {
+  local model="${1:-}" norm_model="" file_match=0 m=""
+  [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_core: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
+
+  norm_model="$(_normalize_model_name "$model")"
+
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    if grep -x -F -q "$model" "$MODELS_FILE" 2>/dev/null; then
+      file_match=1
+    else
+      file_match=0
+      while IFS= read -r m || [ -n "$m" ]; do
+        [ -z "$m" ] && continue
+        if [ "$(_normalize_model_name "$m")" = "$norm_model" ]; then
+          file_match=1
+          break
+        fi
+      done < "$MODELS_FILE"
+    fi
+
+    if [ "$file_match" -ne 1 ]; then
+      printf 'bash4llm: %sERROR%s: The model "%s" is not present in %s\n' "${C_RED}" "${C_RST}" "$model" "$MODELS_FILE" >&2
+      return 1
+    fi
+  fi
+
+  if ! is_supported_model "$norm_model"; then
+    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_BGREEN}Bash4LLM⁺${C_RST}" >&2
+    return 1
+  fi
+
+  return 0
 }
 
 tac_fallback() {
@@ -2223,8 +2284,12 @@ anonymize_thread_id() {
       fi
       ;;
     *)
-      log_error "SEC" "No cryptographic hashing utility found (openssl/sha256sum/shasum/md5sum). Aborting execution to prevent PII disk leakage."
-      exit 17
+      log_error "SEC" "No cryptographic hashing utility found. Aborting execution to prevent PII disk leakage."
+      if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        exit 17
+      else
+        return 17
+      fi
       ;;
   esac
 
@@ -2233,7 +2298,11 @@ anonymize_thread_id() {
 
   if [ -z "$SAFE_THREAD_ID" ]; then
     log_error "SEC" "Anonymization failed to generate a valid identifier. Aborting."
-    exit 17
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+      exit 17
+    else
+      return 17
+    fi
   fi
 
   export SAFE_THREAD_ID
