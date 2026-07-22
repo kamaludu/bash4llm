@@ -558,7 +558,7 @@ session_engine_snapshot() {
   : > "$tmp"
   local segments_list
   segments_list="$(_se_list_segments "$sid")"
-  local total_msgs=0 total_size=0 seg_count=0
+  local total_msgs=0 total_size=0 seg_count=0 s c sz
   for s in $segments_list; do
     seg_count=$((seg_count+1))
     sz="$(_se_file_size "$s")"
@@ -573,7 +573,7 @@ session_engine_snapshot() {
   : > "$last_tmp"
   for s in $segments_list; do
     case "$s" in *.gz) continue ;; esac
-    cat "$s" >> "$last_tmp"
+    cat "$s" >> "$last_tmp" 2>/dev/null || true
   done
   tail -n 50 "$last_tmp" > "${last_tmp}.tail" 2>/dev/null || true
 
@@ -581,11 +581,10 @@ session_engine_snapshot() {
   : > "$summaries_tmp"
   for s in $segments_list; do
     case "$s" in *.gz) continue ;; esac
-    awk 'NF' "$s" | while IFS= read -r line || [ -n "$line" ]; do
-      if printf '%s' "$line" | jq -e '.meta?.summary == true' >/dev/null 2>&1; then
-        printf '%s\n' "$line" >> "$summaries_tmp"
-      fi
-    done
+    if [ -f "$s" ]; then
+      # OPTIMIZED: Single jq stream filter per segment (Zero Fork Storm)
+      jq -c 'select(type == "object" and .meta?.summary == true)' "$s" >> "$summaries_tmp" 2>/dev/null || true
+    fi
   done
 
   # Build snapshot JSON
