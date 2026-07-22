@@ -73,30 +73,92 @@ if ! type _tmpf >/dev/null 2>&1; then
   _tmpf() {
     local _mode="${1:-}" _base="${2:-}" _prefix="${3:-groq}" _tmp=""
     if [ -z "$_base" ]; then
-      _base="${TMPDIR:-/tmp}"
+      _base="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-./bash4llm.d/tmp}}"
     fi
+    mkdir -p "$_base" 2>/dev/null || true
+    chmod 700 "$_base" 2>/dev/null || true
     if [ "$_mode" = "file" ]; then
       _tmp="$(mktemp "${_base%/}/${_prefix}.XXXXXX" 2>/dev/null)"
-      [ -n "$_tmp" ] && chmod 600 "$_tmp" 2>/dev/null
+      [ -n "$_tmp" ] && chmod 600 "$_tmp" 2>/dev/null || true
       printf '%s' "$_tmp"
     fi
   }
 fi
 
 if ! type read_secure_input >/dev/null 2>&1; then
+  # Function: read_secure_input - equal to the core
   read_secure_input() {
-    local prompt_msg="${1:-Enter value}"
-    local secret_val=""
-    printf -- '%s %s[input is hidden]%s: ' "$prompt_msg" "${C_MAGENTA:-}" "${C_RST:-}" >&2
-    stty -echo 2>/dev/null || true
-    if [ -r /dev/tty ] && [ -c /dev/tty ]; then
-      IFS= read -r secret_val < /dev/tty
-    else
-      IFS= read -r secret_val
+    local _target_var="${1:-}"
+    local _prompt_msg="${2:-Enter sensitive value}"
+    local _min_len="${3:-0}"
+    local _allow_verify="${4:-0}"
+
+    if [[ ! "$_target_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+      printf 'bash4llm: ERROR [read_secure_input]: Invalid target variable identifier: %s\n' "$_target_var" >&2
+      return 1
     fi
-    stty echo 2>/dev/null || true
+
+    local _is_tty=0
+    if [ -t 0 ] || { [ -r /dev/tty ] && [ -c /dev/tty ]; }; then
+      _is_tty=1
+    fi
+
+    # Save original stty state strictly from /dev/tty
+    local _stty_orig=""
+    if [ "$_is_tty" -eq 1 ]; then
+      _stty_orig="$(stty -g < /dev/tty 2>/dev/null || stty -g 2>/dev/null || true)"
+    fi
+
+    local _parent_trap_int="" _parent_trap_term=""
+    _parent_trap_int="$(trap -p INT || true)"
+    _parent_trap_term="$(trap -p TERM || true)"
+
+    _rsi_cleanup() {
+      if [ "$_is_tty" -eq 1 ]; then
+        if [ -n "$_stty_orig" ]; then
+          stty "$_stty_orig" < /dev/tty 2>/dev/null || stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+        else
+          stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+        fi
+      fi
+      if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi
+      if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi
+    }
+
+    trap '_rsi_cleanup; printf "\n" >&2; return 1' INT TERM
+
+    # CRITICAL: Disable echo ON /dev/tty BEFORE displaying prompt
+    if [ "$_is_tty" -eq 1 ]; then
+      stty -echo < /dev/tty 2>/dev/null || stty -echo 2>/dev/null || true
+    fi
+
+    printf -- '%s %s[input hidden]%s: ' "$_prompt_msg" "${C_MAGENTA:-}" "${C_RST:-}" >&2
+
+    local _raw_input="" _clean_input=""
+    if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+      IFS= read -r _raw_input < /dev/tty || _raw_input=""
+    else
+      IFS= read -r _raw_input || _raw_input=""
+    fi
+
+    # Instantly restore echo
+    _rsi_cleanup
     printf '\n' >&2
-    printf '%s' "$(printf '%s' "$secret_val" | tr -d '[:space:]')"
+
+    _clean_input="${_raw_input//$'\r'/}"
+    _clean_input="${_clean_input#"${_clean_input%%[![:space:]]*}"}"
+    _clean_input="${_clean_input%"${_clean_input##*[![:space:]]}"}"
+
+    local _input_len="${#_clean_input}"
+    if [ "$_input_len" -lt "$_min_len" ]; then
+      printf '  %s[ERROR] Input is too short (%d chars). Minimum required: %d.%s\n' \
+        "${C_RED:-}" "$_input_len" "$_min_len" "${C_RST:-}" >&2
+      printf -v "$_target_var" '%s' ""
+      return 1
+    fi
+
+    printf -v "$_target_var" '%s' "$_clean_input"
+    return 0
   }
 fi
 
