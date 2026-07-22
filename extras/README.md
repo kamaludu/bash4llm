@@ -2,7 +2,7 @@
 
 # Bash4llm Extras
 
-[![Update Extras Manifest](https://github.com/kamaludu/kamaludu-patch-1/actions/workflows/update-manifest.yml/badge.svg)](https://github.com/kamaludu/kamaludu-patch-1/actions/workflows/update-manifest.yml)
+[![Update Extras Manifest](https://github.com/kamaludu/bash4llm/actions/workflows/update-manifest.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/update-manifest.yml)
 
 
 ```text
