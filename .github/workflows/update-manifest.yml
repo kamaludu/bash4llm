@@ -10,9 +10,11 @@ on:
 jobs:
   update-manifest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Generate SHA-256 Manifest
         run: |
@@ -26,7 +28,7 @@ jobs:
           find . -type f ! -name "manifest.sha256" -exec sha256sum {} + | sed 's|  \./|  |' | sort -k2 >> manifest.sha256
 
       - name: Commit & Push Changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
-          commit_message: "chore(security): auto-update extras/manifest.sha256"
+          commit_message: "chore(security): auto-update extras/manifest.sha256 [skip ci]"
           file_pattern: "extras/manifest.sha256"
