@@ -4,7 +4,6 @@
 
 [![Update Extras Manifest](https://github.com/kamaludu/bash4llm/actions/workflows/update-manifest.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/update-manifest.yml)
 
-
 ```text
 extras/
 ├── chat/                   # Text User Interface
