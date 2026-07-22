@@ -1633,6 +1633,16 @@ run_repl() {
       thread_read_window "$THREAD_ID" "${SESSION_WINDOW:-10}" "$BUILD_MESSAGES_FILE" >/dev/null 2>&1 || true
     fi
 
+    # Ensure active model resolution before building payload
+    if [ -z "${MODEL:-}" ]; then
+      if resolve_model >/dev/null 2>&1 && [ -n "${FINAL_MODEL:-}" ]; then
+        MODEL="$FINAL_MODEL"
+      else
+        log_error "TUI" "No valid model selected. Please select a model via /config."
+        continue
+      fi
+    fi
+
     if ! build_payload_from_vars >/dev/null 2>&1; then
       log_error "TUI" "$(_msg cmd_err_payload)"
       continue
