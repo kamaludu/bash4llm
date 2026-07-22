@@ -16,7 +16,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.2
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Generate SHA-256 Manifest
         run: |
@@ -34,3 +35,5 @@ jobs:
         with:
           commit_message: "chore(security): auto-update extras/manifest.sha256 [skip ci]"
           file_pattern: "extras/manifest.sha256"
+          auto_push_pr: false
+          push_options: '--force'
