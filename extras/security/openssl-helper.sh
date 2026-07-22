@@ -56,50 +56,61 @@ fi
 
 if ! type safe_mkdir >/dev/null 2>&1; then
   safe_mkdir() {
-    local dir="${1:-}" perm="${2:-700}"
-    if [ -n "$dir" ] && [ ! -d "$dir" ]; then
-      mkdir -p "$dir" 2>/dev/null
-      chmod "$perm" "$dir" 2>/dev/null || true
+    local _dir="${1:-}" _perm="${2:-700}"
+    if [ -z "$_dir" ]; then return 1; fi
+    if [ -L "$_dir" ]; then
+      printf 'openssl-helper: ERROR: directory is a symlink: %s\n' "$_dir" >&2
+      return 15
+    fi
+    if [ ! -d "$_dir" ]; then
+      mkdir -p "$_dir" 2>/dev/null || return 15
+      chmod "$_perm" "$_dir" 2>/dev/null || true
     fi
   }
 fi
 
 if ! type _tmpf >/dev/null 2>&1; then
   _tmpf() {
-    local mode="${1:-}" base="${2:-}" prefix="${3:-groq}" tmp=""
-    # Fallback to standard system temp directories if base is unset or empty
-    if [ -z "$base" ]; then
-      base="${TMPDIR:-/tmp}"
+    local _mode="${1:-}" _base="${2:-}" _prefix="${3:-groq}" _tmp=""
+    if [ -z "$_base" ]; then
+      _base="${TMPDIR:-/tmp}"
     fi
-    if [ "$mode" = "file" ]; then
-      tmp="$(mktemp "${base%/}/${prefix}.XXXXXX" 2>/dev/null)"
-      [ -n "$tmp" ] && chmod 600 "$tmp" 2>/dev/null
-      printf '%s' "$tmp"
+    if [ "$_mode" = "file" ]; then
+      _tmp="$(mktemp "${_base%/}/${_prefix}.XXXXXX" 2>/dev/null)"
+      [ -n "$_tmp" ] && chmod 600 "$_tmp" 2>/dev/null
+      printf '%s' "$_tmp"
     fi
   }
 fi
 
+if ! type read_secure_input >/dev/null 2>&1; then
+  read_secure_input() {
+    local prompt_msg="${1:-Enter value}"
+    local secret_val=""
+    printf -- '%s %s[input is hidden]%s: ' "$prompt_msg" "${C_MAGENTA:-}" "${C_RST:-}" >&2
+    stty -echo 2>/dev/null || true
+    if [ -r /dev/tty ] && [ -c /dev/tty ]; then
+      IFS= read -r secret_val < /dev/tty
+    else
+      IFS= read -r secret_val
+    fi
+    stty echo 2>/dev/null || true
+    printf '\n' >&2
+    printf '%s' "$(printf '%s' "$secret_val" | tr -d '[:space:]')"
+  }
+fi
+
 # -----------------------------------------------------------------------------
-# Securely read silent password input with terminal fallback
+# Securely read silent password input using context-aware verification policy
+# Usage: _vault_read_password <var_name> <prompt> [min_len] [allow_verify]
 # -----------------------------------------------------------------------------
 _vault_read_password() {
-  local prompt="${1:-Password}"
-  local pass=""
-  
-  # Linear Prompt UX: display warning in magenta and invitation on next line
-  printf '%s  %s[input is hidden]%s:\n  > ' "$prompt" "${C_MAGENTA:-}" "${C_RST:-}" >&2
+  local _var_name="${1:-}"
+  local _prompt="${2:-Password}"
+  local _min_len="${3:-0}"
+  local _allow_verify="${4:-0}"  # Default: Strictly Blind (0 = No preview)
 
-  # Read from /dev/tty if available, otherwise fallback to standard input
-  if [ -r /dev/tty ] && [ -c /dev/tty ]; then
-    stty -echo < /dev/tty 2>/dev/null || true
-    IFS= read -r pass < /dev/tty
-    stty echo < /dev/tty 2>/dev/null || true
-  else
-    # Fallback for non-interactive environments
-    IFS= read -r pass
-  fi
-  printf '\n' >&2
-  printf '%s' "$pass"
+  read_secure_input "$_var_name" "$_prompt" "$_min_len" "$_allow_verify"
 }
 
 # Populate global array _VAULT_OPTS with safe arguments, bypassing slow subshells
@@ -167,8 +178,9 @@ _vault_decrypt_file() {
   _vault_set_opts "decrypt"
   export BASH4LLM_VAULT_PASS="$key_material"
   
+  # Depurate null-bytes to prevent command substitution warnings on bad decryptions
   decrypted="$(openssl enc "${_VAULT_OPTS[@]}" < "$src_file" 2>/dev/null | tr -d '\0')"
-  rc=${PIPESTATUS[0]} # Capture the exit status of the first command in the pipeline (openssl)
+  rc=$?
   unset BASH4LLM_VAULT_PASS
 
   if [ "$rc" -eq 0 ] && [ -n "$decrypted" ]; then
@@ -195,12 +207,14 @@ vault_init() {
   printf '\n  %s=== INITIALIZING SECURE KEY VAULT ===%s\n\n' "${C_BANNER:-}" "${C_RST:-}" >&2
   
   while :; do
-    pass1="$(_vault_read_password "  Create a Master Password (min 8 chars)")"
-    if [ ${#pass1} -lt 8 ]; then
-      printf '  %sError: Password must be at least 8 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
+    # Creation Flow: Allow preview verification on new password creation (allow_verify = 1)
+    _vault_read_password "pass1" "  Create a Master Password (min 11 chars)" 11 1
+    if [ ${#pass1} -lt 11 ]; then
+      printf '  %sError: Password must be at least 11 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
       continue
     fi
-    pass2="$(_vault_read_password "  Confirm Master Password")"
+    # Confirmation Flow: Strictly blind (allow_verify = 0)
+    _vault_read_password "pass2" "  Confirm Master Password" 11 0
     if [ "$pass1" != "$pass2" ]; then
       printf '  %sError: Passwords do not match. Try again.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
     else
@@ -260,11 +274,13 @@ vault_load_keys() {
     vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX")"
   fi
 
-  # 2. If the context token is empty or decryption failed, prompt user
+  # 2. If context token is empty or decryption failed, prompt user strictly blind (allow_verify = 0)
   if [ -z "$vault_key" ]; then
     printf "  %sTip: Run %b%s. ./bash4llm%s%b once to unlock your session and bypass password prompts.%b\n\n" \
       "${C_BMAGENTA:-}" "${C_BGREEN:-}" "${C_UNDERLINE:-}" "${C_NOUNDERLINE:-}" "${C_RST:-}" "${C_RST:-}" >&2
-    master_pass="$(_vault_read_password "  Enter Master Password to unlock Vault")"
+    
+    # Authentication Flow: Strictly blind input (allow_verify = 0)
+    _vault_read_password "master_pass" "  Enter Master Password to unlock Vault" 0 0
     
     # Decrypt internal Vault Key using Master Password
     vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
@@ -292,7 +308,9 @@ vault_change_password() {
   fi
 
   printf '\n  %s--- CHANGE MASTER PASSWORD ---%s\n\n' "${C_BANNER:-}" "${C_RST:-}" >&2
-  master_pass="$(_vault_read_password "  Enter CURRENT Master Password")"
+  
+  # Read CURRENT password strictly blind (allow_verify = 0)
+  _vault_read_password "master_pass" "  Enter CURRENT Master Password" 0 0
 
   # Decrypt existing internal Vault Key to preserve it
   vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
@@ -302,12 +320,14 @@ vault_change_password() {
   fi
 
   while :; do
-    pass1="$(_vault_read_password "  Enter NEW Master Password (min 8 chars)")"
-    if [ ${#pass1} -lt 8 ]; then
-      printf '  %sError: Password must be at least 8 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
+    # Read NEW password with opt-in preview verification (allow_verify = 1)
+    _vault_read_password "pass1" "  Enter NEW Master Password (min 11 chars)" 11 1
+    if [ ${#pass1} -lt 11 ]; then
+      printf '  %sError: Password must be at least 11 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
       continue
     fi
-    pass2="$(_vault_read_password "  Confirm NEW Master Password")"
+    # Confirm NEW password strictly blind (allow_verify = 0)
+    _vault_read_password "pass2" "  Confirm NEW Master Password" 11 0
     if [ "$pass1" != "$pass2" ]; then
       printf '  %sError: Passwords do not match. Try again.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
     else
@@ -387,10 +407,9 @@ vault_recover() {
   fi
 
   printf '\n  %s=== KEY VAULT PASSCODE RECOVERY ===%s\n' "${C_BCYAN:-}" "${C_RST:-}" >&2
-  printf '  Enter your offline Recovery Key:\n  > ' >&2
   
-  read -r rec_key
-  rec_key="$(trim_space "$rec_key")"
+  # Read Recovery Key strictly blind (allow_verify = 0)
+  read_secure_input "rec_key" "  Enter your offline Recovery Key" 0 0
 
   # Decrypt Vault Key using the offline Recovery Key
   vault_key="$(_vault_decrypt_file "$_VAULT_REC_FILE" "$rec_key")"
@@ -403,12 +422,14 @@ vault_recover() {
   printf '  Define a new Master Password to restore standard vault operations.\n\n' >&2
 
   while :; do
-    pass1="$(_vault_read_password "  Enter NEW Master Password (min 8 chars)")"
-    if [ ${#pass1} -lt 8 ]; then
-      printf '  %sError: Password must be at least 8 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
+    # Read NEW password with preview verification (allow_verify = 1)
+    _vault_read_password "pass1" "  Enter NEW Master Password (min 11 chars)" 11 1
+    if [ ${#pass1} -lt 11 ]; then
+      printf '  %sError: Password must be at least 11 characters long.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
       continue
     fi
-    pass2="$(_vault_read_password "  Confirm NEW Master Password")"
+    # Confirm NEW password strictly blind (allow_verify = 0)
+    _vault_read_password "pass2" "  Confirm NEW Master Password" 11 0
     if [ "$pass1" != "$pass2" ]; then
       printf '  %sError: Passwords do not match. Try again.%s\n\n' "${C_BRED:-}" "${C_RST:-}" >&2
     else
@@ -434,7 +455,8 @@ vault_manage_keys() {
     vault_init || return 1
   fi
 
-  master_pass="$(_vault_read_password "  Enter Master Password to access Key Manager")"
+  # Authentication Flow: Read password strictly blind (allow_verify = 0)
+  _vault_read_password "master_pass" "  Enter Master Password to access Key Manager" 0 0
   
   # Decrypt internal Vault Key
   vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$master_pass")"
@@ -463,7 +485,6 @@ vault_manage_keys() {
     case "$choice" in
       1)
         printf '\n  %s--- CONFIGURED PROVIDERS ---%s\n' "${C_BCYAN:-}" "${C_RST:-}" >&2
-        # Use line-buffered read redirection to process keys safely, preventing word splitting
         while IFS= read -r k; do
           [ -n "$k" ] && printf '    - %s:  %s[SECURED CARD SAVED]%s\n' "$k" "${C_BGREEN:-}" "${C_RST:-}" >&2
         done < <(printf '%s' "$current_payload" | jq -r 'keys[]' 2>/dev/null)
@@ -475,10 +496,8 @@ vault_manage_keys() {
         prov="$(trim_space "$prov" | tr '[:upper:]' '[:lower:]')"
         [ -n "$prov" ] || continue
 
-        printf '  Enter API Key for %s:\n  > ' "$prov" >&2
-        
-        read -r key_val
-        key_val="$(trim_space "$key_val")"
+        # API Key Entry: Allow opt-in preview verification for long keys (allow_verify = 1)
+        read_secure_input "key_val" "  Enter API Key for $prov" 1 1
         [ -n "$key_val" ] || continue
 
         # Transactional verification: validate updated payload before writing to disk
@@ -486,7 +505,6 @@ vault_manage_keys() {
         
         if [ -n "$updated_payload" ] && printf '%s' "$updated_payload" | jq -e . >/dev/null 2>&1; then
           current_payload="$updated_payload"
-          # Update dat file using the immutable Vault Key with write integrity check
           if _vault_encrypt_to_file "$current_payload" "$_VAULT_DAT_FILE" "$vault_key"; then
             printf '  %sKey for "%s" saved securely.%s\n' "${C_BGREEN:-}" "$prov" "${C_RST:-}" >&2
           else
@@ -503,12 +521,10 @@ vault_manage_keys() {
         prov="$(trim_space "$prov" | tr '[:upper:]' '[:lower:]')"
         [ -n "$prov" ] || continue
 
-        # Transactional verification: validate updated payload before writing to disk
         updated_payload="$(printf '%s' "$current_payload" | jq --arg p "$prov" 'del(.[$p])' 2>/dev/null || true)"
         
         if [ -n "$updated_payload" ] && printf '%s' "$updated_payload" | jq -e . >/dev/null 2>&1; then
           current_payload="$updated_payload"
-          # Update dat file using the immutable Vault Key with write integrity check
           if _vault_encrypt_to_file "$current_payload" "$_VAULT_DAT_FILE" "$vault_key"; then
             printf '  %sKey for "%s" deleted.%s\n' "${C_BGREEN:-}" "$prov" "${C_RST:-}" >&2
           else
