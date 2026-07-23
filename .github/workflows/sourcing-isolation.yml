@@ -5,10 +5,12 @@ on:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - '.github/workflows/sourcing-isolation.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - '.github/workflows/sourcing-isolation.yml'
   workflow_dispatch:
 
 jobs:
@@ -16,19 +18,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify Sourcing Cleanup on bash4llm
+      - name: Verify Library Sourcing vs Execution Sourcing Cleanup
         run: |
           bash -c '
-            export BASH4LLM_SOURCE_ONLY=0
-            source ./bash4llm < /dev/null || true
+            set -euo pipefail
+            chmod +x ./bash4llm
             
-            polluted=$(declare -F | grep -E "safe_mkdir|trim_space|validate_file_input|ensure_run_tmpdir" || true)
-            
-            if [ -n "$polluted" ]; then
-              echo "❌ CRITICAL SECURITY ERROR: Functions leaked into calling environment!"
-              echo "$polluted"
-              exit 1
-            fi
-            
-            echo "✅ Sourcing Isolation verified on bash4llm."
+            # PASS 1: Test Library Mode (BASH4LLM_SOURCE_ONLY=1) -> Functions MUST be loaded
+            echo "Testing Library Sourcing Mode (BASH4LLM_SOURCE_ONLY=1)..."
+            (
+              set -euo pipefail
+              export BASH4LLM_SOURCE_ONLY=1
+              export BASH4LLM_VAULT_ENABLED=0
+              source ./bash4llm
+              
+              if ! declare -F safe_mkdir >/dev/null; then
+                echo "❌ ERROR: Functions were not loaded in BASH4LLM_SOURCE_ONLY=1 mode!"
+                exit 1
+              fi
+            )
+            echo "✅ Library Mode Passed: Functions loaded successfully."
+
+            # PASS 2: Test Execution Sourcing Mode (BASH4LLM_SOURCE_ONLY=0) -> Functions MUST be cleaned up
+            echo "Testing Execution Sourcing Cleanup (BASH4LLM_SOURCE_ONLY=0)..."
+            (
+              set -euo pipefail
+              export BASH4LLM_SOURCE_ONLY=0
+              export BASH4LLM_VAULT_ENABLED=0
+              export NO_COLOR=1
+              
+              source ./bash4llm < /dev/null || true
+              
+              polluted_funcs=$(declare -F | grep -E "safe_mkdir|trim_space|validate_file_input|ensure_run_tmpdir|_normalize_model_name|_cleanup_sourced_env" || true)
+              if [ -n "$polluted_funcs" ]; then
+                echo "❌ CRITICAL SECURITY ERROR: Functions leaked into calling environment!"
+                echo "$polluted_funcs"
+                exit 1
+              fi
+            )
+            echo "✅ Execution Sourcing Cleanup Passed: Zero function leaks detected."
           '
