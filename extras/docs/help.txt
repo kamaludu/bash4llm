@@ -1,90 +1,101 @@
---------------------------------------
+----------------------------------------
 Bash4LLM⁺ 2.x — Bash-first wrapper for the LLM
---------------------------------------
-  --version            Bash4LLM version
-  -h, --help           This Help
+----------------------------------------
 
 Usage:
   bash4llm "prompt"
   echo "text" | bash4llm
   bash4llm -f file.txt
   bash4llm --batch batch.txt
+  bash4llm --chat
 
 Options:
 
-Input:
-  -f <file>            Add file to FILE_INPUTS (repeatable)
-  --json-input <json>  Direct JSON input (literal JSON, not a file)
-  --template <name>    Template from bash4llm.d/templates
-  --batch <file>       One prompt per non-empty line
+Input & Templates:
+  -f <file>              Add file content to prompt (repeatable)
+  --json-input <json>    Direct JSON input payload (literal string, not file)
+  --template <name>      Apply template from bash4llm.d/templates
+  --batch <file>         Batch processing (one prompt per non-empty line)
 
-Output:
-  --text               Text output
-  --raw                Raw output (no formatting)
-  --json               Raw JSON output
-  --pretty             Pretty-print JSON
-  --no-color           Disable color output
-  --out <path>         Save output to file or directory
-  --save               Force save
-  --nosave             Disable save
-  --threshold <n>      Autosave threshold (bytes)
+Output Formatting & Storage:
+  --text                 Standard text output (default)
+  --raw                  Raw output without trailing newline formatting
+  --json                 Raw API JSON response payload
+  --pretty               Pretty-printed JSON response
+  --no-color             Disable ANSI color output in terminal
+  --out <path>           Save response output to specified file or directory
+  --save                 Force saving output to history regardless of size
+  --nosave               Disable saving output to history
+  --threshold <n>        Autosave threshold in bytes (default: 1000)
 
 Streaming:
-  --stream             Enable SSE streaming
-  --no-stream          Disable streaming
+  --stream               Enable real-time SSE (Server-Sent Events) streaming
+  --no-stream            Disable streaming output
 
-Provider & Model:
-  --provider <name>    Select provider
-  --provider           Interactive provider selection
-  -m, --model <name>   Select model
-  --refresh-models     Refresh provider model list
-  --list-models        List models (interactive)
-  --list-models-raw    List models (raw, one per line)
-  --list-providers     List providers (interactive)
-  --list-providers-raw List providers (raw, one per line)
-  --set-default <m>    Set persistent default model
+Provider & Model Management:
+  --provider [name]      Select provider (alias: --providers)
+                         If name is omitted, opens interactive selection menu
+  -m, --model <name>     Select model for active execution
+  --set-default <m>      Persist model <m> as default for active provider
+  --refresh-models       Refresh local model cache from provider API (alias: --refresh-model)
+  --list-models          List available local models (interactive view) (alias: --list-model)
+  --list-models-raw      List available local models (raw format, one per line)
+  --list-providers       List supported providers (interactive view) (alias: --list-provider)
+  --list-providers-raw   List supported providers (raw format, one per line)
 
-Threads:
-  --thread <id>        Enable persistent thread
-  --thread-window [n]  Thread window size (default 10 if omitted)
-  --init-thread        Safely initializes an empty thread (creating NDJSON and metadata)
-                       and registers it in global thread index, without making API calls
-                       Requires joint use with --thread <id>
-                      
-Generation parameters:
-  --system <text>      System prompt
-  --temperature <n>    Temperature (alias: --ture)
-  --ture <n>           Temperature (internal alias)
-  --max <n>            Max tokens
+Thread & Session Management:
+  --thread <id>          Enable persistent thread context session
+  --thread-window [n]    Thread sliding window size (default: 10)
+  --init-thread          Safely initialize an empty thread (metadata/NDJSON)
+                         without invoking the API. Requires --thread <id>
+  --delete-thread <id>   Delete thread history, metadata, and index entry
+  --rename-thread <id>   Rename thread title (use with --title <text>)
+  --title <text>         Specify new title for thread renaming
 
-General:
-  --dry-run            Show payload, skip API call
-  --quiet              Reduce output
-  --debug              Enable debug mode
-  --chat               Interactive chat mode
-  --bootstrap-only     Run bootstrap only
+Generation Parameters:
+  --system <text>        Set system prompt context
+  --temperature <n>      Set temperature parameter (alias: --ture)
+  --max <n>              Set maximum completion tokens
 
-Extras installation:
-  --install-extras           Install extras (all components)
-  --install-extras <dir>     Install extras from directory
-  --install-extras=<dir>     Inline form
+Text User Interface:
+  --chat, --tui          Launch full-screen TUI interactive REPL session
 
 Security & Vault:
-  --vault              Manage encrypted API keys in the vault
-                       (Interactive console tool)
+  --vault                Launch interactive console tool to manage encrypted API keys
 
-  Unlock your vault session in RAM to bypass password prompts:
-    `. ./bash4llm`                     (exports obfuscated _B4L_RT_CTX , wiped on exit)
+  Unlock Vault Session in RAM (bypasses password prompts in current shell):
+  `. ./bash4llm`         (exports obfuscated _B4L_RT_CTX)
 
-  Bypass or disable the vault entirely:
-    `BASH4LLM_VAULT_ENABLED=0`         (add to bash4llm.d/config to disable permanently)
-    `export BASH4LLM_VAULT_ENABLED=0`     (disables vault for the active session)
-    `BASH4LLM_VAULT_ENABLED=0 ./bash4llm` (disables vault for a single execution)
+  Disable or Bypass Vault:
+  `BASH4LLM_VAULT_ENABLED=0`             (add to config to disable permanently)
+  `export BASH4LLM_VAULT_ENABLED=0`      (disables vault for active terminal session)
+  `BASH4LLM_VAULT_ENABLED=0 ./bash4llm`  (disables vault for single command)
+
+Diagnostics & Inspection:
+  --show-config          Display active runtime configuration variables
+  --check-config         Perform static security audit & linter on config file
+  --diagnostics          Display system diagnostics, directory states, and TLS status
+                         (alias: --diagnostic)
+  --explain-error <c>    Explain error code (e.g. 15, 17) or alias (e.g. BASH4LLM_ERR_SEC)
+  --print-config-dir     Print canonical config directory path
+  --print-provider-file  Print canonical active provider file path
+  --print-model-file <p> Print canonical model file path for provider <p>
+
+Maintenance & General:
+  --install-extras [dir] Install or update extras components (alias: --install-extra)
+  --bootstrap-only       Execute environment bootstrap and exit (no API calls)
+  --dry-run              Build payload and display diagnostics, skipping network call
+  --quiet                Suppress non-essential informational messages
+  --debug                Enable verbose debug logs on stderr
+  --version              Print Bash4LLM version and release date
+  -h, --help             Display this help message
 
 Examples:
   bash4llm "Summarize this text"
   echo "hello" | bash4llm --model mixtral-8x7b
   bash4llm -f prompt.txt --json
-  bash4llm --stream "Generate streaming text"
-  bash4llm --thread chat1 "Continue conversation"
---------------------------------------
+  bash4llm --stream "Generate streaming response"
+  bash4llm --thread conversation1 "Continue thread"
+  bash4llm --rename-thread conversation1 --title "Project Discussion"
+  bash4llm --explain-error 17
+----------------------------------------
