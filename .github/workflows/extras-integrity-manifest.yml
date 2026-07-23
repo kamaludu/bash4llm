@@ -23,7 +23,19 @@ jobs:
       - name: Check All Extras Files Against SHA-256 Manifest
         run: |
           set -euo pipefail
-          chmod +x ./bash4llm
+          
+          # Dynamic Path Detection
+          B4L_BIN="./bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+          fi
+
+          if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+            echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+            exit 1
+          fi
+
+          chmod +x "$B4L_BIN"
           
           if [ -d "extras" ]; then
             if [ ! -f "extras/manifest.sha256" ]; then
@@ -47,7 +59,7 @@ jobs:
             cd ..
             
             # Verify native bash4llm extras installer integrity test safely
-            INSTALL_LOG=$(./bash4llm --install-extras 2>&1 || true)
+            INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1 || true)
             echo "$INSTALL_LOG"
             
             if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
