@@ -117,7 +117,7 @@ for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head 
   fi
 done
 #--2<---[ /SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
-#--3<---[ SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
+#--3<---[ SECTION: PRECORE_BOOT_EARLY_UTILITIES ]--->3--
 # Early Helpers 
 resolve_script_dir() {
   local src="${BASH_SOURCE[0]}" rl="" dir=""
@@ -204,6 +204,214 @@ trim_space() {
   printf '%s' "$var"
 }
 
+# Synchronize the MODELS_FILE path based on the active provider
+sync_models_file_path() {
+  # Use the $1 parameter if provided, otherwise fall back to PROVIDER or the default groq
+  local prov="${1:-${PROVIDER:-groq}}"
+  
+  # Strict sanitization (whitelist: only alphanumeric characters, hyphens, and underscores)
+  # Prevents Directory Traversal Vulnerabilities at the Parameter Expansion Level
+  prov="${prov//[^a-zA-Z0-9_-]/}"
+  [ -n "$prov" ] || prov="groq"
+  
+  # Uniform and isolated mapping for each provider
+  MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/${prov}.txt"
+
+  # Backward compatibility fallback: If the provider-specific file is empty or missing,
+  # but the old cumulative file 'models.txt' exists, use that as a fallback.
+  if [ ! -s "$MODELS_FILE" ] && [ -s "${BASH4LLM_MODELS_DIR:-}/models.txt" ]; then
+    MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/models.txt"
+  fi
+  
+  export MODELS_FILE
+}
+
+# Normalize model name natively and securely (Bash 4.0+ compliant) with associative cache
+_normalize_model_name() {
+  local prov="${PROVIDER:-groq}"
+  local name="${1:-}"
+  local cache_key="${prov}||${name}"
+
+  # Check in-memory cache to bypass costly subshell/regex execution
+  if [ -n "${BASH4LLM_MODEL_CACHE[$cache_key]:-}" ]; then
+    printf '%s' "${BASH4LLM_MODEL_CACHE[$cache_key]}"
+    return 0
+  fi
+
+  local normalized=""
+
+  # 1. Safe preventive sanitization (trim leading/trailing whitespace and carriage returns)
+  local trimmed="${name#"${name%%[![:space:]]*}"}"
+  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+  trimmed="${trimmed//$'\r'/}"
+
+  # 2. Hook detection and execution in an isolated subshell
+  if type "normalize_model_${prov}" >/dev/null 2>&1; then
+    normalized="$( "normalize_model_${prov}" "$trimmed" 2>/dev/null || true )"
+  fi
+
+  # 3. Zero-Fallback algorithm if hook is missing, crashes, or returns empty
+  if [ -z "$normalized" ]; then
+    normalized="$trimmed"
+    normalized="${normalized#models/}"
+    if [ "$prov" != "gemini" ]; then
+      normalized="${normalized#$prov}"
+    fi
+    while [[ "$normalized" == [[:space:]:/~_-]* ]]; do
+      normalized="${normalized#?}"
+    done
+  fi
+
+  # 4. Strict Output Whitelist Filter using native parameter expansion
+  # Escape-safe and verified for older Bash 4.x parser variants
+  normalized="${normalized//[^a-zA-Z0-9._\/:+@=-]/}"
+
+  # Store normalized result in the memory cache
+  BASH4LLM_MODEL_CACHE["$cache_key"]="$normalized"
+
+  printf '%s' "$normalized"
+}
+
+# Pure POSIX/Bash 4.0+ Native Boolean Check
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Private helper to extract a section from core-notes.sh securely without execution (Zero-Eval).
+# Returns 0 on success, or 1 if the core-notes.sh file is missing or unreadable.
+_extract_notes_section() {
+  local target_header="${1:-}"
+  local notes_file="${BASH4LLM_EXTRAS_DIR:-}/docs/core-notes.sh"
+
+  if [ ! -f "$notes_file" ] || [ ! -r "$notes_file" ]; then
+    return 1
+  fi
+
+  # Parse the document using POSIX-compliant awk.
+  # It searches for the header literally, prints subsequent lines, and stops on the first blank line.
+  awk -v header="$target_header" '
+    index($0, header) { flag=1; next }
+    /^[[:space:]]*$/ { if (flag) { flag=0; exit } }
+    flag { print }
+  ' "$notes_file" 2>/dev/null
+}
+
+DEBUG="${DEBUG:-${BASH4LLM_DEBUG:-0}}"
+BASH4LLM_LOG="${BASH4LLM_LOG:-}"
+
+log_prefix() { printf '%s: ' "$SCRIPT_NAME"; }
+
+log_info() {
+  local code="${1:-INFO}" msg="${2:-}"
+  if [ "${DEBUG:-0}" -eq 1 ]; then
+    if [ "$code" = "SECURITY" ]; then
+      printf '%s%sSECURITY%s: %s\n' "$(log_prefix)" "${C_BMAGENTA:-}" "${C_RST}" "$msg" >&2
+    else
+      printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
+    fi
+  fi
+  if [ -n "$BASH4LLM_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
+}
+
+log_warn() {
+  local code="${1:-WARN}" msg="${2:-}"
+  printf '%s%sWARN%s: %s: %s\n' "$(log_prefix)" "${C_BYELLOW}" "${C_RST}" "$code" "$msg" >&2
+  if [ -n "$BASH4LLM_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
+}
+
+log_error() {
+  local code="${1:-ERROR}" msg="${2:-}"
+  printf '%s%sERROR%s: %s: %s\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$code" "$msg" >&2
+  if [ -n "$BASH4LLM_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
+}
+
+log_info_user() {
+  local code="${1:-INFO}" msg="${2:-}"
+  if [ "${QUIET:-0}" -ne 1 ]; then
+    if [ "$code" = "SECURITY" ]; then
+      printf '%s%sSECURITY%s: %s\n' "$(log_prefix)" "${C_BMAGENTA:-}" "${C_RST}" "$msg" >&2
+    else
+      printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
+    fi
+  fi
+  if [ -n "$BASH4LLM_LOG" ]; then
+    printf '%s INFO_USER %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true
+  fi
+}
+
+dbg() {
+  if [ "${DEBUG:-0}" -ne 0 ]; then
+    printf '%s\n' "$*" >&2
+  fi
+}
+
+# --------------------------------------------------
+# Terminal Color Theme Initialization (conforms to NO_COLOR standard)
+# --------------------------------------------------
+# Pre-parse arguments to intercept --no-color early and set the standard env variable
+if [ "$#" -gt 0 ]; then
+  for _arg in "$@"; do
+    if [ "$_arg" = "--no-color" ]; then
+      export NO_COLOR=1
+      break
+    fi
+  done
+  unset _arg
+fi
+
+# The color check remains extremely clean, with only the safe 'dumb' terminal check added
+if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
+  C_RST=$'\e[0m'
+  C_BOLD=$'\e[1m'
+  C_NOBOLD=$'\e[22m'
+  C_UNDERLINE=$'\e[4m'
+  C_NOUNDERLINE=$'\e[24m'
+
+  # Semantic / UI Styles
+  C_LOGO=$'\e[1;37;42m'
+  C_BANNER=$'\e[1;37;44m'
+
+  # Foreground - Normal
+  C_BLACK=$'\e[0;30m'
+  C_RED=$'\e[0;31m'
+  C_GREEN=$'\e[0;32m'
+  C_YELLOW=$'\e[0;33m'
+  C_BLUE=$'\e[0;34m'
+  C_MAGENTA=$'\e[0;35m'
+  C_CYAN=$'\e[0;36m'
+  C_WHITE=$'\e[0;37m'
+
+  # Foreground - Bold
+  C_BBLACK=$'\e[1;30m'
+  C_BRED=$'\e[1;31m'
+  C_BGREEN=$'\e[1;32m'
+  C_BYELLOW=$'\e[1;33m'
+  C_BBLUE=$'\e[1;34m'
+  C_BMAGENTA=$'\e[1;35m'
+  C_BCYAN=$'\e[1;36m'
+  C_BWHITE=$'\e[1;37m'
+
+  # Backgrounds
+  BG_BLACK=$'\e[40m'
+  BG_RED=$'\e[41m'
+  BG_GREEN=$'\e[42m'
+  BG_YELLOW=$'\e[43m'
+  BG_BLUE=$'\e[44m'
+  BG_MAGENTA=$'\e[45m'
+  BG_CYAN=$'\e[46m'
+  BG_WHITE=$'\e[47m'
+else
+  C_RST="" C_BOLD="" C_NOBOLD="" C_UNDERLINE="" C_NOUNDERLINE="" C_LOGO="" C_BANNER=""
+  C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
+  C_BBLACK="" C_BRED="" C_BGREEN="" C_BYELLOW="" C_BBLUE="" C_BMAGENTA="" C_BCYAN="" C_BWHITE=""
+  BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN="" BG_WHITE=""
+fi
+#--3<---[ /SECTION: PRECORE_BOOT_EARLY_UTILITIES ]--->3--
+
+#--4<---[ SECTION: PRECORE_BOOT_SECURITY ]--->4--
 # --------------------------------------------------
 # Function: read_secure_input (Hardened TTY Echo & Prompt Execution Order)
 # --------------------------------------------------
@@ -284,28 +492,6 @@ read_secure_input() {
   return 0
 }
 
-# Synchronize the MODELS_FILE path based on the active provider
-sync_models_file_path() {
-  # Use the $1 parameter if provided, otherwise fall back to PROVIDER or the default groq
-  local prov="${1:-${PROVIDER:-groq}}"
-  
-  # Strict sanitization (whitelist: only alphanumeric characters, hyphens, and underscores)
-  # Prevents Directory Traversal Vulnerabilities at the Parameter Expansion Level
-  prov="${prov//[^a-zA-Z0-9_-]/}"
-  [ -n "$prov" ] || prov="groq"
-  
-  # Uniform and isolated mapping for each provider
-  MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/${prov}.txt"
-
-  # Backward compatibility fallback: If the provider-specific file is empty or missing,
-  # but the old cumulative file 'models.txt' exists, use that as a fallback.
-  if [ ! -s "$MODELS_FILE" ] && [ -s "${BASH4LLM_MODELS_DIR:-}/models.txt" ]; then
-    MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/models.txt"
-  fi
-  
-  export MODELS_FILE
-}
-
 # ======================================
 # TASK A: CENTRALIZED FILE INPUT VALIDATION (Locale-Independent & Safe)
 # ======================================
@@ -343,60 +529,6 @@ validate_file_input() {
   fi
 
   return 0
-}
-
-# Normalize model name natively and securely (Bash 4.0+ compliant) with associative cache
-_normalize_model_name() {
-  local prov="${PROVIDER:-groq}"
-  local name="${1:-}"
-  local cache_key="${prov}||${name}"
-
-  # Check in-memory cache to bypass costly subshell/regex execution
-  if [ -n "${BASH4LLM_MODEL_CACHE[$cache_key]:-}" ]; then
-    printf '%s' "${BASH4LLM_MODEL_CACHE[$cache_key]}"
-    return 0
-  fi
-
-  local normalized=""
-
-  # 1. Safe preventive sanitization (trim leading/trailing whitespace and carriage returns)
-  local trimmed="${name#"${name%%[![:space:]]*}"}"
-  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-  trimmed="${trimmed//$'\r'/}"
-
-  # 2. Hook detection and execution in an isolated subshell
-  if type "normalize_model_${prov}" >/dev/null 2>&1; then
-    normalized="$( "normalize_model_${prov}" "$trimmed" 2>/dev/null || true )"
-  fi
-
-  # 3. Zero-Fallback algorithm if hook is missing, crashes, or returns empty
-  if [ -z "$normalized" ]; then
-    normalized="$trimmed"
-    normalized="${normalized#models/}"
-    if [ "$prov" != "gemini" ]; then
-      normalized="${normalized#$prov}"
-    fi
-    while [[ "$normalized" == [[:space:]:/~_-]* ]]; do
-      normalized="${normalized#?}"
-    done
-  fi
-
-  # 4. Strict Output Whitelist Filter using native parameter expansion
-  # Escape-safe and verified for older Bash 4.x parser variants
-  normalized="${normalized//[^a-zA-Z0-9._\/:+@=-]/}"
-
-  # Store normalized result in the memory cache
-  BASH4LLM_MODEL_CACHE["$cache_key"]="$normalized"
-
-  printf '%s' "$normalized"
-}
-
-# Pure POSIX/Bash 4.0+ Native Boolean Check
-is_truthy() {
-  case "${1:-}" in
-    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 # --------------------------------------------------
@@ -575,7 +707,6 @@ verify_module_integrity() {
   return 0
 }
 
-#--3<---[ SUBSECTION: API_NET ]--->3--
 # ensure_api_key_for_provider (robust, non-interactive safe, unbound variable proof)
 ensure_api_key_for_provider() {
   local prov="${1:-}"
@@ -680,139 +811,8 @@ enforce_network_policy() {
 
   return 0
 }
-
-# Private helper to extract a section from core-notes.sh securely without execution (Zero-Eval).
-# Returns 0 on success, or 1 if the core-notes.sh file is missing or unreadable.
-_extract_notes_section() {
-  local target_header="${1:-}"
-  local notes_file="${BASH4LLM_EXTRAS_DIR:-}/docs/core-notes.sh"
-
-  if [ ! -f "$notes_file" ] || [ ! -r "$notes_file" ]; then
-    return 1
-  fi
-
-  # Parse the document using POSIX-compliant awk.
-  # It searches for the header literally, prints subsequent lines, and stops on the first blank line.
-  awk -v header="$target_header" '
-    index($0, header) { flag=1; next }
-    /^[[:space:]]*$/ { if (flag) { flag=0; exit } }
-    flag { print }
-  ' "$notes_file" 2>/dev/null
-}
-
-#--3<---[ /SUBSECTION: API_NET ]--->3--
-
-DEBUG="${DEBUG:-${BASH4LLM_DEBUG:-0}}"
-BASH4LLM_LOG="${BASH4LLM_LOG:-}"
-
-log_prefix() { printf '%s: ' "$SCRIPT_NAME"; }
-
-log_info() {
-  local code="${1:-INFO}" msg="${2:-}"
-  if [ "${DEBUG:-0}" -eq 1 ]; then
-    if [ "$code" = "SECURITY" ]; then
-      printf '%s%sSECURITY%s: %s\n' "$(log_prefix)" "${C_BMAGENTA:-}" "${C_RST}" "$msg" >&2
-    else
-      printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
-    fi
-  fi
-  if [ -n "$BASH4LLM_LOG" ]; then printf '%s INFO %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
-}
-
-log_warn() {
-  local code="${1:-WARN}" msg="${2:-}"
-  printf '%s%sWARN%s: %s: %s\n' "$(log_prefix)" "${C_BYELLOW}" "${C_RST}" "$code" "$msg" >&2
-  if [ -n "$BASH4LLM_LOG" ]; then printf '%s WARN %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
-}
-
-log_error() {
-  local code="${1:-ERROR}" msg="${2:-}"
-  printf '%s%sERROR%s: %s: %s\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$code" "$msg" >&2
-  if [ -n "$BASH4LLM_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
-}
-
-log_info_user() {
-  local code="${1:-INFO}" msg="${2:-}"
-  if [ "${QUIET:-0}" -ne 1 ]; then
-    if [ "$code" = "SECURITY" ]; then
-      printf '%s%sSECURITY%s: %s\n' "$(log_prefix)" "${C_BMAGENTA:-}" "${C_RST}" "$msg" >&2
-    else
-      printf '%s%sINFO%s: %s: %s\n' "$(log_prefix)" "${C_GREEN}" "${C_RST}" "$code" "$msg" >&2
-    fi
-  fi
-  if [ -n "$BASH4LLM_LOG" ]; then
-    printf '%s INFO_USER %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true
-  fi
-}
-
-dbg() {
-  if [ "${DEBUG:-0}" -ne 0 ]; then
-    printf '%s\n' "$*" >&2
-  fi
-}
-# --------------------------------------------------
-# Terminal Color Theme Initialization (conforms to NO_COLOR standard)
-# --------------------------------------------------
-# Pre-parse arguments to intercept --no-color early and set the standard env variable
-if [ "$#" -gt 0 ]; then
-  for _arg in "$@"; do
-    if [ "$_arg" = "--no-color" ]; then
-      export NO_COLOR=1
-      break
-    fi
-  done
-  unset _arg
-fi
-
-# The color check remains extremely clean, with only the safe 'dumb' terminal check added
-if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
-  C_RST=$'\e[0m'
-  C_BOLD=$'\e[1m'
-  C_NOBOLD=$'\e[22m'
-  C_UNDERLINE=$'\e[4m'
-  C_NOUNDERLINE=$'\e[24m'
-
-  # Semantic / UI Styles
-  C_LOGO=$'\e[1;37;42m'
-  C_BANNER=$'\e[1;37;44m'
-
-  # Foreground - Normal
-  C_BLACK=$'\e[0;30m'
-  C_RED=$'\e[0;31m'
-  C_GREEN=$'\e[0;32m'
-  C_YELLOW=$'\e[0;33m'
-  C_BLUE=$'\e[0;34m'
-  C_MAGENTA=$'\e[0;35m'
-  C_CYAN=$'\e[0;36m'
-  C_WHITE=$'\e[0;37m'
-
-  # Foreground - Bold
-  C_BBLACK=$'\e[1;30m'
-  C_BRED=$'\e[1;31m'
-  C_BGREEN=$'\e[1;32m'
-  C_BYELLOW=$'\e[1;33m'
-  C_BBLUE=$'\e[1;34m'
-  C_BMAGENTA=$'\e[1;35m'
-  C_BCYAN=$'\e[1;36m'
-  C_BWHITE=$'\e[1;37m'
-
-  # Backgrounds
-  BG_BLACK=$'\e[40m'
-  BG_RED=$'\e[41m'
-  BG_GREEN=$'\e[42m'
-  BG_YELLOW=$'\e[43m'
-  BG_BLUE=$'\e[44m'
-  BG_MAGENTA=$'\e[45m'
-  BG_CYAN=$'\e[46m'
-  BG_WHITE=$'\e[47m'
-else
-  C_RST="" C_BOLD="" C_NOBOLD="" C_UNDERLINE="" C_NOUNDERLINE="" C_LOGO="" C_BANNER=""
-  C_BLACK="" C_RED="" C_GREEN="" C_YELLOW="" C_BLUE="" C_MAGENTA="" C_CYAN="" C_WHITE=""
-  C_BBLACK="" C_BRED="" C_BGREEN="" C_BYELLOW="" C_BBLUE="" C_BMAGENTA="" C_BCYAN="" C_BWHITE=""
-  BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN="" BG_WHITE=""
-fi
-#--3<---[ /SECTION: PRECORE_BOOT_EARLY_HELPERS ]--->3--
-#--4<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
+#--4<---[ /SECTION: PRECORE_BOOT_SECURITY ]--->4--
+#--5<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->5--
 SCRIPTDIR="$(resolve_script_dir)"
 if [ -n "${BASH4LLM_DIR:-}" ]; then
   :
@@ -906,7 +906,7 @@ if [ "${BASH4LLM_VAULT_ENABLED:-1}" -eq 1 ]; then
 else
   BASH4LLM_OPENSSL_ACTIVE=0
 fi
-#--4<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->4--
+
 ensure_config_dir() {
   safe_mkdir "${BASH4LLM_CONFIG_DIR}" 700
   if ! : > "${BASH4LLM_CONFIG_DIR}/.bash4llm_tmp_check" 2>/dev/null; then
@@ -987,7 +987,8 @@ if [ -z "$(canonical_config_dir)" ]; then
 fi
 
 PROVIDER_FILE="$(canonical_provider_file)"
-#--5<---[ SECTION: PRECORE_BOOT_HELPERS ]--->5--
+#--5<---[ /SECTION: PRECORE_BOOT_DIR_PATH ]--->5--
+#--6<---[ SECTION: PRECORE_BOOT_STORAGE_LOCKS ]--->6--
 # Native string transformation replacing tr/sed forks
 provider_api_env_var_name() {
   local prov="${1:-}" prov_upper=""
@@ -1714,8 +1715,8 @@ explain_error_code() {
     printf 'No exact documentation mapping found for: %s\n' "$input_code" >&2
   fi
 }
-#--5<---[ /SECTION: PRECORE_BOOT_HELPERS ]--->5--
-#--6<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
+#--6<---[ /SECTION: PRECORE_BOOT_STORAGE_LOCKS ]--->6--
+#--7<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->7--
 if [ "$#" -gt 0 ]; then
   i=1
   while [ "$i" -le "$#" ]; do
@@ -2010,7 +2011,7 @@ jq_safe() {
   fi
   return 0
 }
-#--6<---[ /SECTION: PRECORE_BOOT_CLI_HELPERS ]--->6--
+#--7<---[ /SECTION: PRECORE_BOOT_CLI_HELPERS ]--->7--
 ########################################
 # SECTION: PRECORE_BOOT - END
 ########################################
@@ -2619,7 +2620,7 @@ _tmpf() {
   fi
 }
 #--3<---[ /SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
-#--4<---[ SECTION: PRECORE_RUN_THREAD_MVP ]--->4--
+#--4<---[ SECTION: PRECORE_RUN_THREAD_ENGINE ]--->4--
 thread_validate_id() {
   local id="${1:-}"
   if [ -z "$id" ]; then return 1; fi
@@ -3113,8 +3114,7 @@ thread_append() {
 }
 
 : "${LAST_CHECK_LINES:=50}"
-#--4<---[ /SECTION: PRECORE_RUN_THREAD_MVP ]--->4--
-#--5<---[ SECTION: PRECORE_RUN_THREAD_CACHE ]--->5--
+
 # ======================================
 # Thread cache helpers (Strict-safe under set -u)
 # ======================================
@@ -3205,8 +3205,8 @@ thread_cache_invalidate() {
   fi
   return 0
 }
-#--5<---[ /SECTION: PRECORE_RUN_THREAD_CACHE ]--->5--
-#--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
+#--4<---[ /SECTION: PRECORE_RUN_THREAD_ENGINE ]--->4--
+#--5<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 # Runtime globals and normalization (non-destructive defaults)
 # --------------------------------------------------
 CONTENT="${CONTENT:-}"
@@ -3274,7 +3274,7 @@ _normalize_bool_env() {
   done
 }
 _normalize_bool_env
-#--6<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
+#--5<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 ########################################
 # SECTION: PRECORE_RUN - END
 ########################################
@@ -5433,6 +5433,7 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   exit 0
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
+#--3<---[ SECTION: CORE_PROVIDER_PROMPT_ASSEMBLY ]--->3--
 
 if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
@@ -5452,7 +5453,7 @@ if [ ! -s "${MODELS_FILE:-}" ]; then
     refresh_models_dispatch "$MODELS_FILE" || true
   fi
 fi
-#--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--
+
 if [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
   exit 0
 fi
@@ -5598,7 +5599,9 @@ elif [ -z "${CONTENT:-}" ] && [ -z "${BATCH_FILE:-}" ] && [ "${CHAT_MODE:-0}" -n
   log_error "PROMPT" "prompt content is empty. Please provide a prompt or use chat/batch mode."
   exit "$BASH4LLM_ERR_NO_PROMPT"
 fi
+#--3<---[ /SECTION: CORE_PROVIDER_PROMPT_ASSEMBLY ]--->3--
 
+#--4<---[ SECTION: CORE_PROVIDER_PIPELINE_EXEC ]--->4--
 if [ -n "$BATCH_FILE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
@@ -5914,7 +5917,7 @@ else
 fi
 
 exit 0
-#--3<---[ /SECTION: CORE_PROVIDER_MAIN ]--->3--
+#--4<---[ /SECTION: CORE_PROVIDER_PIPELINE_EXEC ]--->4--
 ########################################
 # SECTION: CORE_PROVIDER - END
 ########################################
