@@ -1,0 +1,29 @@
+name: Extras SHA-256 Manifest Integrity
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+      - 'extras/**' # Questo si attiva se modifichi bash4llm OPPURE la cartella extras
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+      - 'extras/**'
+  workflow_dispatch:
+
+jobs:
+  verify-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check All Extras Files Against Manifest
+        run: |
+          if [ -d "extras" ] && [ -f "extras/manifest.sha256" ]; then
+            cd extras
+            sha256sum -c manifest.sha256
+            echo "✅ All extra modules match official SHA-256 manifest!"
+          else
+            echo "⚠️ No extras directory or manifest found. Skipping."
+          fi
