@@ -1,0 +1,88 @@
+# Bash4LLM⁺ (v2.6.0)
+
+> Lightweight, zero-dependency, security-hardened POSIX Bash framework and CLI client for interacting with Large Language Model (LLM) APIs (including Groq, OpenAI-compatible providers, Hugging Face, Mistral, Gemini, and local endpoints).
+
+## Overview
+Bash4LLM⁺ provides a pure Bash alternative to heavy Python or Node.js LLM tooling, requiring zero external runtime dependencies beyond 23 POSIX core utilities. It is fully portable across GNU/Linux, macOS, and mobile Android (Termux) environments.
+
+Key architectural & security highlights in v2.6.0:
+- **Cryptographic Module Integrity**: Pre/post sourcing SHA-256 hash verification against `extras/manifest.sha256` for external providers, hooks, and extensions.
+- **PII Thread Anonymization**: Automatic SHA-256 hashing (`SAFE_THREAD_ID`) for user thread IDs, ensuring zero personal or sensitive data is written in plaintext to disk (.ndjson, .json, locks, and rate-limit logs).
+- **Security Vault**: AES-256-CBC at-rest API key encryption via OpenSSL (`extras/security/openssl-helper.sh`) with PBKDF2 key derivation (100,000 iterations), RAM unlock context token (`_B4L_RT_CTX`), and anti-forensic secure data erasure (`shred`/`dd`).
+- **Local Rate-Limiting**: 30-second sliding-window rate limiter per thread (`BASH4LLM_RATE_LIMIT`) with bypass token support (`BASH4LLM_AUTH_TOKEN`).
+- **Isolated Hook Runner**: Subshell execution for pre/post hooks with API key memory stripping and zero-eval variable parsing (`FALLBACK_PAYLOAD`).
+- **Advanced Session Engine**: Segmented NDJSON chat logs (`history/sessions/`) with automatic 1MB rotation, native `gzip` compression, dynamic byte-budget windowing (N=0), and in-process caching.
+- **Mobile Native**: Transparent Android/Termux detection (`TERMUX_VERSION`) with automatic fallback to atomic directory locks (`mkdir`) in `bash4llm.d/var/run/locks/`.
+- **Zero-Eval Parsing**: POSIX-compliant static `awk` parsing for configuration linting (`--check-config`) and documentation extraction without code execution risks.
+- **File-System Hardening**: Enforced `umask 077`, strict `700`/`600` permissions, symlink execution blocks, atomic `mv` guarantees on the same inode, null-byte (`\x00`) input validation, and explicit ban of system `/tmp`.
+
+## Key CLI Usage Examples
+
+### Single Prompt & Non-Interactive Input
+```bash
+# Standard prompt
+./bash4llm "Explain quantum computing in two sentences."
+
+# Secure input via pipe (dual TTY/stdin handling)
+printf "My secret text" | ./bash4llm "Summarize this input:"
+```
+
+### Thread Lifecycle Management
+```bash
+# Initialize a thread structure without network call
+./bash4llm --thread project_chat --init-thread
+
+# Send message within a thread
+./bash4llm --thread project_chat "Starting refactoring."
+
+# Rename thread title
+./bash4llm --rename-thread project_chat --title "Refactoring Auth Module"
+
+# Atomically delete thread (purges logs and indexes)
+./bash4llm --delete-thread project_chat
+```
+
+### Path & Configuration Inspection
+```bash
+./bash4llm --print-config-dir
+./bash4llm --print-provider-file
+./bash4llm --print-model-file groq
+```
+
+### Diagnostics, Vault & Safety Checks
+```bash
+./bash4llm --check-config
+./bash4llm --explain-error 17
+./bash4llm --vault
+```
+
+## System File-System Layout (bash4llm.d/)
+```text
+bash4llm.d/
+├── config/                  # Provider persistence & OpenSSL encrypted Vault
+│   ├── ui_state/threads/    # JSON thread metadata & index (SAFE_THREAD_ID)
+├── models/                  # Whitelisted model catalogs (<provider>.txt)
+├── history/                 # Session NDJSON logs
+│   ├── threads/             # Core fallback NDJSON logs (<safe_thread_id>.ndjson)
+│   └── sessions/            # Advanced engine rotated & gzip compressed segments
+├── var/run/locks/           # Isolated 700 lock folder (models.lock, history.lock, tmp.lock)
+├── tmp/rates/               # Isolated 700 sliding-window rate limit transaction tracking
+└── extras/                  # Extensions & integrity manifest (extras/manifest.sha256)
+
+```
+
+## Exit Codes
+ * 10 (BASH4LLM_ERR_NO_API_KEY): Missing, unreadable, or invalid API key.
+ * 11 (BASH4LLM_ERR_BAD_MODEL): Invalid, unsupported, or excluded model name.
+ * 12 (BASH4LLM_ERR_CURL_FAILED): Network failure, timeout, or curl transport error.
+ * 14 (BASH4LLM_ERR_NO_PROMPT): Missing input prompt or JSON payload.
+ * 15 (BASH4LLM_ERR_TMP): File-system I/O, permissions, symlink block, or temporary lock error.
+ * 16 (BASH4LLM_ERR_API): Upstream API application or HTTP status error.
+ * 17 (BASH4LLM_ERR_SEC): Security policy block, rate-limit violation, file permission error, or SHA-256 integrity check failure.
+
+## Core Documentation References
+ * Technical Specification: Full architectural specification for runtime sections.
+ * Release Notes: Detailed release notes and feature delta (v2.0.0 through v2.6.0).
+ * Changelog: Historical record of security patches, fixes, and CLI flags.
+ * Security Extension: OpenSSL Vault mechanics, key recovery, and zeroization routines.
+ * Session Engine: NDJSON segmentation, deduplication, and byte-budget windowing logic.
