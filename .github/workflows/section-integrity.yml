@@ -4,38 +4,65 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'bash4llm' # Triggera SOLO se il file bash4llm è stato modificato
+      - 'bash4llm'
+      - '.github/workflows/section-integrity.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'bash4llm'
-  workflow_dispatch: # Consentito l'avvio manuale da GitHub UI
+      - '.github/workflows/section-integrity.yml'
+  workflow_dispatch:
 
 jobs:
   audit-sections:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify Macro-Sections and Section Tag Symmetry
+      - name: Verify Macro-Sections and Full Tag Symmetry
         run: |
           bash -c '
-            set -e
+            set -euo pipefail
             echo "Checking Section Markers strictly on bash4llm..."
             
-            open_tags=$(grep -oE "#--[0-9]+<---\[ SECTION: [A-Z0-9_]+ \]" bash4llm | sort)
-            close_tags=$(grep -oE "#--[0-9]+<---\[ /SECTION: [A-Z0-9_]+ \]" bash4llm | sed "s#SECTION: /#SECTION: #" | sort)
-            
-            if [ "$open_tags" != "$close_tags" ]; then
-              echo "❌ ERROR: Mismatch between opening and closing Section tags!"
-              diff -u <(echo "$open_tags") <(echo "$close_tags")
+            chmod +x ./bash4llm
+
+            # 1. Verify Macro-Sections (BEGIN / END) match
+            macro_begin=$(grep -cE "^# SECTION: [A-Z0-9_]+ - BEGIN" bash4llm || true)
+            macro_end=$(grep -cE "^# SECTION: [A-Z0-9_]+ - END" bash4llm || true)
+            if [ "$macro_begin" -ne "$macro_end" ] || [ "$macro_begin" -eq 0 ]; then
+              echo "❌ ERROR: Macro-Section mismatch! BEGIN count: $macro_begin, END count: $macro_end"
               exit 1
             fi
 
+            # 2. Extract full line tags including trailing anchors --->N-- safely under pipefail
+            open_tags=$(grep -oE "#--[0-9]+<---\[ SECTION: [A-Z0-9_]+ \]--->[0-9]+--" bash4llm | sort || true)
+            close_tags=$(grep -oE "#--[0-9]+<---\[ /SECTION: [A-Z0-9_]+ \]--->[0-9]+--" bash4llm | sed "s#SECTION: /#SECTION: #" | sort || true)
+            
+            if [ -z "$open_tags" ]; then
+              echo "❌ ERROR: No section tags found in bash4llm!"
+              exit 1
+            fi
+
+            if [ "$open_tags" != "$close_tags" ]; then
+              echo "❌ ERROR: Mismatch between opening and closing Section tags or trailing anchors!"
+              diff -u <(echo "$open_tags") <(echo "$close_tags") || true
+              exit 1
+            fi
+
+            # 3. Check for Duplicate Section Tags
+            duplicates=$(echo "$open_tags" | sort | uniq -d || true)
+            if [ -n "$duplicates" ]; then
+              echo "❌ ERROR: Duplicate section tags detected:"
+              echo "$duplicates"
+              exit 1
+            fi
+
+            # 4. Enforce Flat Architecture (Strictly NO Subsections $N.X)
             if grep -qE "#--[0-9]+\.[0-9]+" bash4llm; then
               echo "❌ ERROR: Subsections ($N.X) detected! Architectural violation of Flat Policy."
               grep -nE "#--[0-9]+\.[0-9]+" bash4llm
               exit 1
             fi
             
-            echo "✅ Section Marker Architecture on bash4llm is 100% Valid!"
+            echo "✅ Section Marker Architecture on bash4llm is 100% Valid and Symmetrical!"
           '
