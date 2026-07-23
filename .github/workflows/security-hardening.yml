@@ -5,10 +5,12 @@ on:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - '.github/workflows/security-hardening.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - '.github/workflows/security-hardening.yml'
   workflow_dispatch:
 
 jobs:
@@ -16,19 +18,100 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify No Tokens Leak in Process Table
+      - name: Real Process List Leak Audit & File System Permissions Check
         run: |
-          export BASH4LLM_SKIP_NETWORK=1
-          export GROQ_API_KEY="gsk_SECRET_KEY_SUPER_SECRET_12345"
-          
-          ./bash4llm --dry-run "Test Prompt" &
-          PID=$!
-          
-          if ps aux | grep -v grep | grep "gsk_SECRET_KEY_SUPER_SECRET_12345"; then
-            echo "❌ CRITICAL SECURITY LEAK: API Key visible in process table!"
-            kill $PID 2>/dev/null || true
+          set -euo pipefail
+          chmod +x ./bash4llm
+
+          # Pre-create local model whitelist to guarantee curl invocation
+          mkdir -p bash4llm.d/models
+          echo "llama-3.3-70b-versatile" > bash4llm.d/models/groq.txt
+
+          # 1. Setup Mock HTTP Server with delayed response to capture active curl process
+          python3 -c '
+          import http.server, socketserver, time
+          class MockHandler(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = b"{\"data\":[{\"id\":\"llama-3.3-70b-versatile\"}]}"
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+              def do_POST(self):
+                  time.sleep(0.5) # Delay response to allow ps aux sampling during active curl
+                  body = b"{\"choices\":[{\"message\":{\"content\":\"OK\"}}]}"
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, format, *args): return
+
+          class ReusableTCPServer(socketserver.TCPServer):
+              allow_reuse_address = True
+
+          with ReusableTCPServer(("127.0.0.1", 19090), MockHandler) as httpd:
+              httpd.serve_forever()
+          ' &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+          # Active Socket Polling to guarantee server readiness
+          echo "Waiting for Security Mock Server on port 19090..."
+          READY=0
+          for i in {1..30}; do
+            if python3 -c 'import socket; s = socket.socket(); s.connect(("127.0.0.1", 19090)); s.close()' 2>/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 0.1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "❌ ERROR: Security Mock server failed to bind port 19090!"
             exit 1
           fi
+
+          SECRET_KEY="gsk_SECRET_KEY_SUPER_SECRET_REAL_CURL_TEST"
+          export BASH4LLM_API_URL="http://127.0.0.1:19090/v1/chat/completions"
+          export GROQ_API_KEY="$SECRET_KEY"
+
+          LEAK_FILE=$(mktemp)
           
-          wait $PID || true
-          echo "✅ Process Table Audit Passed: Bearer Token is 100% Hidden from ps aux."
+          # 2. High-Frequency Continuous Process Sampler in Background (5ms interval)
+          (
+            for i in {1..200}; do
+              if ps aux | grep -v grep | grep -q "$SECRET_KEY"; then
+                echo "LEAK_DETECTED" > "$LEAK_FILE"
+                break
+              fi
+              sleep 0.005
+            done
+          ) &
+          SAMPLER_PID=$!
+
+          # 3. Execute REAL HTTP Request (Triggers actual curl execution)
+          ./bash4llm "Security Audit Prompt" > /dev/null 2>&1 || true
+          
+          wait $SAMPLER_PID 2>/dev/null || true
+
+          if [ -s "$LEAK_FILE" ]; then
+            echo "❌ CRITICAL SECURITY VULNERABILITY: Bearer API key was exposed in process list (ps aux) during curl call!"
+            rm -f "$LEAK_FILE"
+            exit 1
+          fi
+          rm -f "$LEAK_FILE"
+          echo "✅ Process Table Audit Passed: Bearer Token is 100% Hidden from ps aux during real curl requests."
+
+          # 4. File System Permissions Audit (Strict 700 / 600 enforcement)
+          ./bash4llm --bootstrap-only
+          CONF_DIR="./bash4llm.d/config"
+          if [ -d "$CONF_DIR" ]; then
+            PERMS=$(stat -c %a "$CONF_DIR" 2>/dev/null || stat -f %Lp "$CONF_DIR" 2>/dev/null)
+            if [ "$PERMS" != "700" ]; then
+              echo "❌ SECURITY ERROR: Directory permissions on $CONF_DIR are $PERMS (expected 700)!"
+              exit 1
+            fi
+            echo "✅ File System Audit Passed: Strict permissions (700) enforced."
+          fi
