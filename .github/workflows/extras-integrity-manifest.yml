@@ -1,0 +1,73 @@
+name: Extras SHA-256 Manifest Integrity
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+      - 'extras/**'
+      - '.github/workflows/extras-integrity-manifest.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+      - 'extras/**'
+      - '.github/workflows/extras-integrity-manifest.yml'
+  workflow_dispatch:
+
+jobs:
+  verify-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check All Extras Files Against SHA-256 Manifest
+        run: |
+          set -euo pipefail
+          
+          # Dynamic Path Detection
+          B4L_BIN="./bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+          fi
+
+          if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+            echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+            exit 1
+          fi
+
+          chmod +x "$B4L_BIN"
+          
+          if [ -d "extras" ]; then
+            if [ ! -f "extras/manifest.sha256" ]; then
+              echo "❌ CRITICAL ERROR: Directory 'extras' exists but 'manifest.sha256' is missing!"
+              exit 1
+            fi
+            
+            cd extras
+            # Filter comments (#), empty lines, and normalize CRLF line endings safely under pipefail
+            grep -vE '^[[:space:]]*#' manifest.sha256 | grep -vE '^[[:space:]]*$' | tr -d '\r' > manifest_clean.sha256 || true
+            
+            if [ ! -s manifest_clean.sha256 ]; then
+              echo "❌ ERROR: manifest.sha256 is empty or contains no valid hashes!"
+              rm -f manifest_clean.sha256
+              exit 1
+            fi
+
+            # Verify cryptographic digests strictly
+            sha256sum --strict -c manifest_clean.sha256
+            rm -f manifest_clean.sha256
+            cd ..
+            
+            # Verify native bash4llm extras installer integrity test safely
+            INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1 || true)
+            echo "$INSTALL_LOG"
+            
+            if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
+              echo "❌ ERROR: Extras installer detected integrity verification warnings!"
+              exit 1
+            fi
+            
+            echo "✅ All extra modules match official SHA-256 manifest!"
+          else
+            echo "ℹ️ Directory 'extras' not present. Skipping check."
+          fi

@@ -23,13 +23,21 @@ jobs:
       - name: Installazione dipendenze (Ubuntu)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
+          if ! command -v jq >/dev/null 2>&1 || ! command -v awk >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
+          fi
 
-      - name: Installazione dipendenze (macOS via Homebrew)
+      - name: Installazione dipendenze e Bash 5+ (macOS via Homebrew)
         if: runner.os == 'macOS'
         run: |
-          brew install bash coreutils findutils util-linux gawk curl jq
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+          
+          # Su macOS installiamo Bash 5.x (necessario per declare -A) e jq
+          brew install bash jq
+          
+          # Aggiungiamo Homebrew bin in cima al PATH così che 'env bash' usi Bash 5
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
 
       - name: Prepariamo le cartelle e la whitelist dei modelli
@@ -40,18 +48,26 @@ jobs:
           mkdir -p "$HOME/.config/groq"
           mkdir -p ./bin/bash4llm.d/models
           mkdir -p ./bash4llm.d/models
+          
           echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
           echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
           echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
           echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/groq.txt
 
       - name: Esecuzione Smoke Test / Dry-Run
         shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
-          chmod +x bin/bash4llm
-          ./bin/bash4llm --dry-run tests/good.json
+          B4L_BIN="./bin/bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN="./bash4llm"
+          fi
+          
+          chmod +x "$B4L_BIN"
+          "$B4L_BIN" --dry-run tests/good.json
 
   test-windows-wsl:
     name: Test su Windows (WSL)
@@ -60,15 +76,40 @@ jobs:
       - name: Checkout del codice
         uses: actions/checkout@v4
 
-      - name: Installazione ed avvio WSL Ubuntu
-        shell: powershell
-        run: |
-          wsl --install -d Ubuntu --no-launch
-          wsl --set-default Ubuntu
+      - name: Avvio Istantaneo WSL Ubuntu
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-22.04
 
       - name: Esecuzione Test dentro WSL
-        shell: powershell
+        shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
-          wsl -u root -- exec bash -c "set -euo pipefail; apt-get update && apt-get install -y bash coreutils findutils util-linux gawk curl jq && mkdir -p /root/.config/bash4llm/groq /root/.config/groq ./bin/bash4llm.d/models ./bash4llm.d/models && echo 'llama-3.3-70b-versatile' > /root/.config/bash4llm/groq/models.txt && echo 'llama-3.3-70b-versatile' > /root/.config/groq/models.txt && echo 'llama-3.3-70b-versatile' > ./bin/bash4llm.d/models/models.txt && echo 'llama-3.3-70b-versatile' > ./bash4llm.d/models/models.txt && sed -i 's/\r$//' bin/bash4llm && chmod +x bin/bash4llm && ./bin/bash4llm --dry-run tests/good.json"
+          wsl -u root -- exec bash << 'EOF'
+          set -euo pipefail
+          
+          # Verifica presenza jq dentro WSL
+          command -v jq >/dev/null 2>&1 || (apt-get update && apt-get install -y jq)
+
+          # Configurazione cartelle e whitelist modelli
+          mkdir -p "$HOME/.config/bash4llm/groq" "$HOME/.config/groq" ./bin/bash4llm.d/models ./bash4llm.d/models
+          echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
+          echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/groq.txt
+
+          # Localizzazione eseguibile e bonifica CRLF
+          B4L_BIN="./bin/bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN="./bash4llm"
+          fi
+
+          sed -i 's/\r$//' "$B4L_BIN"
+          chmod +x "$B4L_BIN"
+          
+          # Esecuzione Dry-Run
+          "$B4L_BIN" --dry-run tests/good.json
+          EOF
