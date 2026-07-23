@@ -5,11 +5,13 @@ on:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - 'bin/bash4llm'
       - '.github/workflows/section-integrity.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - 'bin/bash4llm'
       - '.github/workflows/section-integrity.yml'
   workflow_dispatch:
 
@@ -49,7 +51,7 @@ jobs:
 
             # 2. Extract full line tags including trailing anchors --->N-- safely under pipefail
             open_tags=$(grep -oE "#--[0-9]+<---\[ SECTION: [A-Z0-9_]+ \]--->[0-9]+--" "$B4L_BIN" | sort || true)
-            close_tags=$(grep -oE "#--[0-9]+<---\[ /SECTION: [A-Z0-9_]+ \]--->[0-9]+--" "$B4L_BIN" | sed "s#SECTION: /#SECTION: #" | sort || true)
+            close_tags=$(grep -oE "#--[0-9]+<---\[ /SECTION: [A-Z0-9_]+ \]--->[0-9]+--" "$B4L_BIN" | sed "s#/SECTION:#SECTION:#" | sort || true)
             
             if [ -z "$open_tags" ]; then
               echo "❌ ERROR: No section tags found in $B4L_BIN!"
