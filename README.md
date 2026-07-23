@@ -161,6 +161,20 @@ Il binario principale `bash4llm` agisce come la **Root of Trust** del sistema. P
 
 ---
 
+---
+
+## 🛡️ Core Hardening & Audit di Sicurezza Automatizzati
+
+Oltre alla standard CI/CD cross-platform, l'eseguibile `./bash4llm` viene sottoposto a **5 audit automatizzati continui di sicurezza e architettura**, focalizzati esclusivamente sul file sorgente del core:
+
+1. **[Section Marker Integrity Audit](.github/workflows/section-integrity.yml)**: Valida la Flat Architecture a 23 Sezioni, verificando la simmetria al 100% dei tag, le ancore di coda e prevenendo il leak di sottosezioni ($N.X$).
+2. **[Sourcing Isolation & Namespace Audit](.github/workflows/sourcing-isolation.yml)**: Testa `_cleanup_sourced_env` per garantire che l'importazione via `source` di `bash4llm` in una shell interattiva lasci **Zero Function Leaks** nella memoria della shell padre.
+3. **[Security & Process List Leak Audit](.github/workflows/security-hardening.yml)**: Esegue vere transazioni `curl` verso endpoint mock locali campionando `ps aux` ad intervalli di 5ms, dimostrando che le API Key Bearer **non finiscono mai nella tabella dei processi di sistema**. Applica e verifica il rispetto dei permessi POSIX `0700` e `0600` sul file system.
+4. **[API Chaos & Resilience Mock Suite](.github/workflows/api-mock-chaos.yml)**: Simula il fault-injection (errori HTTP 500, rate limit ed edge-case di completamento vuoto) utilizzando un Mock Server HTTP Python locale.
+5. **[Extras SHA-256 Manifest Integrity](.github/workflows/extras-integrity-manifest.yml)**: Verifica gli hash crittografici di tutte le estensioni rispetto a `extras/manifest.sha256` per prevenire tampering o moduli corrotti.
+
+---
+
 ## Comandi, flag e opzioni disponibili
 
 ### Modelli e provider
