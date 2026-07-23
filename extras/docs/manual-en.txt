@@ -4,13 +4,15 @@ BASH4LLM(1)                      Bash4LLM Manual                    BASH4LLM(1)
 
 NAME
     bash4llm - Resilient and secure Bash-first wrapper for querying external 
-    LLM providers (v2.3.0)
+    LLM providers (v2.6.0)
 
 SYNOPSIS
     bash4llm [OPTIONS] [PROMPT]
     bash4llm -f FILE [OPTIONS]
     echo "prompt" | bash4llm [OPTIONS]
     bash4llm --batch BATCH_FILE [OPTIONS]
+    bash4llm --chat [OPTIONS]
+    bash4llm --vault
 
 DESCRIPTION
     bash4llm is a native shell-environment command-line utility designed for 
@@ -84,9 +86,9 @@ OPTIONS
   Section 3: Thread and Conversation Management
     --thread THREAD_ID
         Enables multi-turn chat context persistence by associating the history 
-        with a unique alphanumeric identifier. The ID is formally validated to 
-        exclude directory traversal or unauthorized characters. The ID must 
-        match the regex ^[A-Za-z0-9._-]{1,128}$.
+        with a unique identifier. The ID is formally validated and 
+        cryptographically anonymized via SHA-256 ($SAFE_THREAD_ID) to prevent 
+        PII leakage on disk. The ID must match the regex ^[A-Za-z0-9._-]{1,128}$.
 
     --thread-window [WINDOW]
         Specifies the maximum number of previous historical messages to retrieve 
@@ -99,16 +101,21 @@ OPTIONS
     --init-thread (Requires --thread <id>)
         Allows external components (such as a CGI graphical interface) or 
         automation scripts to pre-register a new thread in the system before 
-        sending the first prompt. This option performs the following local 
-        operations:
-        - Creates an empty history file (<id>.ndjson) with restrictive 
-          permissions.
-        - Generates the thread metadata file (<id>.json) with a placeholder 
-          title and zero message count.
-        - Updates the global thread index (index.json) under an exclusive lock 
-          to prevent race conditions.
-        - Terminates execution immediately (exit 0) without making network 
-          connections or requiring API keys.
+        sending the first prompt. This option performs local thread registration 
+        and terminates execution immediately (exit 0) without making API calls.
+
+    --delete-thread THREAD_ID
+        Permanently wipes active thread history files (.ndjson), lock files, 
+        metadata files (.json), and removes the thread ID entry from the global 
+        thread index under an exclusive lock.
+
+    --rename-thread THREAD_ID
+        Updates the user-facing title of the specified thread inside its 
+        metadata file. Must be used in conjunction with --title <text>.
+
+    --title TEXT
+        Specifies the new user-facing title string when executing thread 
+        renaming via --rename-thread.
 
   Section 4: Output and Formatting
     --json
@@ -116,11 +123,8 @@ OPTIONS
         from the provider exactly as received from the external API.
 
     --no-color
-        Disables the use of ANSI colors and text styles on both
-        standard output and standard error. This option prevents
-        the insertion of non-printing control sequences when redirecting
-        output to files or pipes, ensuring clean logs
-        and readability in non-interactive or headless environments.
+        Disables the use of ANSI colors and text styles on both standard output 
+        and standard error, ensuring clean logs in non-interactive sessions.
 
     --pretty
         Performs structured formatting (pretty-print) on the JSON response 
@@ -128,8 +132,7 @@ OPTIONS
 
     --text
         Selects standard text display mode (default). The script extracts only 
-        the textual message body produced by the model, removing the surrounding 
-        JSON structures.
+        the textual message body produced by the model.
 
     --raw
         Returns only the response text, excluding any additional trailing 
@@ -158,9 +161,8 @@ OPTIONS
     --stream
         Enables real-time token reception (data streaming). Requires the active 
         provider to support the SSE (Server-Sent Events) connection interface. 
-        This option is mutually exclusive and incompatible with structured 
-        --json and --pretty formats; if used together, the script blocks 
-        execution.
+        This option is mutually exclusive with structured --json and --pretty 
+        formats.
 
     --no-stream
         Explicitly inhibits and disables token streaming mode, restoring 
@@ -169,28 +171,25 @@ OPTIONS
     --dry-run
         Simulates the transaction without making real network connections. The 
         script compiles the final JSON request payload structure, displays its 
-        first few lines (head) on standard error for diagnostic purposes, and 
+        first few lines on standard error for diagnostic purposes, and 
         terminates execution with a success status.
 
-  Section 6: Module Selection and Installation
-    --provider [NAME]
-        If specified with a name (excluding strings starting with a hyphen), 
-        selects and sets the active provider, persistently saving the preference 
-        in the user configuration file. If the passed value is the literal 
-        string "list", or if the flag is specified without any argument in an 
-        interactive terminal (TTY), the script opens an interactive selection 
-        menu listing all installed providers and allowing the user to select 
-        the default.
+  Section 6: Module Selection, Security and Installation
+    --provider [NAME], --providers [NAME]
+        If specified with a name, selects and sets the active provider, 
+        persistently saving the preference in the configuration directory. If 
+        the passed value is "list", or if the flag is specified without any 
+        argument in an interactive TTY, opens an interactive selection menu.
 
-    --install-extras [SOURCE]
+    --vault
+        Launches the interactive cryptographic console tool to manage encrypted 
+        API keys inside keys.enc, supporting key creation, editing, deletion, 
+        master password changes, and emergency offline recovery.
+
+    --install-extras [SOURCE], --install-extra [SOURCE]
         Installs and extends the runtime by copying modules and resources 
-        from the extensions directory (e.g., external providers, session 
-        engine scripts, thread resources, tests, documentation) into the 
-        persistent user extensions folder. If not specified, the script 
-        attempts to locate the sources under the "extras" origin folder 
-        relative to the script's location. The module performs strict security 
-        checks to prevent copying symbolic links or installing into 
-        unauthorized nested paths.
+        from the extensions directory into the persistent user extensions folder, 
+        performing strict SHA-256 manifest integrity checks.
 
   Section 7: Model Management and Quick Configuration
     --refresh-models, --refresh-model
@@ -198,7 +197,7 @@ OPTIONS
         synchronize the local list of available models, saving it atomically 
         and securely under an exclusive lock in the models file.
 
-    --list-models
+    --list-models, --list-model
         Displays a formatted, readable list of text models currently available 
         and ready for use in the local system.
 
@@ -206,9 +205,8 @@ OPTIONS
         Returns the raw list of local models in machine format (one normalized 
         identifier per line) for automation purposes.
 
-    --list-providers
-        Displays the list of provider modules (both built-in and extended via 
-        plugins) installed in the system.
+    --list-providers, --list-provider
+        Displays the list of provider modules installed in the system.
 
     --list-providers-raw
         Returns the list of installed providers in machine format, without 
@@ -218,348 +216,305 @@ OPTIONS
         Sets and permanently archives the specified model as the default choice 
         for the currently active provider in the system.
 
-  Section 8: Diagnostics and Maintenance
+  Section 8: Interactive UI, Diagnostics and Inspection
+    --chat, --tui
+        Launches the full-screen TUI interactive REPL session for continuous 
+        conversations.
+
     --quiet
-        Runtime silencer. Inhibits all informational prints, tracking messages, 
-        and non-critical warnings on standard error, limiting output to only 
-        the formal results of the query or blocking execution errors.
+        Runtime silencer. Inhibits all informational prints and non-critical 
+        warnings on standard error.
 
     --debug
         Enables advanced diagnostics mode for developers. Writes detailed log 
-        messages to standard error and, if configured, to the log destination. 
-        Additionally, it inhibits the automatic removal of resources allocated 
-        in the instance's temporary directory when the script terminates.
+        messages to standard error and preserves temporary runtime files.
 
     --show-config
         Generates a structured tabular view of current runtime parameters 
-        (software versions, release dates, selected provider, active model, 
-        absolute paths of all operational directories in the file system, 
-        debug flag states, and synchronization file sizes).
+        (software versions, selected provider, active model, operational paths, 
+        and synchronization file states).
 
-    --diagnostics
-        Starts a complete self-check and security requirements inspection cycle. 
-        Verifies the physical existence of user folders, the resolution of 
-        write permissions, the syntactic validity of imported provider modules, 
-        and the presence of the correct API key for the active provider.
+    --check-config
+        Executes a static security audit on the user configuration file, 
+        checking file system permissions for group/world write vulnerabilities 
+        and linting variable keys against canonical specifications.
+
+    --diagnostics, --diagnostic
+        Starts a complete self-check inspection cycle verifying physical folders, 
+        write access, provider module integrity, API keys, and testing TLS 
+        connection handshakes via OpenSSL.
+
+    --explain-error CODE_OR_ALIAS
+        Explains numerical error exit codes (e.g. 15, 17) or string aliases 
+        (e.g. BASH4LLM_ERR_SEC) using documented definitions and operational 
+        mitigation tips.
+
+    --print-config-dir
+        Prints the canonical configuration directory path to standard output.
+
+    --print-provider-file
+        Prints the canonical active provider persistence file path to standard output.
+
+    --print-model-file PROVIDER
+        Prints the canonical default model file path for the specified provider 
+        to standard output.
 
     --version
-        Prints the script's identifier name, current software version, release 
-        date, and terminates execution.
+        Prints script identifier name, software version, release date, and exits.
 
     -h, --help
         Displays the quick start interface guide and terminates.
 
     --
         End-of-options marker. Any argument positioned after this delimiter is 
-        fully interpreted as the input prompt text, excluding subsequent flag 
-        processing.
+        interpreted as input prompt text.
 
 ENVIRONMENT VARIABLES
     The behavior of the bash4llm runtime is governed and can be conditioned by 
     the following environment variables.
 
-  Section 1: API Authentication Credentials
+  Section 1: API Credentials and Vault Security
     GROQ_API_KEY
         Default API key for authenticating network calls to the built-in Groq 
         provider.
 
     PROVIDER_API_ENV_[PROVIDER]
-        Indirect mapping for external providers. Allows defining the name of 
-        an alternative environment variable intended to contain the API key for 
-        a given custom provider (e.g., setting PROVIDER_API_ENV_gemini="CUSTOM_KEY", 
-        the script will look for the API key inside the CUSTOM_KEY variable).
+        Indirect mapping for external providers. Defines the name of an 
+        alternative environment variable containing the API key for a given 
+        custom provider.
 
-  Section 2: Paths and File System Structure
+    BASH4LLM_VAULT_ENABLED
+        Boolean flag (1 or 0) to control the cryptographic key vault system. 
+        Set to 0 to permanently or temporarily disable vault lookups (default: 1).
+
+    _B4L_RT_CTX
+        Obfuscated session context token held in active shell memory to unlock 
+        the Master Vault Key and bypass password prompts across multiple runs.
+
+    BASH4LLM_OPENSSL_ACTIVE
+        Internal state flag (1 or 0) indicating whether the OpenSSL security 
+        helper extension is loaded and active.
+
+  Section 2: Paths and Isolated File System Directories
     BASH4LLM_DIR
-        Persistent root directory for bash4llm resources and data. If omitted, 
-        it is dynamically resolved pointing to the "bash4llm.d" directory 
-        located under the script's source folder.
+        Persistent root directory for bash4llm resources and data. Defaults to 
+        "bash4llm.d" relative to the script location.
 
     BASH4LLM_ROOT
         Alternative path used to derive the root directory if BASH4LLM_DIR is 
-        not explicitly declared in the environment.
+        not explicitly declared.
 
     BASH4LLM_CONFIG_DIR
-        Directory intended to store persistent user settings 
-        (default: $BASH4LLM_DIR/config).
+        Directory storing persistent user settings (default: $BASH4LLM_DIR/config).
 
     BASH4LLM_MODELS_DIR
-        Directory containing the list of configured and downloaded models 
-        (default: $BASH4LLM_DIR/models).
+        Directory containing configured and cached models (default: $BASH4LLM_DIR/models).
 
     BASH4LLM_TEMPLATES_DIR
-        Directory containing user template files 
-        (default: $BASH4LLM_DIR/templates).
+        Directory containing user template files (default: $BASH4LLM_DIR/templates).
 
     BASH4LLM_HISTORY_DIR
-        Directory intended to accumulate the response history and interaction 
-        logs (default: $BASH4LLM_DIR/history).
+        Directory containing response history and thread logs (default: $BASH4LLM_DIR/history).
 
     BASH4LLM_TMPDIR
-        Protected root directory for allocating temporary script data 
-        (default: $BASH4LLM_DIR/tmp).
+        Protected root directory for temporary script data (default: $BASH4LLM_DIR/tmp).
+
+    BASH4LLM_RUN_DIR
+        Directory hosting runtime process files (default: $BASH4LLM_DIR/var/run).
+
+    BASH4LLM_LOCKS_DIR
+        Isolated directory storing lock files (default: $BASH4LLM_RUN_DIR/locks).
+
+    BASH4LLM_RATES_DIR
+        Isolated directory tracking rate-limiting transaction timestamps 
+        (default: $BASH4LLM_TMPDIR/rates).
 
     BASH4LLM_EXTRAS_DIR
-        Active directory for accessing and importing user extensions 
-        (default: $BASH4LLM_DIR/extras).
+        Active directory for accessing user extensions (default: $BASH4LLM_DIR/extras).
 
     PROVIDERS_DIR
-        Directory containing installed external provider modules 
-        (default: $BASH4LLM_EXTRAS_DIR/providers).
+        Directory containing external provider modules (default: $BASH4LLM_EXTRAS_DIR/providers).
 
     THREAD_CACHE_DIR
-        Directory intended to host the raw temporary cache of thread messages 
-        and contexts (default: $BASH4LLM_CONFIG_DIR/thread_cache).
+        Directory hosting temporary thread message caches (default: $BASH4LLM_CONFIG_DIR/thread_cache).
 
   Section 3: Resource Configuration and Synchronization
     MODELS_FILE
-        Absolute or relative path of the local file in which to store the list 
-        of models retrieved from the API (default: $BASH4LLM_MODELS_DIR/models.txt).
+        Path of local file storing retrieved models (default: $BASH4LLM_MODELS_DIR/<provider>.txt).
 
     MAX_MODELS
-        Numeric limit of models manageable locally in the models file. If the 
-        provider returns a greater number of models, the excess is truncated to 
-        avoid memory saturation (default: 200).
+        Numeric limit of models manageable locally (default: 200).
 
     PROVIDER_FILE
-        Path of the file that persists the name of the last active provider set 
-        by the user (located under the configuration directory).
+        Path of file persisting the active provider name.
 
     MODELS_LOCK
-        Exclusive synchronization file (lock) to regulate access and updates to 
-        the local models file (default: $BASH4LLM_MODELS_DIR/models.lock).
+        Exclusive lock regulating updates to models files (default: $BASH4LLM_LOCKS_DIR/models.lock).
 
     HISTORY_LOCK
-        Exclusive lock file to prevent physical corruption due to parallel or 
-        concurrent access to the historical directory and threads 
+        Exclusive lock preventing corruption during history and thread operations 
         (default: $BASH4LLM_HISTORY_DIR/history.lock).
 
     TMP_LOCK
-        Exclusive lock file associated with the temporary directory to regulate 
-        the creation of instance subfolders (default: $BASH4LLM_TMPDIR/tmp.lock).
+        Exclusive lock regulating temporary directory allocation (default: $BASH4LLM_LOCKS_DIR/tmp.lock).
 
     BASH4LLM_LOCK_TIMEOUT_TMP
-        Maximum wait timeout expressed in seconds to acquire the lock on 
-        temporary files (default: 10 seconds).
+        Timeout in seconds to acquire temporary directory locks (default: 10).
 
     BASH4LLM_LOCK_TIMEOUT_MODELS
-        Maximum timeout expressed in seconds to acquire the lock on the models 
-        file (default: 10 seconds).
+        Timeout in seconds to acquire models file locks (default: 10).
 
     BASH4LLM_LOCK_TIMEOUT_HISTORY
-        Maximum timeout expressed in seconds to acquire the lock to access 
-        history and threads (default: 10 seconds).
+        Timeout in seconds to acquire history and thread locks (default: 10).
 
   Section 4: History Maintenance (Rotation)
     BASH4LLM_ROTATE_HISTORY
-        Boolean flag (1 or 0) to enable automatic periodic purging and 
-        maintenance of history logs after queries (default: 0).
+        Boolean flag (1 or 0) enabling periodic history log rotation (default: 0).
 
     BASH4LLM_HISTORY_MAX_FILES
-        Maximum numeric threshold of files storable in the response history 
-        directory (default: 100). Once the threshold is exceeded, older files 
-        are removed.
+        Maximum threshold of files in history directory (default: 100).
 
     BASH4LLM_HISTORY_MAX_BYTES
-        Cumulative limit threshold expressed in bytes of the total space occupied 
-        by history files (default: 104857600 bytes, equivalent to 100MB).
+        Cumulative byte limit for history files (default: 104857600, 100MB).
 
     BASH4LLM_HISTORY_KEEP_DAYS
-        Time retention limit expressed in days for log and history files 
-        (default: 90 days). Files older than the limit are deleted.
+        Retention limit in days for history files (default: 90 days).
 
-  Section 5: Parameters and Runtime Execution Control
+  Section 5: Parameters, Rate Limiting and Security Policy
+    BASH4LLM_RATE_LIMIT
+        Numeric limit of allowed API requests per thread within a sliding 30-second 
+        window (default: unlimited).
+
+    BASH4LLM_AUTH_TOKEN
+        Secret authorization token that bypasses local rate-limiting checks.
+
+    FALLBACK_PAYLOAD
+        Base64-encoded fallback payload generated by post-execution hooks on API failures.
+
+    BASH4LLM_IGNORE_SEC_CHECKS
+        Set to 1 to bypass strict POSIX file ownership and permission checks 
+        (useful for WSL, Cygwin, or non-standard filesystems).
+
     ALLOW_API_CALLS
-        External transaction enabling flag. If set to a value other than 1 
-        (e.g., 0), and if the script is not operating in dry-run simulation 
-        mode, the presence of a valid API key generates a fatal error, blocking 
-        network transmission for precautionary purposes.
+        External transaction gate flag. If set to 0, blocks network calls.
 
     BASH4LLM_SKIP_NETWORK
-        Inhibits and excludes any network call. If set to 1, forces the API 
-        call to produce a dummy diagnostic response simulating dry-run.
+        Inhibits network calls and forces dry-run simulated execution.
 
     BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET
-        If set to 1, combined with quiet mode enabling (QUIET=1), imposes 
-        immediate blocking of all external connections for secure automation 
-        purposes in the absence of a TTY.
+        If set to 1, blocks external connections whenever QUIET=1 is active.
 
     MAX_STAGE_BYTES
-        Dimensional security threshold expressed in bytes applied to the transfer 
-        and staging of external resources encoded in Base64 
-        (default: 10485760 bytes, equivalent to 10MB). Files larger than this 
-        are blocked before encoding to avoid resource saturation.
-
-    LAST_CHECK_LINES
-        Number of standard lines to scan backward in the thread NDJSON history 
-        file during record extraction (default: 50 lines).
+        Maximum byte limit for Base64 staging (default: 10485760, 10MB).
 
     DEBUG
-        Diagnostic alignment variable. If set to 1, activates internal debug 
-        features (inherits configurations from BASH4LLM_DEBUG).
+        Diagnostic flag. Set to 1 to enable verbose debugging to stderr.
 
     BASH4LLM_LOG
-        Optional path of a file in which to append the unified operational logs 
-        of the script with UTC timestamps in a structured chronological way.
+        File path for structured chronological logging.
 
     BASH4LLM_SOURCE_ONLY
-        Development guard variable. If set to 1 before importing the script, 
-        terminates main execution immediately after bootstrap. Allows loading 
-        and testing only environment variables, definitions, and functions of 
-        bash4llm in an active shell or external unit tests.
+        Development guard. Set to 1 to exit immediately after bootstrap for testing.
 
 EXIT CODES
-    The runtime adopts a set of fixed numeric exit codes to isolate failure 
-    causes at the process level:
+    The runtime adopts a set of fixed numeric exit codes:
 
     10 (BASH4LLM_ERR_NO_API_KEY)
-        The API key required by the active provider is missing from the 
-        environment and the script is running in a non-interactive session 
-        (absence of TTY), preventing manual input.
+        Required API key is missing from environment and Vault in non-interactive session.
 
     11 (BASH4LLM_ERR_BAD_MODEL)
-        The selected model is invalid, unsupported by the active provider, or 
-        has been excluded due to core validation filters (non-textual 
-        multimodal models).
+        Selected model is invalid, unsupported, or non-textual multimodal.
 
     12 (BASH4LLM_ERR_CURL_FAILED)
-        The network call made via curl utility failed due to connection issues, 
-        DNS, server instability, or maximum timeout expiration.
+        Network request via curl failed due to connection issues or timeouts.
 
     13 (BASH4LLM_ERR_INVALID_JSON)
-        The JSON configuration file, models file, or response payload returned 
-        by the provider's API is corrupted or lacks a valid syntactic structure.
+        JSON configuration or API response payload is corrupt or syntactically invalid.
 
     14 (BASH4LLM_ERR_NO_PROMPT)
-        No text prompt or JSON file was provided as input for processing (except 
-        in interactive chat mode or batch processing).
+        No prompt text or JSON payload was provided.
 
     15 (BASH4LLM_ERR_TMP)
-        Unable to allocate or configure the temporary instance directory or 
-        irreversible anomalies in acquiring exclusive lock files.
+        Unable to allocate secure temporary directory or lock acquisition failure.
 
     16 (BASH4LLM_ERR_API)
-        The provider's API server rejected the request or returned an invalid 
-        HTTP status code (e.g., error 400, 401, 429, 500), or an anomalous 
-        empty generation occurred (empty completion).
+        Provider API rejected the request, returned HTTP error status, or yielded empty completion.
+
+    17 (BASH4LLM_ERR_SEC)
+        Security policy violation: insecure group/world writable file permissions, 
+        symbolic link detected on critical path, or cryptographic SHA-256 module 
+        integrity check failure against manifest.sha256.
 
 OPERATIONAL MODES
-    bash4llm implements five main operational modes, selectable via CLI flags or 
-    determined automatically by the state of input flows.
+    bash4llm implements five main operational modes:
 
   1. Single Request (Default)
-    The runtime acquires and assembles the prompt following the exclusive 
-    priority chain. Resolves active model and provider, validates the API key, 
-    and executes a single synchronous or streaming call. Upon completion, 
-    extracts the text response, displays it based on output format, saves to 
-    history if over the threshold limit, and logs in the active thread file.
+    Acquires prompt, resolves provider and model, validates API keys, enforces rate 
+    limiting and pre-execution hooks, executes query, and outputs response.
 
   2. Token Streaming (--stream)
-    If enabled, HTTP connection is established disabling network buffering. The 
-    runtime parses line-by-line the Server-Sent Events (SSE) data stream. 
-    Extracts textual fragments (delta.content) validating JSON syntax, sending 
-    them instantly to stdout. In parallel, accumulates the raw stream to 
-    transactionally reconstruct the full response and save the summary JSON 
-    packet in the response file upon termination.
+    Establishes unbuffered connection, parses SSE line-by-line, outputs text 
+    deltas immediately, and saves aggregated JSON response.
 
   3. Batch Processing (--batch)
-    Sequentially scans lines of a prompt file. For each prompt, executes payload 
-    compilation, request forwarding, response extraction, and saving. Each 
-    execution is isolated: API or network failures in one call do not interrupt 
-    subsequent prompt processing.
+    Scans prompt file line-by-line, executing isolated API calls per prompt.
 
-  4. Interactive Chat (--chat)
-    Only available in interactive terminals (TTY). Opens a continuous read loop: 
-    acquires prompt, compiles payload integrating thread history, executes 
-    query, and displays assistant response. Updates real-time.
+  4. Interactive Chat (--chat, --tui)
+    Launches full-screen interactive TUI REPL for multi-turn conversations.
 
-  5. Interactive Provider Selection
-    Console lists supported providers, awaiting input. Once validated, stores 
-    choice, removes temporary local files associated with models of the previous 
-    provider, and terminates.
+  5. Interactive Provider Selection (--provider)
+    Opens interactive selection menu to choose and persist active provider.
 
 INTERNAL IMPLEMENTATION DETAILS
-    This section describes the mechanisms, algorithms, and logics governing the 
-    core of bash4llm.
+    This section describes core algorithms and security logics.
 
-  1. Prompt Assembly Algorithm (Priority Chain)
-    Assembly of $CONTENT scanned sequentially: Structured JSON ($JSON_INPUT) -> 
-    files via -f ($FILE_INPUTS) -> templates ($TEMPLATE) -> stdin 
-    ($STDIN_CONTENT) -> positional arguments ($ARGS).
+  1. Cryptographic Module Integrity and Manifest Verification
+    External providers, hooks, and extensions undergo mandatory two-tier verification 
+    via verify_module_integrity before loading: path security validation (ownership, 
+    no group/world write) and SHA-256 hash matching against extras/manifest.sha256. 
+    Mismatches abort execution with exit code 17.
 
-  2. Thread Management and Session Engine Integration
-    Thread multi-turn context persistence operates on two levels:
-      - Extended Architecture (Session Engine): At boot, the runtime checks for 
-        the presence of the "session-engine.sh" extension script. If detected 
-        and deemed compliant, $SE_AVAILABLE is set to 1. The runtime delegates 
-        the context window construction and message writing to the external 
-        engine routines (session_engine_build_window and session_engine_append).
-      - Built-in Fallback (Legacy): If Session Engine is unavailable, the script 
-        falls back on native NDJSON files. thread_read_window extracts trailing 
-        lines to compose a coherent JSON array, while thread_append records user 
-        messages, locking permissions to 600. A marking mechanism based on 
-        SHA-256 hashes prevents duplicate entries.
+  2. Thread PII Anonymization and Locking
+    Raw thread IDs are cryptographically hashed using SHA-256 via anonymize_thread_id 
+    producing $SAFE_THREAD_ID. All disk files (.ndjson, .json, locks) use this 
+    anonymized hash, preventing sensitive PII leakage to the file system.
 
-  3. Model Synchronization and Core Whitelisting
-    Conformance handled by validate_model_core. Filters non-textual multimodal 
-    models out.
+  3. Local Sliding Window Rate Limiting
+    check_local_rate_limit tracks request timestamp files under $BASH4LLM_RATES_DIR/$SAFE_THREAD_ID. 
+    Requests exceeding $BASH4LLM_RATE_LIMIT within a 30-second window are blocked with exit code 17.
 
-  4. Thread Cache (Thread Cache)
-    Avoids redundant queries. Stores thread response caches under THREAD_CACHE_DIR 
-    with TTL timestamp check on thread_cache_get and eviction via 
-    thread_cache_invalidate.
+  4. Cryptographic Key Vault Architecture
+    When OpenSSL is active, provider API keys are encrypted using Master Key wrapped 
+    AES-256-CBC with PBKDF2 (100,000 iterations) and salt. Session context token 
+    $_B4L_RT_CTX holds unlocked vault keys in RAM to bypass password prompts.
 
-  5. Multimodal Manifest and Base64 Staging
-    Staging utilities manifest_create and manifest_add_part. Security size 
-    validation $MAX_STAGE_BYTES (10MB).
-
-  6. Concurrent Synchronization and File Locking (flock)
-    Lock exclusive mechanism regulated by lock_exec with timeouts to avoid write 
-    corruptions.
-
-  7. Network Gate and Network Policy
-    Centralized HTTP gate enforce_network_policy. Blocks connections under 
-    dry-run, skip network, or quiet lock parameters.
-
-  8. Base64 Encoding Architectural Detection
-    Runtime probe _detect_base64_opts checking syntax differences between 
-    GNU/Linux (-w0 and -d) and BSD/macOS (no wrapping and -D).
+  5. Prompt Assembly Priority Chain
+    Assembly of $CONTENT: Structured JSON ($JSON_INPUT) -> files via -f -> 
+    templates ($TEMPLATE) -> standard input ($STDIN_CONTENT) -> positional arguments.
 
 LEGACY COMPATIBILITY WRAPPERS
-    To ensure integration with legacy scripts or third-party workflows, the 
-    runtime maintains and exposes the following direct compatibility wrappers:
+    To ensure integration with legacy workflows, the runtime exposes:
 
     buildpayloadgroq
-        Direct alias of buildpayload_groq. Compiles the Groq JSON payload.
+        Direct alias of buildpayload_groq.
 
     call_api_streaming_groq_legacy
-        Direct alias of call_api_streaming_groq. Starts token streaming.
+        Direct alias of call_api_streaming_groq.
 
     refreshmodelsgroq
-        Direct alias of refresh_models_groq. Refreshes models.
+        Direct alias of refresh_models_groq.
 
     validatemodelgroq
-        Direct alias of validate_model_groq. Validates models.
+        Direct alias of validate_model_groq.
 
     autoselectmodelgroq
-        Direct alias of auto_select_model_groq. Performs auto-selection.
+        Direct alias of auto_select_model_groq.
 
 TROUBLESHOOTING AND DIAGNOSTICS
-    This section describes known anomalous behaviors and procedures to resolve 
-    them.
+    Anomalous Empty Responses (Empty Completion)
+        Detected automatically via detect_empty_edge_case when HTTP 200 is 
+        returned with zero tokens generated. Logs diagnostics and exits with code 16.
 
-  Anomalous Empty Responses (Empty Completion)
-    External API may return HTTP 200 OK but complete generation without 
-    producing text, sending "stop" finish_reason and near-zero tokens.
-    bash4llm detects this automatically via detect_empty_edge_case, extracting:
-      - Request ID (if present)
-      - Generation Finish Reason
-      - Returned Completion Tokens count
-    Upon detection, logs a single structured record to standard error or log 
-    and terminates with exit code 16.
-
-  Connection Failures or Lock Timeouts
-    If the script returns exit code 15 with timeout messages, ensure no other 
-    background instances of bash4llm are locking resources. If needed, extend 
-    lock timeouts by setting BASH4LLM_LOCK_TIMEOUT_... environment variables 
-    to larger values (e.g., 30).
+    Connection Failures or Lock Timeouts
+        If exit code 15 occurs with timeout messages, verify no background 
+        instances are holding locks, or increase BASH4LLM_LOCK_TIMEOUT_... values.
