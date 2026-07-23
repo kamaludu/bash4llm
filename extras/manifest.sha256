@@ -2,7 +2,7 @@
 # Format: <sha256_hash>  <relative_path_from_extras_dir>
 # Official release modules integrity verification table
 
-08794b6b508262abf1f5baec02c4a84a2a96a5276d0f0d6928c3f15088c59dd5  README.md
+2f3fc9f1928ef49f34f33ae69a0133b98f1e5cd586b32694eedbd4268d6abb9b  README.md
 1b462d4fb0250aa18cc53dcc0174c6ff4727382f9172333dc876fc7e2832a3ef  chat/SPEC-TUI.md
 abfd7112aeb1789dd11b2b1c5d231b3a5346d530c740e2591a769b64a5e87f27  chat/langs/de.properties
 27cc1e7862cdd2892c6b364295e123ecb5458da1d661408cc7cd0b5114016cc8  chat/langs/en.properties
