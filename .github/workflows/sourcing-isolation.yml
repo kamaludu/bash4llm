@@ -22,7 +22,19 @@ jobs:
         run: |
           bash -c '
             set -euo pipefail
-            chmod +x ./bash4llm
+            
+            # Dynamic Path Detection
+            B4L_BIN="./bash4llm"
+            if [ ! -f "$B4L_BIN" ]; then
+              B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+            fi
+
+            if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+              echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+              exit 1
+            fi
+
+            chmod +x "$B4L_BIN"
             
             # PASS 1: Test Library Mode (BASH4LLM_SOURCE_ONLY=1) -> Functions MUST be loaded
             echo "Testing Library Sourcing Mode (BASH4LLM_SOURCE_ONLY=1)..."
@@ -30,7 +42,7 @@ jobs:
               set -euo pipefail
               export BASH4LLM_SOURCE_ONLY=1
               export BASH4LLM_VAULT_ENABLED=0
-              source ./bash4llm
+              source "$B4L_BIN"
               
               if ! declare -F safe_mkdir >/dev/null; then
                 echo "❌ ERROR: Functions were not loaded in BASH4LLM_SOURCE_ONLY=1 mode!"
@@ -47,7 +59,7 @@ jobs:
               export BASH4LLM_VAULT_ENABLED=0
               export NO_COLOR=1
               
-              source ./bash4llm < /dev/null || true
+              source "$B4L_BIN" < /dev/null || true
               
               polluted_funcs=$(declare -F | grep -E "safe_mkdir|trim_space|validate_file_input|ensure_run_tmpdir|_normalize_model_name|_cleanup_sourced_env" || true)
               if [ -n "$polluted_funcs" ]; then
