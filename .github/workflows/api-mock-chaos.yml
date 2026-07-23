@@ -21,7 +21,19 @@ jobs:
       - name: Setup Resilient Mock Server & Run Fault Injection
         run: |
           set -euo pipefail
-          chmod +x ./bash4llm
+          
+          # Dynamic Path Detection
+          B4L_BIN="./bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+          fi
+
+          if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+            echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+            exit 1
+          fi
+
+          chmod +x "$B4L_BIN"
 
           # Pre-create local model whitelist to ensure resolve_model succeeds
           mkdir -p bash4llm.d/models
@@ -93,7 +105,7 @@ jobs:
           # 3. Test Empty Completion Edge Case Handling (Expects Error Code 16)
           export BASH4LLM_API_URL="http://127.0.0.1:18080/empty"
           set +e
-          ./bash4llm "Test prompt"
+          "$B4L_BIN" "Test prompt"
           rc=$?
           set -e
           if [ "$rc" -ne 16 ]; then
@@ -105,7 +117,7 @@ jobs:
           # 4. Test HTTP 500 API Error Handling (Expects Error Code 16)
           export BASH4LLM_API_URL="http://127.0.0.1:18080/error500"
           set +e
-          ./bash4llm "Test prompt"
+          "$B4L_BIN" "Test prompt"
           rc=$?
           set -e
           if [ "$rc" -ne 16 ]; then
