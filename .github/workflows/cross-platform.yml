@@ -23,14 +23,21 @@ jobs:
       - name: Installazione dipendenze (Ubuntu)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
+          # Ubuntu ha già tutti i pacchetti preinstallati; eseguiamo apt solo se manca jq
+          if ! command -v jq >/dev/null 2>&1 || ! command -v awk >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y bash coreutils findutils util-linux gawk curl jq
+          fi
 
       - name: Installazione dipendenze (macOS via Homebrew)
         if: runner.os == 'macOS'
         run: |
-          brew install bash coreutils findutils util-linux gawk curl jq
-          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+          # macOS include già BSD awk, curl, bash. Verifichiamo solo la presenza di jq
+          if ! command -v jq >/dev/null 2>&1; then
+            brew install jq
+          fi
 
       - name: Prepariamo le cartelle e la whitelist dei modelli
         shell: bash
@@ -40,18 +47,28 @@ jobs:
           mkdir -p "$HOME/.config/groq"
           mkdir -p ./bin/bash4llm.d/models
           mkdir -p ./bash4llm.d/models
+          
+          # Compatibilità completa per file cumulativo (models.txt) e per provider (groq.txt)
           echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
           echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
           echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
           echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/groq.txt
 
       - name: Esecuzione Smoke Test / Dry-Run
         shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
-          chmod +x bin/bash4llm
-          ./bin/bash4llm --dry-run tests/good.json
+          # Dynamic Path Detection per la massima sicurezza di esecuzione
+          B4L_BIN="./bin/bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN="./bash4llm"
+          fi
+          
+          chmod +x "$B4L_BIN"
+          "$B4L_BIN" --dry-run tests/good.json
 
   test-windows-wsl:
     name: Test su Windows (WSL)
@@ -71,4 +88,5 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
-          wsl -u root -- exec bash -c "set -euo pipefail; apt-get update && apt-get install -y bash coreutils findutils util-linux gawk curl jq && mkdir -p /root/.config/bash4llm/groq /root/.config/groq ./bin/bash4llm.d/models ./bash4llm.d/models && echo 'llama-3.3-70b-versatile' > /root/.config/bash4llm/groq/models.txt && echo 'llama-3.3-70b-versatile' > /root/.config/groq/models.txt && echo 'llama-3.3-70b-versatile' > ./bin/bash4llm.d/models/models.txt && echo 'llama-3.3-70b-versatile' > ./bash4llm.d/models/models.txt && sed -i 's/\r$//' bin/bash4llm && chmod +x bin/bash4llm && ./bin/bash4llm --dry-run tests/good.json"
+          $KEY = $env:GROQ_API_KEY
+          wsl -u root -- exec bash -c "set -euo pipefail; export GROQ_API_KEY='$KEY'; command -v jq >/dev/null 2>&1 || (apt-get update && apt-get install -y jq); mkdir -p /root/.config/bash4llm/groq /root/.config/groq ./bin/bash4llm.d/models ./bash4llm.d/models; echo 'llama-3.3-70b-versatile' > /root/.config/bash4llm/groq/models.txt; echo 'llama-3.3-70b-versatile' > /root/.config/groq/models.txt; echo 'llama-3.3-70b-versatile' > ./bin/bash4llm.d/models/models.txt; echo 'llama-3.3-70b-versatile' > ./bash4llm.d/models/models.txt; echo 'llama-3.3-70b-versatile' > ./bin/bash4llm.d/models/groq.txt; echo 'llama-3.3-70b-versatile' > ./bash4llm.d/models/groq.txt; for f in ./bin/bash4llm ./bash4llm; do if [ -f `\$f` ]; then sed -i 's/\r$//' `\$f` && chmod +x `\$f`; fi; done; B4L='./bin/bash4llm'; if [ ! -f `\$B4L` ]; then B4L='./bash4llm'; fi; `\$B4L` --dry-run tests/good.json"
