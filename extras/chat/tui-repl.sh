@@ -250,13 +250,14 @@ save_lang_config() {
   local lang="${1:-en}"
   local cfg_dir="${BASH4LLM_CONFIG_DIR:-}"
   local cfg_file="${cfg_dir%/}/config"
-  local tmp_cfg
+  local tmp_cfg=""
   
   safe_mkdir "$(dirname "$cfg_file")" 700
   
   tmp_cfg="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" config_update 2>/dev/null)"
   if [ -z "$tmp_cfg" ]; then
-    tmp_cfg="${BASH4LLM_TMPDIR:-/tmp}/.config_update.$$.tmp"
+    log_error "TUI" "Failed to create temporary file for language config update"
+    return 1
   fi
   
   if [ -f "$cfg_file" ]; then
