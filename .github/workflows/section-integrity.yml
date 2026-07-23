@@ -22,24 +22,37 @@ jobs:
         run: |
           bash -c '
             set -euo pipefail
-            echo "Checking Section Markers strictly on bash4llm..."
+            echo "Locating bash4llm executable..."
             
-            chmod +x ./bash4llm
+            # Dynamic Path Detection
+            B4L_BIN="./bash4llm"
+            if [ ! -f "$B4L_BIN" ]; then
+              B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+            fi
+
+            if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+              echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+              ls -la
+              exit 1
+            fi
+
+            echo "Found executable at: $B4L_BIN"
+            chmod +x "$B4L_BIN"
 
             # 1. Verify Macro-Sections (BEGIN / END) match
-            macro_begin=$(grep -cE "^# SECTION: [A-Z0-9_]+ - BEGIN" bash4llm || true)
-            macro_end=$(grep -cE "^# SECTION: [A-Z0-9_]+ - END" bash4llm || true)
+            macro_begin=$(grep -cE "^# SECTION: [A-Z0-9_]+ - BEGIN" "$B4L_BIN" || true)
+            macro_end=$(grep -cE "^# SECTION: [A-Z0-9_]+ - END" "$B4L_BIN" || true)
             if [ "$macro_begin" -ne "$macro_end" ] || [ "$macro_begin" -eq 0 ]; then
               echo "❌ ERROR: Macro-Section mismatch! BEGIN count: $macro_begin, END count: $macro_end"
               exit 1
             fi
 
             # 2. Extract full line tags including trailing anchors --->N-- safely under pipefail
-            open_tags=$(grep -oE "#--[0-9]+<---\[ SECTION: [A-Z0-9_]+ \]--->[0-9]+--" bash4llm | sort || true)
-            close_tags=$(grep -oE "#--[0-9]+<---\[ /SECTION: [A-Z0-9_]+ \]--->[0-9]+--" bash4llm | sed "s#SECTION: /#SECTION: #" | sort || true)
+            open_tags=$(grep -oE "#--[0-9]+<---\[ SECTION: [A-Z0-9_]+ \]--->[0-9]+--" "$B4L_BIN" | sort || true)
+            close_tags=$(grep -oE "#--[0-9]+<---\[ /SECTION: [A-Z0-9_]+ \]--->[0-9]+--" "$B4L_BIN" | sed "s#SECTION: /#SECTION: #" | sort || true)
             
             if [ -z "$open_tags" ]; then
-              echo "❌ ERROR: No section tags found in bash4llm!"
+              echo "❌ ERROR: No section tags found in $B4L_BIN!"
               exit 1
             fi
 
@@ -58,11 +71,11 @@ jobs:
             fi
 
             # 4. Enforce Flat Architecture (Strictly NO Subsections $N.X)
-            if grep -qE "#--[0-9]+\.[0-9]+" bash4llm; then
+            if grep -qE "#--[0-9]+\.[0-9]+" "$B4L_BIN"; then
               echo "❌ ERROR: Subsections ($N.X) detected! Architectural violation of Flat Policy."
-              grep -nE "#--[0-9]+\.[0-9]+" bash4llm
+              grep -nE "#--[0-9]+\.[0-9]+" "$B4L_BIN"
               exit 1
             fi
             
-            echo "✅ Section Marker Architecture on bash4llm is 100% Valid and Symmetrical!"
+            echo "✅ Section Marker Architecture on $B4L_BIN is 100% Valid and Symmetrical!"
           '
