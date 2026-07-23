@@ -5,6 +5,26 @@
 ## [Unreleased]
  * Additional documentation improvements
  * Optional enhancements for extras and test suites
+
+## [2.6.0] – 2026‑07‑22 - RELEASE NOTES
+### Added
+ * Verifica dell'integrità crittografica dei moduli (`verify_module_integrity`) tramite file manifesto SHA-256 (`extras/manifest.sha256`) per tutti i provider esterni, estensioni ed hook.
+ * Anonimizzazione automatica PII dei Thread ID (`anonymize_thread_id`) tramite hashing SHA-256 (`SAFE_THREAD_ID`), impedendo la scrittura di dati personali (es. email o nomi utente) in chiaro sul filesystem (.ndjson, .json, lock e rate-limit).
+ * Motore locale di rate-limiting a finestra scorrevole su base 30s (`check_local_rate_limit`) per prevenire richieste eccessive o attacchi DOS per thread (`BASH4LLM_RATE_LIMIT`), con supporto per token di autorizzazione di bypass (`BASH4LLM_AUTH_TOKEN`).
+ * Esecuzione isolata degli hook pre/post esecuzione (`execute_isolated_hook`) in subshell pulite con stripping delle chiavi API in memoria e parsing Zero-Eval delle variabili dinamiche (`FALLBACK_PAYLOAD`).
+ * Nuovi comandi CLI per la gestione completa dei thread: `--delete-thread <id>` (rimozione atomica con purga di log e indici), `--rename-thread <id> --title <testo>` (rinomina del titolo utente) e `--init-thread` (pre-registrazione della struttura senza chiamate di rete).
+ * Nuove opzioni CLI per la query immediata dei percorsi di sistema canonici: `--print-config-dir`, `--print-provider-file` e `--print-model-file <provider>`.
+ * Supporto al sblocco della sessione Vault in memoria RAM tramite sourcing (`. ./bash4llm`) gestito dal token di contesto `_B4L_RT_CTX`.
+ * Isolamento strutturale delle directory di runtime e di sincronizzazione con la creazione della cartella dedicata `bash4llm.d/var/run/locks/` (permessi 700).
+### Changed
+ * Riprogettata la funzione `read_secure_input` per supportare un comportamento duale: nasconde l'input via TTY (`stty -echo`) in modalità interattiva (`[ -t 0 ]`) e legge direttamente dallo `stdin` in caso di esecuzione automatizzata via pipe (`! [ -t 0 ]`), azzerando i blocchi di processo.
+ * Spostata la collocazione dei file di blocco (`models.lock`, `tmp.lock`) dalla cartella temporanea alla directory isolata di runtime `var/run/locks/`.
+ * Aggiornato il linter statico della configurazione (`--check-config`) e la spiegazione degli errori (`--explain-error`) per supportare le nuove variabili canoniche e la costante `BASH4LLM_ERR_SEC` (17).
+### Fixed
+ * Risolto un deadlock d'I/O (hang indefinito) durante l'inizializzazione non interattiva del Vault e l'invio di password o segreti via pipe (`printf | vault_init`).
+ * Eliminata una vulnerabilità nel runner degli hook che eseguiva gli script di estensione senza verificare preventivamente la corrispondenza dell'hash SHA-256 contro il file manifesto.
+ * Rafforzata la validazione dei file di input in `validate_file_input` per escludere universalmente byte nulli (`\x00`) e caratteri di controllo non stampabili prima di qualsiasi valutazione di comando.
+
 ## [2.5.0] – 2026‑07‑18 - RELEASE NOTES
 ### Added
  * Estensione Security Vault (openssl-helper.sh) per la gestione e cifratura at-rest delle chiavi API (AES-256-CBC, PBKDF2 con 100.000 iterazioni), supporto al token di sessione in memoria _B4L_RT_CTX e distruzione fisica anti-forensic dei dati tramite shred/dd.
@@ -24,6 +44,7 @@
  * Mitigati potenziali attacchi di tipo Directory Traversal e Privilege Escalation stringendo le regole di verifica dei percorsi interni nell'allocazione risorse via _tmpf.
  * Corretti i comportamenti di validazione dei file di input all'interno di validate_file_input, garantendo l'esclusione universale e indipendente dal locale di byte nulli o caratteri di controllo C0.
  * Risolti i problemi di ridondanza e loop nei log conversazionali implementando un controllo di deduplicazione crittografica via hash SHA-256 basato su una finestra scorrevole (BASH4LLM_SESSION_DEDUP_WINDOW).
+
 ## [2.0.0] – 2026‑06‑20 - RELEASE NOTES
 ### Added
  * Rebranding completo da *GroqBash* a *Bash4LLM* (v2.0.0) con aggiornamento della struttura del repository.
@@ -47,6 +68,7 @@
  * Risolti potenziali errori di variabile non definita sotto set -u (es. inizializzazione di http_code durante il fallback dello stream).
  * Corretto il comportamento di normalizzazione dei prefissi durante la validazione e l'auto-selezione dei modelli con namespace personalizzati.
  * Impedita la scrittura di messaggi vuoti dell'utente all'interno dei file di cronologia.
+
 ## [1.0.0] – 2026‑01‑23 - RELEASE NOTES
 Announcements
 ### Added
@@ -86,17 +108,21 @@ Announcements
  * Removed all remaining ls -ld fallbacks (SC2012)
  * Quoting fixes for exit codes (SC2086)
  * Resolved unbound‑variable edge cases under set -euo pipefail
+
 ## [0.12.0] – 2026‑01‑19
 ### Added
  * Core CLI options: --refresh-models, --list-models, --dry-run, --debug
  * Automatic output saving beyond threshold
  * Documentation: README, INSTALL, CHANGELOG, CONTRIBUTING
+
 ## [0.11.1] – 2026‑01‑18
 ### Added
  * First public version with Groq API model whitelist support
+
 ## [Initial]
  * Minimal repository structure
  * First prototype of bash4llm with basic model refresh
  * Essential documentation
+
 *Note: Some sections of the codebase were drafted or refined with the assistance of AI tools.
 Architecture, design, and final decisions remain manually curated.*
