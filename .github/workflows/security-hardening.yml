@@ -21,7 +21,19 @@ jobs:
       - name: Real Process List Leak Audit & File System Permissions Check
         run: |
           set -euo pipefail
-          chmod +x ./bash4llm
+          
+          # Dynamic Path Detection
+          B4L_BIN="./bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+          fi
+
+          if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+            echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+            exit 1
+          fi
+
+          chmod +x "$B4L_BIN"
 
           # Pre-create local model whitelist to guarantee curl invocation
           mkdir -p bash4llm.d/models
@@ -92,7 +104,7 @@ jobs:
           SAMPLER_PID=$!
 
           # 3. Execute REAL HTTP Request (Triggers actual curl execution)
-          ./bash4llm "Security Audit Prompt" > /dev/null 2>&1 || true
+          "$B4L_BIN" "Security Audit Prompt" > /dev/null 2>&1 || true
           
           wait $SAMPLER_PID 2>/dev/null || true
 
@@ -105,7 +117,7 @@ jobs:
           echo "✅ Process Table Audit Passed: Bearer Token is 100% Hidden from ps aux during real curl requests."
 
           # 4. File System Permissions Audit (Strict 700 / 600 enforcement)
-          ./bash4llm --bootstrap-only
+          "$B4L_BIN" --bootstrap-only
           CONF_DIR="./bash4llm.d/config"
           if [ -d "$CONF_DIR" ]; then
             PERMS=$(stat -c %a "$CONF_DIR" 2>/dev/null || stat -f %Lp "$CONF_DIR" 2>/dev/null)
