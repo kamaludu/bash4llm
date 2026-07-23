@@ -160,6 +160,20 @@ The core executable `bash4llm` serves as the system's **Root of Trust**. To prev
 
 ---
 
+---
+
+## 🛡️ Core Hardening & Automated Security Audits
+
+Beyond standard cross-platform CI/CD, the `./bash4llm` executable undergoes **5 continuous automated security and architecture audits** targeted strictly at the core source file:
+
+1. **[Section Marker Integrity Audit](.github/workflows/section-integrity.yml)**: Validates the 23-Section Flat Architecture, verifying 100% tag symmetry, trailing anchors, and preventing subsection leaks ($N.X$).
+2. **[Sourcing Isolation & Namespace Audit](.github/workflows/sourcing-isolation.yml)**: Tests `_cleanup_sourced_env` to guarantee that importing `bash4llm` into an interactive shell leaves **Zero Function Leaks** in parent memory.
+3. **[Security & Process List Leak Audit](.github/workflows/security-hardening.yml)**: Runs real `curl` transactions against local mock endpoints while sampling `ps aux` at 5ms intervals to prove Bearer API Keys **never leak into the system process table**. Enforces strict `0700` and `0600` POSIX file-system permissions.
+4. **[API Chaos & Resilience Mock Suite](.github/workflows/api-mock-chaos.yml)**: Simulates fault-injection (HTTP 500 errors, rate limits, empty completion edge-cases) using a local Python HTTP Mock Server.
+5. **[Extras SHA-256 Manifest Integrity](.github/workflows/extras-integrity-manifest.yml)**: Verifies cryptographic hashes of all extensions against `extras/manifest.sha256` to prevent tampering or broken modules.
+
+---
+
 ## Available Commands, Flags, and Options
 
 ### Models and Providers
