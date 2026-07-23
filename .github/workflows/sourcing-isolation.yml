@@ -1,0 +1,34 @@
+name: Sourcing Isolation & Namespace Audit
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+  workflow_dispatch:
+
+jobs:
+  test-sourcing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Sourcing Cleanup on bash4llm
+        run: |
+          bash -c '
+            export BASH4LLM_SOURCE_ONLY=0
+            source ./bash4llm < /dev/null || true
+            
+            polluted=$(declare -F | grep -E "safe_mkdir|trim_space|validate_file_input|ensure_run_tmpdir" || true)
+            
+            if [ -n "$polluted" ]; then
+              echo "❌ CRITICAL SECURITY ERROR: Functions leaked into calling environment!"
+              echo "$polluted"
+              exit 1
+            fi
+            
+            echo "✅ Sourcing Isolation verified on bash4llm."
+          '
