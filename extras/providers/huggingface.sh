@@ -22,11 +22,11 @@ HFAPIKEY="${HFAPIKEY:-}"
 # Default helpers for tmpdir and mktemp in project-local tmpdir
 _get_work_tmpdir_hf() {
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    printf '%s' "$RUN_TMPDIR"
+    printf '%s' "${RUN_TMPDIR:-}"
     return 0
   fi
   if [ -n "${BASH4LLM_TMPDIR:-}" ] && [ -d "${BASH4LLM_TMPDIR:-}" ]; then
-    printf '%s' "$BASH4LLM_TMPDIR"
+    printf '%s' "${BASH4LLM_TMPDIR:-}"
     return 0
   fi
   if type make_tmpdir >/dev/null 2>&1; then
@@ -44,10 +44,23 @@ _mktemp_in_dir_hf() {
   local dir="$1" tmpf
   [ -z "$dir" ] && return 1
   [ ! -d "$dir" ] && return 1
-  tmpf="$(mktemp -p "$dir" hf-XXXX 2>/dev/null || true)"
+  tmpf="$(mktemp "${dir%/}/hf-XXXXXX" 2>/dev/null || mktemp -t hf-XXXXXX 2>/dev/null || true)"
   [ -z "$tmpf" ] && return 1
   printf '%s' "$tmpf"
   return 0
+}
+
+_hf_write_atomic() {
+  local src="${1:-}" dst="${2:-}" timeout="${3:-10}"
+  if [ -z "${src:-}" ] || [ -z "${dst:-}" ] || [ ! -s "$src" ]; then
+    return 1
+  fi
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$src" | atomic_write "$dst" "$timeout"
+  else
+    local tmp_dst="${dst}.tmp"
+    cat "$src" > "$tmp_dst" && mv -f "$tmp_dst" "$dst"
+  fi
 }
 
 # -------------------------
@@ -81,25 +94,23 @@ hf_load_endpoints() {
 
 # Get endpoint URL for a model name
 hf_get_endpoint_for_model() {
-  local model="$1" f
+  local model="${1:-}" f
   f="$(hf_load_endpoints)" || return 1
   awk -F'|' -v m="$model" 'BEGIN{OFS=FS} $1==m {print $2; exit}' "$f" 2>/dev/null || true
 }
 
 # List endpoints
 hf_list_endpoints() {
-  local f i=0
+  local f i=0 model url line
   f="$(hf_load_endpoints)" || return 1
   if [ ! -s "$f" ]; then
     printf 'No Hugging Face endpoints registered (file: %s)\n' "$f" >&2
     return 0
   fi
-  while IFS= read -r line; do
-    [ -z "$line" ] && continue
-    # Native string check to ignore commented out rows
-    [[ "$line" == "#"* ]] && continue
-    model="$(printf '%s' "$line" | awk -F'|' '{print $1}')"
-    url="$(printf '%s' "$line" | awk -F'|' '{print $2}')"
+  # Native strict-mode safe reading avoiding subshell forking inside loop
+  while IFS='|' read -r model url _ || [ -n "$model" ]; do
+    [ -z "$model" ] && continue
+    [[ "$model" == "#"* ]] && continue
     i=$((i+1))
     printf '%d) %s -> %s\n' "$i" "$model" "$url"
   done < "$f"
@@ -108,7 +119,7 @@ hf_list_endpoints() {
 
 # Add an endpoint
 hf_add_endpoint() {
-  local model="$1" url="$2" f tmp
+  local model="${1:-}" url="${2:-}" f tmp
   f="$(hf_load_endpoints)" || return 1
 
   case "$url" in
@@ -141,11 +152,7 @@ hf_add_endpoint() {
     cat "$f" >> "$tmp" 2>/dev/null || true
   fi
 
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$tmp" | atomic_write "$f" || mv -f "$tmp" "$f"
-  else
-    mv -f "$tmp" "$f" 2>/dev/null || cp -f "$tmp" "$f" 2>/dev/null || true
-  fi
+  _hf_write_atomic "$tmp" "$f" || mv -f "$tmp" "$f" 2>/dev/null || true
   chmod 644 "$f" 2>/dev/null || true
   rm -f "$tmp" 2>/dev/null || true
   return 0
@@ -153,7 +160,7 @@ hf_add_endpoint() {
 
 # Remove endpoint
 hf_remove_endpoint() {
-  local model="$1" f tmp
+  local model="${1:-}" f tmp
   f="$(hf_load_endpoints)" || return 1
   if ! awk -F'|' -v m="$model" '$1==m{found=1} END{exit !found}' "$f" 2>/dev/null; then
     if type log_error >/dev/null 2>&1; then
@@ -168,11 +175,7 @@ hf_remove_endpoint() {
 
   awk -F'|' -v m="$model" '$1!=m {print}' "$f" > "$tmp" 2>/dev/null || true
 
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$tmp" | atomic_write "$f" || mv -f "$tmp" "$f"
-  else
-    mv -f "$tmp" "$f" 2>/dev/null || cp -f "$tmp" "$f" 2>/dev/null || true
-  fi
+  _hf_write_atomic "$tmp" "$f" || mv -f "$tmp" "$f" 2>/dev/null || true
   chmod 644 "$f" 2>/dev/null || true
   rm -f "$tmp" 2>/dev/null || true
   return 0
@@ -197,7 +200,7 @@ buildpayload_huggingface() {
 
   # Detection of endpoint format (OpenAI completions vs legacy text-gen)
   local endpoint_url is_openai=1
-  endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
+  endpoint_url="$(hf_get_endpoint_for_model "${MODEL:-}" 2>/dev/null || true)"
   if [ -n "$endpoint_url" ] && [[ "$endpoint_url" != */v1/chat/completions ]]; then
     is_openai=0
   fi
@@ -206,42 +209,42 @@ buildpayload_huggingface() {
     # OpenAI Chat Completions payload for router.huggingface.co/v1
     local messages_arr="[]"
     if [ -n "${JSON_INPUT:-}" ]; then
-      if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-        jq --arg model "$MODEL" \
+      if jq -e 'has("messages")' "${JSON_INPUT:-}" >/dev/null 2>&1; then
+        jq --arg model "${MODEL:-}" \
            --argjson max_tokens "${MAX_TOKENS:-256}" \
            --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
-           '.model = $model | .max_tokens = ($max_tokens|tonumber) | .temperature = ($temp|tonumber)' "$JSON_INPUT" > "$tmp_payload"
-      elif jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
-        user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
-        jq -n --arg model "$MODEL" --arg prompt "$user_prompt" \
+           '.model = $model | .max_tokens = ($max_tokens|tonumber) | .temperature = ($temp|tonumber)' "${JSON_INPUT:-}" > "$tmp_payload"
+      elif jq -e 'has("prompt")' "${JSON_INPUT:-}" >/dev/null 2>&1; then
+        user_prompt="$(jq -r '.prompt' "${JSON_INPUT:-}" 2>/dev/null || true)"
+        jq -n --arg model "${MODEL:-}" --arg prompt "$user_prompt" \
               --argjson max_tokens "${MAX_TOKENS:-256}" \
               --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
            '{model:$model, messages:[{role:"user", content:$prompt}], max_tokens:($max_tokens|tonumber), temperature:($temp|tonumber)}' > "$tmp_payload"
       else
-        cat "$JSON_INPUT" > "$tmp_payload"
+        cat "${JSON_INPUT:-}" > "$tmp_payload"
       fi
     else
       # Manage history (BUILD_MESSAGES_FILE)
-      if [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE}"; then
+      if [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE:-}"; then
         local history_msgs
-        history_msgs="$(jq -c '.messages // []' "$BUILD_MESSAGES_FILE" 2>/dev/null || true)"
+        history_msgs="$(jq -c '.messages // []' "${BUILD_MESSAGES_FILE:-}" 2>/dev/null || true)"
         if printf '%s' "$history_msgs" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
           # Append current prompt to history
-          messages_arr="$(jq -n --argjson hist "$history_msgs" --arg usr "$CONTENT" '$hist + [{role:"user", content:$usr}]')"
+          messages_arr="$(jq -n --argjson hist "$history_msgs" --arg usr "${CONTENT:-}" '$hist + [{role:"user", content:$usr}]')"
         fi
       fi
 
       # Fallback single message if history is missing or empty
       if [ "$messages_arr" = "[]" ]; then
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
-          messages_arr="$(jq -n --arg sys "$SYSTEM_PROMPT" --arg usr "$CONTENT" '[{role:"system", content:$sys}, {role:"user", content:$usr}]')"
+          messages_arr="$(jq -n --arg sys "${SYSTEM_PROMPT:-}" --arg usr "${CONTENT:-}" '[{role:"system", content:$sys}, {role:"user", content:$usr}]')"
         else
-          messages_arr="$(jq -n --arg usr "$CONTENT" '[{role:"user", content:$usr}]')"
+          messages_arr="$(jq -n --arg usr "${CONTENT:-}" '[{role:"user", content:$usr}]')"
         fi
       else
         # Prepend system prompt to reconstructed history array
         if [ -n "${SYSTEM_PROMPT:-}" ]; then
-          messages_arr="$(jq -n --argjson msgs "$messages_arr" --arg sys "$SYSTEM_PROMPT" '[{role:"system", content:$sys}] + $msgs')"
+          messages_arr="$(jq -n --argjson msgs "$messages_arr" --arg sys "${SYSTEM_PROMPT:-}" '[{role:"system", content:$sys}] + $msgs')"
         fi
       fi
 
@@ -249,7 +252,7 @@ buildpayload_huggingface() {
       if [ "${STREAM_MODE:-0}" -eq 1 ]; then
         stream_val="true"
       fi
-      jq -n --arg model "$MODEL" \
+      jq -n --arg model "${MODEL:-}" \
             --argjson messages "$messages_arr" \
             --argjson max_tokens "${MAX_TOKENS:-256}" \
             --argjson stream "$stream_val" \
@@ -259,24 +262,24 @@ buildpayload_huggingface() {
   else
     # Legacy text-generation payload
     if [ -n "${JSON_INPUT:-}" ]; then
-      if jq -e 'has("messages")' "$JSON_INPUT" >/dev/null 2>&1; then
-        jq --arg model "$MODEL" \
+      if jq -e 'has("messages")' "${JSON_INPUT:-}" >/dev/null 2>&1; then
+        jq --arg model "${MODEL:-}" \
            --argjson max_tokens "${MAX_TOKENS:-256}" \
            --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
-           '.model = $model | .max_tokens = ($max_tokens|tonumber) | .temperature = ($temp|tonumber)' "$JSON_INPUT" > "$tmp_payload"
-      elif jq -e 'has("prompt")' "$JSON_INPUT" >/dev/null 2>&1; then
-        user_prompt="$(jq -r '.prompt' "$JSON_INPUT" 2>/dev/null || true)"
+           '.model = $model | .max_tokens = ($max_tokens|tonumber) | .temperature = ($temp|tonumber)' "${JSON_INPUT:-}" > "$tmp_payload"
+      elif jq -e 'has("prompt")' "${JSON_INPUT:-}" >/dev/null 2>&1; then
+        user_prompt="$(jq -r '.prompt' "${JSON_INPUT:-}" 2>/dev/null || true)"
         jq -n --arg inputs "$user_prompt" \
               --argjson params "$(jq -n --argjson max_t "${MAX_TOKENS:-256}" --arg t "${TEMPERATURE:-${TURE:-1.0}}" '{max_new_tokens:$max_t, temperature:($t|tonumber)}' 2>/dev/null)" \
            '{inputs:$inputs, parameters:$params}' > "$tmp_payload"
       else
-        cat "$JSON_INPUT" > "$tmp_payload"
+        cat "${JSON_INPUT:-}" > "$tmp_payload"
       fi
     else
       if [ -n "${SYSTEM_PROMPT:-}" ]; then
-        joined="$(printf 'System: %s\n\nUser: %s' "$SYSTEM_PROMPT" "$CONTENT")"
+        joined="$(printf 'System: %s\n\nUser: %s' "${SYSTEM_PROMPT:-}" "${CONTENT:-}")"
       else
-        joined="$CONTENT"
+        joined="${CONTENT:-}"
       fi
       jq -n --arg inputs "$joined" \
             --argjson params "$(jq -n --argjson max_t "${MAX_TOKENS:-256}" --arg t "${TEMPERATURE:-${TURE:-1.0}}" '{max_new_tokens:$max_t, temperature:($t|tonumber)}' 2>/dev/null)" \
@@ -284,12 +287,8 @@ buildpayload_huggingface() {
     fi
   fi
 
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$tmp_payload" | atomic_write "$PAYLOAD"
-  else
-    mv -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || cp -f "$tmp_payload" "$PAYLOAD" 2>/dev/null || true
-  fi
-  chmod 600 "$PAYLOAD" 2>/dev/null || true
+  _hf_write_atomic "$tmp_payload" "${PAYLOAD:-}" || cp -f "$tmp_payload" "${PAYLOAD:-}" 2>/dev/null || true
+  chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
   rm -f "$tmp_payload" 2>/dev/null || true
 
   return 0
@@ -299,13 +298,8 @@ buildpayload_huggingface() {
 # call_api_huggingface
 # -------------------------
 call_api_huggingface() {
-  local _set_u_was_on=0
-  case "$-" in
-    *u*) _set_u_was_on=1; set +u ;;
-  esac
-
-  local prov_env
-
+  local prov_env HFAPIKEY=""
+  
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "huggingface"; then
       if type log_error >/dev/null 2>&1; then
@@ -313,19 +307,17 @@ call_api_huggingface() {
       else
         printf 'bash4llm: ERROR: APIKEY: HF API key required to call Hugging Face.\n' >&2
       fi
-      [ "$_set_u_was_on" -eq 1 ] && set -u
       return "${BASH4LLM_ERR_NO_API_KEY:-10}"
     fi
   fi
 
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "huggingface")"
-    if [ -n "$prov_env" ]; then
-      HFAPIKEY="${!prov_env:-${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}}"
-    else
-      HFAPIKEY="${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}"
+    if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+      HFAPIKEY="${!prov_env}"
     fi
   fi
+  : "${HFAPIKEY:=${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-}}}"
 
   if [ -z "${HFAPIKEY:-}" ]; then
     if type log_error >/dev/null 2>&1; then
@@ -333,16 +325,15 @@ call_api_huggingface() {
     else
       printf 'bash4llm: ERROR: APIKEY: HF API key not set.\n' >&2
     fi
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+    ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   local workdir
-  workdir="$(_get_work_tmpdir_hf)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  workdir="$(_get_work_tmpdir_hf)" || return "${BASH4LLM_ERR_TMP:-15}"
   PAYLOAD="${PAYLOAD:-${workdir}/payload.json}"
   RESP="${RESP:-${workdir}/resp.json}"
   ERRF="${ERRF:-${workdir}/curl.err}"
@@ -364,18 +355,16 @@ call_api_huggingface() {
     else
       printf 'bash4llm: ERROR: HTTP: payload file missing or empty: %s\n' "${PAYLOAD:-<unset>}" >&2
     fi
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
   if [ "${DRY_RUN:-0}" -ne 0 ]; then
     printf 'DRY-RUN: skipping HTTP call (exit 0)\n' >&2
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
   local endpoint_url api_url
-  endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
+  endpoint_url="$(hf_get_endpoint_for_model "${MODEL:-}" 2>/dev/null || true)"
   if [ -z "${endpoint_url:-}" ]; then
     api_url="https://router.huggingface.co/v1/chat/completions"
     if [ "${DEBUG:-0}" -ne 0 ]; then
@@ -398,22 +387,22 @@ call_api_huggingface() {
   fi
 
   local tmpout tmpresp hdr_file http_result http_code time_total http_ct http_body err_text
-  tmpout="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
-  tmpresp="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
-  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  tmpout="$(_mktemp_in_dir_hf "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
+  tmpresp="$(_mktemp_in_dir_hf "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
 
   : > "$tmpout" 2>/dev/null || true
-  : > "$ERRF" 2>/dev/null || true
+  : > "${ERRF:-}" 2>/dev/null || true
   : > "$tmpresp" 2>/dev/null || true
   : > "$hdr_file" 2>/dev/null || true
 
-  http_result="$(curl "${CURL_BASE_OPTS[@]:-}" \
+  http_result="$(curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} \
     -sS -D "$hdr_file" \
     -H "Authorization: Bearer $HFAPIKEY" \
     -H "Content-Type: application/json" \
     --data-binary @"$PAYLOAD" \
     -o "$tmpresp" -w '%{http_code} %{time_total}' \
-    "$api_url" 2>"$ERRF" || true)"
+    "$api_url" 2>"${ERRF:-}" || true)"
 
   read -r http_code time_total <<EOF
 $http_result
@@ -423,19 +412,12 @@ EOF
   http_body="$(cat "$tmpresp" 2>/dev/null || true)"
 
   if [ -s "$tmpresp" ]; then
-    if type atomic_write >/dev/null 2>&1; then
-      cat "$tmpresp" | atomic_write "${RESP}" || cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
-    else
-      cp -f "$tmpresp" "${RESP}" 2>/dev/null || true
-      chmod 600 "${RESP}" 2>/dev/null || true
-    fi
+    _hf_write_atomic "$tmpresp" "${RESP:-}" || cp -f "$tmpresp" "${RESP:-}" 2>/dev/null || true
   else
-    : > "${RESP}"
+    : > "${RESP:-}"
   fi
 
-  rm -f "$tmpout" "$hdr_file" "$ERRF" 2>/dev/null || true
-
-  [ "$_set_u_was_on" -eq 1 ] && set -u
+  rm -f "$tmpout" "$hdr_file" "${ERRF:-}" 2>/dev/null || true
 
   case "$http_code" in
     2*)
@@ -479,8 +461,8 @@ EOF
         fi
       fi
 
-      printf '{"error":"HTTP %s","message":%s}\n' "$http_code" "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP}" 2>/dev/null || true
-      chmod 600 "${RESP}" 2>/dev/null || true
+      printf '{"error":"HTTP %s","message":%s}\n' "$http_code" "$(printf '%s' "$err_text" | jq -R -s . 2>/dev/null || printf 'null')" > "${RESP:-}" 2>/dev/null || true
+      chmod 600 "${RESP:-}" 2>/dev/null || true
       return "${BASH4LLM_ERR_API:-16}"
       ;;
   esac
@@ -491,57 +473,48 @@ EOF
 # -------------------------
 # Optimized HuggingFace streaming using single unbuffered jq processor
 call_api_streaming_huggingface() {
-  local _set_u_was_on=0
-  case "$-" in
-    *u*) _set_u_was_on=1; set +u ;;
-  esac
-
-  local prov_env
+  local prov_env HFAPIKEY=""
 
   if type ensure_api_key_for_provider >/dev/null 2>&1; then
     if ! ensure_api_key_for_provider "huggingface"; then
       log_error "APIKEY" "HF API key required to call Hugging Face."
-      [ "$_set_u_was_on" -eq 1 ] && set -u
       return "${BASH4LLM_ERR_NO_API_KEY:-10}"
     fi
   fi
 
   if type provider_api_env_var_name >/dev/null 2>&1; then
     prov_env="$(provider_api_env_var_name "huggingface")"
-    if [ -n "$prov_env" ]; then
-      HFAPIKEY="${!prov_env:-${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}}"
-    else
-      HFAPIKEY="${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-${HFAPIKEY:-}}}"
+    if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+      HFAPIKEY="${!prov_env}"
     fi
   fi
+  : "${HFAPIKEY:=${HUGGINGFACE_API_KEY:-${BASH4LLM_API_KEY:-}}}"
 
   if [ -z "${HFAPIKEY:-}" ]; then
     log_error "APIKEY" "HF API key not set."
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
   if is_truthy "${DRY_RUN:-0}"; then
     printf 'DRY-RUN: skipping streaming HTTP call (exit 0)\n' >&2
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 0
   fi
 
   if type ensure_run_tmpdir >/dev/null 2>&1; then
-    ensure_run_tmpdir || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+    ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  local api_url rc RESP_RAW workdir hdr_file
-  workdir="$(_get_work_tmpdir_hf)" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  local api_url rc RESP_RAW workdir hdr_file _line
+  workdir="$(_get_work_tmpdir_hf)" || return "${BASH4LLM_ERR_TMP:-15}"
   RESP_RAW="${RESP_RAW:-${workdir}/resp.raw}"
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
   ERRF="${ERRF:-${workdir}/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
-  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || { [ "$_set_u_was_on" -eq 1 ] && set -u; return "${BASH4LLM_ERR_TMP:-15}"; }
+  hdr_file="$(_mktemp_in_dir_hf "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
 
   local endpoint_url
-  endpoint_url="$(hf_get_endpoint_for_model "$MODEL" 2>/dev/null || true)"
+  endpoint_url="$(hf_get_endpoint_for_model "${MODEL:-}" 2>/dev/null || true)"
   if [ -z "${endpoint_url:-}" ]; then
     api_url="https://router.huggingface.co/v1/chat/completions"
   else
@@ -549,14 +522,14 @@ call_api_streaming_huggingface() {
   fi
 
   # Single unbuffered jq processing pipeline extracting delta content and catching direct HTTP errors
-  curl "${CURL_BASE_OPTS[@]:-}" \
+  curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} \
        -sS -D "$hdr_file" \
        -H "Authorization: Bearer $HFAPIKEY" \
        -H "Content-Type: application/json" \
        --no-buffer \
        --data-binary @"$PAYLOAD" \
        "$api_url" \
-       2>"$ERRF" | \
+       2>"${ERRF:-}" | \
   tee -a "$RESP_RAW" | \
   jq --unbuffered -R -r '
     if startswith("data: ") then
@@ -575,9 +548,8 @@ call_api_streaming_huggingface() {
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -ne 0 ] && {
-    dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
-    rm -f "$hdr_file" "$ERRF" 2>/dev/null || true
-    [ "$_set_u_was_on" -eq 1 ] && set -u
+    dbg "curl stderr (head):"; head -n 50 "${ERRF:-}" >&2 || true
+    rm -f "$hdr_file" "${ERRF:-}" 2>/dev/null || true
     return "${BASH4LLM_ERR_CURL_FAILED:-12}"
   }
 
@@ -601,18 +573,10 @@ call_api_streaming_huggingface() {
     if [ -n "${unified_text}" ]; then
       local synthetic_resp="$workdir/resp.synthetic.json"
       jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
-      if type atomic_write >/dev/null 2>&1; then
-        cat "$synthetic_resp" | atomic_write "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$synthetic_resp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-      else
-        cp -f "$synthetic_resp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-      fi
+      _hf_write_atomic "$synthetic_resp" "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$synthetic_resp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
       rm -f "$synthetic_resp" 2>/dev/null || true
     else
-      if type atomic_write >/dev/null 2>&1; then
-        cat "$workdir/resp.chunks.json" | atomic_write "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-      else
-        cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-      fi
+      _hf_write_atomic "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$workdir/resp.chunks.json" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
     fi
   else
     if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
@@ -620,9 +584,8 @@ call_api_streaming_huggingface() {
     fi
   fi
 
-  rm -f "$hdr_file" "$ERRF" "$workdir/resp.lines" "$workdir/resp.valid.jsons" "$workdir/resp.chunks.json" 2>/dev/null || true
+  rm -f "$hdr_file" "${ERRF:-}" "$workdir/resp.lines" "$workdir/resp.valid.jsons" "$workdir/resp.chunks.json" 2>/dev/null || true
   
-  [ "$_set_u_was_on" -eq 1 ] && set -u
   return 0
 }
 
@@ -651,13 +614,11 @@ refresh_models_huggingface() {
 
   mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
 
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$tmpout" | atomic_write "$outpath"
-  else
+  _hf_write_atomic "$tmpout" "$outpath" || {
     mv "$tmpout" "${outpath}.new" 2>/dev/null || cp -f "$tmpout" "${outpath}.new" 2>/dev/null || true
     chmod 600 "${outpath}.new" 2>/dev/null || true
     mv -f "${outpath}.new" "$outpath" 2>/dev/null || cp -f "${outpath}.new" "$outpath" 2>/dev/null || true
-  fi
+  }
 
   chmod 600 "$outpath" 2>/dev/null || true
   log_info "MODELREFRESH" "Hugging Face models refreshed from local endpoints and saved to: $outpath"
@@ -688,18 +649,11 @@ auto_select_model_huggingface() {
 }
 
 validate_key_huggingface() {
-  # Temporarily disable set -u if active
-  local _set_u_was_on=0
-  case "$-" in
-    *u*) _set_u_was_on=1; set +u ;;
-  esac
-
   local key="${1:-}"
   local http_code curl_rc=0
   local tmpout errf workdir
 
   if [ -z "$key" ]; then
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 1
   fi
 
@@ -713,7 +667,7 @@ validate_key_huggingface() {
   # GET call to the /api/whoami-v2 identity endpoint
   local api_url="https://huggingface.co/api/whoami-v2"
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]:-}" --silent --show-error --no-buffer --max-time 10 \
+  http_code="$(curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} --silent --show-error --no-buffer --max-time 10 \
     -H "Authorization: Bearer $key" \
     -o "$tmpout" \
     -w "%{http_code}" \
@@ -721,9 +675,6 @@ validate_key_huggingface() {
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true
-
-  # Restore set -u if previously active
-  [ "$_set_u_was_on" -eq 1 ] && set -u
 
   # Detecting timeouts or network problems
   if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then

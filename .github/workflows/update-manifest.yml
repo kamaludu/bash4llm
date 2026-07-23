@@ -1,0 +1,39 @@
+name: Update Extras Manifest
+
+on:
+  push:
+    paths:
+      - 'extras/**'
+      - '!extras/manifest.sha256'
+  workflow_dispatch:
+
+jobs:
+  update-manifest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Generate SHA-256 Manifest
+        run: |
+          cd extras
+          cat << 'EOF' > manifest.sha256
+          # Bash4LLM Extras Integrity Manifest (SHA-256)
+          # Format: <sha256_hash>  <relative_path_from_extras_dir>
+          # Official release modules integrity verification table
+
+          EOF
+          find . -type f ! -name "manifest.sha256" -exec sha256sum {} + | sed 's|  \./|  |' | sort -k2 >> manifest.sha256
+
+      - name: Commit & Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v5.1.0
+        with:
+          commit_message: "chore(security): auto-update extras/manifest.sha256 [skip ci]"
+          file_pattern: "extras/manifest.sha256"
+          auto_push_pr: false
+          push_options: '--force'

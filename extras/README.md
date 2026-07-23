@@ -2,6 +2,8 @@
 
 # Bash4llm Extras
 
+[![Update Extras Manifest](https://github.com/kamaludu/bash4llm/actions/workflows/update-manifest.yml/badge.svg?branch=kamaludu-patch-1)](https://github.com/kamaludu/bash4llm/actions/workflows/update-manifest.yml)
+
 ```text
 extras/
 ├── chat/                   # Text User Interface

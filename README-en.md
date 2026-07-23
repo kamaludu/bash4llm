@@ -122,22 +122,31 @@ Using an external provider (if installed and configured):
 
 ---
 
-## Session Sandboxing (Volatile RAM)
+## 🚨 Security & File System Hardening
 
-If you choose not to persist your API keys on disk (via the Encrypted Vault or configuration files), `Bash4LLM⁺` allows you to work entirely in active RAM safely, protecting you from screen recording or command history pollution (*Command History Leak*).
+The core executable `bash4llm` serves as the system's **Root of Trust**. To prevent unauthorized tampering by local processes, apply the quick hardening commands for your platform:
 
-When you answer **`y` (Yes)** to the current session export prompt:
-1. The script loads the secret key into the process environment memory.
-2. It replaces the current process by spawning a new nested shell (*Session Sandbox*) where the key is active.
-3. You can now run `./bash4llm` freely without ever being prompted for your key again.
+* **Linux (GNU/Linux):**
+  ```bash
+  sudo chown root:root /path/to/bash4llm && sudo chmod 755 /path/to/bash4llm
+  sudo chattr +i /path/to/bash4llm  # Kernel Immutability Attribute
+  ```
+* **macOS / BSD:**
+  ```bash
+  sudo chown root:wheel /path/to/bash4llm && sudo chmod 755 /path/to/bash4llm
+  sudo chflags schg /path/to/bash4llm  # System Immutable Flag
+  ```
+* **Termux (Android):**
+  ```bash
+  chmod 500 ~/bash4llm  # Read/execute exclusively for sandbox owner
+  ```
+* **WSL / Cygwin (Windows):**
+  ```bash
+  setfacl -b /path/to/bash4llm 2>/dev/null  # Strip Windows ACL overrides
+  chmod 755 /path/to/bash4llm
+  ```
 
-To close this secure session and instantly wipe the key from active memory, simply run:
-```bash
-exit
-```
-This returns you safely to your base terminal (you can type `exit` once more if you wish to close the terminal window/tab entirely).
-
-More security information is available in: **[SECURITY](SECURITY-en.md)**.
+ 📖 For detailed instructions refer to: **[SECURITY-en.md](SECURITY-en.md)**.
 
 ---
 

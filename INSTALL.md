@@ -6,31 +6,33 @@ Non richiede Python né dipendenze esterne oltre ai comandi POSIX/coreutils e al
 
 ---
 
-## 1. Requisiti
+## 1. Requisiti di Sistema
 
-Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel tuo `PATH`:
+Bash4LLM⁺ richiede che i seguenti **23 binari/utilità** siano disponibili nel tuo `PATH`:
 
-- ***bash*** (versione 4.0 o superiore per il supporto agli array associativi)
-- coreutils (comandi stat, chmod, mkdir, ecc.)
-- findutils
-- util-linux
-- gawk
-- curl
-- jq
+- **bash** (versione 4.0 o superiore per il supporto agli array associativi e al caching in-process)
+- **coreutils** (`cat`, `chmod`, `cp`, `date`, `head`, `mktemp`, `mv`, `printf`, `rm`, `sort`, `stat`, `tr`, `wc`, `tee`)
+- **findutils** (`find`)
+- **util-linux** (`xargs`)
+- **awk**, **sed**, **grep**, **comm**
+- **curl**
+- **jq**
 
-### Compatibilità
+*Nota: L'utility `flock` non è obbligatoria; se assente (es. su Termux/Android), lo script devia automaticamente su directory lock atomiche.*
+
+### Compatibilità Piattaforme
 
 Bash4LLM⁺ è testato e supportato su:
 
-- GNU/Linux
-- macOS (con utilità standard o pacchetti GNU da Homebrew)
-- WSL e Cygwin (Windows)
-- Termux (Android)
-- BSD (FreeBSD, OpenBSD, NetBSD)
+- **GNU/Linux** (Tutte le distribuzioni principali)
+- **macOS** (Con utilità di sistema di default o pacchetti GNU da Homebrew)
+- **WSL e Cygwin** (Windows)
+- **Termux** (Android)
+- **BSD** (FreeBSD, OpenBSD, NetBSD, DragonFly)
 
 ---
 
-## 2. Installazione rapida (Fast Forward)
+## 2. Installazione Rapida (Fast Forward)
 
 > [!TIP]
 > **⏩ FAST FORWARD (Installazione Rapida)**
@@ -43,7 +45,7 @@ Bash4LLM⁺ è testato e supportato su:
 > 
 > # 2. Crea una cartella di lavoro ed estrai l'eseguibile
 > mkdir -p bash4llm
-> cp repo-bash4llm/bin/bash4llm bash4llm/
+> cp repo-bash4llm/bash4llm bash4llm/
 > chmod +x bash4llm/bash4llm
 > 
 > # 3. Entra nella cartella e aggiorna i modelli 
@@ -51,94 +53,168 @@ Bash4LLM⁺ è testato e supportato su:
 > ./bash4llm --refresh-models
 > ```
 > 
-> Lo script rileverà l'assenza della chiave e ti chiederà l'inserimento interattivo:
+> In assenza di una chiave salvata, lo script chiederà l'inserimento interattivo:
 > `Enter API key for provider groq (env GROQ_API_KEY):`
 > 
-> Inserisci la tua API key di Groq. Per evitare di reinserirla nelle successive esecuzioni della sessione di terminale corrente, esportala:
+> Inserisci la tua API key di Groq. Per evitare di reinserirla nelle successive esecuzioni della sessione corrente, esportala:
 > 
 > `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
 > 
-> Consigliato: ***installa gli Extras opzionali*** (provider aggiuntivi, chat REPL, template):
+> Consigliato: ***installa gli Extras opzionali*** (provider aggiuntivi, Vault crittografico, chat REPL, template):
 > ```sh
 > # 4. Installazione degli Extras
 > ./bash4llm --install-extras ../repo-bash4llm/extras/
 > ```
 > 
 > Usa Bash4llm ⚡
-> 
-
-### 2.1 Installazione manuale
-
-Rendi eseguibile il file principale dopo averlo scaricato o copiato:
-
-`chmod +x bash4llm`
-
-### 2.2 Impostare la chiave API
-
-Bash4LLM⁺ legge la chiave API dall'ambiente. Esportala nel tuo file di configurazione della shell (es. `~/.bashrc` o `~/.bash_profile`):
-
-`export GROQ_API_KEY="la_tua_chiave_qui"`
 
 ---
 
-## 3. Struttura delle directory
+### 2.1 Installazione Manuale
 
-Alla prima esecuzione, lo script crea la seguente struttura di lavoro all'interno della directory di runtime (`bash4llm.d/`), applicando permessi restrittivi `700` (cartelle) e `600` (file) per impedire l'accesso ad altri utenti del sistema:
+Se scarichi solo l'eseguibile singolo `bash4llm`, rendilo eseguibile applicando i permessi POSIX:
 
-```text
-bash4llm.d/
-    config/                # Configurazione e persistenza provider/modelli default
-        providers/         # Configurazioni specifiche dei provider (es. hf_endpoints)
-        ui_state/          # File JSON di stato per GUI e automazioni
-            threads/       # Metadati e indici delle sessioni attive
-        thread_cache/      # Caching locale delle risposte dei thread (se attivo)
-    models/                # File txt delle whitelist dei modelli per ciascun provider
-    templates/             # Prompt template riutilizzabili
-    history/               # Cronologia degli output salvati automaticamente
-        threads/           # Storico conversazionale dei thread in formato NDJSON
-    tmp/                   # Cartella sicura isolata per i lock e i file temporanei
-    extras/                # Componenti aggiuntivi opzionali (installati con --install-extras)
-        providers/         # Script dei provider esterni (Gemini, Hugging Face, Mistral)
+```sh
+chmod +x bash4llm
 ```
 
 ---
 
-## 4. Installazione degli Extras (`--install-extras`)
+### 2.2 Impostare la Chiave API
 
-Per utilizzare le funzioni avanzate (la console di cifratura delle chiavi, i provider aggiuntivi come Gemini o Hugging Face, o l'interfaccia di chat interattiva REPL), installa gli Extras:
+Bash4LLM⁺ ricerca la chiave API nell'ambiente. Puoi esportarla nel tuo file di configurazione della shell (es. `~/.bashrc`, `~/.bash_profile` o `~/.zshrc`):
 
-`./bash4llm --install-extras`
+```sh
+export GROQ_API_KEY="la_tua_chiave_qui"
+```
 
-Se esegui l'eseguibile al di fuori della cartella del repository clonato, specifica il percorso in cui si trova la cartella `extras`:
-
-`./bash4llm --install-extras /percorso/di/sorgente/extras`
-
-L'installer si occuperà di copiare ricorsivamente i file necessari all'interno del perimetro sicuro `bash4llm.d/extras/`, applicando permessi restrittivi `700` ai file eseguibili (come i moduli dei provider e la chat TUI) e `600` ai documenti di aiuto o template.
-
-Se stai operando su un filesystem non nativamente POSIX (ad esempio una condivisione NTFS sotto Windows o determinati montaggi di rete), lo script rileverà i limiti di applicazione dei permessi stampando un avviso non bloccante.
+In alternativa, puoi salvare le chiavi API in modo cifrato su disco utilizzando il **Security Vault** integrato (vedi Sezione 4).
 
 ---
 
-## 5. Troubleshooting e risoluzione dei problemi
+## 3. Struttura delle Directory
 
-### Errore di sicurezza (Codice d'uscita 17 - BASH4LLM_ERR_SEC)
-Se lo script si interrompe con l'errore `BASH4LLM_ERR_SEC`, significa che un controllo statico di sicurezza ha rilevato permessi di scrittura troppo permissivi sul file di configurazione locale o sulla cartella del programma. Metti in sicurezza il tuo ambiente di lavoro eseguendo:
+Alla prima esecuzione, Bash4LLM⁺ crea automaticamente l'albero di lavoro isolato nella directory di runtime (`bash4llm.d/`), applicando permessi restrittivi `700` (cartelle) e `600` (file):
+
+```text
+bash4llm.d/
+├── config/                                # Configurazione e persistenza provider
+│   ├── config                             # Variabili e parametri globali utente
+│   ├── provider                           # Nome del provider attivo
+│   ├── provider-url                       # URL delle API del provider attivo
+│   ├── model.<provider>                   # Modello di default per il provider
+│   ├── keys.enc                           # Database cifrato delle chiavi API (Vault)
+│   ├── keys.rec                           # Chiave di ripristino offline cifrata (Vault)
+│   ├── keys.dat                           # Payload cifrato delle chiavi API
+│   ├── providers/                         # Cartella per configurazioni avanzate
+│   │   └── hf_endpoints                   # Mappatura modelli/endpoint Hugging Face
+│   └── ui_state/                          # File JSON di stato per GUI ed automazioni
+│       ├── last_api.json                  # Stato dell'ultima chiamata API
+│       ├── last_history.json              # Stato dell'ultimo output salvato
+│       ├── provider_capabilities.json     # Capacità del provider attivo
+│       └── threads/                       # Metadati ed indici dei thread
+│           ├── index.json                 # Elenco dei thread attivi
+│           └── <safe_thread_id>.json      # Metadati dello stato del singolo thread (SHA-256)
+├── models/                                # Whitelist dei modelli per ciascun provider
+│   └── <provider>.txt                     # Elenco modelli approvati
+├── templates/                             # Prompt template riutilizzabili
+├── history/                               # Cronologia delle risposte ed output
+│   └── threads/                           # Storico conversazionale (.ndjson anonimizzato)
+│       └── <safe_thread_id>.ndjson        # Registro della conversazione in NDJSON
+├── var/                                   # Processi e file di runtime isolati
+│   └── run/                              # Directory di runtime di processo (700)
+│       └── locks/                         # Directory isolata dei file di blocco (700)
+│           ├── models.lock                # Lock per l'aggiornamento dei modelli
+│           ├── history.lock               # Lock per l'aggiornamento della cronologia
+│           └── tmp.lock                   # Lock per allocazione file temporanei
+├── tmp/                                   # Cartella temporanea sicura ad accesso esclusivo (700)
+│   └── rates/                             # Tracciamento transazioni rate limiting (700)
+│       └── <safe_thread_id>/              # Timestamp delle richieste per finestra scorrevole
+└── extras/                                # Componenti aggiuntivi ed estensioni
+    ├── manifest.sha256                    # Manifesto dell'integrità crittografica SHA-256
+    ├── chat/                              # Interfaccia REPL TUI (tui-repl.sh)
+    ├── hooks/                             # Moduli di estensione pre/post esecuzione (hook.sh)
+    ├── security/                          # Vault ed helper di sicurezza (openssl-helper.sh)
+    ├── providers/                         # Moduli provider esterni (Gemini, Hugging Face, Mistral)
+    └── session/                           # Gestore avanzato di sessione (session-engine.sh)
+```
+
+---
+
+## 4. Gestione Cifrata delle Chiavi (Security Vault)
+
+Se hai installato gli Extras ed è disponibile il binario `openssl`, puoi evitare di conservare le chiavi API in chiaro nelle variabili d'ambiente utilizzando la console crittografica integrata:
+
+```sh
+./bash4llm --vault
+```
+
+### Funzionalità del Vault:
+* **Cifratura At-Rest**: Le chiavi vengono cifrate in AES-256-CBC con derivazione PBKDF2 (100.000 iterazioni) e salvate in `bash4llm.d/config/keys.dat`.
+* **Sblocco Sessione in RAM**: Puoi sbloccare il Vault per la sessione corrente di terminale eseguendo il sourcing dello script:
+  ```sh
+  . ./bash4llm
+  ```
+  Questo memorizza temporaneamente il token offuscato `_B4L_RT_CTX` nella memoria RAM della shell, bypassando le richieste di password fino alla chiusura del terminale.
+* **Disabilitazione del Vault**: Puoi disabilitare il Vault impostando la variabile d'ambiente `BASH4LLM_VAULT_ENABLED=0`.
+
+---
+
+## 5. Installazione degli Extras (`--install-extras`)
+
+Per attivare le funzionalità avanzate (la console Vault, la chat interattiva TUI, il Session Engine o i provider aggiuntivi come Gemini, Mistral e Hugging Face), installa il pacchetto Extras:
+
+```sh
+./bash4llm --install-extras
+```
+
+Se esegui l'eseguibile da una cartella diversa dal repository clonato, specifica il percorso esplicito della cartella `extras`:
+
+```sh
+./bash4llm --install-extras /percorso/di/sorgente/extras
+```
+
+### Comportamento di Sicurezza dell'Installer:
+1. **Verifica di Integrità SHA-256**: Tutti i moduli copiati vengono verificati rispetto al manifesto crittografico `manifest.sha256`. Se un file risulta manomesso, l'installazione viene segnalata.
+2. **Copia Atomica e Protetta**: I file vengono copiati sotto lock esclusivo applicando permessi restrittivi `700` alle cartelle/eseguibili e `600` ai file di configurazione e documentazione.
+3. **Rifiuto dei Symlink**: L'installer rifiuta la copia di collegamenti simbolici per prevenire attacchi di Directory Traversal.
+
+---
+
+## 6. Troubleshooting e Risoluzione dei Problemi
+
+### Errore di Sicurezza (Codice d'uscita 17 - BASH4LLM_ERR_SEC)
+Se lo script si interrompe con il codice `17` (`BASH4LLM_ERR_SEC`), significa che è stata rilevata una violazione della politica di sicurezza:
+* **Permessi troppo aperti**: Il file di configurazione o le directory sono scrivibili da gruppi o altri utenti (`group/world-writable`).
+* **Symlink rilevato**: È presente un collegamento simbolico non autorizzato su un percorso critico.
+* **Manomissione del codice**: Un modulo della cartella `extras/` non corrisponde al relativo digest SHA-256 nel file `manifest.sha256`.
+
+Per ripristinare i permessi POSIX corretti, esegui:
 
 ```sh
 chmod 700 bash4llm.d
 chmod 600 bash4llm.d/config/config
 ```
 
-### Timeout sui lock del filesystem
-Se ricevi un errore di timeout durante la scrittura dei modelli o dei thread a causa di operazioni concorrenti prolungate, puoi aumentare il tempo di attesa massimo (espresso in secondi) esportando la variabile d'ambiente corretta:
+### Blocco del Rate Limiter
+Se invii un numero eccessivo di richieste all'interno di una finestra di 30 secondi, il limitatore di frequenza locale bloccherà l'esecuzione con il codice `17`. Puoi regolare il limite o bypassarlo definendo la variabile:
 
-`export BASH4LLM_LOCK_TIMEOUT_HISTORY=30`
+```sh
+export BASH4LLM_RATE_LIMIT=10  # Consente 10 richieste ogni 30 secondi per thread
+```
+
+### Timeout sui Lock del Filesystem
+Se ricevi un errore di timeout (`Exit Code 15`) durante l'accesso ai file di blocco a causa di operazioni concorrenti prolungate, puoi aumentare il tempo di attesa massimo (espresso in secondi):
+
+```sh
+export BASH4LLM_LOCK_TIMEOUT_HISTORY=30
+```
 
 ---
 
-## 6. Disinstallazione
+## 7. Disinstallazione
 
-Bash4LLM⁺ è completamente auto-confinato. Per rimuoverlo definitivamente dal sistema è sufficiente eliminare l'eseguibile e la sua cartella di lavoro:
+Bash4LLM⁺ è completamente isolato e auto-confinato. Per rimuoverlo definitivamente dal sistema è sufficiente eliminare l'eseguibile e la sua cartella di lavoro:
 
 ```sh
 rm -rf bash4llm.d
@@ -147,250 +223,6 @@ rm bash4llm
 
 ---
 
-## 7. Licenza
+## 8. Licenza
 
 Bash4LLM⁺ è un software libero distribuito sotto licenza [**GNU GPL v3**](LICENSE).
-
-> Lo script ti chiederà l'inserimento della tua chiave API per il provider di default (Groq):
-> `Enter API key for provider groq (env GROQ_API_KEY):`
-> 
-> Inserisci la tua API key, poi esportala per non doverla più inserire durante la sessione:
-> 
-> `export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxx"`
-> 
-> Consigliato: ***installa gli Extras opzionali***:
-> ```sh
-> # 4. Installazione degli Extras
-> ./bash4llm --install-extras ../repo-bash4llm/extras/
-> ```
-> 
-> Usa Bash4llm ⚡
-> 
-
-### 2.1 Clonare o scaricare Bash4LLM
-
-`git clone https://github.com/<tuo-repo>/bash4llm.git`  
-`cd bash4llm`
-
-Oppure scarica il file `bash4llm` e rendilo eseguibile:
-
-`chmod +x bash4llm`
-
-### 2.2 Impostare la chiave API
-
-Bash4LLM usa la variabile:
-
-`export GROQ_API_KEY="la_tua_chiave"`
-
-Puoi inserirla nel tuo `.bashrc` o `.zshrc`.
-
----
-
-## 3. Struttura delle directory
-
-Alla prima esecuzione, Bash4LLM crea automaticamente:
-`
-bash4llm.d/
-    config/
-    models/
-    templates/
-    history/
-    tmp/
-    extras/
-        providers/
-`
-Tutte le directory sono create con permessi 700 (best‑effort su filesystem non‑POSIX).
-
----
-
-## 4. Uso rapido
-
-### Prompt singolo
-
-`./bash4llm -m mixtral-8x7b -- "Scrivi un haiku sul vento."`
-
-### Modalità streaming
-
-`./bash4llm --stream -- "Genera testo in streaming."`
-
-### Input da file
-
-`./bash4llm -f input.txt`
-
-### Output in JSON
-
-`./bash4llm --json -- "Cosa sai di Bash?"`
-
----
-
-## 5. Modelli
-
-### Aggiornare la lista dei modelli
-
-`./bash4llm --refresh-models`
-
-La lista viene salvata in:
-
-`bash4llm.d/models/models.txt`
-
-### Elencare i modelli
-
-`./bash4llm --list-models`
-
----
-
-## 6. History e salvataggio automatico
-
-Bash4LLM salva automaticamente l’output quando:
-
-- supera una certa dimensione (THRESHOLD, default 1000 byte), oppure  
-- è attivo `--save`.
-
-I file vengono salvati in:
-
-`bash4llm.d/history/`
-
-La rotazione è configurabile tramite:
-
-- BASH4LLM_ROTATE_HISTORY  
-- BASH4LLM_HISTORY_MAX_FILES  
-- BASH4LLM_HISTORY_MAX_BYTES  
-- BASH4LLM_HISTORY_KEEP_DAYS  
-
----
-
-## 7. Installazione degli extras (opzione `--install-extras`)
-
-Bash4LLM include un installer sicuro e portabile per copiare componenti aggiuntivi (script, provider, template, documentazione) nella directory:
-
-`bash4llm.d/extras/`
-
-### 7.1 Uso base
-
-`./bash4llm --install-extras`
-
-Se non specifichi componenti, vengono installati **tutti** i file presenti nella directory sorgente degli extras.
-
-### 7.2 Installare componenti specifici
-
-`./bash4llm --install-extras provider1 templateA`
-
-### 7.3 Sorgente personalizzata
-
-`./bash4llm --install-extras --source /path/to/extras`
-
-### 7.4 Sovrascrivere file in conflitto
-
-`./bash4llm --install-extras --force`
-
-### 7.5 Modalità dry‑run
-
-`./bash4llm --install-extras --dry-run`
-
-Nessun file viene modificato.
-
----
-
-## 8. Comportamento dell’installer (dettagli tecnici)
-
-### 8.1 Sicurezza e atomicità
-
-- Ogni file è copiato tramite:
-  - mktemp  
-  - cat (portabile)  
-  - mv -f atomico  
-- Ogni operazione è protetta da lock (flock) su:
-  `bash4llm.d/extras/.install.lock`
-
-### 8.2 Permessi
-
-- File normali → chmod 600  
-- File eseguibili → chmod 700  
-- Se il filesystem non supporta i permessi (NTFS/WSL), Bash4LLM mostra un **warning**, non un errore.
-
-### 8.3 Symlink
-
-- I symlink nella sorgente vengono risolti in modo sicuro.  
-- Se puntano fuori dalla directory sorgente → **vengono rifiutati**.
-
-### 8.4 Conflitti
-
-- Se un file esiste già e **è diverso**, Bash4LLM:
-  - mostra un **warning**,  
-  - **non sovrascrive**,  
-  - **non fallisce** (exit code 0),  
-  - a meno che non sia usato `--force`.
-
-### 8.5 Timeout lock
-
-Il timeout del lock è configurabile:
-
-`export BASH4LLM_LOCK_TIMEOUT_MODELS=10`
-
-Default: **10 secondi**.
-
----
-
-## 9. Variabili d’ambiente utili
-
-- GROQ_API_KEY — chiave API Groq  
-- MODEL — modello predefinito  
-- TURE / TEMPERATURE — temperatura  
-- MAX_TOKENS  
-- OUTPUT_MODE — text, raw, json, pretty  
-- BASH4LLM_DEBUG=1 — abilita log dettagliati  
-- ALLOW_API_CALLS=0 — blocca chiamate reali (utile per test)
-
----
-
-## 10. Portabilità e note sui filesystem
-
-### 10.1 NTFS / WSL
-
-- chmod può fallire → Bash4LLM mostra un warning.  
-- Le operazioni restano atomiche.
-
-### 10.2 NFS
-
-- flock può essere inaffidabile → Bash4LLM mostra un warning in modalità debug.
-
-### 10.3 BusyBox
-
-- Tutte le funzioni sono compatibili.
-
----
-
-## 11. Disinstallazione
-
-Per rimuovere Bash4LLM:
-
-`rm -rf bash4llm.d`  
-`rm bash4llm`
-
----
-
-## 12. Troubleshooting
-
-### Nessuna risposta dal modello
-
-- Verifica GROQ_API_KEY  
-- Verifica connessione  
-- Attiva debug:  
-  `BASH4LLM_DEBUG=1 ./bash4llm -- "test"`
-
-### Errore su permessi
-
-Probabile filesystem non‑POSIX (NTFS).  
-Bash4LLM continua comunque l’installazione.
-
-### Lock timeout
-
-Aumenta:
-
-`export BASH4LLM_LOCK_TIMEOUT_MODELS=30`
-
----
-
-## 13. Licenza
-
-Bash4LLM è distribuito sotto licenza [**GNU GPL v3**](LICENSE)

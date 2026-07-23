@@ -122,22 +122,31 @@ Uso di un provider esterno (se installato e configurato):
 
 ---
 
-## Session Sandboxing (RAM Volatile)
+## 🚨 Sicurezza & Hardening del File System
 
-Se decidi di non salvare in modo permanente le tue chiavi sul disco fisso (tramite il Vault Cifrato o i file di configurazione), `Bash4LLM⁺` ti permette di lavorare interamente in memoria RAM in modo sicuro, esente da registrazioni a schermo o inquinamento della cronologia della shell (*Command History Leak*).
+Il binario principale `bash4llm` agisce come la **Root of Trust** del sistema. Per prevenirne la manomissione da parte di processi non autorizzati, applica i comandi di protezione rapidi per la tua piattaforma:
 
-Quando rispondi **`y` (Sì)** all'avviso di esportazione nella sessione corrente:
-1. Lo script carica la chiave segreta nella memoria d'ambiente del processo.
-2. Sostituisce il processo corrente aprendo una nuova shell nidificata (*Session Sandbox*) in cui la chiave è attiva.
-3. Puoi eseguire qualsiasi comando di `./bash4llm` liberamente senza che ti venga mai più chiesta la chiave.
+* **Linux (GNU/Linux):**
+  ```bash
+  sudo chown root:root /path/to/bash4llm && sudo chmod 755 /path/to/bash4llm
+  sudo chattr +i /path/to/bash4llm  # Immutabilità Kernel
+  ```
+* **macOS / BSD:**
+  ```bash
+  sudo chown root:wheel /path/to/bash4llm && sudo chmod 755 /path/to/bash4llm
+  sudo chflags schg /path/to/bash4llm  # Flag System Immutable
+  ```
+* **Termux (Android):**
+  ```bash
+  chmod 500 ~/bash4llm  # Sola lettura/esecuzione per l'utente sandbox
+  ```
+* **WSL / Cygwin (Windows):**
+  ```bash
+  setfacl -b /path/to/bash4llm 2>/dev/null  # Pulizia ACL Windows
+  chmod 755 /path/to/bash4llm
+  ```
 
-Per chiudere questa sessione protetta e cancellare istantaneamente e in modo irreversibile la chiave dalla memoria RAM del computer, digita:
-```bash
-exit
-```
-Questo comando ti riporterà in totale sicurezza al tuo terminale di partenza (puoi digitare nuovamente `exit` se desideri chiudere definitivamente la scheda del terminale).
-
-Altre nformazioni sulla sicurezza in: **[SECURITY](SECURITY.md)**.
+ 📖 **Guida Completa:** Per istruzioni dettagliate, consulta il file: **[SECURITY.md](SECURITY.md)**.
 
 ---
 

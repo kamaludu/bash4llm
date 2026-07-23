@@ -27,17 +27,23 @@ _mktemp_in_dir_gemini() {
   local dir="$1" tmpf
   [ -n "$dir" ] || return 1
   [ -d "$dir" ] || return 1
-  tmpf="$(mktemp "$dir/gemini-XXXXXX" 2>/dev/null || true)"
+  tmpf="$(mktemp "${dir%/}/gemini-XXXXXX" 2>/dev/null || true)"
   [ -n "$tmpf" ] || return 1
   printf '%s' "$tmpf"
 }
 
 _gemini_write_atomic() {
-  local src="${1:-}" dst="${2:-}"
+  local src="${1:-}" dst="${2:-}" timeout="${3:-10}"
   if [ -z "${src:-}" ] || [ -z "${dst:-}" ] || [ ! -s "$src" ]; then
     return 1
   fi
-  cat "$src" | atomic_write "$dst"
+  # Self-contained transactional write fallback if core atomic_write is absent
+  if type atomic_write >/dev/null 2>&1; then
+    cat "$src" | atomic_write "$dst" "$timeout"
+  else
+    local tmp_dst="${dst}.tmp"
+    cat "$src" > "$tmp_dst" && mv -f "$tmp_dst" "$dst"
+  fi
 }
 
 _gemini_substitute_model_in_template() {
@@ -145,20 +151,20 @@ buildpayload_gemini() {
       rm -f "$tmpf" 2>/dev/null || true
       return 0
     else
-      _gemini_write_atomic "$tmpf" "${PAYLOAD}" || cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
+      _gemini_write_atomic "$tmpf" "${PAYLOAD:-}" || cp -f "$tmpf" "${PAYLOAD:-}" 2>/dev/null || true
       rm -f "$tmpf" 2>/dev/null || true
       return 0
     fi
   fi
 
   umask 077
-  if _gemini_write_atomic "$tmpf" "${PAYLOAD}"; then
+  if _gemini_write_atomic "$tmpf" "${PAYLOAD:-}"; then
     rm -f "$tmpf" 2>/dev/null || true
-    chmod 600 "${PAYLOAD}" 2>/dev/null || true
+    chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
     return 0
   else
-    cp -f "$tmpf" "${PAYLOAD}" 2>/dev/null || true
-    chmod 600 "${PAYLOAD}" 2>/dev/null || true
+    cp -f "$tmpf" "${PAYLOAD:-}" 2>/dev/null || true
+    chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
     rm -f "$tmpf" 2>/dev/null || true
     return 0
   fi
@@ -217,10 +223,12 @@ call_api_gemini() {
     return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
-  local prov_env
+  local prov_env key=""
   prov_env="$(provider_api_env_var_name "gemini")"
-  local key
-  key="${!prov_env:-${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
+  if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+    key="${!prov_env}"
+  fi
+  : "${key:=${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
 
   if [ -z "$key" ]; then
     log_error "APIKEY" "API key not available in env $prov_env"
@@ -266,7 +274,7 @@ call_api_gemini() {
   # Base64 decoding if input payload is formatted as a .b64 file
   send_payload="$PAYLOAD"
   decoded_payload=""
-  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
+  if [[ "${PAYLOAD:-}" == *.b64 ]]; then
     decoded_payload="$(_mktemp_in_dir_gemini "$workdir")" || {
       log_error "B64DECODE" "failed to allocate decoded_payload tmp"
       rm -f "$tmpout" "$tmpresp" 2>/dev/null || true
@@ -300,7 +308,7 @@ call_api_gemini() {
 
   dbg "call_api_gemini: url=${api_url}"
 
-  if ! curl "${CURL_BASE_OPTS[@]:-}" --silent --show-error --no-buffer --max-time 120 \
+  if ! curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} --silent --show-error --no-buffer --max-time 120 \
        -H "x-goog-api-key: ${key_trim}" -H "Content-Type: application/json" \
        --data-binary @"$send_payload" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$errf" >"$tmpout"; then
     :
@@ -384,10 +392,13 @@ call_api_streaming_gemini() {
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
-  local prov_env
+  local prov_env key=""
   prov_env="$(provider_api_env_var_name "gemini")"
-  local key
-  key="${!prov_env:-${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
+  if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+    key="${!prov_env}"
+  fi
+  : "${key:=${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
+
   if [ -z "$key" ]; then
     log_error "APIKEY" "API key not available in env $prov_env"
     local workdir_err
@@ -410,7 +421,7 @@ call_api_streaming_gemini() {
     return 0
   fi
 
-  local workdir RESP_RAW errf api_url model_subst key_trim rc active_model send_payload decoded_payload
+  local workdir RESP_RAW errf api_url model_subst key_trim rc active_model send_payload decoded_payload resp_path clean_chunks unified_text synthetic_resp
   workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
   [ -n "$workdir" ] || return 4
 
@@ -422,7 +433,7 @@ call_api_streaming_gemini() {
   # Base64 decoding if input payload is formatted as a .b64 file
   send_payload="$PAYLOAD"
   decoded_payload=""
-  if printf '%s' "$PAYLOAD" | grep -qE '\.b64$'; then
+  if [[ "${PAYLOAD:-}" == *.b64 ]]; then
     decoded_payload="$(_mktemp_in_dir_gemini "$workdir")" || {
       log_error "B64DECODE" "failed to allocate decoded_payload tmp"
       rm -f "$RESP_RAW" 2>/dev/null || true
@@ -457,7 +468,7 @@ call_api_streaming_gemini() {
   dbg "call_api_streaming_gemini: url=${api_url}"
 
   # Real-time streaming decoder using a single unbuffered jq process
-  curl "${CURL_BASE_OPTS[@]:-}" -H "x-goog-api-key: ${key_trim}" -H "Content-Type: application/json" --no-buffer --max-time 0 --data-binary @"$send_payload" "$api_url" 2>"$errf" | \
+  curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} -H "x-goog-api-key: ${key_trim}" -H "Content-Type: application/json" --no-buffer --max-time 0 --data-binary @"$send_payload" "$api_url" 2>"$errf" | \
   tee -a "$RESP_RAW" | \
   jq --unbuffered -R -r '
     select(length > 0) |
@@ -497,16 +508,13 @@ call_api_streaming_gemini() {
   fi
 
   # Transactional streaming reconstruction to OpenAI-compliant JSON format
-  local clean_chunks
   clean_chunks="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null)" || clean_chunks="${workdir%/}/gemini-chunks.$$.tmp"
   grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' | jq -s '.' > "$clean_chunks" 2>/dev/null || true
 
   if [ -s "$clean_chunks" ] && jq -e . "$clean_chunks" >/dev/null 2>&1; then
-    local unified_text
     unified_text="$(jq -r 'map(.candidates[]?.content?.parts[]?.text // .content?.parts[]?.text // .outputs[]?.content?.parts[]?.text // "") | join("")' "$clean_chunks" 2>/dev/null || true)"
     
     if [ -n "${unified_text}" ]; then
-      local synthetic_resp
       synthetic_resp="$(_mktemp_in_dir_gemini "$workdir" 2>/dev/null)" || synthetic_resp="${workdir%/}/gemini-synthetic.$$.json"
       umask 077
       jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
@@ -528,8 +536,8 @@ call_api_streaming_gemini() {
 # refresh_models_gemini
 # -------------------------
 refresh_models_gemini() {
-  local outpath="${1:-$(_get_models_file_gemini)}"
-  local prov_env
+  local outpath="${1:-$(_get_models_file_gemini)}" prov_env key="" tmp_models lockfile workdir_err resp_path workdir tmpd out errf curlout parsed tmpfinal http_code time_total key_trim tmpout
+
   prov_env="$(provider_api_env_var_name "gemini")"
 
   if is_truthy "${DRY_RUN:-0}"; then
@@ -539,7 +547,6 @@ refresh_models_gemini() {
     fi
     umask 077
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    local tmp_models
     tmp_models="$(_mktemp_in_dir_gemini "$(dirname "$outpath")" 2>/dev/null || true)" || tmp_models="${outpath}.tmp"
     printf '%s\n' "gemini-2.5-flash" "gemini-3.5-flash" "gemini-3.5-pro" > "$tmp_models" 2>/dev/null || true
 
@@ -571,21 +578,23 @@ refresh_models_gemini() {
 
   if ! ensure_api_key_for_provider "gemini"; then
     log_error "APIKEY" "API key required to refresh models."
-    local workdir_err
     workdir_err="$(_get_work_tmpdir_gemini)"
-    local resp_path="${RESP:-${workdir_err%/}/resp.json}"
+    resp_path="${RESP:-${workdir_err%/}/resp.json}"
     umask 077
     jq -n --arg err "API key required to refresh models" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
     return "${BASH4LLM_ERR_NO_API_KEY:-10}"
   fi
 
-  local key="${!prov_env:-${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
+  if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+    key="${!prov_env}"
+  fi
+  : "${key:=${BASH4LLM_API_KEY:-${GEMINI_API_KEY:-}}}"
+
   if [ -z "$key" ]; then
     log_error "APIKEY" "API key not available in env $prov_env"
-    local workdir_err
     workdir_err="$(_get_work_tmpdir_gemini)"
-    local resp_path="${RESP:-${workdir_err%/}/resp.json}"
+    resp_path="${RESP:-${workdir_err%/}/resp.json}"
     umask 077
     jq -n --arg err "API key not available for provider gemini" '{error:$err}' > "${resp_path}" 2>/dev/null || true
     chmod 600 "${resp_path}" 2>/dev/null || true
@@ -601,7 +610,6 @@ refresh_models_gemini() {
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  local workdir tmpd out errf curlout parsed tmpfinal http_code time_total key_trim tmpout lockfile resp_path
   workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
   [ -n "$workdir" ] || return "${BASH4LLM_ERR_TMP:-15}"
 
@@ -616,11 +624,11 @@ refresh_models_gemini() {
 
   key_trim="$(printf '%s' "$key" | awk '{$1=$1; print}' 2>/dev/null || printf '%s' "$key")"
 
-  local api_url="https://generativelanguage.googleapis.com/v1beta/models"
+  api_url="https://generativelanguage.googleapis.com/v1beta/models"
   api_url="${api_url}?pageSize=${MAX_MODELS:-200}&key=${key_trim}"
 
   rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
-  if ! curl "${CURL_BASE_OPTS[@]:-}" -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+  if ! curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
     log_error "MODELREFRESH" "HTTP request to Gemini models endpoint failed."
     log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
@@ -758,18 +766,11 @@ auto_select_model_gemini() {
 }
 
 validate_key_gemini() {
-  # Temporarily disable set -u if active
-  local _set_u_was_on=0
-  case "$-" in
-    *u*) _set_u_was_on=1; set +u ;;
-  esac
-
   local key="${1:-}"
   local http_code curl_rc=0
   local tmpout errf workdir
 
   if [ -z "$key" ]; then
-    [ "$_set_u_was_on" -eq 1 ] && set -u
     return 1
   fi
 
@@ -783,16 +784,13 @@ validate_key_gemini() {
   # GET call passing the key as a URL parameter (?key=...)
   local api_url="https://generativelanguage.googleapis.com/v1beta/models?key=${key}"
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]:-}" --silent --show-error --no-buffer --max-time 10 \
+  http_code="$(curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} --silent --show-error --no-buffer --max-time 10 \
     -o "$tmpout" \
     -w "%{http_code}" \
     "$api_url" 2>"$errf" || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true
-
-  # Restore set -u if previously active
-  [ "$_set_u_was_on" -eq 1 ] && set -u
 
   # Detecting timeouts or network problems
   if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then

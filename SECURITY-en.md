@@ -85,6 +85,95 @@ Bash4LLM⁺ automatically detects the Termux environment, transparently disablin
  3. **Use --check-config regularly:**
    Run the built-in static scanner before launching in sensitive environments to ensure that no configuration files can be modified by third parties.
 
+---
+
+## 🚨 Core Binary Protection (OS & Kernel Hardening)
+
+To guarantee the integrity of the **Bash4LLM⁺** architecture, the primary binary `bash4llm` acts as the system's **Root of Trust**. Consequently, protecting the core execution script relies directly on Operating System and Kernel-level file system controls.
+
+By applying the platform-specific restrictive permissions and immutability flags detailed below, unprivileged processes (including malware, malicious local scripts, or unauthorized users) are prevented from tampering with the Core.
+
+---
+
+### Hardening Guide by Platform
+
+#### 1. Linux (GNU/Linux)
+Set file ownership to `root`, enforce read/execute permissions, and enable the native ext2/ext3/ext4/xfs immutable attribute:
+
+```bash
+# 1. Assign ownership to root
+sudo chown root:root /path/to/bash4llm
+
+# 2. Set strict execution permissions (rwxr-xr-x)
+sudo chmod 755 /path/to/bash4llm
+
+# 3. Make the file immutable (prevents modification, deletion, or renaming, even by root)
+sudo chattr +i /path/to/bash4llm
+```
+
+> **Note:** To update the script in the future, temporarily remove the immutable flag using `sudo chattr -i /path/to/bash4llm`.
+
+---
+
+#### 2. macOS / BSD (FreeBSD, OpenBSD, NetBSD)
+On Darwin and BSD systems, utilize native file system flags via `chflags`:
+
+```bash
+# 1. Assign ownership to root:wheel
+sudo chown root:wheel /path/to/bash4llm
+
+# 2. Set strict execution permissions
+sudo chmod 755 /path/to/bash4llm
+
+# 3. Enable System Immutable flag (or 'uchg' for User Immutable if running without root)
+sudo chflags schg /path/to/bash4llm
+```
+
+> **Note:** To disable protection and perform updates: `sudo chflags noschg /path/to/bash4llm`.
+
+---
+
+#### 3. Termux (Android)
+Since Android/Termux executes within an unprivileged user sandbox without native root access, isolate the binary by restricting access strictly to the Termux user:
+
+```bash
+# Make the binary executable exclusively by the Termux owner
+chmod 500 ~/bash4llm
+
+# Or restrict write permissions strictly to the owner
+chmod 700 ~/bash4llm
+```
+
+---
+
+#### 4. WSL (Windows Subsystem for Linux)
+When running `bash4llm` on mounted Windows drives (`/mnt/c/`), Windows ACLs may override standard POSIX permissions. It is strongly advised to store the script inside the native Linux filesystem root and ensure POSIX metadata mounting is enabled.
+
+1. Ensure `/etc/wsl.conf` includes POSIX metadata mount options:
+   ```ini
+   [automount]
+   options = "metadata,umask=022,fmask=111"
+   ```
+2. Apply standard POSIX permissions:
+   ```bash
+   chmod 755 /usr/local/bin/bash4llm
+   ```
+
+---
+
+#### 5. Cygwin / MSYS2 (Windows)
+Under Cygwin or MSYS2 environment layers, Windows Access Control Lists (ACLs) can introduce group-writable permission leaks. Strip Windows ACLs to restore POSIX compliance:
+
+```bash
+# 1. Clear inherited Windows ACLs
+setfacl -b /usr/local/bin/bash4llm
+
+# 2. Revoke group and world write permissions
+chmod 755 /usr/local/bin/bash4llm
+```
+
+---
+
 ## 6. Private Vulnerability Reporting (Responsible Disclosure)
 If you detect a potential vulnerability or security flaw within the core script or its extensions, please report it in a **confidential and private** manner to protect the integrity of active users.
 

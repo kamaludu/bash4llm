@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# =============================================================================
+# ======================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: bash4llm
 # Component: Core
@@ -8,8 +8,8 @@
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
-# =============================================================================
-# Requirements (no fallbacks): bash coreutils findutils util-linux gawk curl jq
+# ======================================
+# Requirements (no fallbacks): bash coreutils findutils util-linux awk curl jq
 # Single file, Idempotent, Transparent, Optional Extras
 ########################################
 # SECTION: PRECORE_BOOT - BEGIN
@@ -25,12 +25,12 @@ fi
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.5.1"
-SCRIPT_DATE="2026-07-20"
+SCRIPT_VERSION="2.6.0"
+SCRIPT_DATE="2026-07-21"
 
-# =============================================================================
+# ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
-# =============================================================================
+# ======================================
 BASH4LLM_PLAT_ANDROID=0
 BASH4LLM_PLAT_MACOS=0
 BASH4LLM_PLAT_WSL=0
@@ -79,9 +79,9 @@ C_BBLACK="" C_BRED="" C_BGREEN="" C_BYELLOW="" C_BBLUE="" C_BMAGENTA="" C_BCYAN=
 # Backgrounds
 BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN="" BG_WHITE=""
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 # Canonical error codes
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 BASH4LLM_ERR_NO_API_KEY=10
 BASH4LLM_ERR_BAD_MODEL=11
 BASH4LLM_ERR_CURL_FAILED=12
@@ -101,19 +101,18 @@ BASH4LLMERR_API=$BASH4LLM_ERR_API
 BASH4LLMERR_SEC=$BASH4LLM_ERR_SEC
 #--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
 #--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
-# ---------------------------------------------------------------------------
-# Strict verification of the execution environment (Fail-Fast Compatible)
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
+# Strict verification of the execution environment (POSIX Compliant)
+# --------------------------------------------------
 if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-  printf 'bash4llm: ERROR: Bash 4.0 or superior is required to run this script.\n' >&2
+  printf 'bash4llm: FATAL ERROR: Bash 4.0 or superior is required to run this script.\n' >&2
   exit 15
 fi
 
-# Flock and shred are excluded from this list because the system integrates 
-# runtime checks and secure fallbacks for macOS, Android, and BSD environments.
+# Hard verification of core system utilities. If any command is missing, the script aborts.
 for cmd in bash jq curl mktemp stat base64 find awk sed grep xargs tr sort head wc tee date mv chmod cp rm printf comm; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    printf 'bash4llm: ERROR: required system utility not found in PATH: %s\n' "$cmd" >&2
+    printf 'bash4llm: FATAL ERROR: required system utility not found in PATH: %s\n' "$cmd" >&2
     exit 15
   fi
 done
@@ -205,6 +204,86 @@ trim_space() {
   printf '%s' "$var"
 }
 
+# --------------------------------------------------
+# Function: read_secure_input (Hardened TTY Echo & Prompt Execution Order)
+# --------------------------------------------------
+read_secure_input() {
+  local _target_var="${1:-}"
+  local _prompt_msg="${2:-Enter sensitive value}"
+  local _min_len="${3:-0}"
+  local _allow_verify="${4:-0}"
+
+  if [[ ! "$_target_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    printf 'bash4llm: ERROR [read_secure_input]: Invalid target variable identifier: %s\n' "$_target_var" >&2
+    return 1
+  fi
+
+  # CORREZIONE 1: Imposta _is_tty=1 SOLO SE lo Standard Input (fd 0) è un terminale reale
+  local _is_tty=0
+  if [ -t 0 ] && [ -r /dev/tty ] && [ -c /dev/tty ]; then
+    _is_tty=1
+  fi
+
+  # Save original stty state strictly from /dev/tty
+  local _stty_orig=""
+  if [ "$_is_tty" -eq 1 ]; then
+    _stty_orig="$(stty -g < /dev/tty 2>/dev/null || stty -g 2>/dev/null || true)"
+  fi
+
+  local _parent_trap_int="" _parent_trap_term=""
+  _parent_trap_int="$(trap -p INT || true)"
+  _parent_trap_term="$(trap -p TERM || true)"
+
+  _rsi_cleanup() {
+    if [ "$_is_tty" -eq 1 ]; then
+      if [ -n "$_stty_orig" ]; then
+        stty "$_stty_orig" < /dev/tty 2>/dev/null || stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+      else
+        stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+      fi
+    fi
+    if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi
+    if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi
+  }
+
+  trap '_rsi_cleanup; printf "\n" >&2; return 1' INT TERM
+
+  # CRITICAL: Disable echo ON /dev/tty BEFORE displaying prompt
+  if [ "$_is_tty" -eq 1 ]; then
+    stty -echo < /dev/tty 2>/dev/null || stty -echo 2>/dev/null || true
+    printf -- '%s %s[input hidden]%s: ' "$_prompt_msg" "${C_MAGENTA:-}" "${C_RST:-}" >&2
+  fi
+
+  local _raw_input="" _clean_input=""
+  # CORREZIONE 2: Legge da /dev/tty solo se _is_tty=1. Se è una pipe, legge dallo stdin standard.
+  if [ "$_is_tty" -eq 1 ]; then
+    IFS= read -r _raw_input < /dev/tty || _raw_input=""
+  else
+    IFS= read -r _raw_input || _raw_input=""
+  fi
+
+  # Instantly restore echo
+  _rsi_cleanup
+  if [ "$_is_tty" -eq 1 ]; then
+    printf '\n' >&2
+  fi
+
+  _clean_input="${_raw_input//$'\r'/}"
+  _clean_input="${_clean_input#"${_clean_input%%[![:space:]]*}"}"
+  _clean_input="${_clean_input%"${_clean_input##*[![:space:]]}"}"
+
+  local _input_len="${#_clean_input}"
+  if [ "$_input_len" -lt "$_min_len" ]; then
+    printf '  %s[ERROR] Input is too short (%d chars). Minimum required: %d.%s\n' \
+      "${C_RED:-}" "$_input_len" "$_min_len" "${C_RST:-}" >&2
+    printf -v "$_target_var" '%s' ""
+    return 1
+  fi
+
+  printf -v "$_target_var" '%s' "$_clean_input"
+  return 0
+}
+
 # Synchronize the MODELS_FILE path based on the active provider
 sync_models_file_path() {
   # Use the $1 parameter if provided, otherwise fall back to PROVIDER or the default groq
@@ -218,8 +297,8 @@ sync_models_file_path() {
   # Uniform and isolated mapping for each provider
   MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/${prov}.txt"
 
-  # Fallback di retrocompatibilità: se il file specifico del provider è vuoto o assente,
-  # ma esiste il vecchio file cumulativo 'models.txt', usa quest'ultimo come ripiego.
+  # Backward compatibility fallback: If the provider-specific file is empty or missing,
+  # but the old cumulative file 'models.txt' exists, use that as a fallback.
   if [ ! -s "$MODELS_FILE" ] && [ -s "${BASH4LLM_MODELS_DIR:-}/models.txt" ]; then
     MODELS_FILE="${BASH4LLM_MODELS_DIR:-}/models.txt"
   fi
@@ -227,19 +306,18 @@ sync_models_file_path() {
   export MODELS_FILE
 }
 
-# =============================================================================
+# ======================================
 # TASK A: CENTRALIZED FILE INPUT VALIDATION (Locale-Independent & Safe)
-# =============================================================================
+# ======================================
 # Validates path existence, readability, non-empty state, and excludes
-# binary bytes (null bytes) and unwanted C0 control characters in a fully
-# locale-independent and crash-resilient way.
+# binary bytes (null bytes) and unwanted C0 control characters securely.
 # Returns:
-#   0 = Success (Valid UTF-8 printable text file)
+#   0 = Success (Valid printable text file)
 #   1 = File path empty
 #   2 = File not found or not readable
 #   3 = File is empty (0 bytes) - REJECTED
-#   4 = File contains null bytes, DEL (127), or unwanted C0 controls
-# =============================================================================
+#   4 = File contains null bytes or unwanted control characters
+# ======================================
 validate_file_input() {
   local f="${1:-}" size=""
   if [ -z "$f" ]; then
@@ -254,9 +332,13 @@ validate_file_input() {
     return 3
   fi
 
-  # Detect binary patterns, null bytes, and C0 control characters (except tab, CR, LF)
-  # using a highly compatible and fast locale-independent tr check.
-  if [ -n "$(LC_ALL=C tr -d '\t\r\n\x20-\x7E\x80-\xFF' < "$f" | head -c 1)" ]; then
+  # Safely count non-compliant bytes (including nulls) using wc -c
+  # This completely avoids passing raw binary streams to command substitutions
+  local count=""
+  count="$(LC_ALL=C tr -d '\t\r\n -~\200-\377' < "$f" | wc -c)"
+  count="${count//[[:space:]]/}"
+  
+  if [ "${count:-0}" -gt 0 ]; then
     return 4
   fi
 
@@ -309,21 +391,211 @@ _normalize_model_name() {
   printf '%s' "$normalized"
 }
 
+# Pure POSIX/Bash 4.0+ Native Boolean Check
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# --------------------------------------------------
+# File System Security & Attribute Retrieval Helpers
+# --------------------------------------------------
+_get_perm_string() {
+  local path="${1:-}"
+  [ -e "$path" ] || return 1
+  
+  if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
+    stat -f %Sp "$path" 2>/dev/null || printf ''
+  else
+    stat -c %A "$path" 2>/dev/null || printf ''
+  fi
+}
+
+_get_owner() {
+  local path="${1:-}"
+  [ -e "$path" ] || return 1
+
+  if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
+    stat -f %Su "$path" 2>/dev/null || printf ''
+  else
+    stat -c %U "$path" 2>/dev/null || printf ''
+  fi
+}
+
+validate_path_security() {
+  local target_file="${1:-}"
+  [ -f "$target_file" ] || return 1
+  [ -r "$target_file" ] || return 1
+
+  if [ -L "$target_file" ]; then
+    log_error "SEC" "Symbolic link detected on file path: $target_file"
+    return 1
+  fi
+
+  local ignore_sec=0
+  if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_CYGWIN:-0}" -eq 1 ] || is_truthy "${BASH4LLM_IGNORE_SEC_CHECKS:-0}"; then
+    ignore_sec=1
+  fi
+
+  local parent_dir
+  parent_dir="$(dirname "$target_file")"
+
+  local current_user owner perms group_write others_write
+  current_user="$(id -un 2>/dev/null || printf '')"
+
+  # 1. Target file validation
+  owner="$(_get_owner "$target_file")"
+  if [ -n "$owner" ] && [ "$owner" != "$current_user" ]; then
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "Wrong owner for file: $owner (ignored due to policy/platform)"
+    else
+      log_error "SEC" "File owned by non-current user: $owner"
+      return 1
+    fi
+  fi
+
+  perms="$(_get_perm_string "$target_file")"
+  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
+  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
+  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "File is writable by group/world (ignored due to policy/platform)"
+    else
+      log_error "SEC" "File is writable by group/world: $perms"
+      return 1
+    fi
+  fi
+
+  # 2. Parent directory validation
+  owner="$(_get_owner "$parent_dir")"
+  if [ -n "$owner" ] && [ "$owner" != "$current_user" ]; then
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "Wrong owner for parent directory: $owner (ignored due to policy/platform)"
+    else
+      log_error "SEC" "Parent directory owned by non-current user: $owner"
+      return 1
+    fi
+  fi
+
+  perms="$(_get_perm_string "$parent_dir")"
+  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
+  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
+  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
+    if [ "$ignore_sec" -eq 1 ]; then
+      log_warn "SEC" "Parent directory is writable by group/world (ignored due to policy/platform)"
+    else
+      log_error "SEC" "Parent directory is writable by group/world: $perms"
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+# --------------------------------------------------
+# Function: _core_sha256
+# Purpose: Calculate SHA-256 digest using native system binaries (independent of openssl-helper)
+# --------------------------------------------------
+_core_sha256() {
+  local target_file="${1:-}"
+  [ -f "$target_file" ] || return 1
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$target_file" 2>/dev/null | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 -r "$target_file" 2>/dev/null | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$target_file" 2>/dev/null | awk '{print $1}'
+  else
+    return 1
+  fi
+}
+
+# --------------------------------------------------
+# Function: verify_module_integrity
+# Purpose: Verify file path permissions and cryptographic integrity against extras/manifest.sha256
+# Returns: 0 on success, BASH4LLM_ERR_SEC (17) on security or hash verification failure
+# --------------------------------------------------
+verify_module_integrity() {
+  local target_file="${1:-}"
+  local rel_path="" manifest_file="" expected_hash="" actual_hash=""
+
+  [ -f "$target_file" ] || return 1
+
+  # 1. Enforce strict POSIX file system path security and ownership
+  if ! validate_path_security "$target_file"; then
+    log_error "SEC" "Security validation failed for file path: $target_file"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  # 2. Check for the official integrity manifest file
+  manifest_file="${BASH4LLM_EXTRAS_DIR:-}/manifest.sha256"
+  if [ ! -f "$manifest_file" ] || [ ! -r "$manifest_file" ]; then
+    # Manifest absent: allow execution if file path permissions are secure (e.g., custom modules)
+    return 0
+  fi
+
+  # Resolve path relative to BASH4LLM_EXTRAS_DIR
+  local canonical_extras="" canonical_target=""
+  canonical_extras="$(cd "${BASH4LLM_EXTRAS_DIR:-.}" >/dev/null 2>&1 && pwd -P || echo "${BASH4LLM_EXTRAS_DIR:-}")"
+  canonical_target="$(cd "$(dirname "$target_file")" >/dev/null 2>&1 && pwd -P || echo "")/$(basename "$target_file")"
+
+  if [[ "$canonical_target" == "${canonical_extras}/"* ]]; then
+    rel_path="${canonical_target#"${canonical_extras}/"}"
+  else
+    rel_path="${target_file#"${BASH4LLM_EXTRAS_DIR}/"}"
+  fi
+
+  # 3. Lookup expected hash in manifest (robust against Windows CRLF line endings)
+  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
+
+  # Fallback for custom user modules not present in the official manifest
+  if [ -z "$expected_hash" ]; then
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "SEC" "Module not listed in official manifest: $rel_path. Permitting load via path security policy."
+    fi
+    return 0
+  fi
+
+  # 4. Calculate actual file digest and verify match
+  actual_hash="$(_core_sha256 "$target_file" 2>/dev/null || true)"
+  if [ -z "$actual_hash" ]; then
+    log_warn "SEC" "Unable to compute SHA-256 hash for module integrity check: $target_file"
+    return 0
+  fi
+
+  if [ "$expected_hash" != "$actual_hash" ]; then
+    log_error "SEC" "TAMPER DETECTED! Cryptographic SHA-256 mismatch for module: $rel_path"
+    log_error "SEC" "Expected Hash: $expected_hash | Calculated Hash: $actual_hash"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  return 0
+}
+
 #--3<---[ SUBSECTION: API_NET ]--->3--
 # ensure_api_key_for_provider (robust, non-interactive safe, unbound variable proof)
 ensure_api_key_for_provider() {
   local prov="${1:-}"
-  local envvar="" current_key="" input_key="" custom_var="" custom_env=""
+  local envvar="" current_key="" input_key="" custom_var="" custom_env="" prompt_msg="" read_success=0
   [ -n "$prov" ] || return 1
   envvar="$(provider_api_env_var_name "$prov")"
   custom_var="PROVIDER_API_ENV_${prov}"
   
-  # Safe indirect variable loading avoiding set -u (nounset) errors
   if [ -n "${custom_var:-}" ] && declare -p "$custom_var" >/dev/null 2>&1; then
     custom_env="${!custom_var:-}"
   fi
+
   if [ -n "${custom_env:-}" ]; then
-    envvar="$custom_env"
+    custom_env="${custom_env//[!a-zA-Z0-9_]/}"
+    if [[ "$custom_env" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+      # CRITICAL FIX: Verify target variable existence before indirect expansion under set -u
+      if declare -p "$custom_env" >/dev/null 2>&1; then
+        envvar="$custom_env"
+      fi
+    fi
   fi
   
   current_key=""
@@ -331,7 +603,6 @@ ensure_api_key_for_provider() {
     current_key="${!envvar:-}"
   fi
 
-  # If key present, sync groq alias and return
   if [ -n "$current_key" ]; then
     if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
       export GROQ_API_KEY="$current_key"
@@ -339,20 +610,16 @@ ensure_api_key_for_provider() {
     return 0
   fi
 
-  # -------------------------------------------------------------------------
-  # Secure Key Vault Hook (Prioritize encrypted storage lookup)
-  # -------------------------------------------------------------------------
+  # Secure Key Vault Lookup
   if [ -z "$current_key" ] && [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
-    # Load the vault keys if not already cached in memory during this process session
     if [ -z "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
       log_info_user "SECURITY" "Vault file detected. Authenticating to unlock saved API keys..."
       BASH4LLM_DECRYPTED_VAULT_JSON="$(vault_load_keys)" || true
     fi
 
-    # Attempt to retrieve the specific provider key from the decrypted payload
     if [ -n "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
       local extracted_key=""
-      extracted_key="$(printf '%s' "$BASH4LLM_DECRYPTED_VAULT_JSON" | jq -r --arg p "$prov" '.[$p] // empty' 2>/dev/null || true)"
+      extracted_key="$(printf '%s' "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" | jq -r --arg p "$prov" '.[$p] // empty' 2>/dev/null || true)"
       
       if [ -n "$extracted_key" ]; then
         current_key="$extracted_key"
@@ -366,63 +633,22 @@ ensure_api_key_for_provider() {
       fi
     else
       log_warn "SECURITY" "Authentication failed. Falling back to manual input."
-      # Reset memory cache on authentication failure
       BASH4LLM_DECRYPTED_VAULT_JSON=""
     fi
   fi
-  # -------------------------------------------------------------------------
 
-  # Non-interactive: fail fast with clear error (do not prompt)
   if [ ! -t 0 ]; then
-    printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED}" "${C_RST}" "$prov" "$envvar" >&2
+    printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED:-}" "${C_RST:-}" "$prov" "$envvar" >&2
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
-  # Prompt with colors (Green for provider, Yellow for env, Magenta for hidden input note)
-  printf 'Enter API key for provider %s%s%s (env %s%s%s) %s[input is hidden]%s: ' \
-    "${C_BGREEN:-}" "$prov" "${C_RST:-}" \
-    "${C_BYELLOW:-}" "$envvar" "${C_RST:-}" \
-    "${C_BMAGENTA:-}" "${C_RST:-}" >&2
+  prompt_msg="Enter API key for provider $(printf '%b%s%b' "${C_BGREEN:-}" "$prov" "${C_RST:-}") (env $(printf '%b%s%b' "${C_BYELLOW:-}" "$envvar" "${C_RST:-}"))"
 
-  # Secure input read wrapped inside conditional checks to prevent set -e shell termination
-  local read_success=0
-  if [ -t 0 ]; then
-    stty -echo 2>/dev/null || true
-    if IFS= read -r input_key; then
-      read_success=1
-    fi
-    stty echo 2>/dev/null || true
-    printf '\n' >&2
-  else
-    if IFS= read -r input_key; then
-      read_success=1
-    fi
-  fi
+  read_secure_input "input_key" "$prompt_msg" 1
+  read_success=$?
 
-  # Validate that the read operation succeeded and is not empty
-  if [ "$read_success" -ne 1 ] || [ -z "$input_key" ]; then
-    printf 'bash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED}" "${C_RST}" >&2
-    return "$BASH4LLM_ERR_NO_API_KEY"
-  fi
-
-  # Native normalization
-  input_key="${input_key//$'\r'/}"
-  input_key="${input_key//$'\n'/}"
-
-  # Strip case-insensitive "export " prefix natively
-  local rx_export='^[[:space:]]*[eE][xX][pO][rR][tT][[:space:]]+(.*)$'
-  if [[ "$input_key" =~ $rx_export ]]; then
-    input_key="${BASH_REMATCH[1]}"
-  fi
-
-  # Strip assignment patterns "VAR=" natively
-  local rx_assign='^[A-Za-z_][A-Za-z0-9_]*=['"'"'"]?([^'"'"'"]*).*$'
-  if [[ "$input_key" =~ $rx_assign ]]; then
-    input_key="${BASH_REMATCH[1]}"
-  fi
-
-  if [ -z "$input_key" ]; then
-    printf 'bash4llm: %sERROR%s: API key required. Aborting.\n' "${C_RED}" "${C_RST}" >&2
+  if [ "$read_success" -ne 0 ] || [ -z "$input_key" ]; then
+    printf 'bash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED:-}" "${C_RST:-}" >&2
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
@@ -431,7 +657,6 @@ ensure_api_key_for_provider() {
     export GROQ_API_KEY="$input_key"
   fi
 
-  # Set flag indicating the key was typed manually during this run
   BASH4LLM_KEY_MANUAL_PROMPT=1
   export BASH4LLM_KEY_MANUAL_PROMPT
 
@@ -525,10 +750,9 @@ dbg() {
     printf '%s\n' "$*" >&2
   fi
 }
-
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 # Terminal Color Theme Initialization (conforms to NO_COLOR standard)
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 # Pre-parse arguments to intercept --no-color early and set the standard env variable
 if [ "$#" -gt 0 ]; then
   for _arg in "$@"; do
@@ -603,6 +827,11 @@ BASH4LLM_MODELS_DIR="${BASH4LLM_MODELS_DIR:-${BASH4LLM_DIR}/models}"
 BASH4LLM_TEMPLATES_DIR="${BASH4LLM_TEMPLATES_DIR:-${BASH4LLM_DIR}/templates}"
 BASH4LLM_HISTORY_DIR="${BASH4LLM_HISTORY_DIR:-${BASH4LLM_DIR}/history}"
 BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-${BASH4LLM_DIR}/tmp}"
+
+# New isolated runtime and lock directories
+BASH4LLM_RUN_DIR="${BASH4LLM_RUN_DIR:-${BASH4LLM_DIR}/var/run}"
+BASH4LLM_LOCKS_DIR="${BASH4LLM_LOCKS_DIR:-${BASH4LLM_RUN_DIR}/locks}"
+
 sync_models_file_path
 MAX_MODELS="${MAX_MODELS:-200}"
 
@@ -610,7 +839,7 @@ CANONICAL_EXTRAS_DIR="${BASH4LLM_DIR}/extras"
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-${CANONICAL_EXTRAS_DIR}}"
 PROVIDERS_DIR="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}"
-export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR
+export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BASH4LLM_RUN_DIR BASH4LLM_LOCKS_DIR
 
 if [ -z "${BASH4LLM_DIR:-}" ]; then
   printf 'bash4llm: ERROR: BASH4LLM_DIR is empty; cannot derive directories\n' >&2
@@ -631,6 +860,8 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; the
   safe_mkdir "$BASH4LLM_TEMPLATES_DIR" 700
   safe_mkdir "$BASH4LLM_HISTORY_DIR" 700
   safe_mkdir "$BASH4LLM_TMPDIR" 700
+  safe_mkdir "$BASH4LLM_RUN_DIR" 700
+  safe_mkdir "$BASH4LLM_LOCKS_DIR" 700
   safe_mkdir "$BASH4LLM_EXTRAS_DIR" 700
   safe_mkdir "$BASH4LLM_CONFIG_DIR/providers" 700
   safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
@@ -638,41 +869,38 @@ fi
 
 THREAD_DIR="${BASH4LLM_HISTORY_DIR}/threads"
 
-# ---------------------------------------------------------------------------
-# Optional Cryptographic OpenSSL Helper Module Loading (With Vault Toggle)
-# ---------------------------------------------------------------------------
-_BASH4LLM_OPENSSL_HELPER="${BASH4LLM_EXTRAS_DIR}/security/openssl-helper.sh"
-BASH4LLM_OPENSSL_ACTIVE=0
+# LOCAL PATH ISOLATION & DIRECTORY SETUP
+# Override system TMPDIR to force internal commands and curl to use our local secure tmp
+export TMPDIR="${BASH4LLM_TMPDIR:-}"
 
-# Pre-extract BASH4LLM_VAULT_ENABLED from local configuration file if present
-_local_cfg="${BASH4LLM_CONFIG_DIR}/config"
-if [ -f "$_local_cfg" ]; then
-  _cfg_vault_val="$(awk -F= '/^[[:space:]]*BASH4LLM_VAULT_ENABLED=/ {print $2; exit}' "$_local_cfg" 2>/dev/null | tr -d '[:space:]')"
-  if [ -n "$_cfg_vault_val" ]; then
-    BASH4LLM_VAULT_ENABLED="$_cfg_vault_val"
+# Ensure BASH4LLM_TMPDIR is defined and not empty before defining rates directory
+if [ -n "${BASH4LLM_TMPDIR:-}" ]; then
+  BASH4LLM_RATES_DIR="${BASH4LLM_TMPDIR}/rates"
+  export BASH4LLM_RATES_DIR
+fi
+
+# Ensure safe creation and strict permissions of essential directories
+if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  safe_mkdir "${BASH4LLM_TMPDIR:-}" 700
+  if [ -n "${BASH4LLM_RATES_DIR:-}" ]; then
+    safe_mkdir "${BASH4LLM_RATES_DIR}" 700
   fi
 fi
 
 # Check whether the vault is explicitly enabled by the user (default: 1)
+_BASH4LLM_OPENSSL_HELPER="${BASH4LLM_EXTRAS_DIR:-}/security/openssl-helper.sh"
 if [ "${BASH4LLM_VAULT_ENABLED:-1}" -eq 1 ]; then
   if [ -f "$_BASH4LLM_OPENSSL_HELPER" ] && [ -r "$_BASH4LLM_OPENSSL_HELPER" ]; then
-    _is_symlink=0
-    if [ -L "$_BASH4LLM_OPENSSL_HELPER" ]; then
-      _is_symlink=1
-    fi
-
-    _ignore_sec=0
-    case "${BASH4LLM_IGNORE_SEC_CHECKS:-0}" in
-      1|true|TRUE|True|yes|YES|Yes) _ignore_sec=1 ;;
-    esac
-
-    if [ "$_is_symlink" -eq 0 ] || [ "$_ignore_sec" -eq 1 ]; then
-      # Sourcing the helper in the current environment
+    # Verify module integrity and path security before sourcing
+    if verify_module_integrity "$_BASH4LLM_OPENSSL_HELPER"; then
       if . "$_BASH4LLM_OPENSSL_HELPER" 2>/dev/null; then
         if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
           export BASH4LLM_OPENSSL_ACTIVE
         fi
       fi
+    else
+      log_error "SEC" "Refusing to load untrusted OpenSSL helper module: $_BASH4LLM_OPENSSL_HELPER"
+      BASH4LLM_OPENSSL_ACTIVE=0
     fi
   fi
 else
@@ -702,11 +930,16 @@ write_provider_url_if_missing() {
   if [ -f "$file" ] && [ -s "$file" ]; then
     return 0
   fi
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    tmp="$(mktemp "${RUN_TMPDIR%/}/provider-url.XXXXXX" 2>/dev/null || true)"
-  else
-    tmp="$(mktemp 2>/dev/null || true)"
+
+  # CRITICAL FIX: Ensure temporary allocation resides strictly within local isolated runtime directory
+  local target_tmpdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  if [ -z "$target_tmpdir" ] || [ ! -d "$target_tmpdir" ]; then
+    log_error "TMP" "write_provider_url_if_missing: local runtime tmpdir unavailable"
+    return 1
   fi
+
+  tmp="$(_tmpf file "$target_tmpdir" provider-url 2>/dev/null || true)"
+
   if [ -n "$tmp" ]; then
     printf '%s\n' "$url" > "$tmp"
     mv -f "$tmp" "$file" 2>/dev/null || cp -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
@@ -770,49 +1003,23 @@ print_persistence_reminder() {
     envvar="$(provider_api_env_var_name "${PROVIDER:-groq}")"
     current_val="${!envvar:-}"
     
-    # 1. Print the standard 40-character wide security header
-    printf '%b' "
+    # Export API key to current process environment safely
+    export "${envvar}=${current_val}"
+    [ "${PROVIDER:-groq}" = "groq" ] && export GROQ_API_KEY="${current_val}"
+
+    if [ "${QUIET:-0}" -ne 1 ]; then
+      printf '%b' "
 ${C_BCYAN}----------------------------------------${C_RST}
  ${C_BYELLOW}SECURITY ADVISORY: API Key Persistence${C_RST}
 ${C_BCYAN}----------------------------------------${C_RST}
 " >&2
-
-    # 2. Ask the user if they want to export the key to the current active session
-    printf '  %sExport this API key to your current terminal session? [y/N]:%s ' \
-      "${C_BCYAN:-}" "${C_RST:-}" >&2
-    
-    local choice=""
-    if IFS= read -r choice; then
-      choice="${choice,,}"
-      if [[ "$choice" =~ ^[yY](es)?$ ]]; then
-        # Check if the script is currently sourced or executed directly
-        if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-          # Sourced context: we can export directly to the active parent shell
-          export "${envvar}=${current_val}"
-          [ "${PROVIDER:-groq}" = "groq" ] && export GROQ_API_KEY="${current_val}"
-          printf '\n  %sSUCCESS: Key exported directly to the current session.%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
-        else
-          # Executed context: export and replace the process with a new active shell
-          export "${envvar}=${current_val}"
-          [ "${PROVIDER:-groq}" = "groq" ] && export GROQ_API_KEY="${current_val}"
-          printf '\n  %sSUCCESS: Spawning a new secure shell session with the active key...%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
-          printf '  %s(Type "exit" when done to return to your base shell)%s\n\n' "${C_CYAN:-}" "${C_RST:-}" >&2
-          
-          # Replace the process with the active user shell
-          exec "${SHELL:-bash}"
-        fi
-      else
-        # If the user declines, show a safe offline reminder (with no raw secrets printed)
-        printf '\n  %sKey export declined. You can manually set it by running:%s\n' "${C_YELLOW:-}" "${C_RST:-}" >&2
-        printf '  %sread -rs %s && export %s%s\n' "${C_BGREEN:-}" "$envvar" "$envvar" "${C_RST:-}" >&2
-      fi
-    else
-      printf '\n' >&2
+      printf '  %sAPI Key exported to active process memory.%s\n' "${C_BGREEN:-}" "${C_RST:-}" >&2
+      printf '  %sTo make it persistent across terminal sessions, run:%s\n' "${C_CYAN:-}" "${C_RST:-}" >&2
+      printf '  %sexport %s="%s"%s\n' "${C_BGREEN:-}" "$envvar" "${current_val:0:6}...${current_val: -4}" "${C_RST:-}" >&2
+      printf '%b\n' "${C_BCYAN}----------------------------------------${C_RST}" >&2
     fi
 
-    printf '%b\n' "${C_BCYAN}----------------------------------------${C_RST}" >&2
-
-    # Reset the manual prompt flag so the reminder is shown only once per session
+    # Reset manual prompt state flag
     BASH4LLM_KEY_MANUAL_PROMPT=0
     export BASH4LLM_KEY_MANUAL_PROMPT
   fi
@@ -840,18 +1047,11 @@ b64decode() {
     awk '{gsub(/.{64}/,"&\n")}1' | openssl enc -base64 -d 2>/dev/null
   else
     if [ -n "${B64_DECODE_OPT:-}" ]; then
-      base64 ${B64_DECODE_OPT}
+      base64 ${B64_DECODE_OPT:- -d}
     else
       base64 -d
     fi
   fi
-}
-
-is_truthy() {
-  case "${1:-}" in
-    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 file_size() {
@@ -860,7 +1060,7 @@ file_size() {
     printf '0'
     return 0
   fi
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
+  if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
     stat -f %z "$f" 2>/dev/null || printf '0'
   else
     stat -c %s "$f" 2>/dev/null || printf '0'
@@ -951,11 +1151,15 @@ stage_b64() {
   return 0
 }
 
+# --------------------------------------------------
+# Function: lock_exec (Silent & Race-Condition Proof POSIX Directory Lock)
+# --------------------------------------------------
 lock_exec() {
   local lockfile="${1:-}"
   local timeout="${2:-10}"
   local rc=""
   shift 2
+
   if [ "$1" != "--" ]; then
     log_error "USAGE" "lock_exec <lockfile> <timeout> -- <cmd> [args...]"
     return 2
@@ -964,7 +1168,7 @@ lock_exec() {
 
   if [ -L "$lockfile" ]; then
     log_error "SEC" "lockfile is a symlink: $lockfile. Aborting."
-    exit 15
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then exit 15; else return 15; fi
   fi
 
   safe_mkdir "$(dirname "$lockfile")" 700
@@ -976,7 +1180,7 @@ lock_exec() {
 
   if [ "$use_flock" -eq 1 ]; then
     (
-      exec 9>"$lockfile"
+      exec 9>"$lockfile" || exit 1
       if flock -x -w "$timeout" 9 2>/dev/null; then
         set -e
         "$@"
@@ -988,24 +1192,32 @@ lock_exec() {
     rc=$?
     return "$rc"
   else
-    # Fallback deterministico per Android/macOS/BSD immune a instabilità filesystem/mtime
     local lockdir="${lockfile}.lockdir"
-    local start_time="" now="" acquired=0 lock_pid=0 lock_ts=0 age=0
-
+    local start_time="" now="" acquired=0 lock_pid=0 lock_ts=0 is_orphan=0
     start_time=$(date +%s 2>/dev/null || echo 0)
 
     while :; do
       if [ -d "$lockdir" ]; then
-        lock_pid=$(cat "$lockdir/owner.pid" 2>/dev/null || echo 0)
-        lock_ts=$(cat "$lockdir/owner.ts" 2>/dev/null || echo 0)
-        now=$(date +%s 2>/dev/null || echo 0)
-        age=$((now - lock_ts))
+        lock_pid=0
+        if [ -f "$lockdir/owner.pid" ]; then
+          lock_pid=$(cat "$lockdir/owner.pid" 2>/dev/null || echo 0)
+        fi
 
-        local is_orphan=0
-        if [ "$age" -gt 15 ]; then
-          is_orphan=1
-        elif [[ "$lock_pid" =~ ^[0-9]+$ ]] && [ "$lock_pid" -gt 0 ] && ! kill -0 "$lock_pid" 2>/dev/null; then
-          is_orphan=1
+        is_orphan=0
+        if [[ "$lock_pid" =~ ^[0-9]+$ ]] && [ "$lock_pid" -gt 0 ]; then
+          if ! kill -0 "$lock_pid" 2>/dev/null; then
+            is_orphan=1
+          fi
+        else
+          # Grace period for empty metadata during creation
+          lock_ts=0
+          if [ -f "$lockdir/owner.ts" ]; then
+            lock_ts=$(cat "$lockdir/owner.ts" 2>/dev/null || echo 0)
+          fi
+          now=$(date +%s 2>/dev/null || echo 0)
+          if [ "$lock_ts" -gt 0 ] && [ $((now - lock_ts)) -gt 15 ]; then
+            is_orphan=1
+          fi
         fi
 
         if [ "$is_orphan" -eq 1 ]; then
@@ -1014,8 +1226,10 @@ lock_exec() {
       fi
 
       if mkdir "$lockdir" 2>/dev/null; then
-        printf '%s\n' "$$" > "$lockdir/owner.pid" 2>/dev/null
-        printf '%s\n' "$(date +%s)" > "$lockdir/owner.ts" 2>/dev/null
+        {
+          printf '%s\n' "${BASHPID:-$$}" > "$lockdir/owner.pid"
+          printf '%s\n' "$(date +%s)" > "$lockdir/owner.ts"
+        } 2>/dev/null || true
         acquired=1
         break
       fi
@@ -1215,34 +1429,49 @@ ensure_run_tmpdir() {
     subshell=1
   fi
 
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    case "$RUN_TMPDIR" in
-      "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
-        chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
-        : "${PAYLOAD:=$RUN_TMPDIR/payload}"
-        : "${RESP:=$RUN_TMPDIR/resp.json}"
-        : "${ERRF:=$RUN_TMPDIR/err.log}"
-        if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
-          : > "$RESP" 2>/dev/null || true
-          chmod 600 "$RESP" 2>/dev/null || true
-          : > "$ERRF" 2>/dev/null || true
-          chmod 600 "$ERRF" 2>/dev/null || true
-          export RUN_TMPDIR PAYLOAD RESP ERRF
-        fi
-        [ "$print_only" -eq 1 ] && printf '%s' "$RUN_TMPDIR"
-        return 0
-        ;;
-      *)
-        log_warn "TMP" "existing RUN_TMPDIR outside BASH4LLM_TMPDIR; discarding: $RUN_TMPDIR"
-        RUN_TMPDIR=""
-        ;;
-    esac
+  # Validate pre-existing RUN_TMPDIR: Must be a real directory, owned securely, and writable
+  if [ -n "${RUN_TMPDIR:-}" ]; then
+    if [ -d "${RUN_TMPDIR}" ] && [ ! -L "${RUN_TMPDIR}" ] && [ -w "${RUN_TMPDIR}" ]; then
+      case "$RUN_TMPDIR" in
+        "$BASH4LLM_TMPDIR"/*|"$BASH4LLM_TMPDIR")
+          chmod 700 "$RUN_TMPDIR" 2>/dev/null || true
+          
+          # FORCED OVERWRITE: Eliminate stale inherited environment paths
+          PAYLOAD="$RUN_TMPDIR/payload"
+          RESP="$RUN_TMPDIR/resp.json"
+          ERRF="$RUN_TMPDIR/err.log"
+
+          if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
+            : > "$RESP" 2>/dev/null || true
+            chmod 600 "$RESP" 2>/dev/null || true
+            : > "$ERRF" 2>/dev/null || true
+            chmod 600 "$ERRF" 2>/dev/null || true
+            export RUN_TMPDIR PAYLOAD RESP ERRF
+          fi
+          [ "$print_only" -eq 1 ] && printf '%s' "$RUN_TMPDIR"
+          return 0
+          ;;
+        *)
+          log_warn "TMP" "existing RUN_TMPDIR outside BASH4LLM_TMPDIR; discarding: $RUN_TMPDIR"
+          unset RUN_TMPDIR PAYLOAD RESP ERRF
+          ;;
+      esac
+    else
+      # Directory was deleted or is invalid/symlink: purge stale environment state
+      unset RUN_TMPDIR PAYLOAD RESP ERRF
+    fi
   fi
 
   if [ -z "${BASH4LLM_TMPDIR:-}" ]; then
     log_error "TMP" "BASH4LLM_TMPDIR not set"
     return "$BASH4LLM_ERR_TMP"
   fi
+
+  if [ -L "$BASH4LLM_TMPDIR" ]; then
+    log_error "TMP" "BASH4LLM_TMPDIR is a symlink: $BASH4LLM_TMPDIR"
+    return "$BASH4LLM_ERR_TMP"
+  fi
+
   safe_mkdir "$BASH4LLM_TMPDIR" 700
 
   tmpdir="$(_tmpf dir "$BASH4LLM_TMPDIR" run 2>/dev/null)" || {
@@ -1250,11 +1479,11 @@ ensure_run_tmpdir() {
     return "$BASH4LLM_ERR_TMP"
   }
 
+  # DIRECT ASSIGNMENT: Guarantees active path alignment across child processes
   RUN_TMPDIR="$tmpdir"
-
-  : "${PAYLOAD:=$RUN_TMPDIR/payload}"
-  : "${RESP:=$RUN_TMPDIR/resp.json}"
-  : "${ERRF:=$RUN_TMPDIR/err.log}"
+  PAYLOAD="$RUN_TMPDIR/payload"
+  RESP="$RUN_TMPDIR/resp.json"
+  ERRF="$RUN_TMPDIR/err.log"
 
   if [ "$print_only" -eq 0 ] && [ "$subshell" -eq 0 ]; then
     : > "$RESP" 2>/dev/null || true
@@ -1542,13 +1771,12 @@ fi
 
 umask 077
 
-# ---------------------------------------------------------------------------
-# Centralized lock names (co-located with resources)
-# ---------------------------------------------------------------------------
-MODELS_LOCK="${MODELS_LOCK:-$BASH4LLM_MODELS_DIR/models.lock}"
+# --------------------------------------------------
+# Centralized lock names (stored inside isolated var/run/locks)
+# --------------------------------------------------
+MODELS_LOCK="${MODELS_LOCK:-$BASH4LLM_LOCKS_DIR/models.lock}"
 HISTORY_LOCK="${HISTORY_LOCK:-$BASH4LLM_HISTORY_DIR/history.lock}"
-TMP_LOCK="${TMP_LOCK:-$BASH4LLM_TMPDIR/tmp.lock}"
-
+TMP_LOCK="${TMP_LOCK:-$BASH4LLM_LOCKS_DIR/tmp.lock}"
 # Lock timeouts (configurable via env)
 BASH4LLM_LOCK_TIMEOUT_TMP="${BASH4LLM_LOCK_TIMEOUT_TMP:-10}"
 BASH4LLM_LOCK_TIMEOUT_MODELS="${BASH4LLM_LOCK_TIMEOUT_MODELS:-10}"
@@ -1599,6 +1827,13 @@ load_provider_module() {
       return 0
     fi
   fi
+
+  # --- INTEGRITY CHECK ---
+  if ! verify_module_integrity "$PROVIDER_MODULE_PATH"; then
+    log_error "SEC" "Provider module failed integrity check: $PROVIDER_MODULE_PATH"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+  # -----------------------
 
   if [ -L "$PROVIDER_MODULE_PATH" ]; then
     log_error "SEC" "provider file is symlink."
@@ -1729,10 +1964,10 @@ _detect_base64_opts() {
 _detect_base64_opts
 
 list_files_sorted_by_mtime() {
-  local dir="${1:-}"
+  local dir="${1:-}" mtime="" f=""
   find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
-    local mtime=""
-    if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
+    mtime=""
+    if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
       mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)"
     else
       mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
@@ -1754,7 +1989,7 @@ tac_fallback() {
 _file_mtime() {
   local f="${1:-}"
   if [ ! -e "$f" ]; then printf '0'; return 0; fi
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
+  if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
     stat -f %m "$f" 2>/dev/null || printf '0'
   else
     stat -c %Y "$f" 2>/dev/null || printf '0'
@@ -2010,32 +2245,149 @@ manifest_read() {
 }
 #--2<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->2--
 #--3<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
-_get_perm_string() {
-  local path="${1:-}" perm=""
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
-    perm="$(stat -f %Sp "$path" 2>/dev/null || true)"
-  else
-    if command -v stat >/dev/null 2>&1; then
-      perm="$(stat -c %A "$path" 2>/dev/null || true)"
-    elif command -v ls >/dev/null 2>&1; then
-      perm="$(ls -ld -- "$path" 2>/dev/null | awk '{print $1}' || true)"
+# CORE SECURITY & HOOK ISOLATION ENGINE
+# Cryptographically anonymizes the thread ID in-memory to prevent PII exposure.
+# Falls back to alternative hashing utilities to maximize portability.
+# Aborts execution if no unidirectional hash utility is found to protect data.
+anonymize_thread_id() {
+  local raw_id="${1:-}"
+  if [ -z "$raw_id" ]; then
+    SAFE_THREAD_ID=""
+    export SAFE_THREAD_ID
+    return 0
+  fi
+
+  local hash_cmd=""
+  if command -v openssl >/dev/null 2>&1; then
+    hash_cmd="openssl"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash_cmd="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    hash_cmd="shasum"
+  elif command -v md5sum >/dev/null 2>&1; then
+    hash_cmd="md5sum"
+  elif command -v md5 >/dev/null 2>&1; then
+    hash_cmd="md5"
+  fi
+
+  case "$hash_cmd" in
+    openssl)
+      SAFE_THREAD_ID="$(printf '%s' "$raw_id" | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}')"
+      ;;
+    sha256sum)
+      SAFE_THREAD_ID="$(printf '%s' "$raw_id" | sha256sum 2>/dev/null | awk '{print $1}')"
+      ;;
+    shasum)
+      SAFE_THREAD_ID="$(printf '%s' "$raw_id" | shasum -a 256 2>/dev/null | awk '{print $1}')"
+      ;;
+    md5sum)
+      SAFE_THREAD_ID="$(printf '%s' "$raw_id" | md5sum 2>/dev/null | awk '{print $1}')"
+      ;;
+    md5)
+      if printf 'test' | md5 -q >/dev/null 2>&1; then
+        SAFE_THREAD_ID="$(printf '%s' "$raw_id" | md5 -q 2>/dev/null)"
+      else
+        SAFE_THREAD_ID="$(printf '%s' "$raw_id" | md5 2>/dev/null | awk '{print $NF}')"
+      fi
+      ;;
+    *)
+      log_error "SEC" "No cryptographic hashing utility found. Aborting execution to prevent PII disk leakage."
+      if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        exit 17
+      else
+        return 17
+      fi
+      ;;
+  esac
+
+  # Strict hexadecimal filter to eliminate any potential path-traversal injection vector
+  SAFE_THREAD_ID="${SAFE_THREAD_ID//[^a-fA-F0-9]/}"
+
+  if [ -z "$SAFE_THREAD_ID" ]; then
+    log_error "SEC" "Anonymization failed to generate a valid identifier. Aborting."
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+      exit 17
+    else
+      return 17
     fi
   fi
-  printf '%s' "$perm"
+
+  export SAFE_THREAD_ID
 }
 
-_get_owner() {
-  local path="${1:-}" owner=""
-  if [ "$BASH4LLM_PLAT_MACOS" -eq 1 ] || [ "$BASH4LLM_PLAT_BSD" -eq 1 ]; then
-    owner="$(stat -f %Su "$path" 2>/dev/null || true)"
-  else
-    if command -v stat >/dev/null 2>&1; then
-      owner="$(stat -c %U "$path" 2>/dev/null || true)"
-    elif command -v ls >/dev/null 2>&1; then
-      owner="$(ls -ld -- "$path" 2>/dev/null | awk '{print $3}' || true)"
-    fi
+# SECURE HOOK ISOLATION & DETERMINISTIC PARSING
+execute_isolated_hook() {
+  local hook_type="${1:-}" # "pre" or "post"
+  local module_name="${2:-}"
+  shift 2
+
+  local hook_file="${BASH4LLM_EXTRAS_DIR:-}/hooks/${module_name}.sh"
+  [ -f "$hook_file" ] || return 0
+
+  # 1. Validazione della sicurezza del percorso e dei permessi
+  if ! validate_path_security "$hook_file"; then
+    log_error "SEC" "Security validation failed for hook file: $hook_file. Aborting execution."
+    return 17
   fi
-  printf '%s' "$owner"
+
+  # 2. CORREZIONE: Controllo dell'integrità crittografica SHA-256 rispetto al manifest
+  if ! verify_module_integrity "$hook_file"; then
+    log_error "SEC" "Cryptographic integrity validation failed for hook file: $hook_file. Aborting execution."
+    return 17
+  fi
+
+  # Execute inside a subshell to isolate execution context
+  local hook_out
+  hook_out="$(
+    # Strip sensitive API keys and tokens from subshell environment memory
+    if command -v compgen >/dev/null 2>&1; then
+      for var in $(compgen -v 2>/dev/null | grep -E '(_API_KEY|_KEY|_TOKEN|^GROQ_)' || true); do
+        unset "$var" 2>/dev/null || true
+      done
+    else
+      unset GROQ_API_KEY BASH4LLM_API_KEY GEMINI_API_KEY MISTRAL_API_KEY HUGGINGFACE_API_KEY BASH4LLM_AUTH_TOKEN 2>/dev/null || true
+    fi
+
+    # Source and execute the hook within the safe cleaned subshell
+    # shellcheck source=/dev/null
+    . "$hook_file" 2>/dev/null
+    if type "${hook_type}_execution_hook" >/dev/null 2>&1; then
+      "${hook_type}_execution_hook" "$@"
+    else
+      exit 0
+    fi
+  )"
+  local hook_rc=$?
+
+  # Safe Whitelist Parser (Zero-Eval) to extract approved settings back to the Core
+  local line key val
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if [[ "$line" =~ ^([A-Z0-9_]+)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+
+      case "$key" in
+        BASH4LLM_RATE_LIMIT)
+          if [[ "$val" =~ ^[0-9]+$ ]] || [ "$val" = "unlimited" ]; then
+            export BASH4LLM_RATE_LIMIT="$val"
+          fi
+          ;;
+        FALLBACK_PAYLOAD)
+          if [[ "$val" =~ ^[a-zA-Z0-9+/=]+$ ]]; then
+            export FALLBACK_PAYLOAD="$val"
+          fi
+          ;;
+        BASH4LLM_AUTH_TOKEN)
+          if [[ "$val" =~ ^[a-zA-Z0-9_-]{16,128}$ ]]; then
+            export BASH4LLM_AUTH_TOKEN="$val"
+          fi
+          ;;
+      esac
+    fi
+  done <<< "$hook_out"
+
+  return "$hook_rc"
 }
 
 # Unified secure file signature extraction
@@ -2087,6 +2439,110 @@ _is_world_writable() {
   [ -z "$perms" ] && return "$BASH4LLM_ERR_TMP"
   others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
   [ "$others_write" = "w" ]
+}
+
+# ATOMIC LOCKED COMPONENT HELPERS
+_locked_history_save() {
+  local src="${1:-}"
+  local dst="${2:-}"
+  [ -n "$src" ] && [ -n "$dst" ] || return 1
+  mv -f -- "$src" "$dst"
+  chmod 600 "$dst" 2>/dev/null || true
+}
+
+_locked_manifest_create() {
+  local manifest="${1:-}"
+  [ -n "$manifest" ] || return 1
+  local tmp=""
+  tmp="$(mktemp "$(dirname "$manifest")/manifest.tmp.XXXXXX")"
+  printf "%s" "{\"parts\":[]}" > "$tmp"
+  if [ -n "${B64_WRAP_OPT:-}" ]; then
+    base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
+  else
+    base64 "$tmp" | tr -d "\n" > "${manifest}.b64"
+  fi
+  mv -f "$tmp" "$manifest"
+  chmod 600 "$manifest" 2>/dev/null || true
+}
+
+_locked_manifest_add_part() {
+  local manifest="${1:-}"
+  local part_b64="${2:-}"
+  local name="${3:-}"
+  local mime="${4:-}"
+  [ -n "$manifest" ] && [ -n "$part_b64" ] || return 1
+  local tmp=""
+  
+  tmp="$(mktemp "$(dirname "$manifest")/manifest.edit.XXXXXX")"
+  if [ -f "${manifest}.b64" ]; then
+    base64 ${B64_DECODE_OPT} < "${manifest}.b64" > "$tmp" 2>/dev/null || printf "%s" "{\"parts\":[]}" > "$tmp"
+  elif [ -f "$manifest" ]; then
+    cp -f "$manifest" "$tmp"
+  else
+    printf "%s" "{\"parts\":[]}" > "$tmp"
+  fi
+  
+  # Standard single quotes prevent premature shell expansion of jq variables
+  jq --arg name "$name" --arg path "$part_b64" --arg enc "b64" --arg type "$mime" \
+     '.parts += [{name:$name, path:$path, encoding:$enc, type:$type}]' "$tmp" > "${tmp}.new"
+  mv -f "${tmp}.new" "$tmp"
+  
+  if [ -n "${B64_WRAP_OPT:-}" ]; then
+    base64 ${B64_WRAP_OPT} "$tmp" > "${manifest}.b64"
+  else
+    base64 "$tmp" | tr -d "\n" > "${manifest}.b64"
+  fi
+  cp -f "$tmp" "$manifest"
+  chmod 600 "$manifest" 2>/dev/null || true
+  rm -f "$tmp" 2>/dev/null || true
+}
+
+# NATIVE LOCAL RATE LIMITING ENGINE
+check_local_rate_limit() {
+  local limit="${BASH4LLM_RATE_LIMIT:-unlimited}"
+  [ "$limit" = "unlimited" ] && return 0
+  
+  # Bypass rate limiting if an authorized token is present
+  if [ -n "${BASH4LLM_AUTH_TOKEN:-}" ]; then
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "RATE" "Authorized token detected. Bypassing rate limiter."
+    fi
+    return 0
+  fi
+
+  local tid="${SAFE_THREAD_ID:-}"
+  [ -n "$tid" ] || return 0
+
+  local rate_dir="${BASH4LLM_RATES_DIR:-$BASH4LLM_TMPDIR/rates}/$tid"
+  safe_mkdir "$rate_dir" 700
+
+  local now="" cutoff="" count=0 f="" mtime=""
+  now=$(date +%s 2>/dev/null || echo 0)
+  cutoff=$((now - 30))
+
+  # Remove expired transaction files older than 30 seconds
+  for f in "$rate_dir"/*; do
+    [ -e "$f" ] || continue
+    mtime=$(_file_mtime "$f")
+    if [ "$mtime" -lt "$cutoff" ]; then
+      rm -f "$f" 2>/dev/null || true
+    fi
+  done
+
+  # Count active transaction files in the current sliding window
+  count=$(find "$rate_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$count" -ge "$limit" ]; then
+    log_error "RATE" "Rate limit exceeded: $count/$limit requests per 30 seconds for thread ${tid:0:8}."
+    return 1
+  fi
+
+  # Record the current transaction using an empty tracking file
+  local tx_file="${rate_dir}/${now}_${RANDOM}"
+  : > "$tx_file"
+  chmod 600 "$tx_file" 2>/dev/null || true
+
+  return 0
 }
 
 make_tmpdir() {
@@ -2191,11 +2647,11 @@ _update_thread_index() {
   local tid="${1:-}"
   [ -n "$tid" ] || return 0
   local idx_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/index.json"
+  local tmp_idx=""
   if [ -f "$idx_file" ]; then
     if jq --arg tid "$tid" '(.threads // []) | index($tid) // empty' "$idx_file" >/dev/null 2>&1; then
       :
     else
-      local tmp_idx=""
       tmp_idx="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" uiidx 2>/dev/null)" || true
       if [ -n "$tmp_idx" ]; then
         if jq --arg tid "$tid" '.threads = ((.threads // []) + [$tid])' "$idx_file" > "${tmp_idx}.new" 2>/dev/null; then
@@ -2282,7 +2738,7 @@ thread_rename_core() {
   [ -n "$title" ] || title="Thread ${tid:0:8}"
 
   local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${tid}.json"
-  local tmp_meta="" msg_count=0 last_ts=""
+  local tmp_meta="" msg_count=0 last_ts="" last_line=""
   local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
 
   tmp_meta="$(_tmpf file "${RUN_TMPDIR:-$BASH4LLM_TMPDIR}" meta_ren 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
@@ -2291,7 +2747,6 @@ thread_rename_core() {
   last_ts=""
   if [ -f "$thread_file" ]; then
     msg_count="$(wc -l < "$thread_file" 2>/dev/null || echo 0)"
-    local last_line
     last_line="$(tail -n 1 "$thread_file" 2>/dev/null || true)"
     if printf '%s' "$last_line" | jq -e . >/dev/null 2>&1; then
       last_ts="$(printf '%s' "$last_line" | jq -r '.ts // empty' 2>/dev/null || true)"
@@ -2329,7 +2784,7 @@ acquire_thread_lock() {
   safe_mkdir "$(dirname "$lockfile")" 700
 
   local use_flock=0
-  if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
+  if command -v flock >/dev/null 2>&1 && [ "${BASH4LLM_PLAT_ANDROID:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_BSD:-0}" -eq 0 ]; then
     use_flock=1
   fi
 
@@ -2362,7 +2817,7 @@ release_thread_lock() {
   fi
 
   local use_flock=0
-  if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
+  if command -v flock >/dev/null 2>&1 && [ "${BASH4LLM_PLAT_ANDROID:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_BSD:-0}" -eq 0 ]; then
     use_flock=1
   fi
 
@@ -2560,7 +3015,7 @@ thread_append() {
   timeout="${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}"
 
   local use_flock=0
-  if command -v flock >/dev/null 2>&1 && [ "$BASH4LLM_PLAT_ANDROID" -eq 0 ] && [ "$BASH4LLM_PLAT_MACOS" -eq 0 ] && [ "$BASH4LLM_PLAT_BSD" -eq 0 ]; then
+  if command -v flock >/dev/null 2>&1 && [ "${BASH4LLM_PLAT_ANDROID:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 0 ] && [ "${BASH4LLM_PLAT_BSD:-0}" -eq 0 ]; then
     use_flock=1
   fi
 
@@ -2660,9 +3115,9 @@ thread_append() {
 : "${LAST_CHECK_LINES:=50}"
 #--4<---[ /SECTION: PRECORE_RUN_THREAD_MVP ]--->4--
 #--5<---[ SECTION: PRECORE_RUN_THREAD_CACHE ]--->5--
-# =============================================================================
+# ======================================
 # Thread cache helpers (Strict-safe under set -u)
-# =============================================================================
+# ======================================
 THREAD_CACHE_DIR="${BASH4LLM_CONFIG_DIR%/}/thread_cache"
 safe_mkdir "$THREAD_CACHE_DIR" 700
 
@@ -2753,7 +3208,7 @@ thread_cache_invalidate() {
 #--5<---[ /SECTION: PRECORE_RUN_THREAD_CACHE ]--->5--
 #--6<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->6--
 # Runtime globals and normalization (non-destructive defaults)
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 CONTENT="${CONTENT:-}"
 PROVIDER="${PROVIDER:-groq}"
 JSON_INPUT="${JSON_INPUT:-}"
@@ -2851,9 +3306,11 @@ buildpayload_groq() {
   esac
 
   if ! printf '%s' "${TEMPERATURE:-}" | grep -qE '^[0-9]+([.][0-9]+)?$'; then
-    log_warn "ARGS" "invalid TURE value '${TEMPERATURE:-}'; defaulting to 1.0"
-    TURE="1.0"
+    log_warn "ARGS" "invalid TEMPERATURE value '${TEMPERATURE:-}'; defaulting to 1.0"
+    TEMPERATURE="1.0"
   fi
+  TURE="$TEMPERATURE"
+
   if ! printf '%s' "${MAX_TOKENS:-}" | grep -qE '^[0-9]+$'; then
     log_warn "ARGS" "invalid MAX_TOKENS value '${MAX_TOKENS:-}'; defaulting to 4096"
     MAX_TOKENS="4096"
@@ -2963,10 +3420,14 @@ buildpayload_groq() {
   return 0
 }
 
+# --------------------------------------------------
+# Function: call_api_groq
+# Purpose:  Synchronous HTTP API execution securing Bearer token from process list
+# --------------------------------------------------
 call_api_groq() {
   local provider_url="${BASH4LLM_PROVIDER_URL:-}"
   local api_key="${GROQ_API_KEY:-}"
-  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err=""
+  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err="" hdr_file=""
 
   enforce_network_policy || return $?
 
@@ -2976,7 +3437,6 @@ call_api_groq() {
   fi
 
   payload_dec="$PAYLOAD"
-  # Native suffix match replacing grep sub-process
   if [[ "$PAYLOAD" == *.b64 ]]; then
     payload_dec="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
     if ! b64decode < "$PAYLOAD" > "$payload_dec" 2>/dev/null; then
@@ -2989,19 +3449,31 @@ call_api_groq() {
   tmp_resp="$(_tmpf file "$RUN_TMPDIR" resp.tmp 2>/dev/null)" || { [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
   tmp_err="$(_tmpf file "$RUN_TMPDIR" err.tmp 2>/dev/null)" || { rm -f "$tmp_resp" 2>/dev/null || true; [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
 
+  # SECURE HEADER ISOLATION: Write secret to mode 600 file to prevent 'ps aux' leaks
+  hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_hdr 2>/dev/null)" || {
+    rm -f "$tmp_resp" "$tmp_err" 2>/dev/null || true
+    [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true
+    return "$BASH4LLM_ERR_TMP"
+  }
+  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+  chmod 600 "$hdr_file" 2>/dev/null || true
+
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CURL" "POST -> $provider_url"
   fi
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]}" \
+  # Execute curl using header file instead of command-line token argument
+  http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" \
     -X POST \
-    -H "Authorization: Bearer $api_key" \
-    -H "Content-Type: application/json" \
+    -H @"$hdr_file" \
     --data-binary @"$payload_dec" \
     -o "$tmp_resp" \
     -w "%{http_code}" \
     "$provider_url" < /dev/null 2>"$tmp_err")"
   rc=$?
+
+  # Immediately shred sensitive header file from disk
+  rm -f "$hdr_file" 2>/dev/null || true
 
   if [ "$payload_dec" != "$PAYLOAD" ]; then
     rm -f "$payload_dec" 2>/dev/null || true
@@ -3039,7 +3511,7 @@ call_api_groq() {
 # Single jq SSE streaming parser featuring instant HTTP and JSON API errors formatting
 call_api_streaming_groq() {
   local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 stderr_head="" now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" CURL_CMD=() http_code="" json="" content="" resp_size=0 errf_size=0 resp_json_tmp="" p_dir="" api_json="" ui_last=""
-  local curl_err_log=""
+  local curl_err_log="" _line=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
@@ -3294,7 +3766,7 @@ refresh_models_groq() {
   fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
-  if ! curl "${CURL_BASE_OPTS[@]}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
+  if ! curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
     log_error "MODELREFRESH" "Failed to fetch models from $api_url"
     if [ "${DEBUG:-0}" -eq 1 ]; then
       head -n 200 "$errf" >&2 || true
@@ -3399,7 +3871,7 @@ validate_key_groq() {
   [ -n "$tmpout" ] || tmpout="$(_tmpf file "$BASH4LLM_TMPDIR" groq-key-diag 2>/dev/null || mktemp "${BASH4LLM_TMPDIR}/groq-key-diag.XXXXXX")"
   errf="${tmpout}.err"
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]}" --max-time 10 \
+  http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" --max-time 10 \
     -H "Authorization: Bearer $key" \
     -o "$tmpout" \
     -w "%{http_code}" \
@@ -3420,7 +3892,7 @@ validate_key_groq() {
 }
 
 auto_select_model_groq() {
-  local file="$MODELS_FILE" line="" norm="" cnt=0
+  local file="$MODELS_FILE" line="" norm="" cnt=0 relative_mfile=""
   if [ -f "$file" ] && [ -s "$file" ]; then
     relative_mfile="$(canonical_model_file "groq")"
     if [ -f "$relative_mfile" ] && [ -s "$relative_mfile" ]; then
@@ -3557,7 +4029,7 @@ auto_select_model_dispatch() {
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
 #--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
 resolve_model() {
-  local active_provider="" candidate="" norm="" MODEL_PROVIDER_CFG="" cfg_model="" cnt=0 m=""
+  local active_provider="" candidate="" norm="" MODEL_PROVIDER_CFG="" cfg_model="" cnt=0 m="" relative_mfile=""
   ALLOWED_MODELS="${ALLOWED_MODELS:-}"
 
   if [ -n "${MODEL:-}" ] && [ "${MODEL_CLI_SET:-0}" -ne 1 ] && [ "${CHAT_MODE:-0}" -ne 1 ]; then
@@ -3705,6 +4177,12 @@ call_api_once() {
 
 call_api_streaming() {
   acquire_thread_lock || return $?
+
+  # HARDENING CHECK: Enforce local rate limit policy on streaming execution
+  if ! check_local_rate_limit; then
+    release_thread_lock
+    return 17 # Security limit exit code
+  fi
 
   local fn="call_api_streaming_${PROVIDER}"
   local rc=""
@@ -3861,6 +4339,21 @@ finalize_and_output() {
 perform_request_once() {
   acquire_thread_lock || return $?
 
+  # Invoke the secure generic pre-execution hook (default module name: "hook")
+  execute_isolated_hook "pre" "hook" "$@"
+  local pre_status=$?
+  if [ "$pre_status" -ne 0 ]; then
+    log_warn "HOOK" "Execution stopped by pre-execution hook (code $pre_status)."
+    release_thread_lock
+    return "$pre_status"
+  fi
+
+  # HARDENING CHECK: Enforce local rate limit policy before continuing
+  if ! check_local_rate_limit; then
+    release_thread_lock
+    return 17 # Security limit exit code
+  fi
+
   local attempt=1 rc="" text="" api_err="" ui_last="" finish_reason="" req_id="" edgecase=0 now_ts="" http_code_fallback="" api_json=""
   local prev_trap=""
 
@@ -3949,6 +4442,18 @@ perform_request_once() {
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
+        
+        # Invoke the secure generic post-execution hook on non-retryable API failure
+        execute_isolated_hook "post" "hook" "ERROR" "$rc" "${http_code_fallback:-0}"
+        local post_status=$?
+        if [ "$post_status" -eq 0 ] && [ -n "${FALLBACK_PAYLOAD:-}" ]; then
+          local decoded_fallback
+          decoded_fallback="$(printf '%s' "$FALLBACK_PAYLOAD" | b64decode 2>/dev/null)"
+          finalize_and_output "$OUTPUT_MODE" "$decoded_fallback"
+          release_thread_lock
+          return 0
+        fi
+
         release_thread_lock
         return "$BASH4LLM_ERR_API"
       else
@@ -3958,6 +4463,17 @@ perform_request_once() {
 
     attempt=$((attempt + 1)); sleep $((attempt * 1))
   done
+
+  # Invoke the secure generic post-execution hook if all transaction attempts failed
+  execute_isolated_hook "post" "hook" "ERROR" "$rc" "${http_code_fallback:-0}"
+  local post_status=$?
+  if [ "$post_status" -eq 0 ] && [ -n "${FALLBACK_PAYLOAD:-}" ]; then
+    local decoded_fallback
+    decoded_fallback="$(printf '%s' "$FALLBACK_PAYLOAD" | b64decode 2>/dev/null)"
+    finalize_and_output "$OUTPUT_MODE" "$decoded_fallback"
+    release_thread_lock
+    return 0
+  fi
 
   log_error "REQUEST" "request failed after $MAX_RETRIES attempts."
   release_thread_lock
@@ -3969,18 +4485,30 @@ collect_input_from_files() {
   local out="" first=1 f
   for f in "$@"; do
     if file_readable "$f"; then
-      [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${a} ---"$'\n\n'
+      # Actively validate file safety before performing command substitution
+      if ! validate_file_input "$f"; then
+        log_error "SECURITY" "File '$f' failed safety check (binary or unsafe data detected). Execution aborted."
+        exit 17
+      fi
+      [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${f} ---"$'\n\n'
       out="${out}$(cat "$f")"; first=0
-    else log_error "FILE" "file not readable: $f"; exit "$BASH4LLM_ERR_TMP"; fi
+    else
+      log_error "FILE" "file not readable: $f"
+      exit "${BASH4LLM_ERR_TMP:-15}"
+    fi
   done
   printf '%s' "$out"
 }
 
 expand_args_to_content() {
   local out="" first=1 a
-  # Guard against empty array expansion under strict set -u shell mode
   for a in ${ARGS[@]+"${ARGS[@]}"}; do
     if file_readable "$a"; then
+      # Actively validate file safety before performing command substitution
+      if ! validate_file_input "$a"; then
+        log_error "SECURITY" "File '$a' failed safety check (binary or unsafe data detected). Execution aborted."
+        exit 17
+      fi
       [ "$first" -eq 0 ] && out="${out}"$'\n\n'"--- FILE: ${a} ---"$'\n\n'
       out="${out}$(cat "$a")"; first=0
     else
@@ -4003,9 +4531,9 @@ is_supported_model() {
   l="$(printf '%s' "$m" | tr '[:upper:]' '[:lower:]')"
 
   case "$l" in
-    *image*|*imagen*|*img*|*vision*|*vqa*|*vit*|*clip*|*render* ) return 1 ;;
+    *image*|*img*|*vision*|*vqa*|*vit*|*clip*|*render* ) return 1 ;;
     *audio*|*speech*|*tts*|*wav2vec*|*whisper* ) return 1 ;;
-    *embed*|*embedding*|*vector* ) return 1 ;;
+    *embed*|*vector* ) return 1 ;;
     *multimodal* ) return 1 ;;
     *) return 0 ;;
   esac
@@ -4071,11 +4599,19 @@ load_local_config() {
   [ -f "$cfg" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
+    [[ "$line" == *=* ]] || continue
     key="${line%%=*}"
     val="${line#*=}"
+
+    # Trim leading/trailing whitespace natively
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+
     case "$key" in
       MODEL) [ -n "$val" ] && MODEL="$val" ;;
-      TEMPERATURE|TURE) [ -n "$val" ] && TURE="$val" ;;
+      TEMPERATURE|TURE) [ -n "$val" ] && { TEMPERATURE="$val"; TURE="$val"; } ;;
       MAX_TOKENS) [ -n "$val" ] && MAX_TOKENS="$val" ;;
       FORMAT) [ -n "$val" ] && OUTPUT_MODE="$val" ;;
       THRESHOLD) [ -n "$val" ] && THRESHOLD="$val" ;;
@@ -4095,29 +4631,70 @@ load_whitelist() {
   fi
 }
 
+# Centralized thread anonymization before any disk transaction occurs
+if [ -n "${THREAD_ID:-}" ]; then
+  anonymize_thread_id "${THREAD_ID}"
+  # Overwrite global THREAD_ID with the safe hash to redirect all file helpers automatically
+  THREAD_ID="$SAFE_THREAD_ID"
+fi
+
+# Set isolated directory path for rate limit transactions
+BASH4LLM_RATES_DIR="${BASH4LLM_TMPDIR}/rates"
+export BASH4LLM_RATES_DIR
+
 is_tty_out() {
   [ -t 1 ]
 }
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 # Sourcing Guard & Interactive Parent-Shell Sourcing Handler (Session Unlock)
-# ---------------------------------------------------------------------------
+# --------------------------------------------------
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-  # Skip execution if only loading functions (BASH4LLM_SOURCE_ONLY=1)
+  # === AUTOMATIC NAMESPACE CLEANUP ===
+  _cleanup_sourced_env() {
+    unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
+             canonical_provider_file canonical_model_file canonical_provider_url_file \
+             trim_space sync_models_file_path validate_file_input _normalize_model_name \
+             ensure_api_key_for_provider enforce_network_policy _extract_notes_section \
+             log_prefix log_info log_warn log_error log_info_user dbg ensure_config_dir \
+             write_provider_url_if_missing resolve_provider_url provider_api_env_var_name \
+             print_persistence_reminder is_valid_json_string b64encode b64decode is_truthy \
+             file_size is_valid_json_file stage_b64 lock_exec _mktemp_in_dir show_payload_head \
+             atomic_write extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir \
+             b64_atomic_write b64_atomic_read ui_state_write run_static_config_check \
+             explain_error_code load_provider_module _detect_base64_opts list_files_sorted_by_mtime \
+             tac_fallback _file_mtime jq_safe rotate_history save_to_history manifest_create \
+             manifest_add_part manifest_read _get_perm_string _get_owner anonymize_thread_id \
+             validate_path_security execute_isolated_hook _get_file_signature getfile_signature \
+             _is_world_writable _locked_history_save _locked_manifest_create _locked_manifest_add_part \
+             check_local_rate_limit make_tmpdir _tmpf thread_validate_id thread_now_ts \
+             thread_messages_tmp_path thread_sanitize_cmd _update_thread_index _thread_delete_locked \
+             thread_delete_core _thread_rename_locked thread_rename_core acquire_thread_lock \
+             release_thread_lock _thread_read_window_locked thread_read_window thread_append \
+             _thread_hash thread_cache_key thread_cache_get thread_cache_set thread_cache_invalidate \
+             _normalize_bool_env buildpayload_groq call_api_groq call_api_streaming_groq \
+             refresh_models_groq validate_model_groq validate_key_groq auto_select_model_groq \
+             validate_provider_interface call_provider validate_provider_key_dispatch \
+             refresh_models_dispatch validate_model_dispatch auto_select_model_dispatch \
+             resolve_model build_payload_from_vars call_api_once call_api_streaming \
+             extract_api_error detect_empty_edge_case finalize_and_output perform_request_once \
+             collect_input_from_files expand_args_to_content file_readable trim is_number \
+             is_supported_model list_models_cli validate_model_core load_local_config \
+             load_whitelist is_tty_out assemble_content read_secure_input \
+             _core_sha256 verify_module_integrity \
+                 _vault_read_password _vault_set_opts _vault_encrypt_to_file _vault_decrypt_file \
+                 vault_exists vault_init vault_load_keys vault_change_password \
+                 vault_destroy vault_recover vault_manage_keys \
+                 vault_get_provider_key vault_console _secure_hash_sha256 \
+                 diagnose_tls_connection _cleanup_sourced_env 2>/dev/null || true
+  }
+
+  # Skip execution and preserve functions if only loading library (BASH4LLM_SOURCE_ONLY=1)
   if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
-    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
+    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists && [ -t 0 ]; then
       if [ -z "${_B4L_RT_CTX:-}" ]; then
-        # Display session unlock prompt with inline hidden input warning
-        printf "%bUnlock Vault Session: %b[input is hidden]%b " "${C_BCYAN:-}" "${C_MAGENTA:-}" "${C_RST:-}" >&2
-        if [ -r /dev/tty ] && [ -c /dev/tty ]; then
-          stty -echo 2>/dev/null || true
-          IFS= read -r _B4L_RT_CTX < /dev/tty
-          stty echo 2>/dev/null || true
-        else
-          # Fallback for headless or non-interactive environments
-          IFS= read -r _B4L_RT_CTX
-        fi
-        printf '\n' >&2
+        # Display session unlock prompt strictly blind (allow_verify = 0)
+        read_secure_input "_B4L_RT_CTX" "$(printf '%bUnlock Vault Session%b' "${C_BCYAN:-}" "${C_RST:-}")" 0 0
         
         if [ -n "$_B4L_RT_CTX" ]; then
           # Attempt to decrypt the master vault key to validate the password
@@ -4130,64 +4707,26 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
           else
             unset _B4L_RT_CTX
             printf "%bUnlock failed: incorrect Master Password.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+            
+            # Clean up the sourced environment functions and return early
+            _cleanup_sourced_env
+            return 1 2>/dev/null || exit 1
           fi
           unset _test_key
         else
           printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+          _cleanup_sourced_env
+          return 1 2>/dev/null || exit 1
         fi
       else
         printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
       fi
     fi
+
+    # Clean up environment functions ONLY if NOT in BASH4LLM_SOURCE_ONLY mode
+    _cleanup_sourced_env
   fi
 
-  # === AUTOMATIC NAMESPACE CLEANUP ===
-  # Run cleanup only if the user has not explicitly requested feature import
-  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
-    unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
-             canonical_provider_file canonical_model_file canonical_provider_url_file \
-             trim_space sync_models_file_path validate_file_input _normalize_model_name \
-             ensure_api_key_for_provider enforce_network_policy _extract_notes_section \
-             log_prefix log_info log_warn log_error log_info_user dbg ensure_config_dir \
-             write_provider_url_if_missing resolve_provider_url provider_api_env_var_name \
-             is_valid_json_string b64encode b64decode is_truthy file_size is_valid_json_file \
-             stage_b64 lock_exec _mktemp_in_dir show_payload_head atomic_write \
-             extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir b64_atomic_write \
-             b64_atomic_read ui_state_write run_static_config_check explain_error_code \
-             load_provider_module _detect_base64_opts list_files_sorted_by_mtime tac_fallback \
-             _file_mtime jq_safe rotate_history save_to_history manifest_create \
-             manifest_add_part manifest_read _get_perm_string _get_owner _get_file_signature \
-             getfile_signature _is_world_writable make_tmpdir _tmpf thread_validate_id \
-             thread_now_ts thread_messages_tmp_path thread_sanitize_cmd _update_thread_index \
-             _thread_delete_locked thread_delete_core _thread_rename_locked thread_rename_core \
-             acquire_thread_lock release_thread_lock _thread_read_window_locked thread_read_window \
-             thread_append _thread_hash thread_cache_key thread_cache_get thread_cache_set \
-             thread_cache_invalidate _normalize_bool_env \
-                 _vault_read_password _vault_set_opts _vault_encrypt_to_file _vault_decrypt_file \
-                 vault_exists vault_init vault_load_keys vault_change_password vault_destroy \
-                 vault_recover vault_manage_keys vault_get_provider_key vault_console \
-                 _secure_hash_sha256 diagnose_tls_connection 2>/dev/null || true
-
-    unset BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT_CYGWIN \
-          BASH4LLM_PLAT_BSD BASH4LLM_PLAT_LINUX SCRIPT_NAME SCRIPT_VERSION SCRIPT_DATE \
-          C_LOGO C_BANNER C_RST C_BOLD C_NOBOLD C_UNDERLINE C_NOUNDERLINE C_BLACK C_RED C_GREEN C_YELLOW C_BLUE \
-          C_MAGENTA C_CYAN C_WHITE C_BBLACK C_BRED C_BGREEN C_BYELLOW C_BBLUE C_BMAGENTA \
-          C_BCYAN C_BWHITE BG_BLACK BG_RED BG_GREEN BG_YELLOW BG_BLUE BG_MAGENTA BG_CYAN \
-          BG_WHITE BASH4LLM_ERR_NO_API_KEY BASH4LLM_ERR_BAD_MODEL BASH4LLM_ERR_CURL_FAILED \
-          BASH4LLM_ERR_NO_PROMPT BASH4LLM_ERR_TMP BASH4LLM_ERR_API BASH4LLM_ERR_SEC \
-          BASH4LLMERR_NO_API_KEY BASH4LLMERR_BAD_MODEL BASH4LLMERR_CURL_FAILED BASH4LLMERR_NO_PROMPT \
-          BASH4LLMERR_TMP BASH4LLMERR_API BASH4LLMERR_SEC SCRIPTDIR BASH4LLM_DIR \
-          BASH4LLM_CONFIG_DIR BASH4LLM_MODELS_DIR BASH4LLM_TEMPLATES_DIR BASH4LLM_HISTORY_DIR \
-          BASH4LLM_TMPDIR MAX_MODELS CANONICAL_EXTRAS_DIR LEGACY_EXTRAS_DIR BASH4LLM_EXTRAS_DIR \
-          PROVIDERS_DIR THREAD_DIR MODELS_LOCK HISTORY_LOCK TMP_LOCK BASH4LLM_LOCK_TIMEOUT_TMP \
-          BASH4LLM_LOCK_TIMEOUT_MODELS BASH4LLM_LOCK_TIMEOUT_HISTORY BASH4LLM_OPENSSL_ACTIVE \
-          _BASH4LLM_OPENSSL_HELPER BASH4LLM_VAULT_ENABLED B64_WRAP_OPT B64_DECODE_OPT \
-          BASH4LLM_ROTATE_HISTORY BASH4LLM_HISTORY_MAX_FILES BASH4LLM_HISTORY_MAX_BYTES \
-          BASH4LLM_HISTORY_KEEP_DAYS MODELS_FILE LAST_CHECK_LINES THREAD_CACHE_DIR \
-          _VAULT_FILE _VAULT_REC_FILE _VAULT_DAT_FILE _BASH4LLM_VAULT_PBKDF2 _B4L_CFG_DIR 2>/dev/null || true
-  fi
-
-  # Interrupt parent-shell execution to prevent CLI action processing
   return 0 2>/dev/null || exit 0
 fi
 #--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
@@ -4397,6 +4936,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Centralized thread anonymization right after CLI option parsing
+if [ -n "${THREAD_ID:-}" ]; then
+  anonymize_thread_id "${THREAD_ID}"
+  THREAD_ID="$SAFE_THREAD_ID"
+fi
+if [ -n "${DELETE_THREAD_ID:-}" ]; then
+  anonymize_thread_id "${DELETE_THREAD_ID}"
+  DELETE_THREAD_ID="$SAFE_THREAD_ID"
+fi
+if [ -n "${RENAME_THREAD_ID:-}" ]; then
+  anonymize_thread_id "${RENAME_THREAD_ID}"
+  RENAME_THREAD_ID="$SAFE_THREAD_ID"
+fi
+
 # 1. Resolve active provider based on CLI overrides or persisted state
 if [ -n "${PROVIDER_CLI:-}" ] && [ "$PROVIDER_CLI" != "list" ]; then
   PROVIDER="$PROVIDER_CLI"
@@ -4425,9 +4978,11 @@ fi
 
 # 3. Immediately load the corresponding provider module
 if [ "${PROVIDER_INTERACTIVE:-0}" -eq 0 ]; then
-  if ! load_provider_module "$PROVIDER"; then
+  load_provider_module "$PROVIDER"
+  prov_rc=$?
+  if [ "$prov_rc" -ne 0 ]; then
     log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-    exit "$BASH4LLM_ERR_TMP"
+    exit "$prov_rc"
   fi
 fi
 
@@ -4439,19 +4994,16 @@ sync_models_file_path "$PROVIDER"
 _engine_path="${BASH4LLM_EXTRAS_DIR}/session/session-engine.sh"
 _engine_available=0
 if [ -f "$_engine_path" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
-  if bash -n "$_engine_path" 2>/dev/null; then
+  if verify_module_integrity "$_engine_path" && bash -n "$_engine_path" 2>/dev/null; then
     . "$_engine_path"
     if type session_engine_build_window >/dev/null 2>&1 && type session_engine_append >/dev/null 2>&1 && type session_engine_enabled >/dev/null 2>&1; then
       if session_engine_enabled 2>/dev/null; then
         _engine_available=1
         if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "SESSION" "Session Engine loaded and available"
+          log_info "SESSION" "Session Engine loaded and verified successfully"
         fi
       else
         _engine_available=0
-        if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "SESSION" "Session Engine loaded but disabled by module"
-        fi
       fi
     else
       _engine_available=0
@@ -4459,7 +5011,7 @@ if [ -f "$_engine_path" ] && [ "${BASH4LLM_SESSION_ENGINE:-on}" != "off" ]; then
     fi
   else
     _engine_available=0
-    log_warn "SESSION" "Session Engine module has syntax errors; falling back to legacy"
+    log_warn "SESSION" "Session Engine module failed integrity check or syntax validation; falling back to legacy"
   fi
 else
   _engine_available=0
@@ -4609,6 +5161,34 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   if cp -R "$SRC_BASE/." "$DEST_BASE/" 2>/dev/null; then
     find "$DEST_BASE" -type d -exec chmod 700 {} + 2>/dev/null || true
     find "$DEST_BASE" -type f -exec chmod 600 {} + 2>/dev/null || true
+    
+    # Verify integrity of newly installed extras against manifest
+    installed_manifest="${DEST_BASE}/manifest.sha256"
+    if [ -f "$installed_manifest" ]; then
+      m_file=""
+      failed_count=0
+      verified_count=0
+      while IFS= read -r line || [ -n "$line" ]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [ -z "$line" ] && continue
+        m_file="${line#* }"
+        m_file="$(echo "$m_file" | awk '{$1=$1;print}')"
+        if [ -f "${DEST_BASE}/${m_file}" ]; then
+          if verify_module_integrity "${DEST_BASE}/${m_file}" >/dev/null 2>&1; then
+            verified_count=$((verified_count + 1))
+          else
+            failed_count=$((failed_count + 1))
+          fi
+        fi
+      done < "$installed_manifest"
+      
+      if [ "$failed_count" -gt 0 ]; then
+        log_warn "EXTRAS" "Installation completed with $failed_count integrity verification warnings."
+      else
+        log_info_user "EXTRAS" "All $verified_count extra modules verified successfully against manifest."
+      fi
+    fi
+
     log_info_user "EXTRAS" "Installation successfully completed."
   else
     log_error "EXTRAS" "Error copying extras files."
@@ -4652,8 +5232,6 @@ fi
 # SECTION: CORE_PROVIDER - BEGIN
 ########################################
 #--1<---[ SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
-# This section remains exclusively for handling interactive provider requests and 
-# validating provider interface boundaries. Early loading occurred in Pass 3.
 if [ "$PROVIDER_INTERACTIVE" -eq 1 ] || [ "${PROVIDER_CLI:-}" = "list" ]; then
   IFS=' ' read -r -a _prov_arr <<EOF
 $SUPPORTED_PROVIDERS
@@ -4722,9 +5300,11 @@ EOF
   resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
   PROVIDER_INTERACTIVE_SELECTED=1
 
-  if ! load_provider_module "$PROVIDER"; then
+  load_provider_module "$PROVIDER"
+  prov_rc=$?
+  if [ "$prov_rc" -ne 0 ]; then
     log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-    exit "$BASH4LLM_ERR_TMP"
+    exit "$prov_rc"
   fi
 
   if [ -n "${PROVIDER_INTERACTIVE_SELECTED:-}" ] && [ "$#" -eq 0 ]; then
@@ -4747,35 +5327,19 @@ if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
     exit "$BASH4LLM_ERR_API"
   fi
 else
-  if ! load_provider_module "$PROVIDER"; then
+  load_provider_module "$PROVIDER"
+  prov_rc=$?
+  if [ "$prov_rc" -ne 0 ]; then
     log_error "PROVIDER" "failed to load provider module: $PROVIDER"
-    exit "$BASH4LLM_ERR_TMP"
+    exit "$prov_rc"
   fi
   if ! validate_provider_interface "$PROVIDER"; then
     exit "$BASH4LLM_ERR_API"
   fi
 fi
-
-if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
-  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
-
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-    exit "$BASH4LLM_ERR_NO_API_KEY"
-  fi
-  refresh_models_dispatch "$MODELS_FILE" || exit "$BASH4LLM_ERR_API"
-  exit 0
-fi
-
-if [ ! -s "${MODELS_FILE:-}" ]; then
-  if ! ensure_api_key_for_provider "$PROVIDER"; then
-    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
-  else
-    refresh_models_dispatch "$MODELS_FILE" || true
-  fi
-fi
 #--1<---[ /SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
 #--2<---[ SECTION: CORE_PROVIDER_SHOW ]--->2--
+# Display commands must execute BEFORE attempting model refreshes or API key prompts
 if [ "${PRINT_CONFIG_DIR:-0}" -eq 1 ]; then
   printf '%s\n' "$(canonical_config_dir)"
   exit 0
@@ -4820,6 +5384,14 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
     allowed_count="$(printf '%s\n' "$ALLOWED_MODELS" | wc -l | tr -d ' ')"
   fi
   printf '  - Allowed Models Count: %d\n' "$allowed_count"
+  # --- Extras Manifest Diagnostics ---
+  manifest_path="${BASH4LLM_EXTRAS_DIR:-}/manifest.sha256"
+  if [ -f "$manifest_path" ] && [ -r "$manifest_path" ]; then
+    total_entries="$(grep -vE '^[[:space:]]*#' "$manifest_path" | grep -c -v '^[[:space:]]*$' || echo 0)"
+    printf '  - Extras Integrity Manifest: %b[PRESENT]%b (%d entries registered)\n' "${C_GREEN:-}" "${C_RST:-}" "$total_entries"
+  else
+    printf '  - Extras Integrity Manifest: %b[NOT FOUND]%b (Optional/Development mode)\n' "${C_YELLOW:-}" "${C_RST:-}"
+  fi
 
   # -------------------------------------------------------------------------
   # OpenSSL & TLS Diagnostics Hook (Updated Status Reporting)
@@ -4839,14 +5411,18 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
     
     # TLS handshake verification to the active endpoint
     resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
-    if [ -n "${BASH4LLM_PROVIDER_URL:-}" ]; then
+    if [ -n "${BASH4LLM_PROVIDER_URL:-}" ] && [ "${BASH4LLM_SKIP_NETWORK:-0}" -ne 1 ]; then
       current_host=""
       current_host="$(printf '%s' "${BASH4LLM_PROVIDER_URL}" | sed -E 's#https?://([^:/]+).*#\1#')"
       printf '    * TLS Handshake (%s): ' "$current_host"
-      if diagnose_tls_connection "$BASH4LLM_PROVIDER_URL" >/dev/null 2>&1; then
-        printf '%bSUCCESS%b\n' "${C_GREEN:-}" "${C_RST:-}"
+      if type diagnose_tls_connection >/dev/null 2>&1; then
+        if diagnose_tls_connection "$BASH4LLM_PROVIDER_URL" < /dev/null >/dev/null 2>&1; then
+          printf '%bSUCCESS%b\n' "${C_GREEN:-}" "${C_RST:-}"
+        else
+          printf '%bFAILED%b (Handshake failed, local trust store missing, or connection proxy blocked)\n' "${C_RED:-}" "${C_RST:-}"
+        fi
       else
-        printf '%bFAILED%b (Handshake failed, local trust store missing, or connection proxy blocked)\n' "${C_RED:-}" "${C_RST:-}"
+        printf 'SKIPPED (Helper function unavailable)\n'
       fi
     fi
   else
@@ -4857,9 +5433,35 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   exit 0
 fi
 #--2<---[ /SECTION: CORE_PROVIDER_SHOW ]--->2--
+
+if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
+  resolve_provider_url "${PROVIDER:-}" >/dev/null 2>&1 || true
+
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+    exit "$BASH4LLM_ERR_NO_API_KEY"
+  fi
+  refresh_models_dispatch "$MODELS_FILE" || exit "$BASH4LLM_ERR_API"
+  exit 0
+fi
+
+if [ ! -s "${MODELS_FILE:-}" ]; then
+  if ! ensure_api_key_for_provider "$PROVIDER"; then
+    log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
+  else
+    refresh_models_dispatch "$MODELS_FILE" || true
+  fi
+fi
 #--3<---[ SECTION: CORE_PROVIDER_MAIN ]--->3--
 if [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
   exit 0
+fi
+
+# POST-CLI THREAD ANONYMIZATION SYNCHRONIZATION
+# Ensure that THREAD_ID parsed from CLI arguments is correctly hashed
+if [ -n "${THREAD_ID:-}" ]; then
+  anonymize_thread_id "${THREAD_ID}"
+  THREAD_ID="$SAFE_THREAD_ID"
 fi
 
 load_local_config
@@ -5048,7 +5650,7 @@ if [ -n "$BATCH_FILE" ]; then
     if [ "$STREAM_MODE" -eq 1 ]; then
       call_api_streaming || log_error "CALL" "Error during streaming call."
     else
-      perform_request_once || true
+      perform_request_once "$@" || true
     fi
 
     print_persistence_reminder
@@ -5059,7 +5661,7 @@ fi
 
 # Chat mode: TUI REPL Delegation
 if [ "$CHAT_MODE" -eq 1 ]; then
-  BASH4LLM_CORE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  BASH4LLM_CORE_SCRIPT="${SCRIPTDIR}/$(basename "${BASH_SOURCE[0]}")"
   export BASH4LLM_CORE_SCRIPT
 
   export BASH4LLM_ACTIVE_THREAD="${THREAD_ID}"
@@ -5068,11 +5670,16 @@ if [ "$CHAT_MODE" -eq 1 ]; then
 
   tui_script="${BASH4LLM_EXTRAS_DIR}/chat/tui-repl.sh"
   if [ -f "$tui_script" ]; then
-    if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "CHAT" "Executing external TUI REPL: $tui_script"
+    if ! verify_module_integrity "$tui_script"; then
+      log_error "SEC" "Interactive TUI REPL failed integrity validation: $tui_script"
+      exit "${BASH4LLM_ERR_SEC:-17}"
     fi
-    bash "$tui_script" "$@"
-    exit $?
+
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "CHAT" "Executing verified external TUI REPL: $tui_script"
+    fi
+    # ATOMIC EXECUTION TRANSFER: Replaces wrapper process image with TUI REPL cleanly
+    exec bash "$tui_script" "$@"
   else
     log_error "CHAT" "Interactive TUI REPL script not found at: $tui_script"
     log_error "CHAT" "Please install optional extras using: $0 --install-extras"
@@ -5258,7 +5865,7 @@ else
   fi
 fi
 
-if perform_request_once; then
+if perform_request_once "$@"; then
   # Prevent simulated runs (--dry-run) from writing to the thread database on success
   if [ "${DRY_RUN:-0}" -ne 1 ] && [ -n "${THREAD_ID:-}" ]; then
     if [ -n "${CONTENT:-}" ]; then
