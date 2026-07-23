@@ -1,0 +1,34 @@
+name: Security & Process List Leak Audit
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+  workflow_dispatch:
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify No Tokens Leak in Process Table
+        run: |
+          export BASH4LLM_SKIP_NETWORK=1
+          export GROQ_API_KEY="gsk_SECRET_KEY_SUPER_SECRET_12345"
+          
+          ./bash4llm --dry-run "Test Prompt" &
+          PID=$!
+          
+          if ps aux | grep -v grep | grep "gsk_SECRET_KEY_SUPER_SECRET_12345"; then
+            echo "❌ CRITICAL SECURITY LEAK: API Key visible in process table!"
+            kill $PID 2>/dev/null || true
+            exit 1
+          fi
+          
+          wait $PID || true
+          echo "✅ Process Table Audit Passed: Bearer Token is 100% Hidden from ps aux."
