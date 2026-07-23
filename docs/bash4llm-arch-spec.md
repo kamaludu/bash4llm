@@ -393,8 +393,9 @@ bash4llm.d/
 │   ├── provider                           # Memorizza il nome del provider attivo
 │   ├── provider-url                       # Memorizza l'URL delle API del provider attivo
 │   ├── model.<provider>                   # Memorizza il modello di default del provider
-│   ├── keys.enc                           # Database cifrato delle chiavi API (Vault)
-│   ├── keys.rec                           # Chiave di ripristino offline cifrata (Vault)
+│   ├── keys.enc                           # Chiave Vault cifrata con Master Password
+│   ├── keys.rec                           # Chiave Vault cifrata con Recovery Key offline
+│   ├── keys.dat                           # Database cifrato contenente il JSON delle chiavi API
 │   ├── providers/                         # Cartella per configurazioni avanzate
 │   │   └── hf_endpoints                   # Mappatura modelli/endpoint di Hugging Face
 │   └── ui_state/                          # Cartella di stato per GUI ed automazioni
@@ -403,7 +404,7 @@ bash4llm.d/
 │       ├── provider_capabilities.json     # Elenco capacità del provider attivo
 │       └── threads/                       # Indici e metadati delle sessioni
 │           ├── index.json                 # Elenco strutturato dei thread attivi
-│           └── <thread_id>.json           # Metadati dello stato del singolo thread
+│           └── <safe_thread_id>.json      # Metadati dello stato del thread (anonimizzato SHA-256)
 ├── models/                                # Cataloghi locali dei modelli ammessi
 │   └── <provider>.txt                     # Whitelist modelli validati (formato txt)
 ├── templates/                             # Area prompt template riutilizzabili
@@ -433,3 +434,4 @@ bash4llm.d/
     ├── docs/                              # Documentazione (core-notes.sh, help.txt, BASH4LLM.1)
     ├── providers/                         # Provider aggiuntivi (gemini.sh, huggingface.sh, mistral.sh)
     └── session/                           # Ottimizzazione e sessioni (session-engine.sh)
+```
