@@ -1,0 +1,53 @@
+name: API Chaos & Resilience Mock Suite
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bash4llm'
+  workflow_dispatch:
+
+jobs:
+  mock-chaos-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Mock API Server
+        run: |
+          python3 -c '
+          import http.server, socketserver
+          class MockHandler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  if "empty" in self.path:
+                      self.send_response(200)
+                      self.send_header("Content-Type", "application/json")
+                      self.end_headers()
+                      self.wfile.write(b"{\"choices\":[{\"message\":{\"content\":\"\"},\"finish_reason\":\"stop\"}],\"usage\":{\"completion_tokens\":0}}")
+                  else:
+                      self.send_response(500)
+                      self.end_headers()
+          with socketserver.TCPServer(("127.0.0.1", 8080), MockHandler) as httpd:
+              httpd.serve_forever()
+          ' &
+          echo "Mock Server running on http://127.0.0.1:8080"
+          sleep 2
+
+      - name: Test Empty Completion Edge Case Handling
+        run: |
+          export BASH4LLM_API_URL="http://127.0.0.1:8080/empty"
+          export GROQ_API_KEY="gsk_mock_key_test"
+          
+          set +e
+          ./bash4llm "Test prompt"
+          rc=$?
+          set -e
+          
+          if [ "$rc" -ne 16 ]; then
+            echo "❌ ERROR: Expected code 16 on empty completion edge case, got $rc"
+            exit 1
+          fi
+          echo "✅ Edge Case Empty Completion handled correctly!"
