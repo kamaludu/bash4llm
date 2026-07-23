@@ -58,6 +58,9 @@ Key primitives (documented)
   Return the path to the active provider API URL file under config.
 - trim_space(string)
   Pure POSIX/Bash space trimmer removing leading/trailing whitespaces and tabs.
+- read_secure_input(target_var, [prompt_msg], [min_len], [allow_verify])
+  Prompt for sensitive values with hidden TTY input when interactive ([ -t 0 ]),
+  or read seamlessly from standard input when invoked in automated pipes.
 - sync_models_file_path([provider])
   Sanitize active provider name and synchronize the $MODELS_FILE global path variable.
 - validate_file_input(path)
@@ -66,6 +69,14 @@ Key primitives (documented)
 - _normalize_model_name(name)
   Normalize model names natively (removing provider prefixes/spaces) and cache results
   in the associative array BASH4LLM_MODEL_CACHE to bypass expensive subshell parsing.
+- validate_path_security(target_file)
+  Enforce strict POSIX file system path security, verifying ownership matches current user
+  and disallowing world or group writable permissions on target files and parent directories.
+- _core_sha256(file)
+  Calculate SHA-256 digest using native system binaries (sha256sum, openssl, or shasum).
+- verify_module_integrity(target_file)
+  Verify file path security and cryptographic SHA-256 digest against extras/manifest.sha256.
+  Return 0 on match, or BASH4LLM_ERR_SEC (17) on tamper detection or permission failure.
 - ensure_api_key_for_provider(provider)
   Validate API key presence in environment. If missing in non-interactive TTY, fail with
   BASH4LLMERR_NO_API_KEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
@@ -177,6 +188,13 @@ Key primitives (documented)
   Stage source file as Base64, append details to manifest JSON under lock, and regenerate manifest.b64.
 - manifest_read(manifest)
   Read and print manifest JSON contents, fallback to decoding .b64 if needed.
+- anonymize_thread_id(raw_id)
+  Cryptographically hash raw thread ID to SHA-256 ($SAFE_THREAD_ID) to prevent PII leakage to disk.
+- execute_isolated_hook(hook_type, module_name)
+  Validate file path security AND cryptographic integrity against manifest.sha256, execute
+  hook inside an isolated cleaned subshell (stripping API keys), and parse allowed environment variables.
+- check_local_rate_limit()
+  Enforce sliding window rate limiting per thread ID inside BASH4LLM_RATES_DIR.
 - _get_perm_string(path) / _get_owner(path)
   Retrieve file symbolic permissions and user ownership portably.
 - getfile_signature(path)
@@ -478,12 +496,13 @@ CANONICAL VARIABLES (reference)
 Important names (use exact names):
 BASH4LLM_LANG, BASH4LLM_DIR, BASH4LLM_EXTRAS_DIR, PROVIDERS_DIR, BASH4LLM_CONFIG_DIR,
 MODELS_FILE, MODELS_LOCK, PROVIDER_FILE, RUN_TMPDIR, BASH4LLM_TMP_PAYLOAD,
-PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG, QUIET, THREAD_ID,
+PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG, QUIET, THREAD_ID, SAFE_THREAD_ID,
 THREAD_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
-BASH4LLM_TMPDIR, BASH4LLM_HISTORY_DIR, BASH4LLM_LOCK_TIMEOUT_*,
-BASH4LLM_ROTATE_HISTORY, BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES,
-BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS, CURL_BASE_OPTS,
-FORMAT, BASH4LLM_API_KEY, BASH4LLM_API_URL, B64_WRAP_OPT, B64_DECODE_OPT,
+BASH4LLM_TMPDIR, BASH4LLM_HISTORY_DIR, BASH4LLM_RUN_DIR, BASH4LLM_LOCKS_DIR,
+BASH4LLM_RATES_DIR, BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD, BASH4LLM_AUTH_TOKEN,
+BASH4LLM_LOCK_TIMEOUT_*, BASH4LLM_ROTATE_HISTORY, BASH4LLM_HISTORY_MAX_FILES,
+BASH4LLM_HISTORY_MAX_BYTES, BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS,
+CURL_BASE_OPTS, FORMAT, BASH4LLM_API_KEY, BASH4LLM_API_URL, B64_WRAP_OPT, B64_DECODE_OPT,
 GROQ_API_KEY, PROVIDER_API_ENV_groq, SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE,
 SCRIPTDIR, CANONICAL_EXTRAS_DIR, LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR,
 BASH4LLM_TEMPLATES_DIR, THREAD_DIR, HISTORY_LOCK, TMP_LOCK,
@@ -499,7 +518,9 @@ REFRESH_MODELS, LIST_MODELS, OUT_PATH, SYSTEM_PROMPT, MAX_TOKENS, MODEL,
 AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER, TURE (temperature alias),
 TEMPERATURE (recommended alias), BASH4LLM_VAULT_ENABLED, _B4L_RT_CTX,
 BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON,
-C_BOLD, C_NOBOLD, C_UNDERLINE, C_NOUNDERLINE, BASH4LLM_KEY_MANUAL_PROMPT.
+C_BOLD, C_NOBOLD, C_UNDERLINE, C_NOUNDERLINE, BASH4LLM_KEY_MANUAL_PROMPT,
+DELETE_THREAD, DELETE_THREAD_ID, RENAME_THREAD, RENAME_THREAD_ID, RENAME_TITLE,
+INIT_THREAD.
 
 Error Code Constants & Direct Alias Mappings:
 - BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERR_NO_API_KEY
@@ -520,24 +541,14 @@ OPERATIONAL TIPS (concise)
 - To add a provider: install bash4llm.d/extras/providers/<prov>.sh implementing buildpayload_<prov> and call_api_<prov>.
 - To refresh models: bash4llm --refresh-models (dispatches to refresh_models_<prov>).
 - To debug model selection: check bash4llm.d/config/model.<provider>, bash4llm.d/models/models.txt, and MODEL env.
-- Preflight checklist before release: verify perms (700/600), ensure _tmpf rejects /tmp, run static checks (bash -n) on provider modules, test enforce_network_policy with DRY_RUN.
+- Preflight checklist before release: verify perms (700/600), ensure _tmpf rejects /tmp, run static checks (--check-config), test enforce_network_policy with DRY_RUN.
 - To resolve BASH4LLM_ERR_SEC (17), secure your configuration files by running: chmod 600 bash4llm.d/config/config && chmod 700 bash4llm.d
-
--------------------------------------------------------------------------------
-EXAMPLES (short)
--------------------------------------------------------------------------------
-- Single prompt:
-  bash4llm "Summarize this text"
-- Refresh models (embedded groq):
-  bash4llm --refresh-models
-- Start thread and query:
-  bash4llm --thread myid "User message"
 
 -------------------------------------------------------------------------------
 CHANGE NOTES (summary)
 -------------------------------------------------------------------------------
 This document provides the reference core notes aligned to:
-- bash4llm (v2.5.0)
+- bash4llm (v2.6.0)
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 -------------------------------------------------------------------------------
