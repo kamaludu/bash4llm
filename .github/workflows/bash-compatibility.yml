@@ -3,8 +3,22 @@ name: Bash Compatibility
 on:
   push:
     branches: ["main"]
+    paths:
+      - 'bash4llm'
+      - 'bin/bash4llm'
+      - '**.sh'
+      - '**.bash'
+      - 'tests/**'
+      - '.github/workflows/bash-compatibility.yml'
   pull_request:
     branches: ["main"]
+    paths:
+      - 'bash4llm'
+      - 'bin/bash4llm'
+      - '**.sh'
+      - '**.bash'
+      - 'tests/**'
+      - '.github/workflows/bash-compatibility.yml'
   workflow_dispatch:
 
 jobs:
@@ -20,7 +34,7 @@ jobs:
       image: bash:${{ matrix.bash_version }}
 
     steps:
-      - name: Installazione pacchetti richiesti
+      - name: Installazione pacchetti richiesti (Alpine)
         run: |
           apk add --no-cache coreutils findutils util-linux gawk curl jq git
 
@@ -33,14 +47,23 @@ jobs:
           mkdir -p "$HOME/.config/groq"
           mkdir -p ./bin/bash4llm.d/models
           mkdir -p ./bash4llm.d/models
+          
           echo "llama-3.3-70b-versatile" > "$HOME/.config/bash4llm/groq/models.txt"
           echo "llama-3.3-70b-versatile" > "$HOME/.config/groq/models.txt"
           echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/models.txt
           echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/models.txt
+          echo "llama-3.3-70b-versatile" > ./bin/bash4llm.d/models/groq.txt
+          echo "llama-3.3-70b-versatile" > ./bash4llm.d/models/groq.txt
 
       - name: Esecuzione Dry-Run
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy_key_for_dry_run' }}
         run: |
-          chmod +x bin/bash4llm
-          ./bin/bash4llm --dry-run tests/good.json
+          # Dynamic Path Detection
+          B4L_BIN="./bin/bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN="./bash4llm"
+          fi
+          
+          chmod +x "$B4L_BIN"
+          "$B4L_BIN" --dry-run tests/good.json
