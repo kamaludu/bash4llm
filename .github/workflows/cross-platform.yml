@@ -3,8 +3,30 @@ name: Cross-Platform Tests
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - '**.md'
+      - '**.MD'
+      - '**.txt'
+      - '**.TXT'
+      - '**.png'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.gif'
+      - '**.svg'
+      - 'LICENSE'
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - '**.md'
+      - '**.MD'
+      - '**.txt'
+      - '**.TXT'
+      - '**.png'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.gif'
+      - '**.svg'
+      - 'LICENSE'
   workflow_dispatch:
 
 jobs:
