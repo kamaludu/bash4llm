@@ -161,8 +161,6 @@ Il binario principale `bash4llm` agisce come la **Root of Trust** del sistema. P
 
 ---
 
----
-
 ## 🛡️ Core Hardening & Audit di Sicurezza Automatizzati
 
 Oltre alla standard CI/CD cross-platform, l'eseguibile `./bash4llm` viene sottoposto a **5 audit automatizzati continui di sicurezza e architettura**, focalizzati esclusivamente sul file sorgente del core:
