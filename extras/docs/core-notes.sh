@@ -549,7 +549,7 @@ OPERATIONAL TIPS (concise)
 CHANGE NOTES (summary)
 ----------------------------------------
 This document provides the reference core notes aligned to:
-- bash4llm (v2.6.0)
+- bash4llm (v2.7.0)
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 ----------------------------------------
