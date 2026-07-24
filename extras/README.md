@@ -21,9 +21,6 @@ extras/
 │   ├── help.txt
 │   ├── manual-en.txt
 │   └── manual-it.txt
-├── lib/                      # Shared Utility & Debug Helpers
-│   ├── debug.sh
-│   └── utils.sh
 ├── providers/                # Secondary LLM Provider Extension Modules
 │   ├── gemini.sh
 │   ├── huggingface.md
