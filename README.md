@@ -55,7 +55,7 @@ Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel `PATH`:
 - coreutils (stat, chmod, mkdir, ecc.)
 - findutils
 - util-linux
-- gawk
+- awk
 - curl
 - jq
 
