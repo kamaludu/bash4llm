@@ -5130,7 +5130,7 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
 fi
 
 if [ "${RUN_SUITE:-0}" -eq 1 ]; then
-  suite_script="${BASH4LLM_EXTRAS_DIR}/test/run_all_tests.sh"
+  suite_script="${BASH4LLM_EXTRAS_DIR}/test/run-all-tests.sh"
   if [ -f "$suite_script" ]; then
     if ! verify_module_integrity "$suite_script"; then
       log_error "SEC" "Test suite script failed integrity validation: $suite_script"
