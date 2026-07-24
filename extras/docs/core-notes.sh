@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# =============================================================================
+# ========================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/docs/core-notes.sh
 # Extra: Core Notes
@@ -8,14 +8,14 @@
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
-# =============================================================================
+# ========================================
 # Purpose: Design notes and operational guidance for bash4llm core.
 # This file is documentation only. It is safe to source for tests (BASH4LLM_SOURCE_ONLY)
 # and must not change runtime behavior when sourced.
 
 : <<'DOC'
 bash4llm — Core Notes
-=================================
+========================================
 
 Overview
 --------
@@ -32,9 +32,9 @@ Design goals
 - No eval, no execution of model-generated content.
 - DRY_RUN and centralized network policy to prevent accidental network calls.
 
--------------------------------------------------------------------------------
+----------------------------------------
 PRECORE_BOOT (bootstrap primitives)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Initialize runtime invariants and provide low-level helpers used by all other
 sections: path resolution, config dir creation, base64 options detection,
@@ -72,16 +72,16 @@ Key primitives (documented)
 - validate_path_security(target_file)
   Enforce strict POSIX file system path security, verifying ownership matches current user
   and disallowing world or group writable permissions on target files and parent directories.
-- _core_sha256(file)
-  Calculate SHA-256 digest using native system binaries (sha256sum, openssl, or shasum).
+- _core_sha256(file) / calc_sha256(input)
+  Calculate SHA-256 digest portably using native system binaries (sha256sum, openssl, or shasum).
 - verify_module_integrity(target_file)
   Verify file path security and cryptographic SHA-256 digest against extras/manifest.sha256.
   Return 0 on match, or BASH4LLM_ERR_SEC (17) on tamper detection or permission failure.
 - ensure_api_key_for_provider(provider)
-  Validate API key presence in environment. If missing in non-interactive TTY, fail with
-  BASH4LLMERR_NO_API_KEY. In interactive TTY, prompt, sanitize input (remove export commands, spaces),
-  export to env, and set a manual prompt flag to delegate showing permanent save instructions
-  to print_persistence_reminder on transaction success.
+  Validate API key presence in Vault or Environment. If BASH4LLM_REQUIRE_VAULT=1 is set,
+  reject non-vault keys and fail with BASH4LLM_ERR_SEC (17). In interactive TTY, prompt,
+  sanitize input, export to env, and set a manual prompt flag to delegate showing permanent save
+  instructions to print_persistence_reminder on transaction success.
 - print_persistence_reminder()
   Print a friendly guide on how to persist manually entered API keys after a successful transaction
   (active only if the key was entered manually during this run).
@@ -170,9 +170,9 @@ Blocks of Code / Flows
 - PRECORE_BOOT_HELPERS: Expose Base64, staging, and static linting checkers.
 - PRECORE_BOOT_CLI_HELPERS: Parse early metadata queries, print path directories, and trigger config check.
 
--------------------------------------------------------------------------------
+----------------------------------------
 PRECORE_RUN (runtime primitives: history, manifest, thread, cache)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Provide atomic, lock-protected runtime primitives for history rotation, multimodal
 manifest staging, thread NDJSON handling, and thread cache.
@@ -249,9 +249,9 @@ Blocks of Code / Flows
 - PRECORE_RUN_THREAD_CACHE: Exposes caching, caching keys, and invalidation.
 - PRECORE_RUN_RUNTIME_GLOBALS: Initialize non-destructive default values and normalize global environment flags.
 
--------------------------------------------------------------------------------
+----------------------------------------
 SECURITY EXTENSION (openssl-helper.sh)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Provide Master-Key wrapped symmetric file encryption for provider API keys,
 emergency disaster recovery, offline recovery keys, session caching, and
@@ -290,9 +290,9 @@ Key primitives (documented)
 - diagnose_tls_connection(url)
   Diagnostically test connection handshakes to API endpoints using openssl s_client.
 
--------------------------------------------------------------------------------
+----------------------------------------
 PROVIDER (embedded: groq)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Provider-specific implementation for Groq-compatible API: payload builder,
 non-streaming and streaming calls, models refresh and validation.
@@ -302,11 +302,11 @@ Key functions (documented)
   Compile and write Groq-compatible JSON payload from variables (MODEL, TURE, MAX_TOKENS, and message sources:
   JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, or CONTENT). Perform Base64 staging.
 - call_api_groq()
-  Synchronous HTTP call. Handles .b64 payload decoding, builds curl headers with GROQ_API_KEY,
-  and writes RESP (600) or diagnostic JSON.
+  Synchronous HTTP call. Handles .b64 payload decoding, builds curl headers via unlinked descriptor (-H @"$hdr_target")
+  to prevent process list leakage, and writes RESP (600) or diagnostic JSON.
 - call_api_streaming_groq()
   Streaming HTTP SSE call. Pipeline processing of SSE streams, incremental print of tokens to stdout, writes raw stream
-  and chunk accumulators under RUN_TMPDIR, compiles final RESP, and updates last_api.json.
+  and chunk accumulators under RUN_TMPDIR, compiles final RESP, and updates last_api.json. Correctly detects error JSON objects.
 - refresh_models_groq()
   Query /openai/v1/models, normalize names, enforce MAX_MODELS, and write MODELS_FILE atomically under lock (10s) in Base64.
 - validate_model_groq(model)
@@ -316,9 +316,9 @@ Key functions (documented)
 - auto_select_model_groq()
   Extract first supported text-only model from local models file and print to stdout.
 
--------------------------------------------------------------------------------
+----------------------------------------
 CORE_SETUP (CLI, model resolution, request orchestration)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Normalize CLI and env flags, resolve FINAL_MODEL, dispatch to provider functions,
 handle retries, extract text from RESP, detect edge cases, and finalize output.
@@ -384,11 +384,11 @@ Blocks of Code / Flows
 - CORE_SETUP_CLI_PARSE: Evaluation of arguments and parameter mapping.
 - CORE_SETUP_SESSION_ENGINE: Pre-checks syntax and sources the external session-engine script.
 - CORE_SETUP_NORM_FLAGS: Validates API callers, normalizes flag booleans, and dynamically populates provider lists.
-- CORE_SETUP_ACTIONS: Execution of static listings, configuration check, installations, and thread creations.
+- CORE_SETUP_ACTIONS: Execution of static listings, configuration check, installations (--install-extras with Least-Privilege chmod), --run-all-tests master suite, and thread creations.
 
--------------------------------------------------------------------------------
+----------------------------------------
 CORE_PROVIDER (discovery, selection, persistence)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Discover available providers (builtin + extras), persist provider choice, resolve provider URL and API key, and validate provider interface.
 
@@ -408,9 +408,9 @@ Blocks of Code / Flows
 - CORE_PROVIDER_SHOW: Diagnostics checks, path queries, and TLS connection tests.
 - CORE_PROVIDER_MAIN: Bootstrap gates, content assembly, and request loops (Batch, TUI, or Standard).
 
--------------------------------------------------------------------------------
+----------------------------------------
 THREAD CACHE (explicit)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Reduce repeated work by caching thread-derived payloads/responses.
 
@@ -421,9 +421,9 @@ Key points
 - Cache stored under ${BASH4LLM_CONFIG_DIR%/}/thread_cache with perms 600.
 - TTL enforced by expiry_epoch; invalidation via thread_cache_invalidate() when thread changes.
 
--------------------------------------------------------------------------------
+----------------------------------------
 HISTORY & MANIFEST (explicit)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Persist conversation history and multimodal manifests safely.
 
@@ -435,9 +435,9 @@ Key points
   - manifest.b64 is the base64-encoded manifest; both manifest and manifest.b64 updated under lock.
   - manifest_add_part requires source file existence and stages part atomically.
 
--------------------------------------------------------------------------------
+----------------------------------------
 NETWORK POLICY (centralized)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Centralize decision to allow or block network calls.
 
@@ -451,9 +451,9 @@ Key points
   - When blocked, call_api_* must return non-zero and produce RESP diagnostic.
 - All provider call sites must call enforce_network_policy() before curl.
 
--------------------------------------------------------------------------------
+----------------------------------------
 STREAMING (explicit)
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Conservative SSE parsing and incremental output.
 
@@ -464,9 +464,9 @@ Key points
 - resp.chunks.json (array) and resp.text.txt (concatenated text) are produced; final RESP written atomically.
 - Streaming emits incremental text to stdout but never executes content.
 
--------------------------------------------------------------------------------
+----------------------------------------
 EDGE CASES AND DIAGNOSTICS
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Detect empty completions and other anomalies; provide structured diagnostics.
 
@@ -478,9 +478,9 @@ Key points
 - detect_empty_edge_case() sets BASH4LLM_EDGE_EMPTY and related BASH4LLM_EDGE_* variables.
 - perform_request_once() uses these signals to decide retry vs fail and logs a single structured diagnostic entry.
 
--------------------------------------------------------------------------------
+----------------------------------------
 UI STATE AND DIAGNOSTIC FILES
--------------------------------------------------------------------------------
+----------------------------------------
 Purpose
 Expose provider capabilities and last API call state for UI/automation.
 
@@ -490,9 +490,9 @@ Key points
 - last_api.json written as fallback by CORE_SETUP when RESP exists; used by UI and automation.
 - save_to_history() and finalize_and_output() update ui_state best-effort.
 
--------------------------------------------------------------------------------
+----------------------------------------
 CANONICAL VARIABLES (reference)
--------------------------------------------------------------------------------
+----------------------------------------
 Important names (use exact names):
 BASH4LLM_LANG, BASH4LLM_DIR, BASH4LLM_EXTRAS_DIR, PROVIDERS_DIR, BASH4LLM_CONFIG_DIR,
 MODELS_FILE, MODELS_LOCK, PROVIDER_FILE, RUN_TMPDIR, BASH4LLM_TMP_PAYLOAD,
@@ -516,11 +516,11 @@ BASH4LLM_PLAT_CYGWIN, BASH4LLM_PLAT_BSD, BASH4LLM_PLAT_LINUX,
 FINAL_MODEL, CONTENT, JSON_INPUT, BATCH_FILE, CHAT_MODE, SET_DEFAULT_MODEL,
 REFRESH_MODELS, LIST_MODELS, OUT_PATH, SYSTEM_PROMPT, MAX_TOKENS, MODEL,
 AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER, TURE (temperature alias),
-TEMPERATURE (recommended alias), BASH4LLM_VAULT_ENABLED, _B4L_RT_CTX,
-BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON,
+TEMPERATURE (recommended alias), BASH4LLM_VAULT_ENABLED, BASH4LLM_REQUIRE_VAULT,
+_B4L_RT_CTX, BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON,
 C_BOLD, C_NOBOLD, C_UNDERLINE, C_NOUNDERLINE, BASH4LLM_KEY_MANUAL_PROMPT,
 DELETE_THREAD, DELETE_THREAD_ID, RENAME_THREAD, RENAME_THREAD_ID, RENAME_TITLE,
-INIT_THREAD.
+INIT_THREAD, RUN_SUITE.
 
 Error Code Constants & Direct Alias Mappings:
 - BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERR_NO_API_KEY
@@ -535,22 +535,23 @@ Notes
 - TURE is retained for backward compatibility; document TEMPERATURE as alias in user-facing docs.
 - CURL_BASE_OPTS default: --silent --show-error --no-buffer --max-time 120.
 
--------------------------------------------------------------------------------
+----------------------------------------
 OPERATIONAL TIPS (concise)
--------------------------------------------------------------------------------
+----------------------------------------
 - To add a provider: install bash4llm.d/extras/providers/<prov>.sh implementing buildpayload_<prov> and call_api_<prov>.
 - To refresh models: bash4llm --refresh-models (dispatches to refresh_models_<prov>).
+- To run automated tests: bash4llm --run-all-tests (executes verified master test suite run-all-tests.sh).
 - To debug model selection: check bash4llm.d/config/model.<provider>, bash4llm.d/models/models.txt, and MODEL env.
 - Preflight checklist before release: verify perms (700/600), ensure _tmpf rejects /tmp, run static checks (--check-config), test enforce_network_policy with DRY_RUN.
 - To resolve BASH4LLM_ERR_SEC (17), secure your configuration files by running: chmod 600 bash4llm.d/config/config && chmod 700 bash4llm.d
 
--------------------------------------------------------------------------------
+----------------------------------------
 CHANGE NOTES (summary)
--------------------------------------------------------------------------------
+----------------------------------------
 This document provides the reference core notes aligned to:
 - bash4llm (v2.6.0)
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
--------------------------------------------------------------------------------
+----------------------------------------
 END
 DOC
