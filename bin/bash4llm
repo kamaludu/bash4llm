@@ -707,10 +707,15 @@ verify_module_integrity() {
   return 0
 }
 
-# ensure_api_key_for_provider (robust, non-interactive safe, unbound variable proof)
+# --------------------------------------------------
+# Function: ensure_api_key_for_provider
+# Purpose:  Retrieve API key for provider from Vault, Environment, or TTY Prompt.
+# Security: Enforces mandatory Vault policy (BASH4LLM_REQUIRE_VAULT=1).
+# --------------------------------------------------
 ensure_api_key_for_provider() {
   local prov="${1:-}"
   local envvar="" current_key="" input_key="" custom_var="" custom_env="" prompt_msg="" read_success=0
+  local key_source="none" env_key_found=""
   [ -n "$prov" ] || return 1
   envvar="$(provider_api_env_var_name "$prov")"
   custom_var="PROVIDER_API_ENV_${prov}"
@@ -722,27 +727,18 @@ ensure_api_key_for_provider() {
   if [ -n "${custom_env:-}" ]; then
     custom_env="${custom_env//[!a-zA-Z0-9_]/}"
     if [[ "$custom_env" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-      # CRITICAL FIX: Verify target variable existence before indirect expansion under set -u
       if declare -p "$custom_env" >/dev/null 2>&1; then
         envvar="$custom_env"
       fi
     fi
   fi
   
-  current_key=""
   if declare -p "$envvar" >/dev/null 2>&1; then
-    current_key="${!envvar:-}"
+    env_key_found="${!envvar:-}"
   fi
 
-  if [ -n "$current_key" ]; then
-    if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
-      export GROQ_API_KEY="$current_key"
-    fi
-    return 0
-  fi
-
-  # Secure Key Vault Lookup
-  if [ -z "$current_key" ] && [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
+  # 1. Secure Key Vault Lookup
+  if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists; then
     if [ -z "${BASH4LLM_DECRYPTED_VAULT_JSON:-}" ]; then
       log_info_user "SECURITY" "Vault file detected. Authenticating to unlock saved API keys..."
       BASH4LLM_DECRYPTED_VAULT_JSON="$(vault_load_keys)" || true
@@ -754,25 +750,48 @@ ensure_api_key_for_provider() {
       
       if [ -n "$extracted_key" ]; then
         current_key="$extracted_key"
+        key_source="vault"
         export "$envvar"="$current_key"
         if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
           export GROQ_API_KEY="$current_key"
         fi
-        return 0
       else
         log_warn "SECURITY" "No saved API key found in vault for provider: $prov"
       fi
     else
-      log_warn "SECURITY" "Authentication failed. Falling back to manual input."
+      log_warn "SECURITY" "Vault authentication failed. Falling back to manual prompt."
       BASH4LLM_DECRYPTED_VAULT_JSON=""
     fi
   fi
 
+  # 2. Fallback to Environment Variable ONLY if Vault did not provide a key and Vault is NOT mandatory
+  if [ -z "$current_key" ] && [ -n "$env_key_found" ] && ! is_truthy "${BASH4LLM_REQUIRE_VAULT:-0}"; then
+    current_key="$env_key_found"
+    key_source="env"
+  fi
+
+  # 3. Mandatory Vault Policy Enforcement Check
+  if is_truthy "${BASH4LLM_REQUIRE_VAULT:-0}"; then
+    if [ "$key_source" != "vault" ]; then
+      log_error "SEC" "POLICY VIOLATION: BASH4LLM_REQUIRE_VAULT=1 is enforced, but provider '$prov' key was not retrieved from the encrypted Vault."
+      return "${BASH4LLM_ERR_SEC:-17}"
+    fi
+  fi
+
+  if [ -n "$current_key" ]; then
+    if [ "$prov" = "groq" ] && [ "$envvar" != "GROQ_API_KEY" ]; then
+      export GROQ_API_KEY="$current_key"
+    fi
+    return 0
+  fi
+
+  # 4. Non-interactive Mode Protection
   if [ ! -t 0 ]; then
     printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED:-}" "${C_RST:-}" "$prov" "$envvar" >&2
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
+  # 5. Interactive Secure Prompt
   prompt_msg="Enter API key for provider $(printf '%b%s%b' "${C_BGREEN:-}" "$prov" "${C_RST:-}") (env $(printf '%b%s%b' "${C_BYELLOW:-}" "$envvar" "${C_RST:-}"))"
 
   read_secure_input "input_key" "$prompt_msg" 1
@@ -3422,12 +3441,12 @@ buildpayload_groq() {
 
 # --------------------------------------------------
 # Function: call_api_groq
-# Purpose:  Synchronous HTTP API execution securing Bearer token from process list
+# Purpose:  Synchronous HTTP API call securing Bearer token from process list.
 # --------------------------------------------------
 call_api_groq() {
   local provider_url="${BASH4LLM_PROVIDER_URL:-}"
   local api_key="${GROQ_API_KEY:-}"
-  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err="" hdr_file=""
+  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err="" hdr_file="" hdr_target=""
 
   enforce_network_policy || return $?
 
@@ -3449,7 +3468,7 @@ call_api_groq() {
   tmp_resp="$(_tmpf file "$RUN_TMPDIR" resp.tmp 2>/dev/null)" || { [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
   tmp_err="$(_tmpf file "$RUN_TMPDIR" err.tmp 2>/dev/null)" || { rm -f "$tmp_resp" 2>/dev/null || true; [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
 
-  # SECURE HEADER ISOLATION: Write secret to mode 600 file to prevent 'ps aux' leaks
+  # SECURE HEADER ISOLATION (Fail-Safe Unlinked FD Sequence)
   hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_hdr 2>/dev/null)" || {
     rm -f "$tmp_resp" "$tmp_err" 2>/dev/null || true
     [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true
@@ -3458,22 +3477,34 @@ call_api_groq() {
   printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
   chmod 600 "$hdr_file" 2>/dev/null || true
 
+  hdr_target="$hdr_file"
+  if exec 3< "$hdr_file" 2>/dev/null; then
+    if [ -e "/dev/fd/3" ]; then
+      hdr_target="/dev/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    elif [ -e "/proc/self/fd/3" ]; then
+      hdr_target="/proc/self/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    else
+      exec 3<&- 2>/dev/null || true
+    fi
+  fi
+
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CURL" "POST -> $provider_url"
   fi
 
-  # Execute curl using header file instead of command-line token argument
   http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" \
     -X POST \
-    -H @"$hdr_file" \
+    -H @"$hdr_target" \
     --data-binary @"$payload_dec" \
     -o "$tmp_resp" \
     -w "%{http_code}" \
     "$provider_url" < /dev/null 2>"$tmp_err")"
   rc=$?
 
-  # Immediately shred sensitive header file from disk
-  rm -f "$hdr_file" 2>/dev/null || true
+  exec 3<&- 2>/dev/null || true
+  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
 
   if [ "$payload_dec" != "$PAYLOAD" ]; then
     rm -f "$payload_dec" 2>/dev/null || true
@@ -3487,18 +3518,11 @@ call_api_groq() {
   fi
 
   if [ -s "$tmp_resp" ]; then
-    if mv -f "$tmp_resp" "$RESP" 2>/dev/null; then
-      chmod 600 "$RESP" 2>/dev/null || true
-    else
-      cp -f "$tmp_resp" "$RESP" 2>/dev/null || true
-      chmod 600 "$RESP" 2>/dev/null || true
-      rm -f "$tmp_resp" 2>/dev/null || true
-    fi
-  else
-    rm -f "$tmp_resp" 2>/dev/null || true
+    mv -f "$tmp_resp" "$RESP" 2>/dev/null || cp -f "$tmp_resp" "$RESP" 2>/dev/null
+    chmod 600 "$RESP" 2>/dev/null || true
   fi
 
-  rm -f "$tmp_err" 2>/dev/null || true
+  rm -f "$tmp_resp" "$tmp_err" 2>/dev/null || true
 
   if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
     log_error "API" "HTTP Status code: $http_code"
@@ -3508,10 +3532,13 @@ call_api_groq() {
   return 0
 }
 
-# Single jq SSE streaming parser featuring instant HTTP and JSON API errors formatting
+# --------------------------------------------------
+# Function: call_api_streaming_groq
+# Purpose:  Execute SSE streaming API call securing Bearer token from process list.
+# --------------------------------------------------
 call_api_streaming_groq() {
   local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 stderr_head="" now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" CURL_CMD=() http_code="" json="" content="" resp_size=0 errf_size=0 resp_json_tmp="" p_dir="" api_json="" ui_last=""
-  local curl_err_log="" _line=""
+  local curl_err_log="" _line="" hdr_file="" hdr_target="" api_key="" custom_key_var=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}"; then
@@ -3529,18 +3556,16 @@ call_api_streaming_groq() {
     custom_key_var="${PROVIDER_API_ENV_groq}"
     GROQ_API_KEY="${!custom_key_var:-}"
   fi
-  if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${BASH4LLM_API_KEY:-}" ]; then
+  
+  api_key="${GROQ_API_KEY:-${BASH4LLM_API_KEY:-}}"
+  if [ -z "$api_key" ]; then
     log_error "APIKEY" "GROQ_API_KEY (or BASH4LLM_API_KEY) is not set."
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
   tmp_payload="${BASH4LLM_TMP_PAYLOAD:-${PAYLOAD:-}}"
-  if [ -z "${tmp_payload:-}" ]; then
-    log_error "CALL_STREAM" "no payload file specified (BASH4LLM_TMP_PAYLOAD or PAYLOAD)"
-    return 1
-  fi
-  if [ ! -s "$tmp_payload" ]; then
-    log_error "CALL_STREAM" "Refusing to call curl: payload file is empty or missing: $tmp_payload"
+  if [ -z "${tmp_payload:-}" ] || [ ! -s "$tmp_payload" ]; then
+    log_error "CALL_STREAM" "Payload file missing or empty: ${tmp_payload:-<unset>}"
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     jq -c -n --arg ts "$now_ts" --arg note "empty_payload" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
     return 1
@@ -3551,9 +3576,7 @@ call_api_streaming_groq() {
   fi
   provider_url="${BASH4LLM_PROVIDER_URL:-}"
   if [ -z "${provider_url:-}" ]; then
-    log_error "CALL_STREAM" "no provider URL set (BASH4LLM_PROVIDER_URL)"
-    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    jq -c -n --arg ts "$now_ts" --arg note "no_provider_url" '{diagnostic:true, note:$note, time:$ts}' > "${RESP:-$RUN_TMPDIR/resp.json}" 2>/dev/null || true
+    log_error "CALL_STREAM" "No provider URL set."
     return 1
   fi
 
@@ -3561,21 +3584,32 @@ call_api_streaming_groq() {
   resp_lines="$(_tmpf file "$RUN_TMPDIR" resp.lines 2>/dev/null)"
   resp_valid="$(_tmpf file "$RUN_TMPDIR" resp.valid.jsons 2>/dev/null)"
   resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
-  
   curl_err_log="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
-  : > "$curl_err_log" 2>/dev/null || true
-  rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" 2>/dev/null || true
 
-  if [ "${DEBUG:-0}" -eq 1 ]; then
-    log_info "CALL_STREAM" "Invoking streaming curl to $provider_url (payload: $tmp_payload)"
+  # SECURE HEADER ISOLATION (Fail-Safe Unlinked FD Sequence)
+  hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_stream_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
+  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+  chmod 600 "$hdr_file" 2>/dev/null || true
+
+  hdr_target="$hdr_file"
+  if exec 3< "$hdr_file" 2>/dev/null; then
+    if [ -e "/dev/fd/3" ]; then
+      hdr_target="/dev/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    elif [ -e "/proc/self/fd/3" ]; then
+      hdr_target="/proc/self/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    else
+      exec 3<&- 2>/dev/null || true
+    fi
   fi
 
   decoded_payload="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || true
-
-  # Native suffix match replacing grep sub-process
   if [[ "$tmp_payload" == *.b64 ]]; then
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$curl_err_log"; then
-      log_error "B64DECODE" "base64 decode failed for payload; see $curl_err_log"
+      log_error "B64DECODE" "base64 decode failed for payload"
+      exec 3<&- 2>/dev/null || true
+      [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
       rm -f "$decoded_payload" "$curl_err_log" 2>/dev/null || true
       return "$BASH4LLM_ERR_TMP"
     fi
@@ -3585,24 +3619,16 @@ call_api_streaming_groq() {
   fi
 
   CURL_CMD=(curl --http1.1 -sS -N)
-
   if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
     CURL_CMD+=("${CURL_BASE_OPTS[@]}")
   fi
+  CURL_CMD+=( -H @"$hdr_target" )
 
-  CURL_CMD+=( -H "Content-Type: application/json" )
-  if [ -n "${GROQ_API_KEY:-}" ]; then
-    CURL_CMD+=( -H "Authorization: Bearer ${GROQ_API_KEY}" )
-  elif [ -n "${BASH4LLM_API_KEY:-}" ]; then
-    CURL_CMD+=( -H "Authorization: Bearer ${BASH4LLM_API_KEY}" )
-  fi
-
-  # Print a safe terminal-only separation newline to stderr to prevent visual clutter before streaming
   if [ "${QUIET:-0}" -ne 1 ] && [ -t 2 ]; then
     printf '\n' >&2
   fi
 
-  # Single-pass unbuffered jq pipeline preserving stream raw telemetry
+  # Single-pass unbuffered streaming pipeline
   "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$curl_err_log" | \
   tee "$resp_raw" | \
   jq --unbuffered -R -r '
@@ -3621,21 +3647,11 @@ call_api_streaming_groq() {
   '
 
   rc=${PIPESTATUS[0]:-0}
-  if [ "$rc" -eq 141 ]; then
-    rc=0
-  fi
+  [ "$rc" -eq 141 ] && rc=0
 
+  exec 3<&- 2>/dev/null || true
+  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
   rm -f "$decoded_payload" 2>/dev/null || true
-
-  resp_size=0; [ -f "$resp_raw" ] && resp_size=$(wc -c < "$resp_raw" 2>/dev/null || echo 0)
-  errf_size=0; [ -f "$curl_err_log" ] && errf_size=$(wc -c < "$curl_err_log" 2>/dev/null || echo 0)
-  if [ "${DEBUG:-0}" -eq 1 ]; then
-    log_info "CALL_STREAM" "curl rc=${rc} resp_raw_size=${resp_size}B ERRF_size=${errf_size}B"
-    if [ -s "$curl_err_log" ]; then
-      log_info "CALL_STREAM" "curl stderr (head 400 chars):"
-      head -c 400 "$curl_err_log" 2>/dev/null | sed -n '1,20p' >&2 || true
-    fi
-  fi
 
   if [ -s "$resp_raw" ]; then
     grep -E '^data:' "$resp_raw" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$resp_lines" 2>/dev/null || true
@@ -3654,8 +3670,6 @@ call_api_streaming_groq() {
     jq -s '.' "$resp_valid" > "$resp_chunks" 2>/dev/null || true
     resp_json_tmp="$(_tmpf file "$RUN_TMPDIR" resp.json 2>/dev/null)"
     
-    # Builds a standard synthetic JSON by unifying all deltas into a single text,
-    # ensuring that thread history and metrics are properly preserved.
     jq -c '
       if (length > 0) then
         .[0] as $first |
@@ -3686,42 +3700,30 @@ call_api_streaming_groq() {
     fi
   fi
 
-  rm -f "$resp_raw" 2>/dev/null || true
-  rm -f "$resp_lines" 2>/dev/null || true
-  rm -f "$resp_valid" 2>/dev/null || true
-  rm -f "$resp_chunks" 2>/dev/null || true
+  rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" 2>/dev/null || true
 
   resp_tmp="$resp_json_tmp"
+  [ -z "${RESP:-}" ] && RESP="${RUN_TMPDIR%/}/resp.json"
+  safe_mkdir "$(dirname "$RESP")" 700
 
-  if [ -z "${RESP:-}" ]; then
-    RESP="${RUN_TMPDIR%/}/resp.json"
-  fi
-  p_dir="$(dirname "$RESP")"
-  safe_mkdir "$p_dir" 700
+  # Reset target response file to prevent checking stale output from previous calls
+  : > "${RESP}" 2>/dev/null || true
 
   if [ -s "$resp_tmp" ]; then
-    if [ "${resp_tmp%/}" = "${RESP%/}" ]; then
-      chmod 600 "$RESP" 2>/dev/null || true
-    else
-      if mv -f "$resp_tmp" "${RESP}" 2>/dev/null; then
-        chmod 600 "${RESP}" 2>/dev/null || true
-      else
-        log_error "RESP" "mv failed; writing diagnostic RESP"
-        now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        stderr_head="$(head -c 200 "${curl_err_log:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
-        jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
-          '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || true
-      fi
-    fi
-  else
-    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    stderr_head="$(head -c 200 "${curl_err_log:-/dev/null}" 2>/dev/null | sed 's/"/\\"/g' || true)"
-    jq -c -n --arg http "${http_code:-0}" --arg ts "$now_ts" --arg err "$stderr_head" \
-          '{diagnostic:true, last_http_status:($http|tonumber), last_time_utc:$ts, stderr_head:$err}' > "${RESP}" 2>/dev/null || printf '{"diagnostic":true,"last_http_status":%s,"last_time_utc":"%s"}\n' "${http_code:-0}" "$now_ts" > "${RESP}"
+    mv -f "$resp_tmp" "${RESP}" 2>/dev/null || cp -f "$resp_tmp" "${RESP}" 2>/dev/null
+    chmod 600 "${RESP}" 2>/dev/null || true
   fi
 
-  rm -f "$resp_tmp" 2>/dev/null || true
-  rm -f "$curl_err_log" 2>/dev/null || true
+  rm -f "$resp_tmp" "$curl_err_log" 2>/dev/null || true
+
+  # API Error Verification in Response Payload
+  if [ -s "${RESP}" ] && jq -e '.error // empty' "${RESP}" >/dev/null 2>&1; then
+    http_code=400
+    now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    api_json="$(jq -c -n --argjson http "$http_code" --arg fr "error" --argjson edge 0 --arg id "" --arg ts "$now_ts" '{last_http_status:$http, last_finish_reason:$fr, last_edgecase_detected:$edge, last_req_id:$id, last_time_utc:$ts}')"
+    ui_state_write "last_api.json" "$api_json" || true
+    return "$BASH4LLM_ERR_API"
+  fi
 
   if ensure_run_tmpdir >/dev/null 2>&1; then
     http_code=200
@@ -4742,6 +4744,7 @@ MODEL_CLI_SET="${MODEL_CLI_SET:-0}"
 INSTALL_EXTRAS_SRC=""
 BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 INIT_THREAD="${INIT_THREAD:-0}"
+RUN_SUITE="${RUN_SUITE:-0}"
 
 DELETE_THREAD=0
 DELETE_THREAD_ID=""
@@ -4867,6 +4870,10 @@ while [ $# -gt 0 ]; do
     --chat|--tui) CHAT_MODE=1; shift ;;
     --show-config) SHOW_CONFIG=1; shift ;;
     --diagnostics|--diagnostic) DIAGNOSTICS=1; shift ;;
+    --run-all-tests|--run-all-test)
+      RUN_SUITE=1
+      shift
+      ;;
     --provider|--providers)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
         PROVIDER_CLI="$2"
@@ -4893,9 +4900,9 @@ while [ $# -gt 0 ]; do
       fi
       shift
       ;;
-    # -------------------------------------------------------------------------
+    # --------------------------------------------------
     # Cryptographic Vault CLI Entrypoint Option
-    # -------------------------------------------------------------------------
+    # --------------------------------------------------
     --vault)
       if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
         # Ensure temporary runtime environment is ready
@@ -5122,6 +5129,34 @@ if [ -n "$SET_DEFAULT_MODEL" ]; then
   exit 0
 fi
 
+if [ "${RUN_SUITE:-0}" -eq 1 ]; then
+  suite_script="${BASH4LLM_EXTRAS_DIR}/test/run-all-tests.sh"
+  if [ -f "$suite_script" ]; then
+    if ! verify_module_integrity "$suite_script"; then
+      log_error "SEC" "Test suite script failed integrity validation: $suite_script"
+      exit "${BASH4LLM_ERR_SEC:-17}"
+    fi
+
+    if [ "${DEBUG:-0}" -eq 1 ]; then
+      log_info "TEST" "Executing verified master test suite: $suite_script"
+    fi
+
+    # Transparent Context Flag Forwarding (--no-color and --dry-run propagation)
+    suite_args=()
+    [ -n "${NO_COLOR:-}" ] && suite_args+=("--no-color")
+    [ "${DRY_RUN:-0}" -eq 1 ] && suite_args+=("--dry-run")
+    if [ "${#ARGS[@]}" -gt 0 ]; then
+      suite_args+=("${ARGS[@]}")
+    fi
+
+    exec bash "$suite_script" ${suite_args[@]+"${suite_args[@]}"}
+  else
+    log_error "TEST" "Master test suite script not found at: $suite_script"
+    log_error "TEST" "Please install optional extras using: $0 --install-extras"
+    exit "$BASH4LLM_ERR_TMP"
+  fi
+fi
+
 if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   SRC_DIR="${INSTALL_EXTRAS_SRC:-$LEGACY_EXTRAS_DIR}"
   DEST_DIR="${CANONICAL_EXTRAS_DIR}"
@@ -5159,8 +5194,16 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
   safe_mkdir "$DEST_BASE" 700
 
   if cp -R "$SRC_BASE/." "$DEST_BASE/" 2>/dev/null; then
+    # Principle of Least Privilege: Default all directories to 700 and files to 600
     find "$DEST_BASE" -type d -exec chmod 700 {} + 2>/dev/null || true
     find "$DEST_BASE" -type f -exec chmod 600 {} + 2>/dev/null || true
+    
+    # Granular Execution Permissions: Grant executable bits ONLY to direct CLI entrypoints
+    chmod 700 "$DEST_BASE/security/output-sanitizer.sh" 2>/dev/null || true
+    chmod 700 "$DEST_BASE/security/verify.sh" 2>/dev/null || true
+    chmod 700 "$DEST_BASE/security/validate-env.sh" 2>/dev/null || true
+    chmod 700 "$DEST_BASE/chat/tui-repl.sh" 2>/dev/null || true
+    find "$DEST_BASE/test" -type f -name "*.sh" -exec chmod 700 {} + 2>/dev/null || true
     
     # Verify integrity of newly installed extras against manifest
     installed_manifest="${DEST_BASE}/manifest.sha256"
@@ -5173,6 +5216,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
         [ -z "$line" ] && continue
         m_file="${line#* }"
         m_file="$(echo "$m_file" | awk '{$1=$1;print}')"
+        m_file="${m_file#\*}" # Strip leading asterisk if generated in binary mode
         if [ -f "${DEST_BASE}/${m_file}" ]; then
           if verify_module_integrity "${DEST_BASE}/${m_file}" >/dev/null 2>&1; then
             verified_count=$((verified_count + 1))
@@ -5189,7 +5233,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
       fi
     fi
 
-    log_info_user "EXTRAS" "Installation successfully completed."
+    log_info_user "EXTRAS" "Installation successfully completed. Least-privilege permissions applied."
   else
     log_error "EXTRAS" "Error copying extras files."
     exit "$BASH4LLM_ERR_TMP"
@@ -5392,10 +5436,10 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   else
     printf '  - Extras Integrity Manifest: %b[NOT FOUND]%b (Optional/Development mode)\n' "${C_YELLOW:-}" "${C_RST:-}"
   fi
-
-  # -------------------------------------------------------------------------
+  
+  # --------------------------------------------------
   # OpenSSL & TLS Diagnostics Hook (Updated Status Reporting)
-  # -------------------------------------------------------------------------
+  # --------------------------------------------------
   if [ "${BASH4LLM_VAULT_ENABLED:-1}" -eq 0 ]; then
     printf '  - Security Extension (OpenSSL): %b[DISABLED]%b (By user configuration BASH4LLM_VAULT_ENABLED=0)\n' "${C_BYELLOW:-}" "${C_RST:-}"
   elif [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ]; then
@@ -5428,7 +5472,7 @@ if [ "${DIAGNOSTICS:-0}" -eq 1 ]; then
   else
     printf '  - Security Extension (OpenSSL): %b[NOT AVAILABLE]%b (openssl-helper.sh or openssl binary missing)\n' "${C_BRED:-}" "${C_RST:-}"
   fi
-  # -------------------------------------------------------------------------
+  # --------------------------------------------------
   
   exit 0
 fi
