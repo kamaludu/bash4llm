@@ -5200,8 +5200,6 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     
     # Granular Execution Permissions: Grant executable bits ONLY to direct CLI entrypoints
     chmod 700 "$DEST_BASE/security/output-sanitizer.sh" 2>/dev/null || true
-    chmod 700 "$DEST_BASE/security/verify.sh" 2>/dev/null || true
-    chmod 700 "$DEST_BASE/security/validate-env.sh" 2>/dev/null || true
     chmod 700 "$DEST_BASE/chat/tui-repl.sh" 2>/dev/null || true
     find "$DEST_BASE/test" -type f -name "*.sh" -exec chmod 700 {} + 2>/dev/null || true
     
