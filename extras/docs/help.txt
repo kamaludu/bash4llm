@@ -10,6 +10,7 @@ Usage:
   bash4llm --chat
 
 Options:
+`........................................`
 
 Input & Templates:
   -f <file>              Add file content to prompt (repeatable)
@@ -66,6 +67,9 @@ Security & Vault:
   Unlock Vault Session in RAM (bypasses password prompts in current shell):
   `. ./bash4llm`         (exports obfuscated _B4L_RT_CTX)
 
+  Enforce Mandatory Vault Policy (blocks non-vault API keys):
+  `export BASH4LLM_REQUIRE_VAULT=1`      (rejects env keys not loaded from Vault)
+
   Disable or Bypass Vault:
   `BASH4LLM_VAULT_ENABLED=0`             (add to config to disable permanently)
   `export BASH4LLM_VAULT_ENABLED=0`      (disables vault for active terminal session)
@@ -81,14 +85,17 @@ Diagnostics & Inspection:
   --print-provider-file  Print canonical active provider file path
   --print-model-file <p> Print canonical model file path for provider <p>
 
-Maintenance & General:
+Maintenance & Testing:
   --install-extras [dir] Install or update extras components (alias: --install-extra)
+  --run-all-tests        Execute master automated test suite (alias: --run-all-test)
   --bootstrap-only       Execute environment bootstrap and exit (no API calls)
   --dry-run              Build payload and display diagnostics, skipping network call
   --quiet                Suppress non-essential informational messages
   --debug                Enable verbose debug logs on stderr
   --version              Print Bash4LLM version and release date
   -h, --help             Display this help message
+
+`........................................`
 
 Examples:
   bash4llm "Summarize this text"
@@ -97,5 +104,7 @@ Examples:
   bash4llm --stream "Generate streaming response"
   bash4llm --thread conversation1 "Continue thread"
   bash4llm --rename-thread conversation1 --title "Project Discussion"
+  bash4llm --run-all-tests
   bash4llm --explain-error 17
+
 ----------------------------------------
