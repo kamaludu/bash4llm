@@ -1,380 +1,197 @@
-[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](../../README.md)
-## Session Engine [🇮🇹](#-sezione-italiana)   [🇬🇧](#-english-section)
+# Session Engine Module (`session-engine.sh`)
 
-### 🇮🇹 Sezione Italiana
-
-# 🗃️ Session Engine (extra opzionale per Bash4LLM)
-
-Il *Session Engine* è un componente **opzionale** che estende le funzionalità di session management del CORE di Bash4LLM.  
-Non sostituisce le primitive MVP (`session_read_window`, `session_append`, cache), ma le **potenzia** con segmentazione, rotazione, deduplicazione, caching avanzato e snapshot diagnostici.
-
-È progettato per essere **sicuro**, **deterministico**, **auditabile** e completamente confinato in `BASH4LLM_HISTORY_DIR` e `RUN_TMPDIR`.
+**[🇮🇹 Italiano](#-sezione-italiana) / [🇬🇧 English](#-english-section)**
 
 ---
 
-## 🎯 Obiettivi del Session Engine
+## 🇮🇹 Sezione Italiana
 
-- Gestire sessioni lunghe senza degradazione delle prestazioni.
-- Ridurre la dimensione dei file di sessione tramite segmentazione e rotazione.
-- Evitare duplicati e rumore nei messaggi.
-- Costruire finestre di contesto ottimizzate per i modelli LLM.
-- Fornire snapshot diagnostici completi.
-- Garantire atomicità, idempotenza e sicurezza dei dati.
+# Session Engine (Modulo opzionale per Bash4LLM⁺)
 
----
+Il *Session Engine* è un componente opzionale che estende le funzionalità di gestione delle sessioni del CORE di Bash4LLM⁺.  
+Non sostituisce le funzioni base di gestione dei thread, ma le integra con meccanismi di segmentazione dei file di storico, rotazione automatica, deduplicazione dei messaggi, caching in memoria con TTL e generazione di snapshot diagnostici.
 
-# ⚙️ Funzionalità principali
-
-## 1. **Segmentazione e Rotazione Automatica**
-- Ogni sessione inizia con un file base:  
-  `sessions/<sid>.ndjson`
-- Quando supera `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`, viene ruotato in:  
-  `sessions/<sid>.NNN.ndjson`
-- La rotazione avviene **sotto lock**, garantendo assenza di corruzione.
-- I segmenti più vecchi possono essere compressi (opzionale).
-
-**Benefici:**  
-- Nessun file cresce indefinitamente.  
-- Accesso rapido alle parti recenti della sessione.  
+Il modulo è progettato per operare in modo isolato, confinando tutte le scritture temporanee all'interno delle directory `BASH4LLM_HISTORY_DIR` e `RUN_TMPDIR` con permessi restrittivi.
 
 ---
 
-## 2. **Append Sicuro e Idempotente**
-`session_engine_append`:
+## 1. Obiettivi e funzionalità
 
-- Scrive un nuovo record NDJSON con:
-  - timestamp UTC
-  - ruolo
-  - contenuto
-  - hash
-  - meta JSON
-- Usa:
-  - **lock esclusivo**
-  - **marker di idempotenza** basato su `message_id`
-  - **permessi 600**
-  - **dedup opzionale** (evita ripetizioni ravvicinate)
-
-**Garantisce:**  
-- Nessun doppio append  
-- Nessuna perdita dati  
-- Nessuna race condition  
+- **Gestione di sessioni estese**: Previene il degrado delle prestazioni nell'elaborazione di cronologie conversazionali di grandi dimensioni.
+- **Segmentazione e rotazione dei log**: Limita la dimensione dei singoli file di storico suddividendoli in segmenti numerati al superamento della soglia di byte configurata.
+- **Deduplicazione dei messaggi**: Filtra i messaggi duplicati ravvicinati per ridurre il rumore nel contesto.
+- **Costruzione flessibile della finestra di contesto**: Supporta la selezione di un numero fisso $N$ di messaggi oppure il calcolo dinamico basato sul budget di byte (`target_bytes`).
+- **Snapshot diagnostici**: Genera un report JSON contenente metadati statistici sulla sessione per l'ispezione ed il debugging.
+- **Sicurezza e atomicità**: Tutte le operazioni di scrittura e rotazione avvengono sotto lock esclusivo (`lock_exec`) con permessi file `0600`.
 
 ---
 
-## 3. **Costruzione della Finestra di Contesto**
-`session_engine_build_window`:
+## 2. Dettaglio delle funzionalità
 
-Due modalità:
+### 2.1 Segmentazione e Rotazione Automatica
+- Ogni sessione viene inizializzata nel file base:  
+  `bash4llm.d/history/sessions/<sid>.ndjson`
+- Quando la dimensione del file supera il limite `BASH4LLM_SESSION_SEGMENT_MAX_BYTES` (default 1MB), il file viene ruotato in:  
+  `bash4llm.d/history/sessions/<sid>.NNN.ndjson`
+- La rotazione avviene all'interno di una sezione critica protetta da lock.
+- I segmenti storici meno recenti possono essere compressi in formato `.gz` tramite `gzip`.
 
-### **A) Override esplicito: N messaggi**
-Se `N > 0`:
-- Recupera gli ultimi N messaggi reali (escludendo `meta.ignored`)
-- Attraversa tutti i segmenti, dal più recente al più vecchio
-- Mantiene l’ordine cronologico corretto
+### 2.2 Accodamento Atomico (`session_engine_append`)
+Scrive i messaggi nello storico NDJSON garantendo:
+- Timestamp UTC, ruolo, contenuto, hash SHA-256 e metadati JSON.
+- Verifica di idempotenza tramite marcatore `message_id`.
+- Lock esclusivo prima di ogni scrittura.
+- Applicazione dei permessi `0600`.
 
-### **B) Modalità intelligente (target_bytes)**
-Se `N = 0`:
-- Costruisce una finestra ottimizzata rispettando:
-  - `BASH4LLM_SESSION_TARGET_BYTES`
-  - `BASH4LLM_SESSION_MIN_MESSAGES`
-  - `BASH4LLM_SESSION_MAX_MESSAGES`
-- Pesa i messaggi (role+content)
-- Esclude quelli marcati come `ignored`
+### 2.3 Costruzione della Finestra di Contesto (`session_engine_build_window`)
+Supporta due modalità operative:
 
-### **Caching in-process**
-- Cache per chiave: `sid|params_hash`
-- TTL configurabile
-- Invalidate automatica dopo ogni append
+- **Modalità $N$ esplicito ($N > 0$)**: Estrae esattamente gli ultimi $N$ messaggi non ignorati attraversando i segmenti dal più recente al più vecchio e ricostruendo l'ordine cronologico.
+- **Modalità basata su Byte-Budget ($N = 0$)**: Accumula messaggi storici fino al raggiungimento del limite `BASH4LLM_SESSION_TARGET_BYTES` rispettando i vincoli `BASH4LLM_SESSION_MIN_MESSAGES` e `BASH4LLM_SESSION_MAX_MESSAGES`.
 
----
+Include un meccanismo di caching in memoria associativo (`sid|params_hash`) con TTL configurabile, invalidato automaticamente a ogni nuovo inserimento.
 
-## 4. **Snapshot Diagnostico Completo**
-`session_engine_snapshot` produce un JSON con:
-
-- numero totale di messaggi
-- numero di segmenti
-- dimensione totale
-- ultime 50 righe della sessione
-- eventuali messaggi marcati come `summary:true`
-
-Perfetto per debugging, audit e strumenti esterni.
+### 2.4 Snapshot Diagnostico (`session_engine_snapshot`)
+Esporta un report JSON con le seguenti informazioni:
+- Numero totale dei messaggi e dei segmenti.
+- Dimensione complessiva in byte della sessione.
+- Ultime 50 righe di storico ed eventuali messaggi di riassunto (`summary: true`).
 
 ---
 
-## 5. **Sicurezza e Invarianti**
-Il Session Engine garantisce:
+## 3. Invarianti di Sicurezza
 
-- **Nessun uso di `/tmp` di sistema**  
-  Tutti i file temporanei sono in `RUN_TMPDIR` con permessi 600.
-
-- **Nessun uso di `eval`**  
-  Nessuna esecuzione dinamica di codice.
-
-- **Atomicità totale**  
-  Tutte le scritture sono protette da lock o `mv` atomici.
-
-- **Idempotenza**  
-  Marker basati su `message_id` impediscono duplicazioni.
-
-- **Validazione session_id**  
-  Se il CORE espone `session_validate_id`, viene usata automaticamente.
+- **Isolamento temporaneo**: Nessun uso della directory condivisa `/tmp`. Tutti i file temporanei risiedono in `RUN_TMPDIR` con permessi `0600`/`0700`.
+- **Zero Eval**: Nessun uso del comando `eval`.
+- **Scritture atomiche**: Scritture e rotazioni protette da lock o rinomina atomica (`mv`).
+- **Validazione ID**: Validazione della struttura dell'ID di sessione prima dell'elaborazione.
 
 ---
 
-# 🧩 API pubbliche
+## 4. API Pubbliche del Modulo
 
-### `session_engine_enabled`
-Determina se l’engine può essere usato.  
-Controlla:
-- variabile `BASH4LLM_SESSION_ENGINE`
-- esistenza e scrivibilità di `SE_SESSION_DIR`
-- disponibilità di `RUN_TMPDIR`
+```bash
+# Verifica se il modulo è attivo e le directory necessarie sono disponibili
+session_engine_enabled
 
----
+# Aggiunge un messaggio alla sessione
+session_engine_append <sid> <role> <content> <meta_json>
 
-### `session_engine_append <sid> <role> <content> <meta_json>`
-Aggiunge un messaggio alla sessione in modo sicuro e idempotente.
+# Costruisce la finestra di contesto per il payload dell'LLM
+session_engine_build_window <sid> <N> <target_bytes> <out_file>
 
----
-
-### `session_engine_build_window <sid> <N> <target_bytes> <out_file>`
-Costruisce la finestra di contesto per il modello.
-
----
-
-### `session_engine_snapshot <sid> <out_file>`
-Genera un report diagnostico completo.
-
----
-
-# 🧭 Come si usa
-
-## 1. Installazione dell’extra
-Il file deve trovarsi in:
-```
-$BASH4LLM_EXTRAS_DIR/session/session-engine.sh
+# Genera lo snapshot diagnostico in formato JSON
+session_engine_snapshot <sid> <out_file>
 ```
 
-## 2. Attivazione
-Nel tuo script principale:
-```sh
-if session_engine_enabled; then
-    session_engine_append ...
-    session_engine_build_window ...
-else
-    # fallback al CORE/MVP
-fi
+---
+
+## 5. Configurazione
+
+Principali variabili d'ambiente:
+
+| Variabile | Valore Predefinito | Descrizione |
+|---|---|---|
+| `BASH4LLM_SESSION_ENGINE` | `on` | Abilita (`on`) o disabilita (`off`) il modulo. |
+| `BASH4LLM_SESSION_SEGMENT_MAX_BYTES` | `1048576` | Soglia di rotazione dei file di sessione in byte (1MB). |
+| `BASH4LLM_SESSION_SEGMENT_MAX_FILES` | `100` | Numero massimo di segmenti uncompressed da mantenere. |
+| `BASH4LLM_SESSION_DEDUP_ENABLED` | `1` | Abilita il controllo di deduplicazione dei messaggi. |
+| `SESSION_CACHE_ENABLED` | `1` | Abilita il caching in memoria della finestra di contesto. |
+| `SESSION_CACHE_TTL_SEC` | `30` | Tempo di validità (TTL) della cache in secondi. |
+
+---
+
+## 🇬🇧 English Section
+
+# Session Engine (Optional Extra for Bash4LLM⁺)
+
+The *Session Engine* is an optional extension module enhancing the session management features of the Bash4LLM⁺ CORE.  
+It does not replace core thread operations, but extends them with file segmentation, log rotation, message deduplication, in-memory TTL caching, and diagnostic snapshot generation.
+
+The module operates in strict isolation, confining temporary allocations within `BASH4LLM_HISTORY_DIR` and `RUN_TMPDIR` using restrictive file permissions.
+
+---
+
+## 1. Key Objectives and Features
+
+- **Long Session Management**: Prevents performance degradation when processing large conversation histories.
+- **Log Segmentation & Rotation**: Limits individual history file sizes by rotating records into numbered segments upon reaching a byte threshold.
+- **Message Deduplication**: Filters near-duplicate messages to reduce context noise.
+- **Flexible Context Window Construction**: Supports selecting an explicit message count $N$ or dynamically accumulating messages within a byte budget (`target_bytes`).
+- **Diagnostic Snapshots**: Exports JSON reports containing session statistics for inspection and debugging.
+- **Security & Atomicity**: All file writes and rotations execute under exclusive locking (`lock_exec`) with strict `0600` file permissions.
+
+---
+
+## 2. Detailed Technical Features
+
+### 2.1 Automatic Segmentation & Rotation
+- Sessions initialize in a base file:  
+  `bash4llm.d/history/sessions/<sid>.ndjson`
+- When file size exceeds `BASH4LLM_SESSION_SEGMENT_MAX_BYTES` (default 1MB), it rotates to:  
+  `bash4llm.d/history/sessions/<sid>.NNN.ndjson`
+- Rotation executes within a lock-protected critical section.
+- Older historical segments can be compressed as `.gz` files via `gzip`.
+
+### 2.2 Atomic Append (`session_engine_append`)
+Appends messages to NDJSON logs enforcing:
+- UTC timestamp, role, content, SHA-256 hash, and JSON metadata.
+- Idempotency checking via `message_id` markers.
+- Exclusive locking prior to file writes.
+- Strict `0600` file permissions.
+
+### 2.3 Context Window Construction (`session_engine_build_window`)
+Supports two operational modes:
+
+- **Explicit $N$ Override ($N > 0$)**: Extracts exactly the last $N$ non-ignored messages across segments from newest to oldest, restoring chronological order.
+- **Byte-Budget Mode ($N = 0$)**: Accumulates historic messages up to the `BASH4LLM_SESSION_TARGET_BYTES` limit while respecting `BASH4LLM_SESSION_MIN_MESSAGES` and `BASH4LLM_SESSION_MAX_MESSAGES`.
+
+Includes an in-process associative cache (`sid|params_hash`) with configurable TTL, automatically invalidated on each append operation.
+
+### 2.4 Diagnostic Snapshot (`session_engine_snapshot`)
+Produces a JSON report containing:
+- Total message count and segment count.
+- Cumulative session size in bytes.
+- Last 50 lines of history and summary messages (`summary: true`).
+
+---
+
+## 3. Security Invariants
+
+- **Isolated Storage**: No usage of shared `/tmp` paths. All temporary files reside in `RUN_TMPDIR` with `0600`/`0700` permissions.
+- **Zero Eval**: No dynamic execution using `eval`.
+- **Full Atomicity**: Writes and rotations are protected by locks or atomic renames (`mv`).
+- **ID Validation**: Session ID structure is validated before processing.
+
+---
+
+## 4. Public API Reference
+
+```bash
+# Check if session engine is enabled and required directories exist
+session_engine_enabled
+
+# Append a message to the active session
+session_engine_append <sid> <role> <content> <meta_json>
+
+# Construct context window payload for the LLM
+session_engine_build_window <sid> <N> <target_bytes> <out_file>
+
+# Generate a complete diagnostic snapshot report
+session_engine_snapshot <sid> <out_file>
 ```
 
-## 3. Configurazione (opzionale)
-Variabili principali:
-
-- `BASH4LLM_SESSION_ENGINE=on|off`
-- `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`
-- `BASH4LLM_SESSION_SEGMENT_MAX_FILES`
-- `BASH4LLM_SESSION_DEDUP_ENABLED`
-- `SESSION_CACHE_ENABLED`
-- `SESSION_CACHE_TTL_SEC`
-
 ---
 
-# 📌 Quando usarlo
+## 5. Configuration
 
-Usa il Session Engine quando:
+Main environment variables:
 
-- vuoi sessioni lunghe senza rallentamenti
-- vuoi finestre di contesto ottimizzate
-- vuoi dedup e pulizia automatica
-- vuoi snapshot diagnostici
-- vuoi rotazione e compressione dei segmenti
-
-Se non installato o disabilitato, Bash4LLM usa automaticamente il CORE/MVP.
-
----
-
-### 🇬🇧 English section
-
-# 🗃️ Session Engine (optional extra for Bash4LLM)
-
-The *Session Engine* is an **optional** component that extends the session‑management capabilities of the Bash4LLM CORE.  
-It does **not** replace the MVP primitives (`session_read_window`, `session_append`, cache); instead, it **enhances** them with segmentation, rotation, deduplication, advanced caching, and diagnostic snapshots.
-
-It is designed to be **safe**, **deterministic**, **auditable**, and fully confined within `BASH4LLM_HISTORY_DIR` and `RUN_TMPDIR`.
-
----
-
-## 🎯 Goals of the Session Engine
-
-- Handle long‑running sessions without performance degradation.
-- Reduce session file size through segmentation and rotation.
-- Avoid duplicate or noisy messages.
-- Build optimized context windows for LLM models.
-- Provide complete diagnostic snapshots.
-- Guarantee atomicity, idempotence, and data safety.
-
----
-
-# ⚙️ Key Features
-
-## 1. **Automatic Segmentation and Rotation**
-- Each session starts with a base file:  
-  `sessions/<sid>.ndjson`
-- When it exceeds `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`, it is rotated into:  
-  `sessions/<sid>.NNN.ndjson`
-- Rotation happens **under lock**, ensuring no corruption.
-- Older segments may be compressed (optional).
-
-**Benefits:**  
-- No file grows indefinitely.  
-- Fast access to the most recent session data.  
-
----
-
-## 2. **Safe and Idempotent Append**
-`session_engine_append`:
-
-- Writes a new NDJSON record containing:
-  - UTC timestamp  
-  - role  
-  - content  
-  - hash  
-  - meta JSON  
-- Uses:
-  - **exclusive locking**
-  - **idempotency markers** based on `message_id`
-  - **600 permissions**
-  - **optional dedup** (prevents near‑duplicate messages)
-
-**Guarantees:**  
-- No double‑append  
-- No data loss  
-- No race conditions  
-
----
-
-## 3. **Context Window Construction**
-`session_engine_build_window` supports two modes:
-
-### **A) Explicit override: N messages**
-If `N > 0`:
-- Retrieves the last N real messages (excluding `meta.ignored`)
-- Walks all segments from newest to oldest
-- Restores correct chronological order
-
-### **B) Smart mode (target_bytes)**
-If `N = 0`:
-- Builds an optimized window respecting:
-  - `BASH4LLM_SESSION_TARGET_BYTES`
-  - `BASH4LLM_SESSION_MIN_MESSAGES`
-  - `BASH4LLM_SESSION_MAX_MESSAGES`
-- Weighs messages (role + content)
-- Excludes those marked as `ignored`
-
-### **In‑process caching**
-- Cache key: `sid|params_hash`
-- Configurable TTL
-- Automatically invalidated after each append
-
----
-
-## 4. **Complete Diagnostic Snapshot**
-`session_engine_snapshot` produces a JSON report containing:
-
-- total number of messages  
-- number of segments  
-- total size  
-- last 50 lines of the session  
-- any messages marked with `summary:true`  
-
-Ideal for debugging, auditing, and external tools.
-
----
-
-## 5. **Safety and Invariants**
-The Session Engine guarantees:
-
-- **No use of system `/tmp`**  
-  All temporary files live in `RUN_TMPDIR` with 600 permissions.
-
-- **No use of `eval`**  
-  No dynamic code execution.
-
-- **Full atomicity**  
-  All writes are protected by locks or atomic `mv`.
-
-- **Idempotency**  
-  `message_id`‑based markers prevent duplicates.
-
-- **Session ID validation**  
-  If the CORE exposes `session_validate_id`, it is used automatically.
-
----
-
-# 🧩 Public API
-
-## `session_engine_enabled`
-Determines whether the engine can be used.  
-Checks:
-- `BASH4LLM_SESSION_ENGINE` variable  
-- existence and writability of `SE_SESSION_DIR`  
-- availability of `RUN_TMPDIR`  
-
----
-
-## `session_engine_append <sid> <role> <content> <meta_json>`
-Safely and idempotently appends a message to the session.
-
----
-
-## `session_engine_build_window <sid> <N> <target_bytes> <out_file>`
-Builds the context window for the model.
-
----
-
-## `session_engine_snapshot <sid> <out_file>`
-Generates a complete diagnostic report.
-
----
-
-# 🧭 Usage
-
-## 1. Installing the extra
-The file must be located at:
-```
-$BASH4LLM_EXTRAS_DIR/session/session-engine.sh
-```
-
-## 2. Enabling it
-In your main script:
-```sh
-if session_engine_enabled; then
-    session_engine_append ...
-    session_engine_build_window ...
-else
-    # fallback to CORE/MVP
-fi
-```
-
-## 3. Optional configuration
-Main variables:
-
-- `BASH4LLM_SESSION_ENGINE=on|off`
-- `BASH4LLM_SESSION_SEGMENT_MAX_BYTES`
-- `BASH4LLM_SESSION_SEGMENT_MAX_FILES`
-- `BASH4LLM_SESSION_DEDUP_ENABLED`
-- `SESSION_CACHE_ENABLED`
-- `SESSION_CACHE_TTL_SEC`
-
----
-
-# 📌 When to Use It
-
-Use the Session Engine when:
-
-- you need long sessions without slowdown  
-- you want optimized context windows  
-- you want automatic dedup and noise filtering  
-- you want diagnostic snapshots  
-- you want segment rotation and optional compression  
-
-If not installed or disabled, Bash4LLM automatically falls back to the CORE/MVP.
+| Variable | Default Value | Description |
+|---|---|---|
+| `BASH4LLM_SESSION_ENGINE` | `on` | Enables (`on`) or disables (`off`) the module. |
+| `BASH4LLM_SESSION_SEGMENT_MAX_BYTES` | `1048576` | Segment rotation size threshold in bytes (1MB). |
+| `BASH4LLM_SESSION_SEGMENT_MAX_FILES` | `100` | Maximum uncompressed segments to retain. |
+| `BASH4LLM_SESSION_DEDUP_ENABLED` | `1` | Enables message deduplication filter. |
+| `SESSION_CACHE_ENABLED` | `1` | Enables in-memory context window caching. |
+| `SESSION_CACHE_TTL_SEC` | `30` | In-memory cache time-to-live in seconds. |
