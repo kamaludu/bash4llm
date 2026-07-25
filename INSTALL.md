@@ -1,6 +1,6 @@
 [![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
 
-# INSTALLAZIONE DELLO SCRIPT BASH4LLM⁺ [🇮🇹](INSTALL.md) 🇬🇧
+# INSTALLAZIONE DELLO SCRIPT BASH4LLM⁺ 🇮🇹 [🇬🇧](INSTALL-en.md)
 
 Bash4LLM⁺ è un wrapper CLI in ambiente Bash progettato per l'interfacciamento sicuro con le API di vari provider di modelli linguistici (LLM). Non richiede l'installazione di runtime esterni come Python o Node.js, basandosi esclusivamente sui comandi POSIX standard e sulle utilità della shell.
 
