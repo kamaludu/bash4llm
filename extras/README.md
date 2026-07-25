@@ -35,7 +35,6 @@ extras/
 │   ├── session-engine.sh
 │   └── struttura.md
 ├── test/                     # Automated Verification Test Suites
-│   ├── adversarial_tests.sh. # NDJSON Lock Contention & Fuzzing Tests (chmod 700)
 │   └── run-all-tests.sh      # Master Unified Automated Test Suite (chmod 700)
 └── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
 ```
