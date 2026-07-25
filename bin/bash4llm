@@ -21,12 +21,15 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
 fi
 
+# Environment Sanitization - Unset high-risk environment variables to prevent injection or environment hijacking
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
 # Disable writing of core dumps to prevent leaking API keys in RAM to disk on crash
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.7.0"
-SCRIPT_DATE="2026-07-24"
+SCRIPT_VERSION="2.8.0"
+SCRIPT_DATE="2026-07-25"
 
 # ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -450,6 +453,7 @@ read_secure_input() {
         stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
       fi
     fi
+    # TECHNICAL DEBT AUDIT [INV-3]: Isolated parent trap restoration. No new eval allowed.
     if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi
     if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi
   }
@@ -694,8 +698,8 @@ verify_module_integrity() {
   # 4. Calculate actual file digest and verify match
   actual_hash="$(_core_sha256 "$target_file" 2>/dev/null || true)"
   if [ -z "$actual_hash" ]; then
-    log_warn "SEC" "Unable to compute SHA-256 hash for module integrity check: $target_file"
-    return 0
+    log_error "SEC" "Unable to compute SHA-256 hash for module integrity check: $target_file"
+    return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
   if [ "$expected_hash" != "$actual_hash" ]; then
@@ -3293,6 +3297,94 @@ _normalize_bool_env() {
   done
 }
 _normalize_bool_env
+
+# --------------------------------------------------
+# Function: _exec_curl_secure
+# Purpose: Authoritative Code Path for all Network Calls
+# Invariants: [INV-1] No Secret Exposure in argv | [INV-2] Isolated Storage
+# --------------------------------------------------
+_exec_curl_secure() {
+  local method="${1:-POST}"
+  local url="${2:-}"
+  local api_key="${3:-}"
+  local payload_file="${4:-}"
+  local out_file="${5:-}"
+  local err_file="${6:-}"
+  local is_streaming="${7:-0}"
+  local extra_opts_ref="${8:-}"
+
+  [ -n "$url" ] || return "$BASH4LLM_ERR_API"
+
+  local hdr_file="" hdr_target="" rc=0
+  local target_dir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR}}"
+
+  # 1. Isolation: Write sensitive headers strictly to a 0600 temp file inside RUN_TMPDIR
+  hdr_file="$(_tmpf file "$target_dir" curl_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
+
+  if [ -n "$api_key" ]; then
+    printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+  else
+    printf 'Content-Type: application/json\n' > "$hdr_file"
+  fi
+  chmod 600 "$hdr_file" 2>/dev/null || true
+
+  # 2. FD Redirection: Hide header file path from process inspection if supported
+  hdr_target="$hdr_file"
+  if exec 3< "$hdr_file" 2>/dev/null; then
+    if [ -e "/dev/fd/3" ]; then
+      hdr_target="/dev/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    elif [ -e "/proc/self/fd/3" ]; then
+      hdr_target="/proc/self/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    else
+      exec 3<&- 2>/dev/null || true
+    fi
+  fi
+
+  # 3. Construct command vector securely without putting tokens in argv
+  local -a cmd=(curl)
+  if [ "$is_streaming" -eq 1 ]; then
+    cmd+=(--http1.1 -sS -N)
+  fi
+
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+
+  cmd+=(-X "$method" -H @"$hdr_target")
+
+  if [ -n "$payload_file" ] && [ -f "$payload_file" ]; then
+    cmd+=(--data-binary @"$payload_file")
+  fi
+
+  if [ -n "$out_file" ]; then
+    cmd+=(-o "$out_file")
+  fi
+
+  if [ -n "$extra_opts_ref" ]; then
+    local -n _extra_ref="$extra_opts_ref" 2>/dev/null || true
+    if [ "${#_extra_ref[@]}" -gt 0 ]; then
+      cmd+=("${_extra_ref[@]}")
+    fi
+  fi
+
+  cmd+=("$url")
+
+  # 4. Single Execution Path
+  if [ -n "$err_file" ]; then
+    "${cmd[@]}" < /dev/null 2>"$err_file"
+    rc=$?
+  else
+    "${cmd[@]}" < /dev/null
+    rc=$?
+  fi
+
+  exec 3<&- 2>/dev/null || true
+  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
+
+  return "$rc"
+}
 #--5<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 ########################################
 # SECTION: PRECORE_RUN - END
@@ -3446,7 +3538,7 @@ buildpayload_groq() {
 call_api_groq() {
   local provider_url="${BASH4LLM_PROVIDER_URL:-}"
   local api_key="${GROQ_API_KEY:-}"
-  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err="" hdr_file="" hdr_target=""
+  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err=""
 
   enforce_network_policy || return $?
 
@@ -3468,43 +3560,13 @@ call_api_groq() {
   tmp_resp="$(_tmpf file "$RUN_TMPDIR" resp.tmp 2>/dev/null)" || { [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
   tmp_err="$(_tmpf file "$RUN_TMPDIR" err.tmp 2>/dev/null)" || { rm -f "$tmp_resp" 2>/dev/null || true; [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
 
-  # SECURE HEADER ISOLATION (Fail-Safe Unlinked FD Sequence)
-  hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_hdr 2>/dev/null)" || {
-    rm -f "$tmp_resp" "$tmp_err" 2>/dev/null || true
-    [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true
-    return "$BASH4LLM_ERR_TMP"
-  }
-  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
-  chmod 600 "$hdr_file" 2>/dev/null || true
-
-  hdr_target="$hdr_file"
-  if exec 3< "$hdr_file" 2>/dev/null; then
-    if [ -e "/dev/fd/3" ]; then
-      hdr_target="/dev/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    elif [ -e "/proc/self/fd/3" ]; then
-      hdr_target="/proc/self/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    else
-      exec 3<&- 2>/dev/null || true
-    fi
-  fi
-
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CURL" "POST -> $provider_url"
   fi
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" \
-    -X POST \
-    -H @"$hdr_target" \
-    --data-binary @"$payload_dec" \
-    -o "$tmp_resp" \
-    -w "%{http_code}" \
-    "$provider_url" < /dev/null 2>"$tmp_err")"
+  local -a extra_w_opts=(-w "%{http_code}")
+  http_code="$(_exec_curl_secure "POST" "$provider_url" "$api_key" "$payload_dec" "$tmp_resp" "$tmp_err" 0 extra_w_opts)"
   rc=$?
-
-  exec 3<&- 2>/dev/null || true
-  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
 
   if [ "$payload_dec" != "$PAYLOAD" ]; then
     rm -f "$payload_dec" 2>/dev/null || true
@@ -3628,8 +3690,8 @@ call_api_streaming_groq() {
     printf '\n' >&2
   fi
 
-  # Single-pass unbuffered streaming pipeline
-  "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$curl_err_log" | \
+  # Single-pass unbuffered streaming pipeline via Authoritative Network Path
+  _exec_curl_secure "POST" "$provider_url" "$api_key" "$send_payload" "" "$curl_err_log" 1 | \
   tee "$resp_raw" | \
   jq --unbuffered -R -r '
     if startswith("data: ") then
@@ -3648,6 +3710,8 @@ call_api_streaming_groq() {
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -eq 141 ] && rc=0
+
+  rm -f "$decoded_payload" 2>/dev/null || true
 
   exec 3<&- 2>/dev/null || true
   [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
@@ -3768,7 +3832,7 @@ refresh_models_groq() {
   fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
-  if ! curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
+  if ! _exec_curl_secure "GET" "${api_url}?limit=${MAX_MODELS}" "${GROQ_API_KEY}" "" "$out" "$errf" 0; then
     log_error "MODELREFRESH" "Failed to fetch models from $api_url"
     if [ "${DEBUG:-0}" -eq 1 ]; then
       head -n 200 "$errf" >&2 || true
@@ -3867,25 +3931,27 @@ validate_key_groq() {
     return 1
   fi
 
+  # Allocate isolated diagnostic output and error files
   if type _mktemp_in_dir >/dev/null 2>&1; then
     tmpout="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" 2>/dev/null || true)"
   fi
   [ -n "$tmpout" ] || tmpout="$(_tmpf file "$BASH4LLM_TMPDIR" groq-key-diag 2>/dev/null || mktemp "${BASH4LLM_TMPDIR}/groq-key-diag.XXXXXX")"
   errf="${tmpout}.err"
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" --max-time 10 \
-    -H "Authorization: Bearer $key" \
-    -o "$tmpout" \
-    -w "%{http_code}" \
-    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  # Execute API key validation GET request through the secure authoritative path
+  local -a key_val_opts=(--max-time 10 -w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
   curl_rc=$?
 
+  # Immediately cleanup diagnostic temporary files
   rm -f "$tmpout" "$errf" 2>/dev/null || true
 
+  # Handle network failures or cURL timeout (exit code 28)
   if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
     return 28
   fi
 
+  # Validate HTTP response status
   if [ "$http_code" = "200" ]; then
     return 0
   else
@@ -4028,6 +4094,23 @@ auto_select_model_dispatch() {
   fi
   return 127
 }
+
+# --------------------------------------------------
+# Function: _lock_security_guards
+# Purpose: Lock critical security & mediation functions as read-only
+# Invariant: Prevents post-initialization function hijacking or override
+# --------------------------------------------------
+_lock_security_guards() {
+  readonly -f _exec_curl_secure \
+              verify_module_integrity \
+              read_secure_input \
+              validate_path_security \
+              atomic_write \
+              check_local_rate_limit \
+              enforce_network_policy \
+              execute_isolated_hook 2>/dev/null || true
+}
+_lock_security_guards
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
 #--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
 resolve_model() {
