@@ -1,57 +1,48 @@
-[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
+
 [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases)  
 
-# Bash4LLM v2.7.0 — Release Notes
+# Bash4LLM v2.8.0 — Release Notes
 
-**Data / Date:** 2026‑07‑24  
-**Stato / Status:** Stable – Automated Verification & Platform Optimization Release (Upgrade from v2.6.0)
+**Data / Date:** 2026-07-25  
+**Stato / Status:** Stable – Security Hardening & Zero Secret Exposure Release (Upgrade from v2.7.0)
 
-## 💡 EVOLUZIONE ARCHITETTURALE / ARCHITECTURAL EVOLUTION
+## EVOLUZIONE ARCHITETTURALE / ARCHITECTURAL EVOLUTION
 
-**🇮🇹 Suite di Test Unificata, Concorrenza Adattiva Multi-Piattaforma e Diagnostica Avanzata**  
-La versione 2.7.0 introduce l'integrazione diretta della suite di test unificata via CLI, un motore di concorrenza adattivo capace di scalare i processi in base alla piattaforma per prevenire crash da OOM o Signal 9 (Termux, WSL, Cygwin, Linux, macOS), una diagnostica dettagliata dei fallimenti e un ripristino impeccabile della palette di colori ANSI ufficiali.
+**🇮🇹 Mediazione di Rete Unificata, Redazione dei Segreti in `argv`, Guardie Read-Only e Integrità Fail-Closed**  
+La versione 2.8.0 implementa le specifiche dell'**Architecture Specification (Edition 2026.1)**, introducendo la funzione centrale di mediazione di rete `_exec_curl_secure()` per l'azzeramento dell'esposizione dei segreti nella tabella dei processi del sistema operativo (`argv`), il blocco in memoria delle funzioni di sicurezza mediante `readonly -f` (`_lock_security_guards`), la bonifica delle variabili d'ambiente all'avvio, il controllo di integrità dei moduli strictly *fail-closed* ed il Modulo 9 di test avversari.
 
-**🇬🇧 Unified Master Test Suite, Adaptive Cross-Platform Concurrency & Enhanced Diagnostics**  
-Version 2.7.0 introduces direct CLI-level execution of the unified test suite, an adaptive concurrency engine that dynamically scales worker processes based on the target platform to prevent OOM / Signal 9 crashes (Termux/Android, WSL, Cygwin, Linux, macOS), detailed failure/skip diagnostics, and full ANSI color palette restoration.
+**🇬🇧 Centralized Network Mediation, Process Argument Secret Redaction, Read-Only Guards & Fail-Closed Integrity**  
+Version 2.8.0 implements the requirements of the **Architecture Specification (Edition 2026.1)**, introducing the authoritative network execution engine `_exec_curl_secure()` to eliminate secret exposure in process argument vectors (`argv`), in-memory function locking via `readonly -f` (`_lock_security_guards`), bootstrap environment sanitization, strictly fail-closed module integrity verification, and Module 9 adversarial security test assertions.
 
 ---
 
 ## 🇮🇹 Sezione Italiana
 
-### ✨ Novità principali
- * **Integrazione della Suite di Test Unificata (`--run-all-tests`)**: Nuovo comando CLI (con alias `--run-all-test`) per l'esecuzione automatizzata dell'intera suite a 8 moduli (27 test convalidati) previa verifica di integrità crittografica SHA-256 dello script `run-all-tests.sh`.
- * **Concorrenza Adattiva Multi-Piattaforma (`detect_safe_concurrency`)**: Calcolo dinamico del numero dei processi worker per il test di stress sui lock (Modulo 7). Limita automaticamente l'esecuzione a `10` worker su ambienti con forking pesante o risorse limitate (Termux/Android, Cygwin), `20` su WSL e fino a `50` su Linux/macOS multi-core. Supporta l'override manuale tramite `BASH4LLM_TEST_CONCURRENCY`.
- * **Report Diagnostico Dettagliato per Test Falliti o Saltati**: In caso di errori, la suite genera le sezioni dedicate `DETAILED FAILURE DIAGNOSTICS` e `SKIPPED TESTS DIAGNOSTICS`, mostrando i codici di uscita attesi/ricevuti, le motivazioni e i suggerimenti operativi di risoluzione.
- * **Cornice Visiva Finale Uniforme**: Introduzione del banner di chiusura `===` perfettamente coordinato all'intestazione per racchiudere l'output di test in una struttura visiva pulita.
+### Novità principali e Hardening di Sicurezza
+ * **Mediazione di Rete Unificata ed Eliminazione Secret Leak in `argv` (`_exec_curl_secure`)**: Tutte le chiamate HTTP (sincrone, streaming, refresh dei modelli e validazione delle chiavi) di tutti i provider (Groq, Gemini, Hugging Face, Mistral) sono convogliate nella funzione centrale `_exec_curl_secure()`. Le credenziali vengono scritte esclusivamente in file temporanei isolati (`0600`) e inoltrate a `curl` via File Descriptor (`/dev/fd/3`), azzerando l'esposizione delle chiavi API nei vettori d'argomento del processo (`argv` / `ps aux`).
+ * **Guardie di Inizializzazione Read-Only (`_lock_security_guards`)**: Al termine della fase di bootstrap, le funzioni critiche di sicurezza, mediazione e gestione del filesystem vengono marcate come `readonly -f`, impedendone la ridefinizione o la cancellazione in memoria da parte di moduli esterni o sotto-shell.
+ * **Bonifica dell'Ambiente di Esecuzione all'Avvio**: Rimozione automatica delle variabili d'ambiente a rischio (`unset BASH_ENV ENV CDPATH GLOBIGNORE`) nella sezione iniziale di boot del Core per prevenire hijacking dei percorsi o iniezioni di codice.
+ * **Integrità Crittografica Moduli Fail-Closed**: Rigoroso blocco immediato con codice di uscita `17` (`BASH4LLM_ERR_SEC`) in caso di mancata corrispondenza dell'hash SHA-256 di un modulo opzionale rispetto a `extras/manifest.sha256` o qualora il calcolo dell'hash fallisca.
 
-### 🔐 Stabilità, Sicurezza e Permessi
- * **Prevenzione dei Crash `Signal 9 (SIGKILL)`**: Eliminato l'abbattimento del processo da parte del Phantom Process Killer di Android/Termux durante i test di concorrenza intensiva.
- * **Risoluzione Dinamica del Binario (`TARGET_BIN`)**: Corretto il caricamento del binario eseguibile per funzionare sia dalla cartella sorgente sia dalla collocazione installata canonica `bash4llm.d/extras/test/`.
- * **Hardening dei Permessi dell'Installer (`--install-extras`)**: Applicazione del principio del minimo privilegio in fase di installazione (cartelle `700`, file di dati `600`, binari ed entrypoint CLI `700`).
-
-### 🎨 Interfaccia e Palette Cromatica
- * **Ripristino dei Colori ANSI (`init_colors`)**: Risolto il problema di azzeramento delle variabili cromatiche quando le funzioni core vengono caricate in memoria con output reindirizzato (`>/dev/null 2>&1`). La suite ora rispetta la palette **Bold** ufficiale di `Bash4LLM⁺` (`C_BGREEN`, `C_BRED`, `C_BYELLOW`, `C_BCYAN`).
- * **Inoltro Trasparente delle Flag di Contesto**: Invocando `--run-all-tests`, le opzioni `--no-color` e `--dry-run` vengono propagate automaticamente all'esecutore dei test.
+### Estensioni e Test Suite
+ * **Estensione della Test Suite Master (Modulo 9)**: Aggiunta delle asserzioni di test avversarie per verificare automaticamente la protezione delle funzioni `readonly`, il blocco delle manomissioni dei moduli ed il corretto funzionamento di `_exec_curl_secure()`.
+ * **Allineamento dei Provider Esterni (`gemini.sh`, `huggingface.sh`, `mistral.sh`)**: Migrazione completa di tutti i moduli provider opzionali sulla funzione centrale di rete `_exec_curl_secure()`. Per Gemini e Hugging Face, le chiavi API non vengono più trasmesse nei parametri URL (`?key=...`), eliminando la visibilità dei token negli argomenti di riga di comando.
 
 ---
 
 ## 🇬🇧 English Section
 
-### ✨ Key Highlights
- * **Integrated Master Test Suite (`--run-all-tests`)**: New CLI flag (and alias `--run-all-test`) to execute the complete 8-module automated verification suite (27 validated tests) backed by pre-execution SHA-256 cryptographic integrity validation.
- * **Adaptive Cross-Platform Concurrency Engine (`detect_safe_concurrency`)**: Dynamic worker scaling for lock contention stress testing (Module 7). Automatically adjusts concurrency limits to `10` workers on constrained or heavy-fork platforms (Termux/Android, Cygwin), `20` on WSL, and up to `50` on multi-core Linux/macOS. Supports manual override via `BASH4LLM_TEST_CONCURRENCY`.
- * **Detailed Failure & Skipped Test Diagnostics**: On test failures or skips, the suite renders dedicated `DETAILED FAILURE DIAGNOSTICS` and `SKIPPED TESTS DIAGNOSTICS` sections featuring expected vs actual exit codes, skip reasons, and operational hints.
- * **Unified Enclosing Visual Banner**: Added a matching closing banner (`===`) to neatly frame the entire test execution report.
+### Key Features & Security Hardening
+ * **Authoritative Secure Network Path & `argv` Secret Redaction (`_exec_curl_secure`)**: All HTTP calls (synchronous, streaming, model-refresh, and key-validation) across all providers (Groq, Gemini, Hugging Face, Mistral) route strictly through `_exec_curl_secure()`. Authentication headers are written to private temporary files (`0600`) and forwarded to `curl` via File Descriptor redirection (`/dev/fd/3`), completely redacting Bearer tokens and API keys from process argument vectors (`argv` / `ps aux`).
+ * **Read-Only Security Function Guards (`_lock_security_guards`)**: Post-bootstrap function locking marks critical security, mediation, and filesystem routines as `readonly -f` in shell memory to prevent function overriding or hijacking by external modules.
+ * **Bootstrap Environment Sanitization**: Unsets high-risk environment variables (`unset BASH_ENV ENV CDPATH GLOBIGNORE`) during early Core initialization to prevent environment hijacking.
+ * **Fail-Closed Cryptographic Module Integrity**: Enforces an immediate execution halt with exit code `17` (`BASH4LLM_ERR_SEC`) if an extension module's SHA-256 hash fails to match `extras/manifest.sha256` or if digest calculation fails.
 
-### 🔐 Stability, Security & Permission Hardening
- * **`Signal 9 (SIGKILL)` Crash Prevention**: Eliminates process termination triggered by Android/Termux Phantom Process Killer / OOM Killer during high-concurrency lock stress tests.
- * **Dynamic Target Binary Path Resolution (`TARGET_BIN`)**: Resolved target binary path lookup to work seamlessly both from repository source trees and canonical installed locations (`bash4llm.d/extras/test/`).
- * **Least-Privilege Extras Installer Hardening**: Enforces strict mode `700` for directories, `600` for data files, and `700` strictly for executable CLI entrypoints during `--install-extras`.
-
-### 🎨 Terminal UI & Color Theme Alignment
- * **ANSI Color Theme Restoration (`init_colors`)**: Fixed an issue where sourcing core components with redirected output (`>/dev/null 2>&1`) cleared active color variables. Fully aligns test runner colors with the official `Bash4LLM⁺` bold palette (`C_BGREEN`, `C_BRED`, `C_BYELLOW`, `C_BCYAN`).
- * **Transparent Context Flag Forwarding**: Invoking `--run-all-tests` seamlessly forwards `--no-color` and `--dry-run` flags to the underlying test runner.
+### Extension Modules & Master Test Suite
+ * **Master Test Suite Expansion (Module 9)**: Integrated adversarial security test assertions to automatically validate `readonly -f` function guards, module tamper detection, and secure `curl` execution.
+ * **Secondary Provider Alignment (`gemini.sh`, `huggingface.sh`, `mistral.sh`)**: Refactored all external provider modules to route network requests through `_exec_curl_secure()`. API keys for Gemini and Hugging Face are no longer passed as URL query parameters (`?key=...`), keeping credentials fully hidden from process command lines.
 
 ---
 
-*This release notes document corresponds to release <a href='https://github.com/kamaludu/bash4llm/releases/tag/v2.7.0'>Bash4LLM v2.7.0</a>.*
+*This release notes document corresponds to release <a href='https://github.com/kamaludu/bash4llm/releases/tag/v2.8.0'>Bash4LLM v2.8.0</a>.*
