@@ -1,10 +1,10 @@
-SPECIFICA COMPRESSA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.6.0)
+SPECIFICA COMPRESSA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.8.0)
 
 === PRECORE_BOOT ===
 
 VARIABILI: V:SCRIPT_NAME="bash4llm" (Nome identificativo del programma)
-V:SCRIPT_VERSION="2.6.0" (Versione corrente del software)
-V:SCRIPT_DATE="2026-07-21" (Data di rilascio dello script)
+V:SCRIPT_VERSION="2.8.0" (Versione corrente del software)
+V:SCRIPT_DATE="2026-07-24" (Data di rilascio dello script)
 V:BASH4LLM_PLAT_ANDROID=Flag Termux/Android. Valore 0 o 1, risolto dinamicamente su bootstrap
 V:BASH4LLM_PLAT_MACOS=Flag macOS/Darwin. Valore 0 o 1, risolto dinamicamente su bootstrap
 V:BASH4LLM_PLAT_WSL=Flag Windows Subsystem for Linux. Valore 0 o 1, risolto dinamicamente su bootstrap
@@ -72,7 +72,7 @@ F:_get_perm_string|p:Ottiene permessi simbolici portabili (es. -rwxr-xr-x) unifi
 F:_get_owner|p:Ottiene utente proprietario portabile unificando Linux/Darwin tramite platform checks|i:1:percorso|o:Nome proprietario su stdout|s:Nessuno|d:stat,awk,printf
 F:validate_path_security|p:Verifica permessi POSIX e proprietà utente corrente del target e delle dir padre, vietando scrittura a gruppi/altri (group/world-writable)|i:1:target_file|o:Stato 0 o 1 (violazione sicurezza)|s:Verifica symlink, owner e permessi|d:dirname,id,_get_owner,_get_perm_string,awk,log_error,log_warn
 F:_core_sha256|p:Calcola digest SHA-256 di un file in modo portabile usando sha256sum, openssl o shasum|i:1:target_file|o:Hash hex su stdout o stato 1|s:Nessuno|d:sha256sum,openssl,shasum,awk
-F:verify_module_integrity|p:Verifica sicurezza percorso via validate_path_security e controlla digest SHA-256 contro extras/manifest.sha256|i:1:target_file|o:Stato 0 o 17 (BASH4LLM_ERR_SEC)|s:Confronto hash manifest|d:validate_path_security,_core_sha256,awk,log_error,log_warn
+F:verify_module_integrity|p:Verifica sicurezza percorso via validate_path_security e controlla digest SHA-256 contro extras/manifest.sha256. Strictly fail-closed: arresta con exit code 17 su mismatch o fallimento hash|i:1:target_file|o:Stato 0 o 17 (BASH4LLM_ERR_SEC)|s:Confronto hash manifest|d:validate_path_security,_core_sha256,awk,log_error,log_warn
 F:ensure_api_key_for_provider|p:Valida/acquisisce API key. Cerca nell'ambiente (PROVIDER_API_ENV_<p>), nel Vault se attivo. Se assente e non-interattivo: crash(BASH4LLM_ERR_NO_API_KEY). Interattivo(TTY): prompt stdin silenziato via read_secure_input, export ambiente, imposta BASH4LLM_KEY_MANUAL_PROMPT=1|i:1:provider|o:Stato 0 o BASH4LLM_ERR_NO_API_KEY|s:Esporta key, prompt stderr, decrittazione vault|d:provider_api_env_var_name,vault_exists,vault_load_keys,jq,read_secure_input,printf,export
 F:enforce_network_policy|p:Valuta se connessioni esterne permesse (analizza $DRY_RUN, $BASH4LLM_SKIP_NETWORK, $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET)|i:Nessuno|o:Stato 1 (bloccate/dry-run) o 0 (autorizzate)|s:Log debug se attivo|d:is_truthy,log_info
 F:_extract_notes_section|p:Estrae sezioni testuali formali dal documento core-notes.sh senza eseguire codice (Zero-Eval)|i:1:intestazione_target|o:Righe estratte su stdout o codice d'uscita 1|s:Lettura file di documentazione|d:awk
@@ -113,10 +113,10 @@ F:_file_mtime|p:Ottiene data ultima modifica file portabile (timestamp Unix, 0 s
 F:jq_safe|p:Esegue filtro jq su JSON. Se fallisce/invalido scrive diagnostica in ERRF senza crashare|i:1:filtro,2:JSON|o:Stato 0 o errore jq|s:Scrittura log errore su $ERRF|d:jq
 
 SEZIONI DI CODICE:
-S:BOOT_SETUP_SHELL|p:Inizializzazione primaria|a:Imposta set -euo pipefail solo se eseguito direttamente. Disabilita core dumps (ulimit -c 0), setta version v2.6.0 e date 2026-07-21, esegue autodetect piattaforma (BASH4LLM_PLAT_*), definisce costanti d'errore/alias e codici colore ANSI.
+S:BOOT_SETUP_SHELL|p:Inizializzazione primaria|a:Imposta set -euo pipefail solo se eseguito direttamente. Bonifica ambiente (unset BASH_ENV ENV CDPATH GLOBIGNORE), disabilita core dumps (ulimit -c 0), setta version v2.8.0 e date 2026-07-24, esegue autodetect piattaforma (BASH4LLM_PLAT_*), definisce costanti d'errore/alias e codici colore ANSI.
 S:BOOT_SETUP_ENV_CMDS|p:Verifica requisiti sistema|a:Scansiona presenza delle 23 utilità essenziali di sistema (bash, jq, curl, mktemp, stat, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf, comm). Esce 15 se assenti.
 S:BOOT_EARLY_UTILITIES|p:Utility generiche e logging|a:Fornisce risoluzione directory script, safe_mkdir, helper argomenti, percorsi canonici, trimming, cache normalizzazione modelli, parsing Zero-Eval della documentazione, motore di logging strutturato e inizializzazione temi colore ANSI.
-S:BOOT_SECURITY|p:Sicurezza e gestione credenziali|a:Fornisce validazione byte nulli/caratteri di controllo, prompt TTY silenziato (read_secure_input), permessi POSIX e proprietario, verifica crittografica SHA-256 contro manifest, gestione credenziali API (con integrazione Vault) ed enforcement della politica di rete.
+S:BOOT_SECURITY|p:Sicurezza e gestione credenziali|a:Fornisce validazione byte nulli/caratteri di controllo, prompt TTY silenziato (read_secure_input), permessi POSIX e proprietario, verifica crittografica SHA-256 strictly fail-closed contro manifest, gestione credenziali API (con integrazione Vault) ed enforcement della politica di rete.
 S:BOOT_DIR_PATH|p:Risoluzione cartelle e URL|a:Determina BASH4LLM_DIR ed alloca in sicurezza la gerarchia di directory (var/run, locks, tmp), importa openssl-helper.sh se presente e risolve/registra gli URL delle API dei provider.
 S:BOOT_STORAGE_LOCKS|p:I/O atomico, locks e diagnostica|a:Codifica Base64, staging payload, locking atomico cross-processo (lock_exec), gestione lifecycle $RUN_TMPDIR, scritture atomiche, estrazione testo dalle risposte, linter configurazione ed explainer errori.
 S:BOOT_CLI_HELPERS|p:Intercettazione diagnostiche e plugin|a:Intercetta ed esegue immediatamente opzioni CLI di diagnostica rapida (--check-config, --explain-error, --print-*), imposta umask 077, definisce costanti di lock e gestisce il caricamento sicuro in sandbox dei plugin provider esterni.
@@ -190,28 +190,29 @@ F:thread_cache_get|p:Estrae dati da cache se validi. Verifica scadenza (Unix ts 
 F:thread_cache_set|p:Salva dati in cache. Scrive scadenza assoluta in riga 1, appende dati, scrive atomico sotto THREAD_CACHE_DIR (chmod 600). Default TTL=300s|i:1:thread_id,2:parametri,3:TTL_secondi,4:sorgente(opz)|o:Stato 0 o 1|s:Scrittura atomica file cache, chmod 600|d:thread_cache_key,date,cat,_tmpf,mv,rm,chmod
 F:thread_cache_invalidate|p:Invalida/cancella cache di un record o di tutta la sessione thread|i:1:thread_id,2:parametri(opz)|o:Stato 0 o 1|s:Rimozione file cache|d:thread_cache_key,rm
 F:_normalize_bool_env|p:Uniforma variabili booleane d'ambiente (ALLOW_API_CALLS, DRY_RUN, DEBUG) convertendo valori testuali in 0 o 1 numerici ed esportandoli|i:Nessuno|o:Esporta variabili allineate|s:Modifica variabili ambiente|d:is_truthy,export
+F:_exec_curl_secure|p:Funzione centrale di mediazione di rete (Authoritative Code Path). Scrive header di autenticazione in file temporanei isolati (0600) e li inoltra via File Descriptor (/dev/fd/3), azzerando l'esposizione di token nei vettori d'argomento (argv/ps aux)|i:1:metodo,2:url,3:api_key,4:payload_file,5:out_file,6:err_file,7:is_streaming,8:extra_opts_ref|o:Codice stato curl|s:File header 0600, reindirizzamento FD|d:_tmpf,chmod,exec,curl,rm
 
 SEZIONI DI CODICE:
 S:PRECORE_RUN_HISTORY|p:Inizializzazione storico|a:Gestione del salvataggio degli output delle risposte e motore di rotazione O(N) dello storico basato su limiti di file, peso in byte e retention in giorni.
 S:PRECORE_RUN_MANIFEST|p:Gestione allegati multimodali|a:Inizializzazione, staging e lettura transazionale dei manifesti JSON accoppiati alle copie di backup Base64 (.b64).
 S:PRECORE_RUN_UTIL_HELPERS|p:Utility di isolamento e sicurezza|a:Anonimizzazione rigorosa delle PII ($SAFE_THREAD_ID), sandbox per l'esecuzione degli hook pre/post esecuzione, controllo delle firme file, rate limiting a finestra scorrevole e allocazione temporanea sicura.
 S:PRECORE_RUN_THREAD_ENGINE|p:Motore unificato thread chat|a:Unificazione completa della gestione thread NDJSON: validazione ID, sanificazione comandi [REDACTED], operazioni CRUD (lettura finestra, accodamento idempotente, rinomina, cancellazione atomica), locking di concorrenza e caching con TTL.
-S:PRECORE_RUN_RUNTIME_GLOBALS|p:Inizializzazione globali runtime|a:Inizializzazione delle variabili di stato e di ambiente globale, configurazione dell'array CURL_BASE_OPTS e normalizzazione booleana.
+S:PRECORE_RUN_RUNTIME_GLOBALS|p:Inizializzazione globali e motore di rete|a:Inizializzazione delle variabili di stato globale, configurazione dell'array CURL_BASE_OPTS, normalizzazione booleana e definizione di _exec_curl_secure.
 
 === PROVIDER ===
 
 VARIABILI: V:GROQ_API_KEY=Chiave API autenticazione provider Groq. Eredita ${GROQ_API_KEY}
 
 FUNZIONI: F:buildpayload_groq|p:Compila JSON payload per Groq OpenAI-compatible. Valida temperatura (TURE) e token max (MAX_TOKENS). Estrazione messaggi da $JSON_INPUT, $MESSAGES_JSON, $BUILD_MESSAGES_FILE o prompt $CONTENT. Scrive JSON temp e applica staging Base64 se configurato|i:Parametri opzionali|o:Assegna $PAYLOAD, stato 0 o BASH4LLM_ERR_TMP|s:File temp, codifica Base64|d:ensure_run_tmpdir,_mktemp_in_dir,_tmpf,is_truthy,grep,log_warn,is_valid_json_string,jq,is_valid_json_file,stage_b64,rm,wc,head,log_error,log_info
-F:call_api_groq|p:Richiesta API Groq sincrona non-streaming. Decodifica payload se .b64. Nasconde la chiave API da ps aux scrivendola in un file header temporaneo sicuro (chmod 600). Invia payload binario via curl e salva risposta in $RESP|i:Nessuno|o:File risposta in $RESP, stato 0 o errore|s:Decodifica temp, file header sicuro, chiamata curl, rm temp|d:ensure_run_tmpdir,enforce_network_policy,resolve_provider_url,_tmpf,b64decode,curl,jq,tail,awk,mv,chmod,log_error,log_info,rm
-F:call_api_streaming_groq|p:Chiamata API Groq streaming token SSE. Decodifica payload se .b64, invia flusso via curl con buffering disattivato (-N), convoglia su stdout e tee, processa via jq --unbuffered. Ricostruisce il JSON sintetico cumulativo finale in $RESP e aggiorna last_api.json|i:Nessuno|o:Flusso stdout, file JSON in RESP|s:Decodifica, curl SSE, staging flussi, updates UI last_api.json|d:ensure_run_tmpdir,enforce_network_policy,resolve_provider_url,_tmpf,b64decode,curl,tee,jq,grep,sed,mv,chmod,ui_state_write,log_error,log_info,log_warn,rm
-F:refresh_models_groq|p:Aggiorna $MODELS_FILE locale da GET /openai/v1/models Groq. Valida JSON, estrae modelli, normalizza nomi, ordina univoco, filtra a $MAX_MODELS. Scrive transazionale codificato Base64 atomico in MODELS_FILE sotto lock esclusivo (10s)|i:Nessuno|o:File MODELS_FILE aggiornato|s:Chiamata GET HTTP, parsing JSON, Base64 atomica, lock MODELS_FILE|d:ensure_api_key_for_provider,ensure_run_tmpdir,mktemp,resolve_provider_url,curl,jq,awk,sed,sort,_mktemp_in_dir,_tmpf,b64_atomic_write,lock_exec,base64,chmod,rm,log_error,log_info
+F:call_api_groq|p:Richiesta API Groq sincrona non-streaming inoltrata via _exec_curl_secure(). Isola la chiave API in file header temporaneo e salva risposta in $RESP|i:Nessuno|o:File risposta in $RESP, stato 0 o errore|s:Decodifica temp, chiamata _exec_curl_secure, rm temp|d:ensure_run_tmpdir,enforce_network_policy,resolve_provider_url,_tmpf,b64decode,_exec_curl_secure,log_error,log_info,rm
+F:call_api_streaming_groq|p:Chiamata API Groq streaming token SSE via _exec_curl_secure(). Elabora il flusso in tempo reale con tee e jq --unbuffered, invia i token a stdout, compila il JSON sintetico finale in $RESP e aggiorna last_api.json|i:Nessuno|o:Flusso stdout, file JSON in RESP|s:Decodifica, streaming _exec_curl_secure, staging flussi, updates UI last_api.json|d:ensure_run_tmpdir,enforce_network_policy,resolve_provider_url,_tmpf,b64decode,_exec_curl_secure,tee,jq,grep,sed,mv,chmod,ui_state_write,log_error,log_info,log_warn,rm
+F:refresh_models_groq|p:Aggiorna $MODELS_FILE locale da GET /openai/v1/models Groq via _exec_curl_secure(). Valida JSON, estrae modelli, normalizza nomi, ordina univoco, filtra a $MAX_MODELS. Scrive transazionale codificato Base64 atomico in MODELS_FILE sotto lock esclusivo (10s)|i:Nessuno|o:File MODELS_FILE aggiornato|s:Chiamata GET via _exec_curl_secure, parsing JSON, Base64 atomica, lock MODELS_FILE|d:ensure_api_key_for_provider,ensure_run_tmpdir,resolve_provider_url,_exec_curl_secure,jq,awk,sed,sort,_mktemp_in_dir,_tmpf,b64_atomic_write,lock_exec,base64,chmod,rm,log_error,log_info
 F:validate_model_groq|p:Convalida compatibilità modello per Groq. Invoca validate_model_core|i:1:modello|o:Stato 0 (valido) o 1|s:Nessuno|d:validate_model_core
-F:validate_key_groq|p:Diagnostica la validità della chiave API inviando una richiesta di test sincrona con timeout ridotto (10s) all'endpoint dei modelli|i:1:chiave_api|o:Codice stato: 0 (valida), 1 (non valida), 28 (timeout)|s:Chiamata curl rapida|d:_mktemp_in_dir,_tmpf,mktemp,curl,rm
+F:validate_key_groq|p:Diagnostica la validità della chiave API inviando una richiesta GET di test rapida (10s) via _exec_curl_secure() all'endpoint dei modelli|i:1:chiave_api|o:Codice stato: 0 (valida), 1 (non valida), 28 (timeout)|s:Chiamata _exec_curl_secure|d:_mktemp_in_dir,_tmpf,_exec_curl_secure,rm
 F:auto_select_model_groq|p:Seleziona primo modello supportato locale scansionando MODELS_FILE e la prima riga del file di modello canonico|i:Nessuno|o:Nome modello su stdout e stato 0 o 1|s:Nessuno|d:canonical_model_file,head,_normalize_model_name,is_supported_model
 
 SEZIONI DI CODICE:
-S:PROVIDER|p:Contenitore diretto provider Groq|a:Include l'override dell'autenticazione tramite PROVIDER_API_ENV_groq e tutte le funzioni native del provider Groq integrato nel core, senza la necessità di sezioni o sottosezioni interne ridondanti.
+S:PROVIDER|p:Contenitore diretto provider Groq|a:Include l'override dell'autenticazione tramite PROVIDER_API_ENV_groq e tutte le funzioni native del provider Groq integrato nel core, con esecuzione HTTP sicura via _exec_curl_secure().
 
 === CORE_SETUP ===
 
@@ -247,6 +248,7 @@ V:DELETE_THREAD_ID=ID alfanumerico del thread da eliminare
 V:RENAME_THREAD=Flag ridenominazione metadati di un thread. Default 0
 V:RENAME_THREAD_ID=ID alfanumerico del thread da rinominare
 V:RENAME_TITLE=Titolo testuale da applicare al thread rinominato
+V:RUN_SUITE=Flag esecuzione della Master Test Suite automatizzata (--run-all-tests). Default 0
 V:_engine_path=Percorso script Session Engine (BASH4LLM_EXTRAS_DIR/session/session-engine.sh)
 V:_engine_available=Flag disponibilità operativa Session Engine. Default 0
 V:_supported_providers_arr=Array interno provider installati rilevati
@@ -257,10 +259,11 @@ F:validate_provider_key_dispatch|p:Dispaccia la validazione della chiave API al 
 F:refresh_models_dispatch|p:Dispaccia aggiornamento modelli a provider attivo|i:1:file_dest(opz)|o:Stato 0, errore o 127|s:Modelli aggiornati localmente su disco|d:type,log_error,log_info
 F:validate_model_dispatch|p:Dispaccia validazione modello a provider attivo|i:1:modello|o:Stato uscita validatore o 0|s:Nessuno|d:type,log_warn
 F:auto_select_model_dispatch|p:Dispaccia auto-selezione modello al provider attivo|i:Nessuno|o:Nome modello su stdout e stato|s:Nessuno|d:type
+F:_lock_security_guards|p:Marca le funzioni critiche di sicurezza, mediazione e filesystem come readonly -f per impedirne il hijacking post-inizializzazione|i:Nessuno|o:Blocco funzioni in memoria|s:Esecuzione readonly -f|d:readonly
 F:resolve_model|p:Risolve/assegna modello finale ($FINAL_MODEL) con priorità: 1. CLI (-m), 2. model.<provider>, 3. auto_select_model, 4. scansione MODELS_FILE, 5. config globale, 6. whitelist ALLOWED_MODELS|i:Nessuno|o:Stato 0 (assegna FINAL_MODEL) o 1|s:Scansione file-system, validazione|d:canonical_model_file,canonical_provider_file,sed,awk,validate_model_core,validate_model_dispatch,auto_select_model_dispatch,_normalize_model_name,is_supported_model,log_warn,log_error
 F:build_payload_from_vars|p:Orchestra costruzione JSON payload delegando a provider attivo (buildpayload_provider). Assicura RUN_TMPDIR|i:Nessuno|o:Generazione file payload o errore API|s:Scrittura payload|d:ensure_run_tmpdir,call_provider,log_error
 F:call_api_once|p:Chiamata sincrona non-streaming via provider. Se dry-run, esclude rete e print head payload|i:Nessuno|o:Stato uscita o 0|s:Simulazione dry-run o chiamata reale|d:call_provider,show_payload_head,log_info,log_error
-F:call_api_streaming|p:Chiamata streaming via provider sotto lock di concorrenza del thread attivo. Se dry-run, simula e print head payload|i:Nessuno|o:Stato uscita o 0|s:Lock thread, gestione segnali INT, chiamata streaming|d:acquire_thread_lock,release_thread_lock,call_provider,show_payload_head,log_info,log_error
+F:call_api_streaming|p:Chiamata streaming via provider sotto lock di concorrenza del thread attivo. Se dry-run, simula e print head payload|i:Nessuno|o:Stato thread lock, gestione segnali INT, chiamata streaming|d:acquire_thread_lock,release_thread_lock,call_provider,show_payload_head,log_info,log_error
 F:extract_api_error|p:Estrae errore formale da risposta RESP (JSON o testo crudo)|i:Nessuno (usa RESP)|o:Messaggio errore su stdout|s:Nessuno|d:jq,awk
 F:detect_empty_edge_case|p:Rileva risposte vuote anomale API (HTTP 200, finish_reason 'stop', 0/1 token, no testo). Estrae metadati e assegna BASH4LLM_EDGE_*|i:Nessuno|o:Assegna BASH4LLM_EDGE_EMPTY (0/1), BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON, BASH4LLM_EDGE_COMPLETION_TOKENS|s:Copia temporanea file|d:_tmpf,cp,is_valid_json_file,jq,rm
 F:finalize_and_output|p:Formatta, visualizza (text, raw, json, pretty) e salva output su disco se supera THRESHOLD o forzato|i:1:formato,2:testo|o:Output stampato, stato 0 o errore|s:Salvataggio transazionale|d:_tmpf,cp,cat,jq,printf,wc,tr,date,safe_mkdir,dirname,lock_exec,log_error,log_warn
@@ -278,13 +281,13 @@ F:load_whitelist|p:Popola whitelist modelli autorizzati ($ALLOWED_MODELS) scansi
 F:is_tty_out|p:Verifica se stdout è terminale interattivo (TTY) reale|i:Nessuno|o:Stato 0 (TTY) o 1|s:Nessuno|d:Nessuna
 
 SEZIONI DI CODICE:
-S:CORE_SETUP_DISPATCH_HELPERS|p:Interfaccia dispatching|a:Fornisce le funzioni di inoltro dinamico delle chiamate verso il modulo provider attivo e convalida la conformità dell'interfaccia.
+S:CORE_SETUP_DISPATCH_HELPERS|p:Interfaccia dispatching e guardie|a:Fornisce le funzioni di inoltro dinamico delle chiamate verso il modulo provider attivo, convalida l'interfaccia ed esegue _lock_security_guards().
 S:CORE_SETUP_API_CALL|p:Gestione ed esecuzione API|a:Contiene l'involucro di risoluzione modelli, invio richieste, rettifica casi vuoti, formattazione output e retry loop.
 S:CORE_SETUP_INPUT_HELPERS|p:Helper input, config e sourcing guard|a:Fornisce le funzioni per la lettura protetta dei file d'ingresso, validazione whitelist, caricamento config e blocco di protezione per il sourcing interattivo della shell utente con sblocco Vault.
 S:CORE_SETUP_CLI_PARSE|p:Parsing argomenti riga comando|a:Ciclo principale di analisi dei flag CLI, anonimizzazione immediata degli ID thread ($SAFE_THREAD_ID), risoluzione/persistenza del provider attivo ed importazione del relativo modulo.
 S:CORE_SETUP_SESSION_ENGINE|p:Integrazione Session Engine|a:Importazione e verifica di integrità del modulo extras/session/session-engine.sh. Se validato attiva _engine_available=1, altrimenti fallback su NDJSON core.
 S:CORE_SETUP_NORM_FLAGS|p:Normalizzazione flag e listing|a:Normalizzazione booleana ed intercettazione delle opzioni di listing grezzo (--list-providers-raw, --list-models-raw).
-S:CORE_SETUP_ACTIONS|p:Esecuzione azioni CLI immediate|a:Intercetta ed esegue comandi veloci (--delete-thread, --rename-thread, --init-thread, --list-*, --set-default) ed installazione sicura degli extras con verifica manifesto SHA-256 e blindatura permessi (700/600).
+S:CORE_SETUP_ACTIONS|p:Esecuzione azioni CLI immediate|a:Intercetta ed esegue comandi veloci (--delete-thread, --rename-thread, --init-thread, --list-*, --set-default), esecuzione della test suite automatizzata (--run-all-tests) ed installazione sicura degli extras con verifica manifesto SHA-256 e blindatura permessi (700/600).
 
 === CORE_PROVIDER ===
 
