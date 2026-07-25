@@ -1,8 +1,8 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.5.0",
-    "date": "2026-07-18"
+    "version": "2.8.0",
+    "date": "2026-07-24"
   },
   "variables": [
     {
@@ -15,13 +15,13 @@
       "name": "SCRIPT_VERSION",
       "category": "PRECORE_BOOT",
       "description": "Versione corrente del software.",
-      "value_definition": "Impostata a \"2.5.0\"."
+      "value_definition": "Impostata a \"2.8.0\"."
     },
     {
       "name": "SCRIPT_DATE",
       "category": "PRECORE_BOOT",
       "description": "Data di rilascio dello script.",
-      "value_definition": "Impostata a \"2026-07-18\"."
+      "value_definition": "Impostata a \"2026-07-24\"."
     },
     {
       "name": "BASH4LLM_PLAT_ANDROID",
@@ -58,6 +58,18 @@
       "category": "PRECORE_BOOT",
       "description": "Flag di ambiente impostato a 1 se lo script è in esecuzione sotto sistema Linux generico o WSL.",
       "value_definition": "Valore 0 o 1, determinato dinamicamente su bootstrap."
+    },
+    {
+      "name": "BASH4LLM_KEY_MANUAL_PROMPT",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di stato interno per tracciare se la chiave API del provider attivo è stata inserita manualmente a terminale durante l'esecuzione corrente.",
+      "value_definition": "Hard-reset a 0 all'avvio; impostato a 1 su inserimento TTY interattivo."
+    },
+    {
+      "name": "BASH4LLM_REQUIRE_VAULT",
+      "category": "PRECORE_BOOT",
+      "description": "Politica di sicurezza facoltativa. Se impostato a 1, impone il recupero delle chiavi API esclusivamente dal Vault cifrato, bloccando le variabili d'ambiente in chiaro con exit code 17.",
+      "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "BASH4LLM_MODEL_CACHE",
@@ -465,7 +477,7 @@
       "name": "MAX_RETRIES",
       "category": "PRECORE_RUN",
       "description": "Limite di tentativi di connessione da effettuare in caso di errori di rete temporanei.",
-      "value_definition": "Default 1 (nella versione 2.5.0)."
+      "value_definition": "Default 1."
     },
     {
       "name": "SUPPORTED_PROVIDERS",
@@ -651,6 +663,12 @@
       "name": "INIT_THREAD",
       "category": "CORE_SETUP",
       "description": "Flag booleano che richiede l'inizializzazione transazionale di un nuovo thread.",
+      "value_definition": "Valore 1 o 0, default 0."
+    },
+    {
+      "name": "RUN_SUITE",
+      "category": "CORE_SETUP",
+      "description": "Flag booleano che richiede l'esecuzione automatizzata della Master Test Suite via CLI (--run-all-tests).",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
