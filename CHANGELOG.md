@@ -1,10 +1,25 @@
-[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
 
 # Changelog
 
 ## [Unreleased]
  * Additional documentation improvements
  * Optional enhancements for extras and test suites
+
+## [2.8.0] – 2026‑07‑24 - RELEASE NOTES
+### Added
+ * Introduzione dell'Authoritative Secure Network Engine (`_exec_curl_secure`): funzione centrale di mediazione HTTP per la gestione unificata di tutte le chiamate di rete (sincrone, streaming, refresh dei modelli e validazione chiavi) per tutti i provider (Groq, Gemini, Hugging Face, Mistral).
+ * Introduzione delle guardie di inizializzazione Read-Only (`_lock_security_guards`): blocco in memoria delle funzioni di sicurezza, mediazione e gestione del filesystem mediante `readonly -f` al termine della fase di bootstrap del Core per prevenire qualsiasi hijacking post-inizializzazione.
+ * Estensione della Master Test Suite con il **Modulo 9 (Security Invariants & Function Guard Locking)**: integrazione di asserzioni di test avversarie per convalidare automaticamente il blocco delle funzioni `readonly`, il comportamento fail-closed in presenza di moduli manomessi e la verifica dell'isolamento dei segreti.
+### Changed
+ * **Secret Redaction in `argv` [INV-1]**: Azzerata completamente l'esposizione delle chiavi API e dei token Bearer nei vettori d'argomento del processo (`ps aux` / `/proc/<pid>/cmdline`). Gli header di autenticazione vengono scritti esclusivamente in file temporanei isolati (`0600`) in `$RUN_TMPDIR` e passati a `curl` tramite reindirizzamento di File Descriptor (`/dev/fd/3`).
+ * **Bonifica dell'Ambiente di Esecuzione all'Avvio**: Rimozione automatica all'avvio delle variabili d'ambiente ad alto rischio (`unset BASH_ENV ENV CDPATH GLOBIGNORE`) nella sezione iniziale di boot del Core.
+ * **Integrità Crittografica Moduli Fail-Closed [INV-4]**: Trasformazione della funzione `verify_module_integrity()` in un modello strictly *fail-closed*, con blocco immediato ed errore canonico `17` (`BASH4LLM_ERR_SEC`) qualora il calcolo dell'hash SHA-256 fallisca o differisca dal manifesto `extras/manifest.sha256`.
+ * **Migrazione dei Provider Secondari (`gemini.sh`, `huggingface.sh`, `mistral.sh`)**: Refactoring completo delle chiamate HTTP dei provider opzionali sulla funzione centrale `_exec_curl_secure()`. Per Gemini e Hugging Face, le chiavi API sono state completamente rimosse dai parametri dell'URL (`?key=...`).
+ * **Allineamento della Documentazione e dei Manuali**: Aggiornamento integrale della documentazione ufficiale (`README`, `SECURITY`, `INSTALL`, `llms.txt`, `manual-it.txt`, `manual-en.txt` e `core-notes.sh`) alla versione **v2.8.0** in conformità con l'**Architecture Specification (Edition 2026.1)**.
+### Fixed
+ * Eliminato il secret leak delle chiavi API negli argomenti del comando `curl` durante l'esecuzione di `refresh_models_groq()`, `validate_key_groq()`, `refresh_models_gemini()` e `validate_key_gemini()`.
+ * Risolta la vulnerabilità *fail-open* in `verify_module_integrity()` che consentiva l'esecuzione dei moduli qualora il calcolo dell'hash SHA-256 restituisse una stringa vuota.
 
 ## [2.7.0] – 2026‑07‑24 - RELEASE NOTES
 ### Added
