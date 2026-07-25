@@ -1,40 +1,50 @@
-# Bash4LLM⁺ (v2.6.0)
+# Bash4LLM⁺ (v2.7.0)
 
-> Lightweight, zero-dependency, security-hardened POSIX Bash framework and CLI client for interacting with Large Language Model (LLM) APIs (including Groq, OpenAI-compatible providers, Hugging Face, Mistral, Gemini, and local endpoints).
+> Zero third-party package dependencies (no Python, Node.js, Docker, or pip/npm modules required). Operates entirely on standard POSIX base system utilities, curl, and jq.
 
 - **Official Repository**: https://github.com/kamaludu/bash4llm
 - **Documentation & Releases**: https://github.com/kamaludu/bash4llm/releases
+- **License**: GPL-3.0-or-later
 
-## Overview
-Bash4LLM⁺ provides a pure Bash alternative to heavy Python or Node.js LLM tooling. It requires zero external language runtimes (no Python, Node.js, or Go) and runs natively on GNU/Linux, macOS, and mobile Android (Termux) environments.
+## Overview & Technical Positioning
+Bash4LLM⁺ provides a pure Bash alternative to heavy Python or Node.js LLM tooling. Instead of requiring external language runtimes or heavy virtual environments (e.g., Python `virtualenv` or Node.js `node_modules`), it executes natively using standard OS userland binaries, achieving sub-10ms cold-start execution times on GNU/Linux, macOS, BSD, and mobile Android (Termux) environments.
 
-## System Requirements & Dependencies
+Designed for security-conscious shell scripting, CI/CD pipelines, system administration, and embedded edge systems, Bash4LLM⁺ guarantees zero `eval` usage, atomic filesystem persistence, and zero cleartext credential exposure.
 
-### Environment & Shell
-- **Shell**: GNU Bash 4.0 or newer (POSIX compatibility layer enabled).
-- **Supported Platforms**: GNU/Linux, macOS, Android (via Termux), BSD.
+## Real Runtime Dependencies & System Footprint
 
-### Mandatory System Binaries (23 Core Utilities)
-The core script performs a pre-flight sanity check for the presence of these exact 23 binaries in `$PATH`. Missing any binary triggers an immediate exit with status code `15` (`BASH4LLM_ERR_TMP`):
+### 1. External Package Manager Dependencies: 0
+- **npm / Node.js packages**: 0
+- **pip / Python packages**: 0
+- **Shared C libraries / CGO**: 0
 
-`bash`, `jq`, `curl`, `mktemp`, `stat`, `base64`, `find`, `awk`, `sed`, `grep`, `xargs`, `tr`, `sort`, `head`, `wc`, `tee`, `date`, `mv`, `chmod`, `cp`, `rm`, `printf`, `comm`.
+### 2. Mandatory System Binaries (23 Core Utilities)
+Bash4LLM⁺ relies on standard OS binaries that are pre-installed on virtually all POSIX-compliant systems. The core script performs an immediate pre-flight check at startup for the presence of these exact **23 utilities** in `$PATH`. Missing any binary triggers an immediate halt with exit code `15` (`BASH4LLM_ERR_TMP`):
 
-*Note: The `flock` utility is optional. If missing (e.g., in Android/Termux environments), Bash4LLM⁺ automatically falls back to atomic directory locking (`mkdir`).*
+1. **Shell Runtime**: `bash` (version 4.0 or newer required for associative arrays and native pattern matching).
+2. **HTTP Transport**: `curl` (used for API requests and SSE streaming).
+3. **JSON Processor**: `jq` (used for structured payload construction and response parsing).
+4. **POSIX System Utilities (20 Binaries)**:
+   `mktemp`, `stat`, `base64`, `find`, `awk`, `sed`, `grep`, `xargs`, `tr`, `sort`, `head`, `wc`, `tee`, `date`, `mv`, `chmod`, `cp`, `rm`, `printf`, `comm`.
 
-### Optional Extension Dependencies
-- **`openssl`**: Required for the Encrypted Security Vault (`extras/security/openssl-helper.sh`) and TLS handshake diagnostics.
-- **`gzip`**: Required for session log segment compression in the Session Engine (`extras/session/session-engine.sh`).
-- **`shred`** (or **`dd`**): Used for secure anti-forensic data erasure during Vault destruction.
+### 3. Optional System Utilities (Fallback Supported)
+- **`flock`**: Used for OS-level atomic file locking. If missing (e.g., in Android/Termux environments), Bash4LLM⁺ automatically falls back to atomic directory locking (`mkdir`).
+- **`openssl`**: Required *only* if using the Encrypted Security Key Vault (`extras/security/openssl-helper.sh`) or TLS handshake diagnostics.
+- **`gzip`**: Required *only* for session log segment compression in the Session Engine (`extras/session/session-engine.sh`).
+- **`shred`** or **`dd`**: Used *only* for anti-forensic zero-fill data erasure during Vault destruction.
+- **`python3`**: Optional helper *only* for standalone JSON string escaping tests in the Master Test Suite.
 
-## Key Architectural & Security Features (v2.6.0)
+## Key Architectural & Security Features (v2.7.0)
 
-- **Cryptographic Module Integrity**: Pre/post sourcing SHA-256 hash verification against `extras/manifest.sha256` for external providers, hooks, and extensions.
-- **PII Thread Anonymization**: Automatic SHA-256 hashing (`SAFE_THREAD_ID`) for user thread IDs, ensuring zero personal or sensitive data is written in plaintext to disk (.ndjson, .json, locks, and rate-limit logs).
-- **Security Vault**: AES-256-CBC at-rest API key encryption via OpenSSL with PBKDF2 key derivation (100,000 iterations) and RAM unlock context token (`_B4L_RT_CTX`).
-- **Local Rate-Limiting**: 30-second sliding-window rate limiter per thread (`BASH4LLM_RATE_LIMIT`) with bypass token support (`BASH4LLM_AUTH_TOKEN`).
-- **Isolated Hook Runner**: Subshell execution for pre/post hooks with API key memory stripping and zero-eval variable parsing (`FALLBACK_PAYLOAD`).
-- **Advanced Session Engine**: Segmented NDJSON chat logs (`history/sessions/`) with automatic 1MB rotation and native `gzip` compression.
-- **File-System Hardening**: Enforced `umask 077`, strict `700`/`600` permissions, symlink execution blocks, atomic `mv` guarantees on the same inode, null-byte (`\x00`) input validation, and explicit ban of system `/tmp`.
+- **Process-List Leak Protection (`ps aux`)**: Headers containing Bearer tokens are passed to `curl` via unlinked file descriptors (`/dev/fd/3` or `/proc/self/fd/3`). The secret header file is unlinked from the disk before `curl` executes, completely concealing API keys from process listings (`ps aux`).
+- **Unified Master Test Suite**: Single-entrypoint automated test suite (`./bash4llm --run-all-tests`) executing 8 test modules covering end-to-end features, security, vault, fuzzing, and concurrency.
+- **Mandatory Vault Policy Enforcement**: Setting `BASH4LLM_REQUIRE_VAULT=1` forces key retrieval strictly from the encrypted Vault, rejecting any standard environment variables with exit code `17`.
+- **Zero-Eval Output Sanitizer**: Standalone filter (`extras/security/output-sanitizer.sh`) removing unprintable C0 control codes, extended ANSI terminal escape codes (`\033[...`), and escaping shell metacharacters without executing `eval`.
+- **Cryptographic Module Integrity**: Pre-sourcing SHA-256 verification against `extras/manifest.sha256` for external provider modules, hooks, and extensions (fails fast with exit code `17`).
+- **PII Thread Anonymization**: Automatic SHA-256 hashing (`SAFE_THREAD_ID`) for user thread IDs, ensuring zero personal identifiable information (emails, names, paths) is written in plaintext to disk (.ndjson, .json, lock files, or rate-limit logs).
+- **Security Key Vault**: AES-256-CBC at-rest API key encryption via OpenSSL using PBKDF2 key derivation (100,000 iterations), salt, and RAM unlock session context (`_B4L_RT_CTX`).
+- **Local Rate-Limiting**: 30-second sliding-window rate limiter per thread (`BASH4LLM_RATE_LIMIT`) with authorization bypass token support (`BASH4LLM_AUTH_TOKEN`).
+- **File-System Hardening**: Enforced `umask 077`, strict Least-Privilege permissions (`700` for directories/executables, `600` for sourced libraries), symlink execution blocks, atomic `mv` guarantees on the same inode, null-byte (`\x00`) input rejection, and explicit ban of system `/tmp`.
 
 ## Key CLI Usage Examples
 
@@ -46,60 +56,94 @@ The core script performs a pre-flight sanity check for the presence of these exa
 # Secure input via pipe (dual TTY/stdin handling)
 printf "My secret text" | ./bash4llm "Summarize this input:"
 
+# Read prompt input from file
+./bash4llm -f input.txt "Analyze this content"
+
+# Real-time SSE streaming output
+./bash4llm --stream "Generate a Python script for sorting"
 ```
+
 ### Thread Lifecycle Management
 ```bash
-# Initialize a thread structure without network call
+# Initialize a thread structure without making an API call
 ./bash4llm --thread project_chat --init-thread
 
-# Send message within a thread
+# Send message within a persistent thread context
 ./bash4llm --thread project_chat "Starting refactoring."
 
 # Rename thread title
 ./bash4llm --rename-thread project_chat --title "Refactoring Auth Module"
 
-# Atomically delete thread (purges logs and indexes)
+# Atomically delete thread (purges logs, metadata, and indexes)
 ./bash4llm --delete-thread project_chat
-
 ```
-### Path & Configuration Inspection
-```bash
-./bash4llm --print-config-dir
-./bash4llm --print-provider-file
-./bash4llm --print-model-file groq
 
-```
-### Diagnostics, Vault & Safety Checks
+### Security Vault & Policy Enforcement
 ```bash
-./bash4llm --check-config
-./bash4llm --explain-error 17
+# Launch interactive Vault management console
 ./bash4llm --vault
 
+# Unlock Vault session in active shell memory
+. ./bash4llm
+
+# Enforce strict Vault-only policy (blocks unencrypted env keys)
+BASH4LLM_REQUIRE_VAULT=1 ./bash4llm "Run query using Vault keys only"
 ```
-## System File-System Layout (bash4llm.d/)
+
+### Automated Testing & Maintenance
+```bash
+# Install or update optional extras with Least-Privilege permissions
+./bash4llm --install-extras
+
+# Execute master automated test suite
+./bash4llm --run-all-tests
+
+# Perform static configuration audit and linter
+./bash4llm --check-config
+
+# Explain error codes or aliases
+./bash4llm --explain-error 17
+./bash4llm --explain-error BASH4LLM_ERR_SEC
+```
+
+## System File-System Layout
+
 ```text
-bash4llm.d/
-├── config/                  # Provider persistence & OpenSSL encrypted Vault
-│   ├── ui_state/threads/    # JSON thread metadata & index (SAFE_THREAD_ID)
-├── models/                  # Whitelisted model catalogs (<provider>.txt)
-├── history/                 # Session NDJSON logs
-│   ├── threads/             # Core fallback NDJSON logs (<safe_thread_id>.ndjson)
-│   └── sessions/            # Advanced engine rotated & gzip compressed segments
-├── var/run/locks/           # Isolated 700 lock folder (models.lock, history.lock, tmp.lock)
-├── tmp/rates/               # Isolated 700 sliding-window rate limit transaction tracking
-└── extras/                  # Extensions & integrity manifest (extras/manifest.sha256)
-
+bash4llm.d/                     # Runtime data root (permissions: 700)
+├── config/                     # Provider configuration & encrypted Vault (700)
+│   ├── model.<provider>        # Default model persistence per provider (600)
+│   ├── keys.enc                # AES-256 PBKDF2 encrypted OpenSSL Key Vault (600)
+│   └── ui_state/threads/       # JSON thread metadata & index (SAFE_THREAD_ID) (600)
+├── models/                     # Whitelisted model catalogs (<provider>.txt) (600)
+├── history/                    # Session logs and thread history (700)
+│   ├── threads/                # Anonymized NDJSON logs (<safe_thread_id>.ndjson) (600)
+│   └── sessions/               # Rotated & gzip-compressed log segments (600)
+├── var/run/locks/              # Isolated lock folder (models.lock, history.lock) (700)
+├── tmp/rates/                  # Sliding-window rate-limit tracking (700)
+└── extras/                     # Installed optional extras & integrity manifest (700)
+    ├── chat/tui-repl.sh        # Interactive TUI REPL entrypoint (700)
+    ├── docs/                   # Inline core documentation & help texts (600)
+    ├── providers/              # Secondary provider modules (gemini, mistral) (600)
+    ├── security/
+    │   ├── openssl-helper.sh   # Vault encryption library (600, sourced)
+    │   └── output-sanitizer.sh # Zero-Eval output sanitizer script (700)
+    ├── session/session-engine.sh # Token-aware session engine extension (600)
+    ├── test/
+    │   ├── adversarial_tests.sh # Lock contention & fuzzing tests (700)
+    │   └── run-all-tests.sh    # Master automated test runner (700)
+    └── manifest.sha256         # Cryptographic SHA-256 module manifest (600)
 ```
 
-## Exit Codes
- * 10 (BASH4LLM_ERR_NO_API_KEY): Missing, unreadable, or invalid API key.
- * 11 (BASH4LLM_ERR_BAD_MODEL): Invalid, unsupported, or excluded model name.
- * 12 (BASH4LLM_ERR_CURL_FAILED): Network failure, timeout, or curl transport error.
- * 14 (BASH4LLM_ERR_NO_PROMPT): Missing input prompt or JSON payload.
- * 15 (BASH4LLM_ERR_TMP): File-system I/O, permissions, missing system binary, symlink block, or temporary lock error.
- * 16 (BASH4LLM_ERR_API): Upstream API application or HTTP status error.
- * 17 (BASH4LLM_ERR_SEC): Security policy block, rate-limit violation, file permission error, or SHA-256 integrity check failure.
+## Canonical Exit Codes
+ * `10` (`BASH4LLM_ERR_NO_API_KEY`): Missing, unreadable, or unauthenticated API key.
+ * `11` (`BASH4LLM_ERR_BAD_MODEL`): Invalid, unsupported, or non-text model name.
+ * `12` (`BASH4LLM_ERR_CURL_FAILED`): Network transport failure, timeout, or curl error.
+ * `14` (`BASH4LLM_ERR_NO_PROMPT`): Missing prompt content or JSON payload.
+ * `15` (`BASH4LLM_ERR_TMP`): File I/O, permissions, missing binary, symlink block, or lock timeout.
+ * `16` (`BASH4LLM_ERR_API`): Upstream API error response or non-2xx HTTP status.
+ * `17` (`BASH4LLM_ERR_SEC`): Security policy violation, rate-limit breach, or SHA-256 integrity failure.
+
 ## Core Documentation References
- * Repository Home: Main source code and README.
- * Technical Specification: Full architectural specification for runtime sections.
- * Changelog: Historical record of security patches, fixes, and CLI flags.
+ * **Repository Home**: https://github.com/kamaludu/bash4llm
+ * **Inline Core Notes**: `extras/docs/core-notes.sh`
+ * **Help System**: `./bash4llm --help` or `extras/docs/help.txt`

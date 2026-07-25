@@ -55,7 +55,7 @@ Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel `PATH`:
 - coreutils (stat, chmod, mkdir, ecc.)
 - findutils
 - util-linux
-- gawk
+- awk
 - curl
 - jq
 
@@ -158,8 +158,6 @@ Il binario principale `bash4llm` agisce come la **Root of Trust** del sistema. P
   ```
 
  📖 **Guida Completa:** Per istruzioni dettagliate, consulta il file: **[SECURITY.md](SECURITY.md)**.
-
----
 
 ---
 
