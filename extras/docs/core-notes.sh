@@ -161,6 +161,13 @@ Key primitives (documented)
   Verify configuration file permissions, warn if writable by group/others, and lint configuration keys.
 - explain_error_code(code_or_alias)
   Explain numerical error codes or string aliases using core-notes.sh documented definitions.
+- _exec_curl_secure(method, url, api_key, payload_file, out_file, err_file, is_streaming, [extra_opts])
+  Authoritative single code path for all network interactions. Writes sensitive authentication
+  headers strictly to private 0600 files in RUN_TMPDIR and uses unlinked FD redirection (/dev/fd/3)
+  to ensure zero secret exposure in process argument vectors (argv).
+- _lock_security_guards()
+  Mark critical security, mediation, and persistence functions as read-only (-f) at the conclusion
+  of Core bootstrap to prevent post-initialization function hijacking.
 
 Blocks of Code / Flows
 - PRECORE_BOOT_SETUP_SHELL: Set restrictive options (`set -euo pipefail`) only when executed directly.
