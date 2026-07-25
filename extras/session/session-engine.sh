@@ -3,8 +3,8 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/session/session-engine.sh
-# Extra: Additional Session engine
-# Copyright (C) 2026 Cristian Evangelisti
+# Authority: Architecture Specification (Edition 2026.1)
+# Component: Extra Token-Aware Session Engine Module
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
@@ -603,4 +603,3 @@ session_engine_snapshot() {
   rm -f "$tmp" "$last_tmp" "${last_tmp}.tail" "$summaries_tmp" 2>/dev/null || true
   return 0
 }
-# End of session-engine.sh
