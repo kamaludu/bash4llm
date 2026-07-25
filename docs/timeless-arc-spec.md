@@ -1,5 +1,6 @@
+<img width="64" height="64" alt="K" src="https://github.com/user-attachments/assets/a99ee2ca-9c1d-4bd4-8430-07f0bb0493f1" />
 
-# Bash4LLM Architecture Specification (Timeless Edition 2026.1)
+## Bash4LLM Architecture Specification (Timeless Edition 2026.1)
 
 **Status:** Standard / Definitive Architecture Specification  
 **Scope:** Core Runtime & Extension Ecosystem  
