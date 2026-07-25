@@ -2,8 +2,6 @@
 
 # Politica di Sicurezza per Bash4LLM⁺  🇮🇹 [🇬🇧](SECURITY-en.md)
 
-Bash4LLM⁺ è sviluppato adottando principi di progettazione definiti nell'**Architecture Specification (Edition 2026.1)** in materia di isolamento delle variabili, protezione delle informazioni in transito e sul filesystem, ed eliminazione dei vettori di iniezione di codice.
-
 Questo documento descrive il modello di minaccia, le assunzioni del filesystem, le mitigazioni di sicurezza integrate, le limitazioni note e le procedure per la segnalazione di vulnerabilità.
 
 ---
