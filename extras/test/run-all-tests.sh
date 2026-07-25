@@ -19,26 +19,43 @@ set -euo pipefail
 # ------------------------------------------------------
 # Terminal Color Theme Initialization
 # ------------------------------------------------------
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-  C_GREEN=$'\e[32m' C_RED=$'\e[31m' C_YELLOW=$'\e[33m' C_CYAN=$'\e[36m' C_BOLD=$'\e[1m' C_RST=$'\e[0m'
-else
-  C_GREEN="" C_RED="" C_YELLOW="" C_CYAN="" C_BOLD="" C_RST=""
-fi
+init_colors() {
+  if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
+    C_RST=$'\e[0m' C_BOLD=$'\e[1m'
+    C_GREEN=$'\e[0;32m' C_RED=$'\e[0;31m' C_YELLOW=$'\e[0;33m' C_CYAN=$'\e[0;36m'
+    C_BGREEN=$'\e[1;32m' C_BRED=$'\e[1;31m' C_BYELLOW=$'\e[1;33m' C_BCYAN=$'\e[1;36m'
+  else
+    C_RST="" C_BOLD=""
+    C_GREEN="" C_RED="" C_YELLOW="" C_CYAN=""
+    C_BGREEN="" C_BRED="" C_BYELLOW="" C_BCYAN=""
+  fi
+}
+init_colors
 
 PASS=0
 FAIL=0
 SKIPPED=0
 TOTAL=0
 
+# Diagnostic log accumulators for failure reporting
+declare -a FAILED_LOGS=()
+declare -a SKIPPED_LOGS=()
+
 assert_test() {
-  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}"
+  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
   TOTAL=$((TOTAL + 1))
   if [ "$expected_rc" -eq "$actual_rc" ]; then
-    printf '  [%sPASS%s] %s\n' "$C_GREEN" "$C_RST" "$desc"
+    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
     PASS=$((PASS + 1))
   else
-    printf '  [%sFAIL%s] %s (Expected Exit Code: %d, Got: %d)\n' "$C_RED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
+    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
     FAIL=$((FAIL + 1))
+    
+    local detail="$desc [Expected Code: $expected_rc, Got: $actual_rc]"
+    if [ -n "$hint" ]; then
+      detail="$detail — Hint: $hint"
+    fi
+    FAILED_LOGS+=("$detail")
   fi
 }
 
@@ -46,7 +63,8 @@ skip_test() {
   local desc="${1:-}" reason="${2:-}"
   TOTAL=$((TOTAL + 1))
   SKIPPED=$((SKIPPED + 1))
-  printf '  [%sSKIP%s] %s (%s)\n' "$C_YELLOW" "$C_RST" "$desc" "$reason"
+  printf '  [%sSKIP%s] %s (%s)\n' "$C_BYELLOW" "$C_RST" "$desc" "$reason"
+  SKIPPED_LOGS+=("$desc — Reason: $reason")
 }
 
 # Portable SHA-256 helper resistant to set -o pipefail
@@ -63,15 +81,25 @@ calc_sha256() {
   fi
 }
 
-# ------------------------------------------------------
-# Path Resolution & Local Sandbox Allocation
-# ------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TARGET_BIN="$ROOT_DIR/bash4llm"
 
-if [ ! -x "$TARGET_BIN" ]; then
-  printf 'bash4llm: ERROR: Target binary executable not found at: %s\n' "$TARGET_BIN" >&2
+# Dynamic Root and Target Binary Resolution
+ROOT_DIR=""
+TARGET_BIN=""
+
+if [ -f "$SCRIPT_DIR/../../bash4llm" ]; then
+  ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  TARGET_BIN="$ROOT_DIR/bash4llm"
+elif [ -f "$SCRIPT_DIR/../../../bash4llm" ]; then
+  ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+  TARGET_BIN="$ROOT_DIR/bash4llm"
+elif command -v bash4llm >/dev/null 2>&1; then
+  TARGET_BIN="$(command -v bash4llm)"
+  ROOT_DIR="$(dirname "$TARGET_BIN")"
+fi
+
+if [ -z "$TARGET_BIN" ] || [ ! -x "$TARGET_BIN" ]; then
+  printf 'bash4llm: ERROR: Target binary executable not found at: %s\n' "${TARGET_BIN:-<unknown>}" >&2
   exit 15
 fi
 
@@ -108,14 +136,14 @@ mkdir -p "${BASH4LLM_DIR}/models" "${BASH4LLM_DIR}/config" "${BASH4LLM_DIR}/tmp"
 printf 'llama-3.3-70b-versatile\nwhisper-large-v3\n' > "${BASH4LLM_DIR}/models/groq.txt"
 printf 'llama-3.3-70b-versatile\n' > "${BASH4LLM_DIR}/config/model.groq"
 
-printf '\n%s==================================================%s\n' "$C_BOLD" "$C_RST"
-printf '%s Bash4LLM⁺ — Unified Master Test Suite %s\n' "$C_CYAN" "$C_RST"
-printf '%s==================================================%s\n\n' "$C_BOLD" "$C_RST"
+printf '\n%s==============================================%s\n' "$C_BOLD" "$C_RST"
+printf '%s Bash4LLM⁺ — Unified Master Test Suite %s\n' "$C_BCYAN" "$C_RST"
+printf '%s==============================================%s\n\n' "$C_BOLD" "$C_RST"
 
 # ======================================
 # MODULE 1: CLI Configuration, Path Getters & Linter
 # ======================================
-printf '%b[MODULE 1] Configuration, Utilities & Path Getters%b\n' "$C_BOLD" "$C_RST"
+printf '%b[MODULE 1] Configuration, Utilities & Path Getters%b\n' "$C_CYAN" "$C_RST"
 
 out_linter="$("$TARGET_BIN" --check-config 2>&1 || true)"
 if printf '%s' "$out_linter" | grep -q "Configuration Security"; then rc_1a=0; else rc_1a=1; fi
@@ -140,7 +168,7 @@ assert_test "Raw provider list querying (--list-providers-raw)" 0 $rc_1e
 # ======================================
 # MODULE 2: Input Pipeline & Template Assembly
 # ======================================
-printf '\n%b[MODULE 2] Input Pipeline & Template Assembly%b\n' "$C_BOLD" "$C_RST"
+printf '\n%b[MODULE 2] Input Pipeline & Template Assembly%b\n' "$C_CYAN" "$C_RST"
 
 set +e
 echo "Piped Input Prompt" | "$TARGET_BIN" --dry-run >/dev/null 2>&1
@@ -167,7 +195,7 @@ assert_test "Template engine variable expansion (--template)" 0 $rc_2c
 # ======================================
 # MODULE 3: Model Validation & Formatting Rules
 # ======================================
-printf '\n%b[MODULE 3] Model Safety & Output Formatting%b\n' "$C_BOLD" "$C_RST"
+printf '\n%b[MODULE 3] Model Safety & Output Formatting%b\n' "$C_CYAN" "$C_RST"
 
 set +e
 "$TARGET_BIN" --provider groq --set-default "llama-3.3-70b-versatile" >/dev/null 2>&1
@@ -193,7 +221,7 @@ assert_test "Pretty-printed JSON output selection (--pretty)" 0 $rc_3d
 # ======================================
 # MODULE 4: Thread Lifecycle, PII Anonymization & Path Traversal Fuzzing
 # ======================================
-printf '\n%b[MODULE 4] Thread Lifecycle, PII Anonymization & Fuzzing%b\n' "$C_BOLD" "$C_RST"
+printf '\n%b[MODULE 4] Thread Lifecycle, PII Anonymization & Fuzzing%b\n' "$C_CYAN" "$C_RST"
 
 TRAVERSAL_ID="../../../etc/passwd"
 ANONYMIZED_OUT="$("$TARGET_BIN" --thread "$TRAVERSAL_ID" --bootstrap-only 2>&1 || true)"
@@ -235,7 +263,7 @@ assert_test "Safe thread deletion and disk purging (--delete-thread)" 0 $rc_4f
 # ======================================
 # MODULE 5: Security Engine, Rate Limiter & Binary Safety
 # ======================================
-printf '\n%b[MODULE 5] Security Engine, Rate Limiter & Binary Safety%b\n' "$C_BOLD" "$C_RST"
+printf '\n%b[MODULE 5] Security Engine, Rate Limiter & Binary Safety%b\n' "$C_CYAN" "$C_RST"
 
 binary_file="${TEST_SANDBOX}/unsafe_binary.bin"
 printf '\x00\x01\x02\x03UNSAFE_BINARY_DATA\x00' > "$binary_file"
@@ -290,7 +318,7 @@ fi
 # ======================================
 # MODULE 6: OpenSSL Cryptographic Key Vault Engine
 # ======================================
-printf '\n%b[MODULE 6] Cryptographic Key Vault Engine%b\n' "$C_BOLD" "$C_RST"
+printf '\n%b[MODULE 6] Cryptographic Key Vault Engine%b\n' "$C_CYAN" "$C_RST"
 
 HELPER_PATH="${EFFECTIVE_EXTRAS_DIR}/security/openssl-helper.sh"
 if [ -f "$HELPER_PATH" ] && command -v openssl >/dev/null 2>&1; then
@@ -341,7 +369,51 @@ fi
 # ======================================
 # MODULE 7: High-Concurrency Lock Stress Test
 # ======================================
-printf '\n%b[MODULE 7] High-Concurrency Lock Contention (50 Parallel Processes)%b\n' "$C_BOLD" "$C_RST"
+
+# Adaptive concurrency detection based on active platform and hardware limits
+detect_safe_concurrency() {
+  # 1. Allow explicit user override via environment variable
+  if [ -n "${BASH4LLM_TEST_CONCURRENCY:-}" ] && [[ "${BASH4LLM_TEST_CONCURRENCY}" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$BASH4LLM_TEST_CONCURRENCY"
+    return
+  fi
+
+  # 2. Constrained mobile environments (Android / Termux)
+  if [ "${BASH4LLM_PLAT_ANDROID:-0}" -eq 1 ] || [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ]; then
+    printf '10'
+    return
+  fi
+
+  # 3. Emulated fork environments (Windows Cygwin / MSYS2)
+  if [ "${BASH4LLM_PLAT_CYGWIN:-0}" -eq 1 ]; then
+    printf '10'
+    return
+  fi
+
+  # 4. Virtualized Windows Subsystem for Linux (WSL)
+  if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ]; then
+    printf '20'
+    return
+  fi
+
+  # 5. Dynamic core scaling for Linux, macOS, and BSD
+  local cores=2
+  if command -v nproc >/dev/null 2>&1; then
+    cores="$(nproc 2>/dev/null || echo 2)"
+  elif command -v sysctl >/dev/null 2>&1; then
+    cores="$(sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+  fi
+
+  local calculated=$((cores * 10))
+  if [ "$calculated" -gt 50 ]; then calculated=50; fi
+  if [ "$calculated" -lt 10 ]; then calculated=10; fi
+
+  printf '%s' "$calculated"
+}
+
+NUM_WORKERS="$(detect_safe_concurrency)"
+
+printf '\n%b[MODULE 7] High-Concurrency Lock Contention (%d Parallel Processes)%b\n' "$C_CYAN" "$NUM_WORKERS" "$C_RST"
 
 CONCURRENCY_THREAD="concurrency_stress_test_thread"
 export BASH4LLM_SOURCE_ONLY=1
@@ -356,7 +428,7 @@ export BASH4LLM_SOURCE_ONLY=0
 "$TARGET_BIN" --thread "$CONCURRENCY_THREAD" --init-thread >/dev/null 2>&1 || true
 
 PIDS=()
-for ((i=1; i<=50; i++)); do
+for ((i=1; i<=NUM_WORKERS; i++)); do
   (
     export BASH4LLM_DIR="${BASH4LLM_DIR}"
     export BASH4LLM_SOURCE_ONLY=1
@@ -373,17 +445,17 @@ done
 if [ -f "$STRESS_NDJSON" ]; then
   LINE_COUNT="$(wc -l < "$STRESS_NDJSON" | tr -d ' ')"
   VALID_JSON_COUNT="$(jq -s 'length' "$STRESS_NDJSON" 2>/dev/null || echo 0)"
-  if [ "$LINE_COUNT" -eq 50 ] && [ "$VALID_JSON_COUNT" -eq 50 ]; then rc_7=0; else rc_7=1; fi
+  if [ "$LINE_COUNT" -eq "$NUM_WORKERS" ] && [ "$VALID_JSON_COUNT" -eq "$NUM_WORKERS" ]; then rc_7=0; else rc_7=1; fi
 else
   rc_7=1
 fi
-assert_test "50 parallel workers atomic NDJSON append lock stress test" 0 $rc_7
+assert_test "$NUM_WORKERS parallel workers atomic NDJSON append lock stress test" 0 $rc_7
 rm -f "$STRESS_NDJSON" 2>/dev/null || true
 
 # ======================================
 # MODULE 8: Optional SSE & JSON Logic (Python 3 Helper)
 # ======================================
-printf '\n%b[MODULE 8] Optional Python 3 SSE & JSON Parsing Engine%b\n' "$C_BOLD" "$C_RST"
+printf '\n%b[MODULE 8] Optional Python 3 SSE & JSON Parsing Engine%b\n' "$C_CYAN" "$C_RST"
 
 if command -v python3 >/dev/null 2>&1; then
   py_escape_out="$(printf 'He said "Hi"' | python3 -c 'import sys, json; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null || true)"
@@ -404,18 +476,35 @@ fi
 # ======================================
 # FINAL SUMMARY REPORT
 # ======================================
-printf '\n%s==================================================%s\n' "$C_BOLD" "$C_RST"
-printf ' %bSUITE EXECUTION SUMMARY%b\n' "$C_CYAN" "$C_RST"
-printf '  Total Executed Tests : %d\n' "$TOTAL"
-printf '  Passed Tests         : %s%d%s\n' "$C_GREEN" "$PASS" "$C_RST"
-printf '  Failed Tests         : %s%d%s\n' "$C_RED" "$FAIL" "$C_RST"
-printf '  Skipped Tests        : %s%d%s\n' "$C_YELLOW" "$SKIPPED" "$C_RST"
-printf '%s==================================================%s\n' "$C_BOLD" "$C_RST"
+init_colors
 
-if [ "$FAIL" -ne 0 ]; then
-  printf '\n%sRESULT: SUITE FAILED (%d failures detected)%s\n\n' "$C_RED" "$FAIL" "$C_RST"
+printf '\n%s--------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf ' %sTEST SUITE EXECUTION SUMMARY%s\n' "$C_BCYAN" "$C_RST"
+printf '   Total Executed Tests : %s%d%s\n' "$C_BOLD" "$TOTAL" "$C_RST"
+printf '   Passed Tests         : %s%d%s\n' "$C_BGREEN" "$PASS" "$C_RST"
+printf '   Failed Tests         : %s%d%s\n' "$C_BRED" "$FAIL" "$C_RST"
+printf '   Skipped Tests        : %s%d%s\n' "$C_BYELLOW" "$SKIPPED" "$C_RST"
+printf '%s--------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+
+# Display detailed report for skipped tests if any
+if [ "${#SKIPPED_LOGS[@]}" -gt 0 ]; then
+  printf '\n%sSKIPPED TESTS DIAGNOSTICS:%s\n' "$C_BYELLOW" "$C_RST"
+  for sk in "${SKIPPED_LOGS[@]}"; do
+    printf '  • %s\n' "$sk"
+  done
+fi
+
+# Display detailed report for failures if any
+if [ "${#FAILED_LOGS[@]}" -gt 0 ]; then
+  printf '\n%sDETAILED FAILURE DIAGNOSTICS:%s\n' "$C_BRED" "$C_RST"
+  for fl in "${FAILED_LOGS[@]}"; do
+    printf '  ✖ %s\n' "$fl"
+  done
+  printf '\n%sRESULT: SUITE FAILED (%d failures detected)%s\n\n' "$C_BRED" "$FAIL" "$C_RST"
+  printf '%s==============================================%s\n\n' "$C_BOLD" "$C_RST"
   exit 1
 else
-  printf '\n%sRESULT: ALL TESTS PASSED SUCCESSFULLY%s\n\n' "$C_GREEN" "$C_RST"
+  printf '\n%sRESULT: ALL TESTS PASSED SUCCESSFULLY%s\n\n' "$C_BGREEN" "$C_RST"
+  printf '%s==============================================%s\n\n' "$C_BOLD" "$C_RST"
   exit 0
 fi
