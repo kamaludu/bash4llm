@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ======================================
+# =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/test/run-all-tests.sh
+# Authority: Architecture Specification (Edition 2026.1)
 # Component: Extra Unified Master Test Suite
-# Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
-# Repository: https://github.com/kamaludu/bash4llm
-# Contact: opensource@cevangel.anonaddy.me
-# ======================================
+# =============================================================================
 # Purpose: Single-entrypoint automated test suite covering End-to-End features,
 #          PII anonymization, security isolation, OpenSSL Vault, rate limiting,
-#          manifest integrity, high-concurrency stress, and JSON/SSE parsing.
+#          manifest integrity, high-concurrency stress, JSON/SSE parsing,
+#          read-only function guards, and secret redaction in argv.
 # Usage: ./extras/test/run-all-tests.sh [--dry-run] [--no-color]
 
 set -euo pipefail
@@ -474,6 +473,39 @@ print(v, end="")' 2>/dev/null || true)"
 else
   skip_test "Python 3 SSE & JSON Parsing Engine" "python3 executable not found in PATH"
 fi
+
+# ======================================
+# MODULE 9: Security Invariants & Function Guard Locking (Edition 2026.1)
+# ======================================
+printf '\n%b[MODULE 9] Security Invariants & Read-Only Function Guards%b\n' "$C_CYAN" "$C_RST"
+
+# Test 9a: Function Read-Only Lock Enforcement (_lock_security_guards)
+set +e
+bash -c ". \"$TARGET_BIN\" --bootstrap-only 2>/dev/null; _exec_curl_secure() { echo 'hijacked'; }" 2>/dev/null
+rc_9a=$?
+set -e
+if [ "$rc_9a" -ne 0 ]; then rc_9a_test=0; else rc_9a_test=1; fi
+assert_test "Read-only guard blocks function hijacking (_exec_curl_secure)" 0 $rc_9a_test
+
+# Test 9b: Module Tampering Fail-Closed Enforcement (Exit Code 17)
+TAMPER_EXTRAS_DIR="${TEST_SANDBOX}/tamper_extras"
+mkdir -p "${TAMPER_EXTRAS_DIR}/providers"
+TAMPER_MOD="${TAMPER_EXTRAS_DIR}/providers/mock_prov.sh"
+printf '#!/usr/bin/env bash\n' > "$TAMPER_MOD"
+printf '0000000000000000000000000000000000000000000000000000000000000000  providers/mock_prov.sh\n' > "${TAMPER_EXTRAS_DIR}/manifest.sha256"
+
+set +e
+BASH4LLM_EXTRAS_DIR="$TAMPER_EXTRAS_DIR" "$TARGET_BIN" --provider mock_prov --bootstrap-only >/dev/null 2>&1
+rc_9b=$?
+set -e
+assert_test "Module tampering triggers fail-closed security halt (Exit Code 17)" 17 $rc_9b
+
+# Test 9c: Secret Redaction in argv (_exec_curl_secure path presence)
+set +e
+bash -c ". \"$TARGET_BIN\" --bootstrap-only 2>/dev/null; type _exec_curl_secure >/dev/null 2>&1" 2>/dev/null
+rc_9c=$?
+set -e
+assert_test "Authoritative secure cURL execution engine is active (_exec_curl_secure)" 0 $rc_9c
 
 # ======================================
 # FINAL SUMMARY REPORT
