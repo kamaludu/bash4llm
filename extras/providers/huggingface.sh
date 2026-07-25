@@ -3,12 +3,11 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/huggingface.sh
-# Extra: Provider Huggingface
-# Copyright (C) 2026 Cristian Evangelisti
+# Authority: Architecture Specification (Edition 2026.1)
+# Extra: Provider Hugging Face Module
 # License: GPL-3.0-or-later
-# Repository: https://github.com/kamaludu/bash4llm
-# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
+# Purpose: Bash4LLM provider adapter for Hugging Face Inference APIs & Serverless Router
 
 # When sourced, avoid enabling strict mode globally.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
@@ -396,13 +395,9 @@ call_api_huggingface() {
   : > "$tmpresp" 2>/dev/null || true
   : > "$hdr_file" 2>/dev/null || true
 
-  http_result="$(curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} \
-    -sS -D "$hdr_file" \
-    -H "Authorization: Bearer $HFAPIKEY" \
-    -H "Content-Type: application/json" \
-    --data-binary @"$PAYLOAD" \
-    -o "$tmpresp" -w '%{http_code} %{time_total}' \
-    "$api_url" 2>"${ERRF:-}" || true)"
+  # Execute HTTP call via Authoritative Secure Network Path (Redacts API Key from argv)
+  local -a extra_opts=(-D "$hdr_file" -w '%{http_code} %{time_total}')
+  http_result="$(_exec_curl_secure "POST" "$api_url" "$HFAPIKEY" "$PAYLOAD" "$tmpresp" "${ERRF:-}" 0 extra_opts || true)"
 
   read -r http_code time_total <<EOF
 $http_result
@@ -521,15 +516,9 @@ call_api_streaming_huggingface() {
     api_url="${endpoint_url%/}"
   fi
 
-  # Single unbuffered jq processing pipeline extracting delta content and catching direct HTTP errors
-  curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} \
-       -sS -D "$hdr_file" \
-       -H "Authorization: Bearer $HFAPIKEY" \
-       -H "Content-Type: application/json" \
-       --no-buffer \
-       --data-binary @"$PAYLOAD" \
-       "$api_url" \
-       2>"${ERRF:-}" | \
+  # Single unbuffered jq processing pipeline routed through _exec_curl_secure
+  local -a extra_opts=(-D "$hdr_file")
+  _exec_curl_secure "POST" "$api_url" "$HFAPIKEY" "$PAYLOAD" "" "${ERRF:-}" 1 extra_opts | \
   tee -a "$RESP_RAW" | \
   jq --unbuffered -R -r '
     if startswith("data: ") then
@@ -625,6 +614,9 @@ refresh_models_huggingface() {
   return 0
 }
 
+# -------------------------
+# validate_model_huggingface
+# -------------------------
 validate_model_huggingface() {
   local model="$1"
   if [ "$model" = "deepseek-ai/DeepSeek-R1" ] || [ "$model" = "deepseek-ai/DeepSeek-R1:fastest" ]; then
@@ -637,6 +629,9 @@ validate_model_huggingface() {
   return 0
 }
 
+# -------------------------
+# auto_select_model_huggingface
+# -------------------------
 auto_select_model_huggingface() {
   local file="$MODELS_FILE" result=""
   if [ -f "$file" ] && [ -s "$file" ]; then
@@ -648,6 +643,9 @@ auto_select_model_huggingface() {
   return 0
 }
 
+# -------------------------
+# validate_key_huggingface
+# -------------------------
 validate_key_huggingface() {
   local key="${1:-}"
   local http_code curl_rc=0
@@ -664,14 +662,11 @@ validate_key_huggingface() {
   [ -n "$tmpout" ] || tmpout="${workdir}/hf-key-diag.tmp"
   errf="${tmpout}.err"
 
-  # GET call to the /api/whoami-v2 identity endpoint
+  # GET call to the /api/whoami-v2 identity endpoint via secure authoritative path
   local api_url="https://huggingface.co/api/whoami-v2"
 
-  http_code="$(curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} --silent --show-error --no-buffer --max-time 10 \
-    -H "Authorization: Bearer $key" \
-    -o "$tmpout" \
-    -w "%{http_code}" \
-    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  local -a key_val_opts=(--max-time 10 -w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true
@@ -681,7 +676,7 @@ validate_key_huggingface() {
     return 28
   fi
 
-  # HTTP 200 = Valid;  HTTP 401 = Invalid
+  # HTTP 200 = Valid; HTTP 401 = Invalid
   if [ "$http_code" = "200" ]; then
     return 0
   else
