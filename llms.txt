@@ -1,4 +1,4 @@
-# Bash4LLM⁺ (v2.7.0)
+# Bash4LLM⁺ (v2.8.0)
 
 > Zero third-party package dependencies (no Python, Node.js, Docker, or pip/npm modules required). Operates entirely on standard POSIX base system utilities, curl, and jq.
 
@@ -19,7 +19,7 @@ Designed for security-conscious shell scripting, CI/CD pipelines, system adminis
 - **Shared C libraries / CGO**: 0
 
 ### 2. Mandatory System Binaries (23 Core Utilities)
-Bash4LLM⁺ relies on standard OS binaries that are pre-installed on virtually all POSIX-compliant systems. The core script performs an immediate pre-flight check at startup for the presence of these exact **23 utilities** in `$PATH`. Missing any binary triggers an immediate halt with exit code `15` (`BASH4LLM_ERR_TMP`):
+Bash4LLM⁺ relies on standard OS binaries pre-installed on POSIX-compliant systems. The core script performs a pre-flight check at startup for the presence of these exact **23 utilities** in `$PATH`. Missing any binary triggers an immediate halt with exit code `15` (`BASH4LLM_ERR_TMP`):
 
 1. **Shell Runtime**: `bash` (version 4.0 or newer required for associative arrays and native pattern matching).
 2. **HTTP Transport**: `curl` (used for API requests and SSE streaming).
@@ -34,17 +34,18 @@ Bash4LLM⁺ relies on standard OS binaries that are pre-installed on virtually a
 - **`shred`** or **`dd`**: Used *only* for anti-forensic zero-fill data erasure during Vault destruction.
 - **`python3`**: Optional helper *only* for standalone JSON string escaping tests in the Master Test Suite.
 
-## Key Architectural & Security Features (v2.7.0)
+## Key Architectural & Security Features (v2.8.0 Hardened)
 
-- **Process-List Leak Protection (`ps aux`)**: Headers containing Bearer tokens are passed to `curl` via unlinked file descriptors (`/dev/fd/3` or `/proc/self/fd/3`). The secret header file is unlinked from the disk before `curl` executes, completely concealing API keys from process listings (`ps aux`).
-- **Unified Master Test Suite**: Single-entrypoint automated test suite (`./bash4llm --run-all-tests`) executing 8 test modules covering end-to-end features, security, vault, fuzzing, and concurrency.
-- **Mandatory Vault Policy Enforcement**: Setting `BASH4LLM_REQUIRE_VAULT=1` forces key retrieval strictly from the encrypted Vault, rejecting any standard environment variables with exit code `17`.
+- **Authoritative Secure Network Path (`_exec_curl_secure`)**: Centralized HTTP execution engine for all providers (Groq, Gemini, Hugging Face, Mistral). Authentication headers are written strictly to private temporary files (`0600`) in `$RUN_TMPDIR` and forwarded to `curl` via unlinked File Descriptors (`/dev/fd/3`), completely redacting Bearer tokens and API keys from process argument vectors (`argv` / `ps aux`).
+- **Read-Only Function Guards (`readonly -f`)**: Post-bootstrap locking via `_lock_security_guards()` marks critical security, network mediation, and filesystem functions as `readonly -f` in shell memory to prevent in-memory function hijacking.
+- **Fail-Closed Cryptographic Module Integrity**: Mandatory pre-sourcing SHA-256 verification against `extras/manifest.sha256` for external provider modules, hooks, and extensions. Any checksum mismatch or computation failure triggers an immediate halt with exit code `17` (`BASH4LLM_ERR_SEC`).
+- **Unified Master Test Suite**: Single-entrypoint automated test suite (`./bash4llm --run-all-tests`) executing 9 test modules covering end-to-end features, security invariants, vault encryption, fuzzing, concurrency, and function guard locking.
+- **Mandatory Vault Policy Enforcement**: Setting `BASH4LLM_REQUIRE_VAULT=1` forces key retrieval strictly from the encrypted Vault, rejecting unencrypted environment variables with exit code `17`.
 - **Zero-Eval Output Sanitizer**: Standalone filter (`extras/security/output-sanitizer.sh`) removing unprintable C0 control codes, extended ANSI terminal escape codes (`\033[...`), and escaping shell metacharacters without executing `eval`.
-- **Cryptographic Module Integrity**: Pre-sourcing SHA-256 verification against `extras/manifest.sha256` for external provider modules, hooks, and extensions (fails fast with exit code `17`).
 - **PII Thread Anonymization**: Automatic SHA-256 hashing (`SAFE_THREAD_ID`) for user thread IDs, ensuring zero personal identifiable information (emails, names, paths) is written in plaintext to disk (.ndjson, .json, lock files, or rate-limit logs).
 - **Security Key Vault**: AES-256-CBC at-rest API key encryption via OpenSSL using PBKDF2 key derivation (100,000 iterations), salt, and RAM unlock session context (`_B4L_RT_CTX`).
 - **Local Rate-Limiting**: 30-second sliding-window rate limiter per thread (`BASH4LLM_RATE_LIMIT`) with authorization bypass token support (`BASH4LLM_AUTH_TOKEN`).
-- **File-System Hardening**: Enforced `umask 077`, strict Least-Privilege permissions (`700` for directories/executables, `600` for sourced libraries), symlink execution blocks, atomic `mv` guarantees on the same inode, null-byte (`\x00`) input rejection, and explicit ban of system `/tmp`.
+- **File-System Hardening**: Enforced `umask 077`, strict Least-Privilege permissions (`700` for directories/executables, `600` for configuration files), symlink execution blocks, atomic `mv` guarantees, null-byte (`\x00`) input rejection, and explicit ban of system `/tmp`.
 
 ## Key CLI Usage Examples
 
@@ -123,13 +124,12 @@ bash4llm.d/                     # Runtime data root (permissions: 700)
 └── extras/                     # Installed optional extras & integrity manifest (700)
     ├── chat/tui-repl.sh        # Interactive TUI REPL entrypoint (700)
     ├── docs/                   # Inline core documentation & help texts (600)
-    ├── providers/              # Secondary provider modules (gemini, mistral) (600)
+    ├── providers/              # Secondary provider modules (gemini, mistral, huggingface) (600)
     ├── security/
     │   ├── openssl-helper.sh   # Vault encryption library (600, sourced)
     │   └── output-sanitizer.sh # Zero-Eval output sanitizer script (700)
     ├── session/session-engine.sh # Token-aware session engine extension (600)
     ├── test/
-    │   ├── adversarial_tests.sh # Lock contention & fuzzing tests (700)
     │   └── run-all-tests.sh    # Master automated test runner (700)
     └── manifest.sha256         # Cryptographic SHA-256 module manifest (600)
 ```
