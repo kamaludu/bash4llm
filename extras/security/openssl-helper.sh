@@ -3,8 +3,8 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/security/openssl-helper.sh
+# Authority: Architecture Specification (Edition 2026.1)
 # Component: Optional OpenSSL Security & Vault Helper (Master-Key wrapped)
-# Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
@@ -121,6 +121,7 @@ if ! type read_secure_input >/dev/null 2>&1; then
           stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
         fi
       fi
+      # TECHNICAL DEBT AUDIT [INV-3]: Isolated parent trap restoration. No new eval allowed.
       if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi
       if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi
     }
