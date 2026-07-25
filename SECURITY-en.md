@@ -2,8 +2,6 @@
 
 # Security Policy for Bash4LLM⁺ [🇮🇹](SECURITY.md) 🇬🇧
 
-Bash4LLM⁺ is developed in adherence to the security engineering principles established in the **Architecture Specification (Edition 2026.1)** regarding variable scope safety, transit and filesystem data protection, and code injection prevention.
-
 This document details the threat model, filesystem assumptions, built-in security mitigations, known limitations, and procedures for private vulnerability disclosure.
 
 ---
