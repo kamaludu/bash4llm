@@ -6,6 +6,22 @@
  * Additional documentation improvements
  * Optional enhancements for extras and test suites
 
+## [2.7.0] – 2026‑07‑24 - RELEASE NOTES
+### Added
+ * Nuova opzione CLI `--run-all-tests` (e alias `--run-all-test`) per l'esecuzione automatizzata e verificata della suite di test unificata a 8 moduli con controllo preventivo d'integrità crittografica SHA-256.
+ * Algoritmo di rilevamento dinamico della concorrenza (`detect_safe_concurrency`) nel Modulo 7 della suite di test per adattare automaticamente il numero di worker paralleli alla piattaforma in uso (`10` su Termux/Android e Cygwin, `20` su WSL, fino a `50` su Linux/macOS multi-core), con supporto all'override manuale tramite `BASH4LLM_TEST_CONCURRENCY`.
+ * Report diagnostico dettagliato per test falliti (`DETAILED FAILURE DIAGNOSTICS`) e test saltati (`SKIPPED TESTS DIAGNOSTICS`) con motivazioni, codici di stato attesi/ricevuti e suggerimenti operativi di mitigazione.
+ * Chiusura visiva della suite di test con cornice e banner finale `===` perfettamente coordinato all'intestazione.
+### Changed
+ * Riprogettata l'inizializzazione dei colori ANSI nella suite di test (`run-all-tests.sh`) tramite la funzione `init_colors`, allineando la palette crollata ai colori **Bold** ufficiali di `Bash4LLM⁺` (`C_BGREEN`, `C_BRED`, `C_BYELLOW`, `C_BCYAN`) e garantendo il ripristino delle variabili cromatiche prima del sommario finale.
+ * Inoltro e propagazione trasparente delle flag di contesto `--no-color` e `--dry-run` dal wrapper `bash4llm` alla suite di test durante l'invocazione via CLI.
+ * Inasprimento dei permessi applicati dall'installer `--install-extras` secondo il principio del minimo privilegio (directory `700`, file di dati `600`, binari ed entrypoint CLI `700`).
+### Fixed
+ * Risolto il bug di risoluzione del percorso del binario eseguibile (`TARGET_BIN`) in `run-all-tests.sh` quando invocato dalla collocazione installata canonica `bash4llm.d/extras/test/`.
+ * Corretto l'errore di sintassi e l'inversione degli argomenti nel comando `printf` dell'intestazione del Modulo 7 (`printf: : invalid number`).
+ * Eliminati i crash improvvisi con `Signal 9 (SIGKILL)` generati dal Phantom Process Killer / OOM Killer di Android/Termux durante i test di stress sui file di lock concorrenti.
+ * Risolto l'azzeramento involontario delle variabili di colore causato dal caricamento in memoria (`. ./bash4llm >/dev/null 2>&1`) effettuato con output reindirizzato.
+
 ## [2.6.0] – 2026‑07‑22 - RELEASE NOTES
 ### Added
  * Verifica dell'integrità crittografica dei moduli (`verify_module_integrity`) tramite file manifesto SHA-256 (`extras/manifest.sha256`) per tutti i provider esterni, estensioni ed hook.
