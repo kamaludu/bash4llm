@@ -4,8 +4,8 @@ BASH4LLM(1)                  Manuale di Bash4LLM                    BASH4LLM(1)
 
 NOME
     bash4llm - Wrapper Bash sicuro e resiliente per interrogare provider 
-    LLM esterni (v2.6.0)
-
+    LLM esterni (v2.8.0)
+    
 SINTASSI
     bash4llm [OPZIONI] [PROMPT]
     bash4llm -f FILE [OPZIONI]
@@ -518,35 +518,44 @@ MODALITÀ OPERATIVE
 DETTAGLI IMPLEMENTATIVI INTERNI
     Questa sezione descrive gli algoritmi principali e le logiche di sicurezza.
 
-  1. Integrità Crittografica dei Moduli e Verifica del Manifest
+  1. Mediazione di Rete Sicura ed Eliminazione Secret Leak in argv
+    Tutte le chiamate HTTP (sincrone, streaming, refresh modelli e validazione 
+    chiave) vengono convogliate nella funzione centrale _exec_curl_secure. I token 
+    di autenticazione vengono scritti esclusivamente in file di header temporanei 
+    privati (0600) e passati a curl tramite reindirizzamento di File Descriptor 
+    senza mai apparire nei vettori d'argomento del processo (argv / ps aux).
+
+  2. Integrità Crittografica dei Moduli, Verifica Manifest e Guardie Read-Only
     Provider esterni, hook ed estensioni vengono sottoposti a una verifica 
     obbligatoria a due livelli tramite verify_module_integrity prima del caricamento: 
     validazione della sicurezza del percorso (proprietà, nessuna scrittura group/world) 
     e corrispondenza dell'hash SHA-256 rispetto a extras/manifest.sha256. Eventuali 
-    discrepanze interrompono l'esecuzione con codice di uscita 17.
+    discrepanze interrompono l'esecuzione con codice di uscita 17. Al termine del 
+    bootstrap, _lock_security_guards blocca le funzioni critiche come 
+    readonly -f per impedire il hijacking delle funzioni in memoria.
 
-  2. Anonimizzazione PII del Thread e Locking
+  3. Anonimizzazione PII del Thread e Locking
     Gli ID grezzi dei thread vengono cifrati tramite hash SHA-256 mediante 
     anonymize_thread_id producendo $SAFE_THREAD_ID. Tutti i file su disco 
     (.ndjson, .json, lock) utilizzano questo hash anonimizzato, prevenendo la 
     perdita di dati personali sensibili sul filesystem.
 
-  3. Limitatore di Frequenza Locale a Finestra Scorrevole
+  4. Limitatore di Frequenza Locale a Finestra Scorrevole
     check_local_rate_limit traccia i file dei timestamp di richiesta sotto 
     $BASH4LLM_RATES_DIR/$SAFE_THREAD_ID. Le richieste che superano 
     $BASH4LLM_RATE_LIMIT all'interno di una finestra di 30 secondi vengono 
     bloccate con codice di uscita 17.
 
-  4. Architettura del Vault Crittografico delle Chiavi
+  5. Architettura del Vault Crittografico delle Chiavi
     Quando OpenSSL è attivo, le chiavi API del provider vengono cifrate utilizzando 
     AES-256-CBC protetto da Chiave Master con PBKDF2 (100.000 iterazioni) e sale. 
     Il token di contesto di sessione $_B4L_RT_CTX mantiene le chiavi sbloccate del 
     vault nella RAM per evitare le richieste di password.
 
-  5. Catena di Priorità per l'Assemblaggio del Prompt
+  6. Catena di Priorità per l'Assemblaggio del Prompt
     Assemblaggio di $CONTENT: JSON strutturato ($JSON_INPUT) -> file tramite -f -> 
     template ($TEMPLATE) -> standard input ($STDIN_CONTENT) -> argomenti posizionali.
-
+    
 WRAPPER DI COMPATIBILITÀ LEGACY
     Per garantire l'integrazione con i flussi di lavoro legacy, il runtime espone:
 
