@@ -1,204 +1,140 @@
-[![Bash4LLM](https://img.shields.io/badge/_Bash4LLM⁺_-00aa55?style=for-the-badge&label=%E2%9E%9C&labelColor=004d00)](README.md)
+[![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
 
-# POLITICA DI SICUREZZA 🇮🇹 [🇬🇧](SECURITY-en.md)
+# Politica di Sicurezza per Bash4LLM⁺  🇮🇹 [🇬🇧](SECURITY-en.md)
 
-## Politica di Sicurezza per Bash4LLM⁺
+Bash4LLM⁺ è sviluppato adottando principi di progettazione definiti nell'**Architecture Specification (Edition 2026.1)** in materia di isolamento delle variabili, protezione delle informazioni in transito e sul filesystem, ed eliminazione dei vettori di iniezione di codice.
 
-Bash4LLM⁺ è stato sviluppato adottando principi di progettazione rigorosi in materia di **sicurezza delle variabili**, **protezione delle informazioni in transito e in locale** ed **evitazione di iniezioni di codice**.  
-Questo documento ne descrive il modello di minaccia, le assunzioni fondamentali del filesystem, le limitazioni note e i canali per la segnalazione privata di vulnerabilità.
+Questo documento descrive il modello di minaccia, le assunzioni del filesystem, le mitigazioni di sicurezza integrate, le limitazioni note e le procedure per la segnalazione di vulnerabilità.
 
 ---
 
 ## 1. Versioni supportate
 
-Solo l'ultima versione stabile ufficiale rilasciata sul ramo `main` del repository riceve patch correttive e aggiornamenti di sicurezza.
+La manutenzione e il rilascio di patch di sicurezza vengono forniti esclusivamente per l'ultima versione stabile presente sul ramo `main` del repository.
 
 ---
 
 ## 2. Modello di minaccia (Threat Model)
 
-Bash4LLM⁺ è progettato per operare in contesti **single-user** fidati:
-*   Computer desktop e laptop personali.
-*   Server personali, nodi di calcolo privati o istanze Docker a singolo proprietario.
-*   Terminali locali protetti come Termux su dispositivi mobili personali (Android).
-*   Ambienti di sviluppo WSL (Windows) o console utente standard Unix.
+Bash4LLM⁺ è progettato per operare in contesti **single-user** controllati:
+* Computer desktop e laptop personali.
+* Server dedicati, nodi di calcolo privati o istanze Docker a singolo proprietario.
+* Terminali locali sandboxed come Termux su dispositivi Android personali.
+* Ambienti di sviluppo WSL (Windows) o console utente standard Unix/Linux/BSD.
 
-Bash4LLM⁺ **non** è progettato per:
-*   Server multi-tenant condivisi con utenti ostili o non autorizzati.
-*   Ambienti in cui utenti concorrenti non autorizzati dispongono di accesso in scrittura fisica alle stesse cartelle dello script.
-*   Essere eseguito da utente `root` in contesti di rete esposti.
+Bash4LLM⁺ **non è progettato** per:
+* Ambienti server multi-tenant condivisi con utenti non autorizzati.
+* Sistemi in cui utenti concorrenti dispongono di accesso in scrittura fisica alla directory di lavoro dello script.
+* Esecuzione da parte dell'utente `root` in contesti di rete esposti.
 
-### Assunzioni fondamentali di sicurezza
-Lo script assume che:
-1.  L'utente che esegue lo script sia l'esclusivo proprietario e detentore dei diritti di scrittura sulla directory di lavoro principale `bash4llm.d/` e sulle sue cartelle di configurazione ed extras.
-2.  I moduli provider posizionati nella cartella degli extras provengano esclusivamente da fonti controllate e fidate.
-3.  Le variabili d'ambiente locali caricate in memoria non possano essere intercettate o manipolate da utenze locali ostili con privilegi superiori.
+### Assunzioni di sicurezza del filesystem
+Il runtime presuppone che:
+1. L'utente che esegue lo script sia l'esclusivo proprietario e detentore dei diritti di accesso sulla directory di lavoro principale (`bash4llm.d/`) e sulle relative sottocartelle.
+2. I moduli esterni posizionati nella cartella `extras/` provengano da fonti verificate e corrispondano alle impronte crittografiche registrate.
+3. Lo spazio di memoria RAM del processo utente non sia accessibile a utenze locali non privilegiate.
 
 ---
 
-## 3. Mitigazioni di sicurezza implementate di serie
+## 3. Mitigazioni di sicurezza integrate
 
-### ✔ Nessuna esecuzione del contenuto generato (RCE Prevention)
-Bash4LLM⁺ si limita a convogliare, visualizzare ed eventualmente archiviare l'output testuale restituito dall'API LLM. Lo script **non esegue mai** l'output del modello all'interno della shell corrente, azzerando alla radice il rischio di vulnerabilità di tipo Remote Code Execution (RCE) derivanti da attacchi di Prompt Injection indiretti.
+### Redazione delle credenziali nei vettori d'argomento del processo (`argv`)
+Tutte le chiamate di rete HTTP (sincrone, streaming, aggiornamento modelli e validazione chiavi) sono convogliate nella funzione centrale `_exec_curl_secure()`. Le chiavi API ed i token Bearer vengono scritti esclusivamente in file di header temporanei con permessi `0600` e inoltrati a `curl` tramite reindirizzamento di File Descriptor (`/dev/fd/3`). In questo modo, le credenziali **non compaiono mai nei vettori d'argomento della riga di comando (`argv`)** e sono protette dall'ispezione della tabella dei processi (`ps aux` o `/proc/<pid>/cmdline`).
 
-### ✔ Divieto assoluto del comando `eval`
-Nessuna porzione del codice interno dello script principale o delle sue funzioni di parsing e caricamento dei moduli fa uso del comando `eval` o di analoghi meccanismi di interpretazione dinamica della stringa di comando, prevenendo tentativi di iniezione di codice Bash.
+### Prevenzione della Remote Code Execution (RCE)
+Bash4LLM⁺ riceve, visualizza ed eventualmente archivia l'output testuale restituito dalle API. Lo script **non esegue mai** il testo generato dal modello all'interno dell'interprete shell, prevenendo vulnerabilità RCE derivanti da attacchi di Prompt Injection.
 
-### ✔ Isolamento dei file temporanei (No `/tmp` globale)
-Al fine di eliminare i rischi di dirottamento basati sull'uso di collegamenti simbolici (*Symlink Exploitation*) o collisioni di scrittura ad opera di processi concorrenti, lo script **non utilizza mai** la directory condivisa `/tmp` del sistema operativo. 
-Tutte le transazioni, i file di errore di rete o le risposte grezze vengono elaborati all'interno della directory isolata temporanea di esecuzione (`RUN_TMPDIR`), creata come sottocartella locale di `bash4llm.d/tmp/` con permessi esclusivi `700` (`umask 077`).
+### Assenza di costrutti di valutazione dinamica (`eval`)
+In conformità all'invariante di sicurezza **[INV-3]**, è vietata l'introduzione di nuovi costrutti `eval`. L'unica istruzione preesistente per il ripristino delle trap dei segnali è isolata e documentata.
 
-### ✔ Sandbox di importazione dei moduli Provider
-Per garantire che i moduli dei provider opzionali caricati dalla directory degli extras non possano inquinare il runtime principale con variabili globali instabili o eseguire codice arbitrario all'avvio, il caricamento avviene all'interno di una sotto-shell di sandbox isolata. 
-Vengono estratte ed esportate nel guscio principale **esclusivamente le firme delle funzioni** autorizzate (`buildpayload_*`, `call_api_*`), ignorando qualsiasi istruzione globale posizionata al di fuori delle funzioni stesse.
+### Isolamento dei file temporanei e divieto di uso di `/tmp`
+In conformità all'invariante **[INV-2]**, lo script **non utilizza mai la directory condivisa di sistema `/tmp`**. Tutti i file temporanei, le risposte grezze e i file di errore vengono allocati all'interno della directory isolata di runtime (`RUN_TMPDIR`), creata come sottocartella locale di `bash4llm.d/tmp/` con permessi restrittivi `0700` e file a permessi `0600` (`umask 077`).
 
-### ✔ Crittografia simmetrica delle chiavi API (`--vault`)
-Bash4LLM⁺ non richiede di memorizzare le chiavi API in chiaro nei file di configurazione. Attivando il modulo opzionale OpenSSL (`--vault`), le chiavi di autenticazione vengono inserite all'interno di un database crittografato simmetricamente (`keys.dat`). 
-La protezione è garantita da Master Password con cifratura AES-256-CBC, derivazione PBKDF2 (100.000 iterazioni) e sale crittografico, prevenendo la sottrazione delle credenziali in caso di ispezione fisica o copia del disco. Il sblocco tramite token di sessione memorizzato in memoria (`_B4L_RT_CTX`) consente di bypassare l'inserimento costante della password senza compromettere la sicurezza a riposo.
+### Caricamento isolato dei moduli e verifica dell'integrità (Fail-Closed)
+I moduli dei provider e gli hook caricati dalla directory `extras/` vengono analizzati in una sotto-shell isolata prima dell'importazione delle sole definizioni di funzione. Prima di ogni caricamento, la funzione `verify_module_integrity()` esegue la verifica della sicurezza del percorso e la validazione crittografica dell'hash SHA-256 rispetto a `extras/manifest.sha256`. Qualsiasi manomissione o fallimento del calcolo dell'hash arresta immediatamente l'esecuzione con codice di uscita `17` (`BASH4LLM_ERR_SEC`).
 
-### ✔ Isolamento della sessione (Session Sandboxing in RAM)
-Le esportazioni standard delle variabili d'ambiente (es. `export KEY="valore"`) eseguite direttamente dall'utente nel prompt dei comandi introducono gravi minacce di sottrazione dei segreti per inquinamento della cronologia della shell (*Command History Leak*) o per persistenza nel buffer visivo dell'emulatore di terminale (*Scrollback Leak*).
+### Protezione delle funzioni di guardia a runtime (`readonly -f`)
+Al termine dell'inizializzazione del Core, la funzione `_lock_security_guards()` marca le funzioni di sicurezza, mediazione e gestione del filesystem come `readonly -f`. Questo impedisce qualsiasi tentativo di sovrascrittura o cancellazione in memoria delle funzioni di guardia da parte di moduli esterni o script derivati.
 
-Per azzerare queste minacce senza compromettere l'usabilità dello strumento in contesti transitori, Bash4LLM⁺ implementa un meccanismo nativo di **Session Sandboxing** in RAM:
-*   **Mascheramento dell'input a livello TTY**: L'acquisizione manuale della chiave avviene tramite una chiamata `read` interna accoppiata temporaneamente a `stty -echo`. Questo inibisce l'eco a schermo dei caratteri digitati o incollati, impedendo qualsiasi persistenza visiva.
-*   **Sostituzione del processo (exec)**: Se l'utente richiede di voler esportare la chiave nella sessione corrente tramite la scelta interattiva `y/N` in contesto non-sourced, lo script carica la chiave nella memoria del processo ed esegue una sostituzione del processo a livello di sistema operativo:
-    ```bash
-    # Executed context: export key and replace the process with a new active shell
-    export GROQ_API_KEY="typed_value"
-    exec "${SHELL:-bash}"
-    ```
-*   **Ciclo di vita a impronta zero**: Questa istruzione rimpiazza istantaneamente l'immagine del processo `./bash4llm` in esecuzione con una nuova shell interattiva nidificata. La chiave d'ambiente è attiva in RAM esclusivamente all'interno di questa sotto-sessione. Poiché il comando di `export` non viene mai digitato nel prompt originale del terminale dell'utente, **nessuna traccia della chiave viene scritta nel file della cronologia dei comandi**.
-*   **Deallocazione istantanea**: Digitando il comando `exit`, la sub-shell viene terminata e lo spazio di memoria RAM contenente la chiave API viene immediatamente deallocato e distrutto dal sistema operativo, riportando l'utente al terminale base in modo del tutto pulito.
+### Cifratura locale delle chiavi API (`--vault`)
+Tramite il modulo opzionale basato su OpenSSL (`--vault`), le chiavi API possono essere memorizzate in forma cifrata sul filesystem (`keys.dat`). La protezione utilizza l'algoritmo AES-256-CBC con derivazione PBKDF2 (100.000 iterazioni) e Master Password. Il riutilizzo del contesto di sessione sbloccato (`_B4L_RT_CTX`) consente l'uso continuativo senza scrittura di credenziali in chiaro su disco.
 
-### ✔ Protezione Termux (Directory Lock atomico)
-Sui dispositivi Android/Termux, l'utility standard `flock` a livello di sistema operativo può fallire a causa di restrizioni di sicurezza del kernel o politiche di SELinux. 
-Bash4LLM⁺ rileva automaticamente l'ambiente Termux disabilitando in trasparenza `flock` ed effettuando il fallback automatico sul meccanismo di lock atomico basato sulla creazione di directory esclusive (`mkdir` atomico), garantendo l'assoluta integrità dei log di thread NDJSON senza rischi di blocco del processo.
+### Gestione della memoria per l'input interattivo (Session Sandboxing)
+L'acquisizione manuale delle credenziali avviene tramite mascheramento dell'input TTY (`stty -echo`). Quando l'utente sceglie di esportare la chiave per la sessione corrente, lo script esegue la sostituzione del processo via `exec "${SHELL:-bash}"`, mantenendo la variabile esclusivamente nella RAM della sotto-shell senza scriverla nei file di cronologia del terminale (`.bash_history`).
+
+### Gestione della concorrenza su Termux (Android)
+In ambienti Android/Termux, dove `flock` può essere soggetto a restrizioni del kernel o di SELinux, la gestione dei lock viene reindirizzata in modo trasparente sul meccanismo atomico basato su directory (`mkdir`).
 
 ---
 
 ## 4. Limitazioni note
 
-*   **Vulnerabilità TOCTOU (Time-of-Check to Time-of-Use):** Nonostante lo script effettui controlli di sicurezza rigorosi sui permessi di scrittura dei file prima di caricarli o scriverli, a livello di filesystem di base POSIX rimane una finestra infinitesimale in cui un attaccante con privilegi di root o accesso fisico concorrente alla cartella potrebbe teoricamente tentare la sostituzione del file tra la fase di controllo e quella di utilizzo.
-*   **Il debug espone dati sensibili:** L'uso della modalità debug (`BASH4LLM_DEBUG=1` o `--debug`) disattiva la rimozione automatica dei file temporanei della transazione per consentire l'ispezione dell'output di curl. Si raccomanda di non mantenere la modalità debug attiva in contesti operativi reali poiché i file in `tmp/` rimarrebbero memorizzati su disco fino alla transazione successiva.
+* **Finestra di gara su filesystem POSIX (TOCTOU):** Sui filesystem POSIX standard, esiste una finestra teorica di gara (Time-of-Check to Time-of-Use) tra la verifica dei permessi di un file e la successiva operazione di lettura/scrittura. Tale rischio è mitigato dall'uso di directory isolate `0700` sotto il controllo esclusivo dell'utente.
+* **Persistenza dei file temporanei in modalità Debug:** L'attivazione della modalità di debug (`--debug` o `DEBUG=1`) preserva i file temporanei della transazione all'interno di `RUN_TMPDIR` per consentire l'ispezione delle risposte. Si raccomanda di disattivare la modalità debug in ambienti di produzione.
 
 ---
 
-## 5. Raccomandazioni per la messa in sicurezza
+## 5. Raccomandazioni per la configurazione sicura
 
-1.  **Installa in una cartella utente non accessibile ad altri:**
-    ```sh
-    mkdir -p "$HOME/.local/bin"
-    cp bash4llm "$HOME/.local/bin/"
-    chmod 700 "$HOME/.local/bin/bash4llm"
-    ```
-2.  **Applica permessi restrittivi alla cartella di runtime:**
-    ```sh
-    chmod 700 "$HOME/bash4llm.d"
-    chmod 600 "$HOME/bash4llm.d/config/config"
-    ```
-3.  **Utilizza regolarmente `--check-config`:**
-    Esegui lo scanner statico integrato prima dell'avvio in ambienti sensibili per assicurarti che nessun file di configurazione sia modificabile da terze parti.
-
----
-
-## 🚨 Protezione del Binario Principale (OS & Kernel Hardening)
-
-Per garantire l'integrità dell'architettura di **Bash4LLM⁺**, il binario principale `bash4llm` agisce come la **Root of Trust** (Radice di Fiducia) dell'intero sistema. Di conseguenza, la protezione del binario principale deve essere garantita direttamente dal Sistema Operativo e dal Kernel.
-
-Applicando i permessi restrittivi e gli attributi di immutabilità del file system descritti di seguito, si impedisce a qualsiasi processo non con privilegi di amministratore (inclusi malware, script dannosi o utenti non autorizzati) di manomettere il Core.
+1. **Installazione in directory utente riservata:**
+   ```sh
+   mkdir -p "$HOME/.local/bin"
+   cp bash4llm "$HOME/.local/bin/"
+   chmod 700 "$HOME/.local/bin/bash4llm"
+   ```
+2. **Permessi restrittivi sulla cartella di dati:**
+   ```sh
+   chmod 700 "$HOME/bash4llm.d"
+   chmod 600 "$HOME/bash4llm.d/config/config"
+   ```
+3. **Verifica della configurazione:**
+   Eseguire periodicamente il controllo statico dei permessi tramite il comando:
+   ```sh
+   ./bash4llm --check-config
+   ```
 
 ---
 
-### Guida all'Hardening per Piattaforma
+## 6. Protezione dell'eseguibile principale
 
-#### 1. Linux (GNU/Linux)
-Assegna la proprietà all'utente `root`, imposta permessi di sola lettura/esecuzione ed abilita l'attributo di immutabilità Est2/Est3/Est4/XFS:
+Per prevenire modifiche non autorizzate allo script principale da parte di processi non privilegiati nel sistema, è possibile applicare i seguenti permessi e controlli di immutabilità:
 
+### Linux (GNU/Linux)
 ```bash
-# 1. Imposta la proprietà a root
 sudo chown root:root /path/to/bash4llm
-
-# 2. Imposta permessi di esecuzione sicuri (rwxr-xr-x)
 sudo chmod 755 /path/to/bash4llm
-
-# 3. Rendi il file immutabile (impossibile da modificare, cancellare o rinominare anche per root)
 sudo chattr +i /path/to/bash4llm
 ```
 
-> **Nota:** Per aggiornare lo script in futuro, rimuovi temporaneamente l'attributo di immutabilità con `sudo chattr -i /path/to/bash4llm`.
-
----
-
-#### 2. macOS / BSD (FreeBSD, OpenBSD, NetBSD)
-Sui sistemi Darwin e BSD, utilizza i flag nativi del file system (`chflags`):
-
+### macOS / BSD
 ```bash
-# 1. Imposta la proprietà a root:wheel
 sudo chown root:wheel /path/to/bash4llm
-
-# 2. Imposta permessi restrittivi
 sudo chmod 755 /path/to/bash4llm
-
-# 3. Abilita il flag System Immutable (o 'uchg' per User Immutable senza root)
 sudo chflags schg /path/to/bash4llm
 ```
 
-> **Nota:** Per disabilitare la protezione ed eseguire aggiornamenti: `sudo chflags noschg /path/to/bash4llm`.
-
----
-
-#### 3. Termux (Android)
-Poiché Android/Termux opera all'interno di un sandbox utente senza privilegi di root nativi, isola il binario applicando permessi di esecuzione esclusivi per l'utente:
-
+### Termux (Android)
 ```bash
-# Rendi il binario leggibile ed eseguibile unicamente dall'utente Termux
 chmod 500 ~/bash4llm
-
-# Oppure mantieni i permessi di scrittura limitati al solo proprietario
-chmod 700 ~/bash4llm
 ```
 
----
-
-#### 4. WSL (Windows Subsystem for Linux)
-Quando si esegue `bash4llm` su file system Windows montati (`/mnt/c/`), le ACL di Windows possono ignorare i permessi POSIX. È fortemente raccomandato posizionare lo script nel file system nativo Linux di WSL e verificare il montaggio con metadati.
-
-1. Assicurati che `/etc/wsl.conf` contenga le opzioni per i metadati POSIX:
-   ```ini
-   [automount]
-   options = "metadata,umask=022,fmask=111"
-   ```
-2. Applica i permessi POSIX standard:
-   ```bash
-   chmod 755 /usr/local/bin/bash4llm
-   ```
-
----
-
-#### 5. Cygwin / MSYS2 (Windows)
-Sotto Cygwin o MSYS2, le Liste di Controllo Accessi (ACL) di Windows possono introdurre permessi di scrittura estesi a gruppi non autorizzati. Pulire le ACL per ripristinare la conformità POSIX:
-
+### WSL / Cygwin
 ```bash
-# 1. Rimuovi le ACL di Windows ereditate
-setfacl -b /usr/local/bin/bash4llm
-
-# 2. Rifiuta la scrittura a gruppo e altri
-chmod 755 /usr/local/bin/bash4llm
+setfacl -b /path/to/bash4llm 2>/dev/null
+chmod 755 /path/to/bash4llm
 ```
 
 ---
 
-## 6. Segnalazione privata di vulnerabilità (Responsible Disclosure)
+## 7. Segnalazione di vulnerabilità (Responsible Disclosure)
 
-In caso di rilevamento di una potenziale vulnerabilità o criticità di sicurezza all'interno dello script core o delle sue estensioni, si prega di effettuare una segnalazione in modo **riservato e privato** per proteggere l'integrità degli utenti attivi.
+In caso di individuazione di potenziali vulnerabilità di sicurezza nel Core o nei moduli estesi, si prega di inviare una segnalazione riservata.
 
-#### Contatto per la segnalazione privata:
-*   **Email:** `opensource@cevangel.anonaddy.me`
-*   **Oggetto:** `[Bash4LLM Security Report]`
+* **Email:** `opensource@cevangel.anonaddy.me`
+* **Oggetto:** `[Bash4LLM Security Report]`
 
-Ti chiediamo gentilmente di includere nella segnalazione:
-1.  Una descrizione dettagliata della natura della vulnerabilità.
-2.  Una Proof of Concept (PoC) o la sequenza di comandi necessari per riprodurre lo scenario di vulnerabilità.
-3.  L'impatto stimato ed eventuali suggerimenti per la patch correttiva.
+Informazioni richieste nella segnalazione:
+1. Descrizione tecnica della vulnerabilità.
+2. Procedura di riproduzione o Proof of Concept (PoC).
+3. Valutazione dell'impatto ed eventuali proposte di correzione.
 
-Ci impegniamo a rispondere per l'analisi iniziale **entro 72 ore** dalla ricezione della segnalazione e a coordinare insieme il rilascio della patch prima di diffondere pubblicamente i dettagli della vulnerabilità.
+L'analisi iniziale verrà avviata entro 72 ore dalla ricezione della segnalazione, coordinando il rilascio della patch prima di qualsiasi divulgazione pubblica.
