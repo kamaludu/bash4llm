@@ -1,6 +1,6 @@
-"Timeless Normatives"
+<img width="64" height="64" alt="K" src="https://github.com/user-attachments/assets/a99ee2ca-9c1d-4bd4-8430-07f0bb0493f1" /> **Timeless Normatives**
 
-## TEST ARCHITECTURE SPECIFICATION (Edition 2026.1)
+## TEST ARCHITECTURE SPECIFICATION (Timeless Edition 2026.1)
 
 **Status:** Standard / Definitive Test Architecture Specification  
 **Scope:** Test Harness, Quality Assurance & Verification Ecosystem  
