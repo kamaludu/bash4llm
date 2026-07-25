@@ -449,6 +449,8 @@ if [ -f "$STRESS_NDJSON" ]; then
 else
   rc_7=1
 fi
+
+init_colors
 assert_test "$NUM_WORKERS parallel workers atomic NDJSON append lock stress test" 0 $rc_7
 rm -f "$STRESS_NDJSON" 2>/dev/null || true
 
@@ -476,7 +478,6 @@ fi
 # ======================================
 # FINAL SUMMARY REPORT
 # ======================================
-init_colors
 
 printf '\n%s--------------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' %sTEST SUITE EXECUTION SUMMARY%s\n' "$C_BCYAN" "$C_RST"
