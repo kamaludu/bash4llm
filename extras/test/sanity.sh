@@ -146,9 +146,9 @@ rc_lint=$?
 set -e
 assert_test "Static configuration security linter (--check-config)" 0 $rc_lint "Check static config parser."
 
-printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '\n%s-----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 1 Sanity Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
-printf '%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '%s-----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
