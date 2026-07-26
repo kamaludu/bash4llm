@@ -1,17 +1,17 @@
-SPECIFICA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.5.0)
+SPECIFICA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.8.0)
 
 Questo documento descrive in modo completo e senza perdita di informazioni la
 logica, le variabili, le funzioni e i blocchi strutturali del sistema Bash4LLM⁺,
 suddivisi secondo le cinque macro-sezioni originarie allineate alla versione
-stabile 2.5.0.
+stabile 2.8.0.
 
 1. PRECORE_BOOT
 
 VARIABILI
 
   - SCRIPT_NAME: Nome identificativo del programma (impostato a "bash4llm").
-  - SCRIPT_VERSION: Versione corrente del software (impostata a "2.5.0").
-  - SCRIPT_DATE: Data di rilascio dello script (impostata a "2026-07-18").
+  - SCRIPT_VERSION: Versione corrente del software (impostata a "2.8.0").
+  - SCRIPT_DATE: Data di rilascio dello script (impostata a "2026-07-25").
   - BASH4LLM_PLAT_ANDROID: Flag di ambiente (valore 1 o 0) impostato su
     bootstrap indicante se il runtime è eseguito sotto ambiente Android/Termux.
   - BASH4LLM_PLAT_MACOS: Flag di ambiente (valore 1 o 0) impostato su bootstrap
@@ -26,9 +26,32 @@ VARIABILI
     DragonFly.
   - BASH4LLM_PLAT_LINUX: Flag di ambiente (valore 1 o 0) impostato su bootstrap
     indicante se l'esecuzione avviene sotto ambiente Linux generico o WSL.
+  - BASH4LLM_KEY_MANUAL_PROMPT: Flag di stato interno (valore 1 o 0) per
+    tracciare se una chiave API è stata inserita manualmente dall'utente via
+    prompt interattivo TTY, con hard reset iniziale a 0 per prevenire leakage di
+    variabili d'ambiente.
   - BASH4LLM_MODEL_CACHE: Array associativo interno adibito ad archiviare in
     memoria i nomi dei modelli normalizzati per velocizzare le esecuzioni
-    successive.
+    successive e bypassare sotto-shell o regex ripetute.
+  - C_LOGO: Sequenza di escape ANSI per lo stile grafico del logo
+    dell'applicazione (sfondo verde, testo bianco in grassetto), disattivata in
+    modalità NO_COLOR o terminale dumb.
+  - C_BANNER: Sequenza di escape ANSI per il banner dell'applicazione (sfondo
+    blu, testo bianco in grassetto), disattivata in modalità NO_COLOR o
+    terminale dumb.
+  - C_RST: Sequenza di escape ANSI di reset per ripristinare gli stili e i
+    colori predefiniti del terminale.
+  - C_BOLD, C_NOBOLD: Sequenze di escape ANSI per attivare e disattivare la
+    formattazione in grassetto del testo.
+  - C_UNDERLINE, C_NOUNDERLINE: Sequenze di escape ANSI per attivare e
+    disattivare la sottolineatura del testo.
+  - C_BLACK, C_RED, C_GREEN, C_YELLOW, C_BLUE, C_MAGENTA, C_CYAN, C_WHITE:
+    Sequenze di escape ANSI per i colori del testo in modalità normale.
+  - C_BBLACK, C_BRED, C_BGREEN, C_BYELLOW, C_BBLUE, C_BMAGENTA, C_BCYAN,
+    C_BWHITE: Sequenze di escape ANSI per i colori del testo in modalità ad alta
+    intensità o grassetto.
+  - BG_BLACK, BG_RED, BG_GREEN, BG_YELLOW, BG_BLUE, BG_MAGENTA, BG_CYAN,
+    BG_WHITE: Sequenze di escape ANSI per i colori di sfondo del terminale.
   - BASH4LLM_ERR_NO_API_KEY: Costante numerica di errore (valore 10) associata
     alla mancanza di una chiave API.
   - BASH4LLM_ERR_BAD_MODEL: Costante numerica di errore (valore 11) associata
@@ -38,11 +61,13 @@ VARIABILI
   - BASH4LLM_ERR_NO_PROMPT: Costante numerica di errore (valore 14) associata
     alla mancanza di un prompt di input.
   - BASH4LLM_ERR_TMP: Costante numerica di errore (valore 15) associata a
-    problemi del file-system temporaneo o dei file di lock.
+    problemi del file-system temporaneo, permessi non validi o gestione dei file
+    di lock.
   - BASH4LLM_ERR_API: Costante numerica di errore (valore 16) associata a
     risposte d'errore o codici HTTP non validi restituiti dal provider API.
   - BASH4LLM_ERR_SEC: Costante numerica di errore (valore 17) associata a
-    violazioni dei permessi sul file-system o ad altre falle di sicurezza.
+    violazioni della policy di sicurezza, permessi errati sul file-system o
+    fallimento della verifica di integrità SHA-256 dei moduli.
   - BASH4LLMERR_NO_API_KEY: Mappatura alias diretta del valore di
     BASH4LLM_ERR_NO_API_KEY con notazione ad underscore.
   - BASH4LLMERR_BAD_MODEL: Mappatura alias diretta del valore di
@@ -82,6 +107,12 @@ VARIABILI
   - BASH4LLM_TMPDIR: Directory radice per l'allocazione dei dati temporanei di
     Bash4LLM⁺. Impostata a BASH4LLM_TMPDIR di ambiente o posizionata sotto
     $BASH4LLM_DIR/tmp.
+  - BASH4LLM_RUN_DIR: Directory isolata per i file di stato ed esecuzione del
+    runtime. Impostata a BASH4LLM_RUN_DIR di ambiente o posizionata sotto
+    $BASH4LLM_DIR/var/run.
+  - BASH4LLM_LOCKS_DIR: Directory dedicata alla memorizzazione isolata dei file
+    di lock concorrenziali per prevenire race conditions. Impostata sotto
+    $BASH4LLM_RUN_DIR/locks.
   - CANONICAL_EXTRAS_DIR: Percorso della directory canonica delle estensioni,
     calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras.
   - LEGACY_EXTRAS_DIR: Percorso storico di fallback delle estensioni, relativo
@@ -89,31 +120,37 @@ VARIABILI
   - BASH4LLM_EXTRAS_DIR: Directory attiva per l'accesso alle risorse aggiuntive
     dello script (assegnata a CANONICAL_EXTRAS_DIR).
   - PROVIDERS_DIR: Percorso assoluto o relativo dei moduli esterni dei provider
-    (impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto
-    la directory delle estensioni alla voce /providers).
+    (impostato su PROVIDERS_DIR di ambiente o localizzato sotto
+    $BASH4LLM_EXTRAS_DIR/providers).
   - THREAD_DIR: Directory dedicata alla registrazione dei log storici NDJSON dei
     thread (posizionata in $BASH4LLM_HISTORY_DIR/threads).
+  - TMPDIR: Override dell'ambiente di sistema forzato su BASH4LLM_TMPDIR per
+    garantire l'isolamento locale e sicuro di cURL e dei file provvisori.
+  - BASH4LLM_RATES_DIR: Directory isolata per la memorizzazione dei marcatori
+    transazionali del rate limiting locale (posizionata in
+    $BASH4LLM_TMPDIR/rates).
   - BASH4LLM_VAULT_ENABLED: Variabile di controllo per l'abilitazione (1) o
-    disattivazione (0) del Key Vault OpenSSL. Prelevata dal file config o
+    disattivazione (0) del Key Vault OpenSSL. Prelevata dall'ambiente o
     impostata di default a 1.
+  - _BASH4LLM_OPENSSL_HELPER: Percorso completo del modulo di ausilio
+    crittografico OpenSSL ($BASH4LLM_EXTRAS_DIR/security/openssl-helper.sh).
   - BASH4LLM_OPENSSL_ACTIVE: Flag booleano interno indicante se
-    openssl-helper.sh è caricato con successo nel runtime (valore 1 o 0).
+    openssl-helper.sh è stato validato tramite integrità SHA-256 e caricato con
+    successo nel runtime (valore 1 o 0).
   - MODELS_FILE: File di testo locale in cui memorizzare la lista dei modelli
-    recuperati, sincronizzato tramite sync_models_file_path con pattern
-    $BASH4LLM_MODELS_DIR/.txt.
+    recuperati per il provider attivo, sincronizzato tramite
+    sync_models_file_path.
   - MAX_MODELS: Limite numerico massimo di modelli importabili o gestibili
     localmente. Eredita ${MAX_MODELS} o adotta il valore di default di 200.
   - PROVIDER_FILE: Percorso del file che persiste l'ultimo provider configurato
     dall'utente, determinato tramite canonical_provider_file.
   - MODELS_LOCK: Percorso del file di lock di sincronizzazione per l'accesso ai
-    modelli, impostato su MODELS_LOCK di ambiente o localizzato sotto
-    $BASH4LLM_MODELS_DIR/models.lock.
+    modelli, posizionato sotto $BASH4LLM_LOCKS_DIR/models.lock.
   - HISTORY_LOCK: Percorso del file di lock per l'accesso concorrente ai log di
-    storico e sessione, impostato su HISTORY_LOCK di ambiente o localizzato
-    sotto $BASH4LLM_HISTORY_DIR/history.lock.
+    storico e sessione, posizionato sotto $BASH4LLM_HISTORY_DIR/history.lock.
   - TMP_LOCK: Percorso del file di lock esclusivo per la gestione sicura della
-    directory temporanea dello script, impostato su TMP_LOCK di ambiente o
-    localizzato sotto $BASH4LLM_TMPDIR/tmp.lock.
+    directory temporanea dello script, posizionato sotto
+    $BASH4LLM_LOCKS_DIR/tmp.lock.
   - BASH4LLM_LOCK_TIMEOUT_TMP: Timeout massimo di attesa espresso in secondi per
     acquisire il lock temporaneo (eredita BASH4LLM_LOCK_TIMEOUT_TMP o
     imposta 10).
@@ -126,6 +163,7 @@ VARIABILI
 FUNZIONI
 
   - resolve_script_dir
+
       - Scopo: Identifica la cartella reale in cui risiede lo script in
         esecuzione, tracciando in modo sicuro i collegamenti simbolici sul
         file-system.
@@ -134,126 +172,133 @@ FUNZIONI
         della directory.
       - Side-effects: Nessuno.
       - Dipendenze: Comandi readlink, dirname, cd, pwd, printf.
+
   - safe_mkdir
+
       - Scopo: Crea in sicurezza una directory con i permessi specificati,
         verificando che non coincida con un collegamento simbolico (mitigazione
         symlink attack).
       - Input: $1 (directory), $2 (opzionale: permessi ottali, default 700).
       - Output: Stato 0 o arresto immediato con codice d'uscita 15
-        (BASH4LLM_ERR_TMP) se fallisce.
-      - Side-effects: Verifica symlink, creazione dir, chmod.
-      - Dipendenze: mkdir, chmod, printf.
+        (BASH4LLM_ERR_TMP) se fallisce la creazione o se viene rilevato un
+        symlink.
+      - Side-effects: Verifica symlink, creazione directory, modifica permessi
+        tramite chmod.
+      - Dipendenze: Comandi mkdir, chmod, printf.
+
   - check_required_arg
+
       - Scopo: Convalida la presenza del parametro CLI obbligatorio richiesto da
         un'opzione, verificando la prossimità del limite posizionale degli
         argomenti.
       - Input: $1 (opzione indagata), $2 (conteggio argomenti residui).
-      - Output: Stato 0 o arresto con codice 15.
-      - Dipendenze: log_error.
+      - Output: Stato 0 o arresto con codice 15 (BASH4LLM_ERR_TMP).
+      - Side-effects: Emissione di un log di errore su stderr.
+      - Dipendenze: Funzione log_error.
+
   - canonical_config_dir
+
       - Scopo: Normalizza il percorso della directory di configurazione
         rimuovendo eventuali barre finali ridondanti.
       - Input: Nessuno (analizza $BASH4LLM_CONFIG_DIR).
       - Output: Restituisce il percorso canonico su standard output.
       - Side-effects: Nessuno.
-      - Dipendenze: printf.
+      - Dipendenze: Comando printf.
+
   - canonical_provider_file
+
       - Scopo: Genera il percorso canonico del file di persistenza del provider
         selezionato.
       - Input: Nessuno.
       - Output: Restituisce su standard output il percorso del file /provider
         sotto la directory canonica di configurazione.
       - Side-effects: Richiama internamente canonical_config_dir.
-      - Dipendenze: printf, canonical_config_dir.
+      - Dipendenze: Comando printf, funzione canonical_config_dir.
+
   - canonical_model_file
+
       - Scopo: Genera il percorso del file in cui memorizzare il modello
         predefinito associato a un determinato provider.
       - Input: $1 (nome identificativo del provider).
       - Output: Restituisce su standard output il percorso del file formato
-        /model. posizionato nella directory canonica di configurazione.
-      - Side-effects: Richiama canonical_config_dir.
-      - Dipendenze: printf, canonical_config_dir.
+        /model.<provider> posizionato nella directory canonica di
+        configurazione.
+      - Side-effects: Richiama internamente canonical_config_dir.
+      - Dipendenze: Comando printf, funzione canonical_config_dir.
+
   - canonical_provider_url_file
+
       - Scopo: Genera il percorso canonico del file contenente l'endpoint o URL
         API specifico del provider attivo.
       - Input: Nessuno.
       - Output: Restituisce su standard output il percorso del file
         /provider-url posizionato nella directory canonica di configurazione.
       - Side-effects: Richiama o simula la logica di canonical_config_dir.
-      - Dipendenze: type, canonical_config_dir, printf.
+      - Dipendenze: Comandi type, printf, funzione canonical_config_dir.
+
   - trim_space
+
       - Scopo: Rimuove spazi e tabulazioni iniziali e finali tramite costrutti
-        di scomposizione nativi della shell (senza fork).
-      - Input: $1 (stringa).
-      - Output: Stringa pulita su stdout.
-      - Dipendenze: printf.
+        di scomposizione nativi della shell (senza fork di processi esterni).
+      - Input: $1 (stringa da ripulire).
+      - Output: Stringa pulita inviata su standard output.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando printf.
+
   - sync_models_file_path
+
       - Scopo: Sincronizza il percorso globale di MODELS_FILE basandosi sul
         provider attivo, forzando una sanitizzazione protettiva contro directory
         traversal che esclude caratteri non alfanumerici (eccetto trattino e
         trattino basso).
-      - Input: $1 (opzionale: provider).
-      - Output: Esporta la variabile MODELS_FILE in ambiente.
-      - Dipendenze: export.
-  - validate_file_input
-      - Scopo: Esegue la convalida di sicurezza di un file di input per scopi
-        transazionali, verificando l'assenza di byte nulli, DEL o controlli C0
-        incompatibili (tranne tab, CR, LF).
-      - Input: $1 (percorso file).
-      - Output: Codici stato: 0 (valido), 1 (percorso vuoto), 2 (non
-        leggibile), 3 (0 byte), 4 (violazioni binarie).
-      - Dipendenze: tr, head, file_size.
+      - Input: $1 (opzionale: nome provider, default $PROVIDER o "groq").
+      - Output: Esporta la variabile MODELS_FILE nell'ambiente di esecuzione.
+      - Side-effects: Modifica della variabile d'ambiente globale MODELS_FILE.
+      - Dipendenze: Comando export.
+
   - _normalize_model_name
+
       - Scopo: Esegue la normalizzazione dei nomi dei modelli rimuovendo spazi,
-        ritorni a capo ed i prefissi models/ e . Per ottimizzare il runtime,
-        conserva i risultati in un array associativo di cache in memoria.
+        ritorni a capo ed i prefissi models/ e nomi provider. Per ottimizzare il
+        runtime, conserva i risultati in un array associativo di cache in
+        memoria (BASH4LLM_MODEL_CACHE).
       - Input: $1 (nome modello).
-      - Output: Nome normalizzato su stdout.
-      - Dipendenze: normalize_model_.
-  - ensure_api_key_for_provider
-      - Scopo: Convalida la presenza di una chiave API valida in ambiente per il
-        provider selezionato. Tenta di recuperare la chiave dal Key Vault
-        crittografico OpenSSL se attivo ($BASH4LLM_OPENSSL_ACTIVE=1) tramite
-        decrittazione in memoria. In sessioni non interattive esce con errore se
-        assente. In sessioni interattive (TTY), richiede l'inserimento della
-        chiave all'utente dallo standard input, ripulisce la stringa rimuovendo
-        comandi ridondanti e la esporta nell'ambiente visualizzando istruzioni
-        di salvataggio.
-      - Input: $1 (nome identificativo del provider).
-      - Output: Ritorna stato 0 se la chiave è presente o acquisita
-        correttamente, altrimenti restituisce il codice di errore
-        BASH4LLM_ERR_NO_API_KEY. Esporta la chiave API nella variabile
-        d'ambiente corretta (es. GROQ_API_KEY o variabile personalizzata
-        indiretta).
-      - Side-effects: Esporta variabili d'ambiente globali; effettua letture
-        dallo standard input, decrittazioni tramite openssl e scritture su
-        stderr.
-      - Dipendenze: provider_api_env_var_name, vault_exists, vault_load_keys,
-        jq, printf, export.
-  - enforce_network_policy
-      - Scopo: Valuta se lo stato corrente del runtime permette l'esecuzione di
-        richieste di rete reali o se queste devono essere bloccate.
-      - Input: Nessuno (analizza i flag $DRY_RUN, $BASH4LLM_SKIP_NETWORK,
-        $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, $QUIET).
-      - Output: Ritorna lo stato 1 se le connessioni esterne sono bloccate (o se
-        si è in simulazione dry-run), 0 se le chiamate di rete sono autorizzate.
-      - Side-effects: Scrittura di log di debug se attiva la modalità di
-        tracciamento.
-      - Dipendenze: is_truthy, log_info.
+      - Output: Nome del modello normalizzato e filtrato da whitelist su
+        standard output.
+      - Side-effects: Popola l'array associativo BASH4LLM_MODEL_CACHE.
+      - Dipendenze: Funzioni normalize_model_<provider> se definite.
+
+  - is_truthy
+
+      - Scopo: Valuta se il parametro testuale in ingresso rappresenta un valore
+        di veridicità affermativo logico.
+      - Input: $1 (stringa da valutare).
+      - Output: Ritorna stato 0 (vero) se il parametro corrisponde a 1, true,
+        TRUE, True, yes, YES o Yes. In tutti gli altri casi ritorna 1 (falso).
+      - Side-effects: Nessuno.
+      - Dipendenze: Nessuna.
+
   - _extract_notes_section
+
       - Scopo: Estrae sezioni testuali letterali (senza esecuzione di codice)
         dal file di documentazione core-notes.sh.
-      - Input: $1 (titolo sezione target).
-      - Output: Righe estratte su stdout o stato 1 se assente.
-      - Dipendenze: awk.
+      - Input: $1 (titolo della sezione target).
+      - Output: Righe estratte stampate su standard output o stato 1 se il file
+        è assente.
+      - Side-effects: Lettura da file-system.
+      - Dipendenze: Comando awk.
+
   - log_prefix
+
       - Scopo: Restituisce il prefisso di intestazione unificato per i log dello
         script.
       - Input: Nessuno.
-      - Output: Restituisce su standard output la stringa formattata bash4llm:
-        <SCRIPT_NAME>: .
-      - Dipendenze: printf.
+      - Output: Restituisce su standard output la stringa formattata bash4llm: .
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando printf.
+
   - log_info
+
       - Scopo: Traccia e visualizza i messaggi informativi.
       - Input: $1 (codice categoria/modulo, default "INFO"), $2 (corpo del
         messaggio).
@@ -261,398 +306,531 @@ FUNZIONI
         $BASH4LLM_LOG è valorizzato, appende il record con timestamp UTC e
         categoria nel file di destinazione.
       - Side-effects: Scrittura su console e file-system.
-      - Dipendenze: log_prefix, date, printf.
+      - Dipendenze: Funzione log_prefix, comandi date, printf.
+
   - log_warn
+
       - Scopo: Traccia e visualizza a schermo i messaggi di avvertimento non
         critici.
       - Input: $1 (codice modulo, default "WARN"), $2 (corpo del messaggio).
       - Output: Scrive il messaggio su stderr. Se abilitato il log, appende il
         tracciamento nel file $BASH4LLM_LOG.
       - Side-effects: Scrittura su stderr e file-system.
-      - Dipendenze: log_prefix, date, printf.
+      - Dipendenze: Funzione log_prefix, comandi date, printf.
+
   - log_error
+
       - Scopo: Registra ed evidenzia gli errori critici.
       - Input: $1 (codice modulo, default "ERROR"), $2 (corpo del messaggio).
       - Output: Scrive l'errore su stderr. Se abilitato il log, appende il
         tracciamento nel file $BASH4LLM_LOG.
       - Side-effects: Scrittura su stderr e file-system.
-      - Dipendenze: log_prefix, date, printf.
+      - Dipendenze: Funzione log_prefix, comandi date, printf.
+
   - log_info_user
+
       - Scopo: Registra messaggi informativi di esecuzione destinati all'utente
-        (non silenziati da QUIET) su stderr e file log.
+        (non silenziati da QUIET) su stderr e file di log.
       - Input: $1 (modulo), $2 (messaggio).
-      - Dipendenze: log_prefix, date, printf.
+      - Output: Stampa formattata su stderr se QUIET=0 e scrittura su file log.
+      - Side-effects: Scrittura su stderr e file-system.
+      - Dipendenze: Funzione log_prefix, comandi date, printf.
+
   - dbg
+
       - Scopo: Visualizza messaggi di diagnostica rapida su stderr se il debug è
         attivo.
       - Input: Argomenti testuali liberi da stampare ($*).
       - Output: Righe di testo inviate a stderr.
-      - Dipendenze: printf.
+      - Side-effects: Scrittura su stderr.
+      - Dipendenze: Comando printf.
+
+  - read_secure_input
+
+      - Scopo: Acquisisce in modo sicuro input sensibili (es. chiavi API,
+        password) disabilitando l'echo del terminale.
+      - Input: $1 (nome della variabile target), $2 (messaggio prompt), $3
+        (lunghezza minima richiesta, default 0), $4 (opzionale: verifica
+        inserimento).
+      - Output: Ritorna stato 0 ed assegna l'input pulito alla variabile target
+        tramite printf -v. Ritorna 1 in caso di errore o lunghezza
+        insufficiente.
+      - Side-effects: Disabilita e ripristina l'echo del terminale tramite stty
+        -echo / stty echo su /dev/tty prima di mostrare il prompt, imposta trap
+        temporanea per ripristinare il terminale su interruzione.
+      - Dipendenze: Comandi stty, trap, printf, read.
+
+  - validate_file_input
+
+      - Scopo: Esegue la convalida di sicurezza di un file di input per scopi
+        transazionali, verificando l'esistenza, la leggibilità, che la
+        dimensione non sia zero e l'assenza di byte nulli o controlli C0 non
+        consentiti (tranne tab, CR, LF).
+      - Input: $1 (percorso del file).
+      - Output: Codici stato: 0 (valido), 1 (percorso vuoto), 2 (file non
+        trovato o non leggibile), 3 (file vuoto a 0 byte), 4 (presenza di byte
+        nulli o caratteri di controllo non ammessi).
+      - Side-effects: Lettura del file.
+      - Dipendenze: Funzione file_size, comandi tr, wc, LC_ALL=C.
+
+  - _get_perm_string
+
+      - Scopo: Restituisce la stringa dei permessi di un file/directory in
+        notazione simbolica (es. -rwxr-xr-x), unificando le differenze tra
+        Linux, macOS e BSD.
+      - Input: $1 (percorso del file o directory).
+      - Output: Stringa dei permessi stampata su standard output.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando stat con flag specifici di piattaforma.
+
+  - _get_owner
+
+      - Scopo: Restituisce il nome dell'utente proprietario di un file o
+        directory in modo portabile.
+      - Input: $1 (percorso).
+      - Output: Nome dell'owner su standard output.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando stat con flag specifici di piattaforma.
+
+  - validate_path_security
+
+      - Scopo: Convalida la sicurezza di un percorso verificando che il file e
+        la directory genitrice non siano symlink, siano di proprietà dell'utente
+        corrente e non siano scrivibili da gruppo o altri (group/world
+        writable).
+      - Input: $1 (percorso del file target).
+      - Output: Ritorna stato 0 se sicuro, 1 se vengono rilevate violazioni di
+        sicurezza.
+      - Side-effects: Scrittura di log di errore o avvertimento.
+      - Dipendenze: Funzioni _get_owner, _get_perm_string, log_error, log_warn,
+        is_truthy, comandi dirname, id, awk.
+
+  - _core_sha256
+
+      - Scopo: Calcola l'hash crittografico SHA-256 digest di un file
+        utilizzando i binari di sistema nativi indipendenti dal modulo helper
+        OpenSSL.
+      - Input: $1 (percorso del file).
+      - Output: Digest SHA-256 esadecimale stampato su standard output, oppure
+        ritorna 1 in caso di fallimento.
+      - Side-effects: Lettura del file.
+      - Dipendenze: Comandi sha256sum, openssl, shasum, awk.
+
+  - verify_module_integrity
+
+      - Scopo: Verifica la sicurezza dei permessi del percorso e l'integrità
+        crittografica SHA-256 di un modulo o script rispetto al file manifesto
+        di integrità (extras/manifest.sha256).
+      - Input: $1 (percorso del file target).
+      - Output: Ritorna stato 0 se l'integrità è verificata o se il file non è
+        presente nel manifesto ma il percorso è sicuro. Ritorna BASH4LLM_ERR_SEC
+        (17) in caso di manomissione o violazione di sicurezza.
+      - Side-effects: Calcolo hash SHA-256 e logging di errore in caso di
+        mismatch.
+      - Dipendenze: Funzioni validate_path_security, _core_sha256, log_error,
+        log_info, comandi awk, basename, dirname, cd, pwd.
+
+  - ensure_api_key_for_provider
+
+      - Scopo: Recupera la chiave API per il provider selezionato seguendo la
+        gerarchia di sicurezza: 1) Key Vault OpenSSL decrittografato in memoria
+        se presente; 2) Variabile d'ambiente (se BASH4LLM_REQUIRE_VAULT=0); 3)
+        Inserimento manuale interattivo via read_secure_input.
+      - Input: $1 (nome del provider).
+      - Output: Ritorna stato 0 ed esporta la chiave API nell'ambiente. Ritorna
+        BASH4LLM_ERR_NO_API_KEY o BASH4LLM_ERR_SEC se la chiave manca o se vi è
+        una violazione di policy.
+      - Side-effects: Lettura da Vault, esportazione variabili d'ambiente
+        (GROQ_API_KEY, ecc.), prompt TTY.
+      - Dipendenze: Funzioni provider_api_env_var_name, vault_exists,
+        vault_load_keys, log_info_user, log_warn, log_error, read_secure_input,
+        is_truthy, comandi jq, export.
+
+  - enforce_network_policy
+
+      - Scopo: Valuta se lo stato corrente del runtime permette l'esecuzione di
+        richieste di rete reali o se queste devono essere bloccate.
+      - Input: Nessuno (analizza $DRY_RUN, $BASH4LLM_SKIP_NETWORK,
+        $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, $QUIET).
+      - Output: Ritorna stato 1 se le connessioni esterne sono bloccate (o in
+        simulazione dry-run), 0 se autorizzate.
+      - Side-effects: Scrittura di log di debug.
+      - Dipendenze: Funzioni is_truthy, log_info.
+
   - ensure_config_dir
+
       - Scopo: Assicura la presenza e la sicurezza della cartella di
         configurazione utente. Crea la cartella se mancante via safe_mkdir,
-        imposta i permessi restrittivi 700 e convalida l'effettiva scrivibilità
-        scrivendo e rimuovendo immediatamente un file di test.
+        imposta permessi 700 e valida la scrivibilità tramite test temporaneo.
       - Input: Nessuno.
-      - Output: Ritorna stato 0 se la directory è scrivibile e pronta, 1 in caso
+      - Output: Ritorna stato 0 se la directory è pronti e scrivibile, 1 in caso
         di errore.
-      - Side-effects: Creazione directory, test di scrittura sul disco,
-        alterazione permessi.
-      - Dipendenze: safe_mkdir, chmod, rm, log_error.
+      - Side-effects: Creazione directory, test di scrittura su disco, modifica
+        permessi.
+      - Dipendenze: Funzioni safe_mkdir, log_error, comandi chmod, rm.
+
   - write_provider_url_if_missing
+
       - Scopo: Memorizza in modo permanente l'URL delle API per un determinato
-        provider all'interno del file dedicato, a patto che il file non sia già
-        popolato. Per evitare scritture corrotte, la scrittura avviene in modo
-        transazionale su un file temporaneo, poi spostato o copiato nella
-        destinazione finale ed impostato con permessi 600.
-      - Input: $1 (nome identificativo del provider), $2 (stringa dell'URL).
-      - Output: Ritorna stato 0 in caso di successo, 1 se falliscono le
-        operazioni su file-system.
-      - Side-effects: Creazione directory, file temporanei, scrittura atomica,
-        modifica permessi del file.
-      - Dipendenze: canonical_provider_url_file, dirname, safe_mkdir, mktemp,
-        printf, mv, cp, rm, chmod.
+        provider nel file /provider-url, eseguendo la scrittura in modo
+        transazionale su file temporaneo spostato poi con permessi 600.
+      - Input: $1 (nome provider), $2 (URL API).
+      - Output: Ritorna stato 0 se completato con successo, 1 se fallisce.
+      - Side-effects: Creazione file temporanei, scrittura atomica, modifica
+        permessi.
+      - Dipendenze: Funzioni canonical_provider_url_file, safe_mkdir, _tmpf,
+        log_error, comandi dirname, printf, mv, cp, rm, chmod.
+
   - resolve_provider_url
+
       - Scopo: Identifica ed esporta l'URL di connessione per le API. Controlla
-        prioritariamente se l'utente ha impostato variabili d'ambiente esplicite
-        (BASH4LLM_API_URL o BASH4LLM_PROVIDER_URL). In assenza di esse, legge la
-        prima riga del file canonico dell'URL del provider. Se il file non
-        esiste e il provider attivo è "groq", esporta l'endpoint nativo di
-        default di Groq.
-      - Input: $1 (nome provider, default $PROVIDER).
-      - Output: Ritorna stato 0 se l'URL viene risolto ed esportato nella
-        variabile globale $BASH4LLM_PROVIDER_URL, 1 in caso di fallimento.
-      - Side-effects: Esporta la variabile d'ambiente $BASH4LLM_PROVIDER_URL.
-      - Dipendenze: canonical_provider_url_file, sed, awk, export.
+        prioritariamente BASH4LLM_API_URL o BASH4LLM_PROVIDER_URL. In assenza di
+        esse, legge la prima riga del file canonico dell'URL del provider. Se
+        assente e il provider è "groq", adotta l'endpoint predefinito.
+      - Input: $1 (opzionale: nome provider, default $PROVIDER).
+      - Output: Ritorna stato 0 ed esporta $BASH4LLM_PROVIDER_URL, 1 in caso di
+        fallimento.
+      - Side-effects: Esporta la variabile d'ambiente BASH4LLM_PROVIDER_URL.
+      - Dipendenze: Funzione canonical_provider_url_file, comandi sed, awk,
+        export.
+
   - provider_api_env_var_name
+
       - Scopo: Calcola il nome standardizzato della variabile d'ambiente
-        deputata a contenere la chiave API di un determinato provider (es:
-        "gemini" -> "GEMINI_API_KEY") sfruttando l'espansione nativa della
-        shell.
+        deputata a contenere la chiave API di un provider (es: "groq" ->
+        "GROQ_API_KEY").
       - Input: $1 (nome del provider).
-      - Output: Restituisce su standard output il nome normalizzato (tutto in
-        maiuscolo, convertendo i caratteri speciali non alfanumerici in trattini
-        bassi _ e annettendo il suffisso _API_KEY).
-      - Dipendenze: printf.
+      - Output: Restituisce su standard output il nome normalizzato maiuscolo
+        con suffisso _API_KEY.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando printf.
+
+  - print_persistence_reminder
+
+      - Scopo: Stampa un avviso di sicurezza su stderr con istruzioni per
+        rendere persistente una chiave API inserita manualmente durante la
+        sessione.
+      - Input: Nessuno (analizza BASH4LLM_KEY_MANUAL_PROMPT).
+      - Output: Stampa avviso formattato su stderr e azzera il flag
+        BASH4LLM_KEY_MANUAL_PROMPT.
+      - Side-effects: Modifica della variabile BASH4LLM_KEY_MANUAL_PROMPT ed
+        esportazione.
+      - Dipendenze: Funzione provider_api_env_var_name, comandi printf, export.
+
   - is_valid_json_string
+
       - Scopo: Valida se la stringa in input contiene una struttura
         sintatticamente corretta in formato JSON.
       - Input: $1 (stringa da analizzare).
       - Output: Ritorna stato 0 se il JSON è valido, 1 altrimenti.
-      - Dipendenze: printf, jq.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi printf, jq.
+
   - b64encode
-      - Scopo: Esegue la codifica di flussi in formato Base64 leggendo da
-        standard input ed unificando l'output su un'unica riga priva di
-        caratteri di a capo, integrando openssl enc.
-      - Input: Flusso dati in ingresso su stdin.
-      - Output: Stringa codificata inviata a stdout. Ritorna stato 0 o 1 in caso
-        di errore.
-      - Dipendenze: openssl, base64, tr.
+
+      - Scopo: Esegue la codifica in formato Base64 di flussi letti da standard
+        input raggruppando l'output su riga singola senza ritorni a capo,
+        integrando openssl enc o base64.
+      - Input: Flusso dati da stdin.
+      - Output: Stringa codificata su stdout.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi openssl, base64, tr.
+
   - b64decode
-      - Scopo: Esegue la decodifica in formato Base64 di flussi di dati letti da
-        standard input, avvalendosi dei flag ottimali rilevati all'avvio e
-        correggendo le anomalie di troncamento per LibreSSL/BSD tramite folding
-        righe a 64 caratteri via awk.
-      - Input: Stringa codificata Base64 da stdin.
+
+      - Scopo: Esegue la decodifica Base64 di flussi letti da standard input
+        avvalendosi dei flag ottimali rilevati all'avvio e applicando il folding
+        a 64 caratteri via awk per correggere bug LibreSSL/macOS.
+      - Input: Flusso codificato Base64 da stdin.
       - Output: Flusso decodificato su stdout.
-      - Dipendenze: awk, openssl, base64 (configurato con $B64_DECODE_OPT).
-  - is_truthy
-      - Scopo: Valuta se il parametro testuale in ingresso rappresenta un valore
-        di veridicità affermativo logico.
-      - Input: $1 (stringa da valutare).
-      - Output: Ritorna stato 0 (vero) se il parametro corrisponde a 1, true,
-        TRUE, True, yes, YES o Yes. In tutti gli altri casi ritorna 1 (falso).
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi awk, openssl, base64.
+
   - file_size
-      - Scopo: Restituisce la dimensione esatta in byte di un file in modo
-        compatibile sia con sistemi Linux sia macOS/BSD sfruttando i flag di
-        piattaforma.
+
+      - Scopo: Restituisce la dimensione esatta in byte di un file gestendo in
+        modo portabile i flag di stat tra Linux e macOS/BSD.
       - Input: $1 (percorso del file).
-      - Output: Restituisce su standard output il valore numerico dei byte (o 0
-        se il file è mancante o vuoto).
-      - Dipendenze: stat, printf.
+      - Output: Valore numerico in byte stampato su standard output (0 se
+        assente o non valido).
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando stat.
+
   - is_valid_json_file
-      - Scopo: Valida se the file indicato esiste, contiene dati ed è
-        strutturato come JSON conforme.
+
+      - Scopo: Valida se il file indicato esiste, non è vuoto ed è strutturato
+        come JSON valido.
       - Input: $1 (percorso del file).
       - Output: Ritorna stato 0 se valido, 1 altrimenti.
-      - Dipendenze: jq.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando jq.
+
   - stage_b64
-      - Scopo: Acquisisce un payload testuale (da file o standard input),
-        verifica che la sua dimensione non ecceda la soglia massima consentita
-        ($MAX_STAGE_BYTES, default 10MB), ne esegue in sicurezza la codifica
-        Base64 scrivendola in un file temporaneo protetto, e infine sposta in
-        modo atomico (tramite lock della directory) il file temporaneo nel
-        percorso finale di staging con permessi 600.
-      - Input: $1 (opzionale: percorso del file payload di origine; se omesso
-        legge da stdin), $2 (percorso del file di destinazione finale codificato
-        in Base64). Se viene passato un singolo argomento, questo viene trattato
-        come destinazione e l'input viene letto da stdin.
-      - Output: Ritorna stato 0 se il processo transazionale si conclude
-        correttamente, 1 in caso di fallimento o di superamento dei limiti di
-        dimensione.
-      - Side-effects: Scrittura e cancellazione di file temporanei intermedi sul
-        disco, modifica permessi, acquisizione concorrente di lock.
-      - Dipendenze: dirname, safe_mkdir, _tmpf, cat, rm, file_size, base64, tr,
-        chmod, lock_exec, mv, log_error, log_info.
+
+      - Scopo: Acquisisce un payload testuale (da file o stdin), verifica che la
+        dimensione non superi $MAX_STAGE_BYTES (default 10MB), lo codifica in
+        Base64 in un temporaneo protetto e lo sposta atomicamente nella
+        destinazione finale sotto lock della directory.
+      - Input: $1 (opzionale: file sorgente), $2 (file destinazione Base64).
+      - Output: Ritorna stato 0 in caso di successo, 1 in caso di errore o
+        superamento dimensioni.
+      - Side-effects: Allocazione e rimozione file temporanei, codifica Base64,
+        lock della directory.
+      - Dipendenze: Funzioni safe_mkdir, _tmpf, file_size, lock_exec, log_error,
+        log_info, comandi dirname, cat, rm, base64, tr, chmod, mv.
+
   - lock_exec
+
       - Scopo: Esegue un comando arbitrario garantendo mutua esclusione e
-        protezione concorrente su file-system tramite lock gestito con flock o
-        tramite directory lock provvisorio in base a piattaforma, umask ed mtime
-        orfani, bloccando attacchi basati su symlink. Se non riesce ad acquisire
-        il lock entro il limite di tempo impostato, fallisce in modo controllato
-        senza eseguire il comando.
-      - Input: $1 (percorso del file di lock), $2 (valore numerico del timeout
-        in secondi, default 10), seguiti dal delimitatore -- e dal comando con i
-        relativi argomenti da avviare.
+        protezione concorrente tramite flock binario o mediante meccanismo
+        atomico di directory lock (lockdir) tollerante a processi orfani tramite
+        controllo PID e timestamp mtime.
+      - Input: $1 (percorso file di lock), $2 (timeout in secondi, default 10),
+        seguiti da -- e dal comando con argomenti.
       - Output: Restituisce lo stato di uscita del comando eseguito, 124 in caso
-        di scadenza del timeout senza acquisizione del lock, o 15 in caso di
-        symlink rilevati.
-      - Side-effects: Creazione directory del lock, blocco concorrente del
-        file-system, rimozione lockdir orfana per mtime.
-      - Dipendenze: dirname, safe_mkdir, flock, printf, mkdir, rmdir, log_error.
+        di timeout, o 15 in caso di symlink rilevati.
+      - Side-effects: Creazione directory lock, scrittura metadati owner PID/TS,
+        esecuzione sotto-shell.
+      - Dipendenze: Funzioni safe_mkdir, log_error, comandi dirname, flock,
+        mkdir, rm, rmdir, kill, date, sleep.
+
   - _mktemp_in_dir
+
       - Scopo: Crea in sicurezza un file temporaneo univoco all'interno della
         cartella specificata.
-      - Input: $1 (cartella radice), $2 (opzionale: prefisso del nome, default
-        "groq").
-      - Output: Restituisce su standard output il percorso completo del file
-        temporaneo creato, altrimenti restituisce il codice BASH4LLM_ERR_TMP se
-        fallisce.
-      - Dipendenze: _tmpf, log_error.
+      - Input: $1 (cartella base), $2 (opzionale: prefisso nome).
+      - Output: Percorso del file temporaneo su standard output o errore
+        BASH4LLM_ERR_TMP.
+      - Side-effects: Creazione file temporaneo.
+      - Dipendenze: Funzione _tmpf, log_error.
+
   - show_payload_head
-      - Scopo: Estrae e visualizza a schermo le prime righe del file di payload
-        inviato alle API a scopo diagnostico di debug. Se il file di origine
-        risulta codificato in Base64 (estensione .b64), esegue la decodifica
-        istantanea prima dell'estrazione delle righe.
-      - Input: $1 (percorso file payload, default $PAYLOAD), $2 (numero massimo
-        di righe, default 200).
-      - Output: Stampa le righe decodificate su stderr.
-      - Side-effects: Lettura, eventuale decodifica di flussi.
-      - Dipendenze: printf, grep, b64decode, head.
+
+      - Scopo: Estrae e visualizza su stderr le prime righe del file di payload
+        inviato alle API per ispezione diagnostica di debug. Se il file è Base64
+        (.b64), esegue la decodifica al volo.
+      - Input: $1 (percorso payload, default $PAYLOAD), $2 (righe max,
+        default 200).
+      - Output: Righe stampate su stderr.
+      - Side-effects: Lettura e decodifica temporanea.
+      - Dipendenze: Funzione b64decode, comandi head, printf.
+
   - atomic_write
+
       - Scopo: Scrive o sovrascrive un file in modo atomico, transazionale e
-        sicuro. Riceve un flusso di dati da stdin, lo scrive in un file
-        temporaneo posizionato all'interno della stessa directory di
-        destinazione, imposta i permessi di sicurezza a 600, acquisisce un lock
-        esclusivo di protezione concorrente (se lock_exec è disponibile) e
-        sposta in modo definitivo il file temporaneo sovrascrivendo l'originale.
-        Questa sequenza impedisce letture di file parziali o corrotti in caso di
-        interruzioni impreviste o accessi paralleli.
-      - Input: $1 (percorso del file di destinazione definitivo), $2 (timeout
-        del lock, default 10).
-      - Output: Ritorna stato 0 se completato, altrimenti restituisce il
-        relativo codice di errore di fallimento o di lock.
-      - Side-effects: Creazione directory genitrice se mancante via safe_mkdir,
-        allocazione e rimozione di file temporanei intermedi, lock,
-        sovrascrittura, alterazione permessi.
-      - Dipendenze: dirname, safe_mkdir, mktemp, cat, rm, chmod, lock_exec, mv,
-        log_error.
+        sicuro. Riceve dati da stdin, li scrive in un file temporaneo con
+        permessi 600, acquisisce lock esclusivo tramite lock_exec e sposta
+        atomicamente il file sulla destinazione finale.
+      - Input: $1 (file destinazione), $2 (opzionale: timeout lock, default 10).
+      - Output: Ritorna stato 0 se completato, codice d'errore altrimenti.
+      - Side-effects: Creazione directory via safe_mkdir, allocazione e
+        spostamento file temporanei, lock concorrente.
+      - Dipendenze: Funzioni safe_mkdir, lock_exec, log_error, comandi dirname,
+        mktemp, cat, rm, chmod, mv.
+
   - extract_text_from_resp
-      - Scopo: Estrae in modo flessibile e resiliente il testo di risposta
-        principale dai JSON restituiti dalle API del provider LLM. Esegue una
-        copia isolata del file di risposta, verifica che il file sia un JSON
-        strutturato valido e non sia marcato come file diagnostico. Tenta
-        l'estrazione scansionando diverse varianti di percorsi e formati
-        standardizzati: strutture chat completions OpenAI (delta o messaggi in
-        .choices[].message.content o .choices[].delta.content), formati di
-        completamento testuale piatti (.choices[].text), formati personalizzati
-        (.output_text o .data[].text) o, in ultima istanza, estrae e concatena
-        ricorsivamente tutti i valori scalari di tipo stringa presenti nel JSON.
-      - Input: Nessuno (analizza il file puntato da $RESP).
-      - Output: Restituisce su standard output il testo decodificato se
-        individuato (ritornando stato 0). Ritorna 1 se non viene trovato
-        testo, 2 se il file analizzato contiene dati diagnostici o è corrotto.
-      - Side-effects: Allocazione e rimozione di file di copia temporanei sul
-        disco per isolamento.
-      - Dipendenze: _tmpf, cp, is_valid_json_file, jq, log_warn, log_error, rm.
-  - ensure_run_tmpdir
-      - Scopo: Prepara, isola ed esporta l'ambiente operativo temporaneo
-        ($RUN_TMPDIR) dedicato in modo esclusivo alla singola istanza o
-        sotto-shell dello script in esecuzione, posizionandolo all'interno della
-        directory temporanea principale sicura
-        BASH4LLM_TMPDIR. Inizializza i file di payload, risposta e log di errore associati a questa istanza (PAYLOAD,
-        $RESP, $ERRF) forzando permessi di massima sicurezza (700 per la
-        directory via safe_mkdir, 600 per i file). Registra una trap di uscita
-        (EXIT, INT, TERM) incaricata della pulizia ricorsiva automatica dei dati
-        temporanei al termine dello script tramite la chiamata
-        cleanup_run_tmp_on_exit.
-      - Input: $1 (opzionale: --print per stampare esclusivamente il percorso su
-        stdout ed uscire).
-      - Output: Ritorna stato 0 ed esporta le variabili $RUN_TMPDIR, $PAYLOAD,
-        $RESP e $ERRF. Ritorna il codice BASH4LLM_ERR_TMP se fallisce.
-      - Side-effects: Creazione fisica di cartelle e file di testo vuoti,
-        modifica permessi di accesso, impostazione di trap di sistema.
-      - Dipendenze: safe_mkdir, chmod, _tmpf, rm, trap, log_warn, log_error,
-        printf.
+
+      - Scopo: Estrae in modo resiliente il testo di risposta dai JSON
+        restituiti dalle API LLM. Copia la risposta per isolarla, verifica la
+        validità JSON e scansiona formati Chat Completions OpenAI, completamenti
+        piatti, testi personalizzati o valori scalari.
+      - Input: Nessuno (analizza il file $RESP).
+      - Output: Testo estratto stampato su standard output (ritorna 0), 1 se
+        nessun testo viene trovato, 2 se il file è diagnostico.
+      - Side-effects: Copia di lavoro temporanea in $RUN_TMPDIR.
+      - Dipendenze: Funzioni _tmpf, is_valid_json_file, log_error, log_warn,
+        comandi cp, jq, cat.
+
   - cleanup_run_tmp_on_exit
-      - Scopo: Esegue la rimozione fisica della directory temporanea
-        $RUN_TMPDIR, a patto che risieda all'interno della directory temporanea
-        autorizzata dello script. Ripristina inoltre lo stato del terminale
-        (stty echo) e si assicura del rilascio dei file lock del thread attivo.
-      - Input: Nessuno.
-      - Output: Rimozione dei file dal disco, rilascio lock e ripristino echo
-        del terminale.
-      - Dipendenze: stty, release_thread_lock, rm, log_info.
+
+      - Scopo: Handler di uscita globale per ripristinare le impostazioni del
+        terminale (stty echo), rilasciare lock del thread attivo e cancellare la
+        directory temporanea dell'istanza $RUN_TMPDIR se posizionata in un
+        perimetro autorizzato.
+      - Input: Nessuno (cattura il codice d'uscita $?).
+      - Output: Ripristino terminale e pulizia disco.
+      - Side-effects: Rimozione directory temporanea, rilascio lock file
+        descriptor, ripristino stty.
+      - Dipendenze: Funzione release_thread_lock, comandi stty, rm.
+
+  - ensure_run_tmpdir
+
+      - Scopo: Prepara, isola ed esporta l'ambiente temporaneo runtime
+        (RUN_TMPDIR) dedicato alla singola istanza dello script sotto `BASH4LLM_TMPDIR.
+        Inizializza i file PAYLOAD`, `RESP, $ERRFcon permessi 600 e imposta la
+        trap di pulizia automaticacleanup_run_tmp_on_exit`.
+      - Input: $1 (opzionale: --print per stampare solo il percorso).
+      - Output: Esporta RUN_TMPDIR, PAYLOAD, RESP, ERRF. Ritorna 0 o
+        BASH4LLM_ERR_TMP.
+      - Side-effects: Creazione directory e file di stato con permessi
+        restrittivi, registrazione trap.
+      - Dipendenze: Funzioni safe_mkdir, _tmpf, log_error, log_warn, comandi
+        chmod, trap, printf.
+
   - b64_atomic_write
-      - Scopo: Esegue la codifica Base64 del flusso di dati letto da standard
-        input e lo scrive nel file di destinazione in modo transazionale e
-        atomico protetto da lock, applicandovi permessi 600.
-      - Input: $1 (file di destinazione), $2 (timeout del lock, default 10).
-      - Output: Ritorna stato 0 o il codice di errore BASH4LLM_ERR_TMP.
-      - Side-effects: Creazione directory, allocazione file temporaneo,
-        scrittura e spostamento atomico.
-      - Dipendenze: dirname, mkdir, _tmpf, b64encode, chmod, lock_exec, mv, rm,
-        log_error.
+
+      - Scopo: Esegue la codifica Base64 del flusso letto da stdin e lo scrive
+        nel file di destinazione in modo atomico e protetto da lock con
+        permessi 600.
+      - Input: $1 (file destinazione), $2 (timeout lock, default 10).
+      - Output: Ritorna stato 0 o codice d'errore BASH4LLM_ERR_TMP.
+      - Side-effects: Allocazione file temporaneo, scrittura atomica via
+        atomic_write.
+      - Dipendenze: Funzioni _tmpf, b64encode, atomic_write, log_error, comandi
+        rm.
+
   - b64_atomic_read
-      - Scopo: Legge un file cifrato o codificato in Base64 in modo sicuro, ne
-        esegue la decodifica al volo e ne restituisce il contenuto decodificato.
-      - Input: $1 (percorso del file codificato Base64).
-      - Output: Restituisce il contenuto decodificato su standard output.
-      - Dipendenze: b64decode.
+
+      - Scopo: Legge un file codificato in Base64 e ne restituisce il contenuto
+        decodificato su standard output.
+      - Input: $1 (percorso file Base64).
+      - Output: Flusso decodificato stampato su stdout.
+      - Side-effects: Lettura file.
+      - Dipendenze: Funzione b64decode.
+
   - ui_state_write
-      - Scopo: Scrive in modo atomico lo stato corrente dell'interfaccia utente
-        (frammenti di informazioni e metadati di runtime) in un file JSON
-        dedicato all'interno della cartella degli stati dell'interfaccia
-        (posizionata sotto $BASH4LLM_CONFIG_DIR/ui_state o sotto $RUN_TMPDIR),
-        blindando i permessi a 600 via safe_mkdir parent.
-      - Input: $1 (nome del file di stato), $2 (stringa del contenuto JSON).
-      - Output: File di stato creato o aggiornato. Ritorna stato 0 se
-        completato, 1 se si verificano errori.
-      - Side-effects: Creazione della directory degli stati se non presente,
-        scrittura atomica con lock concorrente.
-      - Dipendenze: safe_mkdir, chmod, atomic_write, wc, log_info, log_warn.
+
+      - Scopo: Scrive in modo atomico uno stato dell'interfaccia utente
+        (frammenti o metadati JSON) in un file sotto la directory ui_state/
+        applicando permessi 600.
+      - Input: $1 (nome file di stato), $2 (contenuto JSON).
+      - Output: Ritorna stato 0 se completato, 1 se fallisce.
+      - Side-effects: Creazione directory via safe_mkdir, scrittura atomica via
+        atomic_write.
+      - Dipendenze: Funzioni safe_mkdir, atomic_write, log_error, log_warn,
+        log_info, comandi printf, chmod, wc.
+
   - run_static_config_check
-      - Scopo: Linter di conformità statica della configurazione. Convalida che
-        il file config non sia scrivibile da terzi (group/world writable)
-        lanciando errore 17 in caso di violazione, ed esegue l'analisi
-        sintattica dei parametri locali contro typo o definizioni scorrette
-        tramite le definizioni in core-notes.sh.
+
+      - Scopo: Linter statico per la verifica di sicurezza e conformità della
+        configurazione. Convalida che il file config non sia scrivibile da terzi
+        (group/world writable) lanciando errore BASH4LLM_ERR_SEC (17) in caso di
+        violazione, ed analizza le chiavi impostate confrontandole in modalità
+        zero-eval con le definizioni in core-notes.sh.
       - Input: Nessuno.
-      - Output: Stato 0 o esce con codice 17 (BASH4LLM_ERR_SEC).
-      - Side-effects: Analisi permessi file e parsing variabili d'ambiente.
-      - Dipendenze: stat, awk, sed, tr, grep, printf.
+      - Output: Stampa esito e avvertimenti su stdout/stderr. Esce con stato 0
+        o 17.
+      - Side-effects: Analisi permessi file e parsing del file di
+        configurazione.
+      - Dipendenze: Funzione _extract_notes_section, comandi stat, awk, sed, tr,
+        grep, printf.
+
   - explain_error_code
-      - Scopo: Associa un codice d'errore numerico o un alias alla sua
-        definizione ufficiale e alle indicazioni operative di risoluzione
-        prelevate in modalità zero-eval da core-notes.sh.
+
+      - Scopo: Associa un codice numerico d'errore o alias alla sua definizione
+        formale e alle indicazioni operative estraendole in modalità zero-eval
+        da core-notes.sh.
       - Input: $1 (codice d'errore o alias).
       - Output: Spiegazione strutturata stampata su stderr.
-      - Dipendenze: printf, _extract_notes_section, grep.
+      - Side-effects: Lettura della documentazione.
+      - Dipendenze: Funzione _extract_notes_section, comandi printf, grep.
+
   - load_provider_module
-      - Scopo: Carica ed importa in modo sicuro e isolato i moduli dei provider
-        esterni (plugin). Esegue rigidi controlli di sicurezza: convalida che la
-        directory dei moduli e il file non siano scrivibili da terzi
-        (group/world writable, salvo WSL o IGNORE_SEC), verifica che il file
-        appartenga all'utente corrente, esegue un dry-run di analisi sintattica
-        (bash -n) e calcola la firma crittografica del file prima e dopo
-        l'inclusione per prevenire attacchi di tipo "Race Condition" o "File
-        Tampering". Per isolare l'importazione, esegue il caricamento
-        provvisorio del modulo all'interno di una sotto-shell, cattura le
-        funzioni esportate e verifica la conformità dell'interfaccia
-        accertandosi che le due routine obbligatorie richieste (buildpayload_ e
-        call_api_) siano effettivamente dcliarate; in caso positivo, importa le
-        funzioni nell'ambiente di esecuzione principale dello script,
-        memorizzandone le funzionalità nel file di stato
-        provider_capabilities.json.
-      - Input: $1 (nome identificativo del provider).
-      - Output: Ritorna stato 0 se il caricamento ed i controlli di sicurezza si
-        concludono correttamente (o se si tratta del provider predefinito
-        integrato "groq", che non richiede file esterni). Ritorna 1 in caso di
-        violazioni di sicurezza, sintassi corrotta, o interfacce incomplete.
-      - Side-effects: Scrittura log di errore/sicurezza, generazione file
-        temporanei di dump, source di codice esterno via ., disabilitazione e
-        ripristino temporaneo dell'opzione shell nounset (set -u), scrittura
-        dello stato UI delle capacità.
-      - Dipendenze: safe_mkdir, _is_world_writable, _get_owner,
-        _get_perm_string, getfile_signature, bash, _mktemp_in_dir, awk, sort,
-        comm, grep, type, declare, rm, ui_state_write, jq.
+
+      - Scopo: Carica ed importa in modo sicuro e isolato i moduli provider
+        esterni (providers/<provider>.sh). Effettua controlli di permessi,
+        proprietà utente, sintassi (bash -n), firma dell'integrità crittografica
+        e convalida in sotto-shell isolata della presenza delle funzioni
+        obbligatorie (buildpayload_<p> e call_api_<p>). Se i controlli sono
+        superati, importa le funzioni nel runtime principale e registra le
+        capacità del provider in provider_capabilities.json.
+      - Input: $1 (nome del provider).
+      - Output: Ritorna stato 0 se il caricamento ha successo (o per il provider
+        integrato "groq"), 1 in caso di errori di sicurezza, sintassi o
+        interfaccia.
+      - Side-effects: Scrittura log, allocazione dump temporanei,
+        disabilitazione e ripristino temporaneo di set -u, scrittura stato UI.
+      - Dipendenze: Funzioni safe_mkdir, _is_world_writable, _get_owner,
+        _get_perm_string, getfile_signature, verify_module_integrity,
+        _mktemp_in_dir, sync_models_file_path, ui_state_write, log_error,
+        log_warn, comandi bash, awk, sort, comm, grep, type, jq, rm.
+
   - _detect_base64_opts
-      - Scopo: Rileva a runtime le opzioni compatibili con l'eseguibile base64
-        locale per la formattazione a riga singola (senza a capo) e per la
-        decodifica, differenziando in modo sicuro tra distribuzioni GNU/Linux e
-        macOS/BSD. Esporta i flag rilevati in variabili globali.
+
+      - Scopo: Rileva a runtime le opzioni ottimali per l'eseguibile base64
+        locale per la formattazione riga singola ed il decoding, gestendo le
+        differenze tra Linux, macOS e BSD.
       - Input: Nessuno.
-      - Output: Esporta le variabili $B64_WRAP_OPT (es. -w0 o vuoto) e
-        $B64_DECODE_OPT (es. -d o -D).
-      - Dipendenze: printf, base64, grep.
+      - Output: Esporta le variabili B64_WRAP_OPT e B64_DECODE_OPT.
+      - Side-effects: Esportazione variabili d'ambiente globali.
+      - Dipendenze: Comandi base64, grep, printf, export.
+
   - list_files_sorted_by_mtime
-      - Scopo: Elenca tutti i file regolari all'interno di una directory
-        ordinandoli in ordine temporale crescente di ultima modifica (dal più
-        vecchio al più recente), gestendo in modo portabile le differenze di
-        output di stat tra Linux e Darwin/macOS.
-      - Input: $1 (directory da analizzare).
-      - Output: Lista di coppie formato timestamp|percorso_file separate da
-        newline su stdout.
-      - Dipendenze: find, stat, sort.
+
+      - Scopo: Elenca i file regolari di una directory ordinandoli per data di
+        ultima modifica (mtime) crescente in modo portabile tra Linux e
+        macOS/BSD.
+      - Input: $1 (directory).
+      - Output: Elenco coppie timestamp|percorso inviato su stdout.
+      - Side-effects: Scansione file-system.
+      - Dipendenze: Comandi find, stat, sort, printf.
+
   - tac_fallback
-      - Scopo: Esegue l'inversione dell'ordine delle righe di un file
-        (dall'ultima riga alla prima riga), fornendo una implementazione
-        compatibile basata su awk qualora l'utilità di sistema tac non sia
-        disponibile sul sistema operativo ospite.
+
+      - Scopo: Inverte l'ordine delle righe di un file (dall'ultima alla prima),
+        fornendo un'implementazione di fallback basata su awk qualora il comando
+        tac non sia installato nel sistema.
       - Input: $1 (percorso file).
-      - Output: Righe del file invertite su stdout.
-      - Dipendenze: command, tac, awk.
+      - Output: Righe invertite inviate su stdout.
+      - Side-effects: Lettura file.
+      - Dipendenze: Comandi command, tac, awk.
+
   - _file_mtime
-      - Scopo: Restituisce l'ora dell'ultima modifica di un file (timestamp
-        Unix) in modo portabile tra sistemi basati su Linux e Darwin/macOS.
+
+      - Scopo: Restituisce l'ora di ultima modifica di un file (timestamp Unix)
+        in modo portabile tra Linux e macOS/BSD.
       - Input: $1 (percorso file).
-      - Output: Timestamp Unix stampato su stdout (0 se il file non esiste).
-      - Dipendenze: stat.
+      - Output: Timestamp Unix stampato su stdout (0 se inesistente).
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando stat.
+
   - jq_safe
-      - Scopo: Esegue un filtro di validazione o estrazione sicuro con jq su un
-        file JSON. Se l'espressione di filtro fallisce o se l'input non è
-        valido, scrive i dettagli diagnostici dell'errore nel file $ERRF per
-        l'ispezione dello sviluppatore senza interrompere bruscamente
-        l'esecuzione.
-      - Input: $1 (filtro jq), $2 (file JSON da elaborare).
-      - Output: Ritorna stato 0 se il filtro corrisponde con successo, codice
-        d'exit di jq altrimenti.
-      - Dipendenze: jq.
+
+      - Scopo: Esegue un filtro jq su un file JSON. In caso di errore di parsing
+        o valutazione, scrive i dettagli diagnostici nel file log $ERRF senza
+        interrompere bruscamente lo script.
+      - Input: $1 (filtro jq), $2 (file JSON).
+      - Output: Ritorna lo stato di uscita di jq.
+      - Side-effects: Eventuale scrittura log d'errore su $ERRF.
+      - Dipendenze: Comando jq.
 
 BLOCCHI DI CODICE
 
-  - PRECORE_BOOT_SETUP_SHELL
-      - Fase: Inizializzazione primaria assoluta dello script.
-      - Azione: Imposta i parametri operativi restrittivi della shell Bash (set
-        -euo pipefail) solo se eseguito direttamente per evitare shell
-        pollution. Disabilita core dumps (ulimit -c 0), esporta le proprietà di
-        identità del software (v2.5.0 e data 18 Luglio 2026).
-  - PRECORE_BOOT_ENVIRONMENT_AUTODETECTION
-      - Fase: Rilevamento piattaforma.
-      - Azione: Rileva dinamicamente la piattaforma host (Android, macOS, WSL,
-        Cygwin, BSD, Linux) ed esporta globalmente i corrispondenti flag
-        booleani BASH4LLM_PLAT_... Inizializza l'associativa
-        BASH4LLM_MODEL_CACHE.
-  - PRECORE_BOOT_SETUP_ENV_CMDS
-      - Fase: Validazione dei requisiti software di sistema.
-      - Azione: Esegue una scansione di sistema per accertarsi che tutte le
-        utilità essenziali richieste siano installate nel percorso di sistema
-        (escluso flock per portabilità macOS/BSD/Termux, includendo comm). Se
-        una o più utilità risultano assenti, emette un messaggio di errore
-        fatale su stderr ed esce con stato 1.
-  - PRECORE_BOOT_DIR_PATH
-      - Fase: Determinazione della directory di runtime.
-      - Azione: Risolve il percorso radice dell'installazione del software
-        ($BASH4LLM_DIR). Adotta in ordine di priorità la cartella definita in
-        $BASH4LLM_DIR, in alternativa compila il percorso tramite $BASH4LLM_ROOT
-        (derivandone la directory bash4llm.d), o calcola la directory
-        predefinita puntando a $SCRIPTDIR/bash4llm.d. Crea transazionalmente e
-        in sicurezza la gerarchia di directory operative tramite safe_mkdir
-        (chmod 700) verificando l'assenza di symlink ed esporta THREAD_DIR.
-  - PRECORE_BOOT_CRYPTOGRAPHIC_VAULT_LOAD
-      - Fase: Integrazione OpenSSL Key Vault.
-      - Azione: Se BASH4LLM_VAULT_ENABLED=1 e openssl-helper.sh presente (e non
-        symlink), esegue il caricamento protetto del modulo ed esporta
-        BASH4LLM_OPENSSL_ACTIVE=1.
-  - PRECORE_BOOT_CLI_HELPERS
-      - Fase: Intercettazione opzioni diagnostiche a riga di comando.
-      - Azione: Cattura ed esegue immediatamente diagnostic offline utili
-        (--check-config, --explain-error , ispezioni dei percorsi) terminando lo
-        script prima del boot complessivo. Imposta umask 077.
-  - PRECORE_BOOT_DETECT_B64_OPTS
-      - Fase: Configurazione runtime delle dipendenze di codifica.
-      - Azione: Invoca la funzione _detect_base64_opts per configurare le
-        opzioni corrette di Base64 in base all'architettura di sistema ospite.
+  - PRECORE_BOOT_SETUP_SHELL: Imposta i parametri operativi restrittivi della
+    shell (set -euo pipefail) solo se eseguito direttamente. Pulisce le
+    variabili d'ambiente ad alto rischio (BASH_ENV, ENV, CDPATH, GLOBIGNORE),
+    azzera il limite coredump (ulimit -c 0) e definisce le informazioni
+    ufficiali di versione (v2.8.0, data 25 Luglio 2026).
+  - PRECORE_BOOT_ENVIRONMENT_AUTODETECTION: Rileva dinamicamente la piattaforma
+    host (Android, macOS, WSL, Cygwin, BSD, Linux) ed esporta globalmente i
+    corrispondenti flag booleani BASH4LLM_PLAT_*. Inizializza l'array
+    associativo della cache dei modelli.
+  - PRECORE_BOOT_SETUP_ENV_CMDS: Esegue la verifica rigorosa di presenza nel
+    PATH di tutte le utilità di sistema essenziali (bash, jq, curl, mktemp,
+    stat, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date,
+    mv, chmod, cp, rm, printf, comm). In caso di mancanza di uno o più binari,
+    emette un errore fatale su stderr ed esce con stato 15.
+  - PRECORE_BOOT_EARLY_UTILITIES: Risolve la directory dello script, definisce
+    le routine helper primarie e configura gli stili ANSI ed i colori di
+    terminale nel rispetto dello standard NO_COLOR e del controllo TERM=dumb.
+  - PRECORE_BOOT_SECURITY: Registra e definisce le routine di sicurezza e
+    gestione credenziali (read_secure_input, validate_file_input,
+    validate_path_security, _core_sha256, verify_module_integrity,
+    ensure_api_key_for_provider, enforce_network_policy).
+  - PRECORE_BOOT_DIR_PATH: Risolve e configura la gerarchia completa delle
+    directory di runtime (BASH4LLM_DIR, config, models, templates, history, tmp,
+    var/run, locks, extras). Inizializza la directory temporanea dei rate limit,
+    isola $TMPDIR e provvede all'importazione sicura del modulo OpenSSL Vault
+    (openssl-helper.sh) previa verifica dell'integrità crittografica SHA-256.
+  - PRECORE_BOOT_STORAGE_LOCKS: Configura i percorsi dei file di lock in
+    var/run/locks, definisce le routine di Base64, la scrittura atomica, il
+    lock-exec, il linter di configurazione statico e l'analizzatore spiegazione
+    codici d'errore.
+  - PRECORE_BOOT_CLI_HELPERS: Intercetta ed esegue immediatamente opzioni
+    diagnostiche ad avvio rapido (--check-config, --explain-error,
+    --print-config-dir, --print-provider-file, --print-model-file) terminando
+    l'esecuzione prima del boot completo. Imposta umask 077 e definisce la
+    funzione per il caricamento protetto dei provider esterni.
 
 2. PRECORE_RUN
 
@@ -673,21 +851,24 @@ VARIABILI
   - THREAD_CACHE_DIR: Directory destinata a contenere la cache temporanea dei
     dati e dei messaggi dei thread attivi (localizzata sotto la directory di
     configurazione utente, alla voce thread_cache/).
-  - CONTENT: Prompt testuale primario dell'utente (assegnato a CONTENT).
+  - CONTENT: Prompt testuale primario dell'utente.
   - PROVIDER: Identificatore del provider API attivo (default "groq").
-  - JSON_INPUT: Input strutturato in formato JSON fornito dall'utente
-    (sovrascrive o definisce i messaggi).
-  - THREAD_ID: Identificatore alfanumerico del thread di chat corrente
-    (utilizzato per raggruppare e persistere il contesto dei messaggi in
-    interazioni multi-turno).
+  - JSON_INPUT: Input strutturato in formato JSON fornito dall'utente per
+    definire direttamente i messaggi o le proprietà della richiesta.
+  - THREAD_ID: Identificatore alfanumerico del thread di chat corrente,
+    trasformato nell'hash anonimizzato SAFE_THREAD_ID per la persistenza del
+    contesto multi-turno.
+  - SAFE_THREAD_ID: Identificatore anonimizzato crittograficamente in memoria
+    (digest esadecimale) per garantire che identificativi o PII dell'utente non
+    vengano mai scritti in chiaro sul disco.
   - THREAD_WINDOW: Numero massimo di messaggi storici da estrarre e accodare dal
-    log di thread per comporre la finestra di contesto della chat.
+    log NDJSON del thread per comporre la finestra di contesto della chat.
   - TEMPLATE: Nome identificativo del file di template da applicare per
     formattare o arricchire il prompt dell'utente prima dell'invio.
   - BATCH_FILE: Percorso di un file contenente una serie ordinata di prompt (uno
-    per riga) da elaborare in sequenza.
+    per riga) da elaborare in sequenza batch.
   - CHAT_MODE: Flag booleano (valore 1 o 0, default 0) che abilita l'interfaccia
-    interattiva di chat multi-turno da terminale.
+    interattiva TUI REPL da terminale.
   - SET_DEFAULT_MODEL: Nome del modello da memorizzare e configurare come scelta
     predefinita persistente per il provider attivo.
   - REFRESH_MODELS: Flag booleano (valore 1 o 0, default 0) per forzare
@@ -696,17 +877,15 @@ VARIABILI
   - LIST_MODELS: Flag booleano (valore 1 o 0, default 0) per visualizzare a
     schermo l'elenco dei modelli disponibili.
   - FORCE_SAVE_MODE: Regola il salvataggio dell'output testuale generato sul
-    disco (save forza il salvataggio, nosave lo disabilita, 0 adotta il
-    comportamento standard basato sulla soglia).
+    disco ("save" forza il salvataggio, "nosave" lo disabilita, 0 o vuoto adotta
+    il comportamento standard basato sulla soglia).
   - OUT_PATH: Percorso del file o della directory personalizzata in cui
     archiviare i risultati restituiti dalle API.
   - SYSTEM_PROMPT: Prompt di sistema personalizzato utilizzato per istruire o
     condizionare il comportamento e il tono del modello LLM.
-  - TEMPERATURE: Valore numerico decimale che regola la temperatura di
+  - TEMPERATURE / TURE: Valore numerico decimale che regola la temperatura di
     campionamento delle risposte delle API (eredita ${TEMPERATURE}, ${TURE} o
     adotta 1.0). Sincronizzato con TURE.
-  - TURE: Temperatura di campionamento delle risposte delle API (sincronizzato
-    con TEMPERATURE).
   - MAX_TOKENS: Limite di token generabili nella risposta (default 4096).
   - MODEL: Nome identificativo del modello LLM richiesto per l'elaborazione
     (ereditato o impostato via CLI o config).
@@ -718,37 +897,43 @@ VARIABILI
   - DRY_RUN: Flag booleano (valore 1 o 0, default 0) per simulare l'esecuzione
     ed escludere l'invio reale di chiamate di rete esterne.
   - STREAM_MODE: Flag booleano (valore 1 o 0, default 0) per attivare la
-    ricezione e la visualizzazione a schermo dei token in tempo reale
-    (streaming).
+    ricezione e la visualizzazione a schermo dei token in tempo reale (streaming
+    SSE).
   - OUTPUT_MODE: Configura lo stile di visualizzazione dei risultati restituiti
-    dallo script (text, raw, json, pretty).
+    dallo script ("text", "raw", "json", "pretty").
   - THRESHOLD: Soglia limite espressa in caratteri al di sopra della quale i
     risultati delle API vengono salvati nello storico (default 1000).
   - MAX_RETRIES: Limite di tentativi di connessione da effettuare in caso di
-    errori di rete temporanei (default 1 nella versione v2.5.0).
+    errori di rete temporanei (default 1).
   - SUPPORTED_PROVIDERS: Elenco testuale dei provider supportati (default "groq
     gemini huggingface").
   - CURL_BASE_OPTS: Array contenente i parametri base immutabili passati a curl
     per ogni chiamata di rete (--silent, --show-error, --no-buffer,
     --max-time 120).
+  - FALLBACK_PAYLOAD: Payload Base64 alternativo impostato da un hook di
+    post-esecuzione in caso di fallimento della chiamata API principale.
 
 FUNZIONI
 
   - rotate_history
+
       - Scopo: Gestisce la manutenzione della directory dello storico delle
         risposte per evitare saturazioni del disco. Identifica ed elimina i file
         più vecchi del limite stabilito in giorni ($BASH4LLM_HISTORY_KEEP_DAYS),
-        ed esegue riduzioni progressive basate su file e byte complessivi
-        scansionando il file-system tramite cicli mtime ed array di mappatura
-        dedicati, agendo sotto lock esclusivo di storico.
+        ed esegue riduzioni progressive basate su conteggio file e peso in byte
+        complessivi scansionando il file-system tramite cicli mtime ed array di
+        mappatura dedicati, agendo sotto lock esclusivo di storico.
       - Input: $1 (opzionale: timeout per acquisire il lock di storico, default
         $BASH4LLM_LOCK_TIMEOUT_HISTORY).
       - Output: Purgatura fisica dal file-system dei log e file storici in
         esubero. Ritorna stato 0.
       - Side-effects: Acquisizione temporanea di lock esclusivo su
-        $HISTORY_LOCK, eliminazione di file.
-      - Dipendenze: find, lock_exec, sh, rm, sort, file_size, _file_mtime.
+        $HISTORY_LOCK, eliminazione di file da disco.
+      - Dipendenze: Comandi find, lock_exec, rm, sort, funzioni file_size,
+        _file_mtime.
+
   - save_to_history
+
       - Scopo: Archivia in modo sicuro il testo generato dal modello LLM in un
         file cronologico unico contrassegnato da timestamp e PID del processo
         chiamante all'interno della directory storica $BASH4LLM_HISTORY_DIR.
@@ -763,10 +948,12 @@ FUNZIONI
       - Side-effects: Creazione file temporanei, scrittura atomica con lock
         esclusivo su $HISTORY_LOCK, invocazione asincrona di rotate_history,
         aggiornamenti dello stato JSON.
-      - Dipendenze: date, safe_mkdir, _tmpf, printf, rm, lock_exec, chmod,
-        file_size, basename, jq, ui_state_write, rotate_history, log_error,
-        log_warn.
+      - Dipendenze: Funzioni safe_mkdir, _tmpf, lock_exec, file_size,
+        ui_state_write, rotate_history, log_error, log_warn, comandi date,
+        printf, rm, chmod, basename, jq.
+
   - manifest_create
+
       - Scopo: Inizializza un nuovo file di manifesto JSON (struttura vuota con
         array di parti) in modo sicuro sotto lock esclusivo, generandone
         contemporaneamente una copia speculare codificata in Base64
@@ -776,10 +963,12 @@ FUNZIONI
       - Output: File manifesto JSON e controparte Base64 inizializzati sul
         file-system con permessi 600. Ritorna stato 0 o 1 in caso di errore.
       - Side-effects: Creazione directory genitrice via safe_mkdir, scrittura
-        file, generazione Base64.
-      - Dipendenze: safe_mkdir, dirname, lock_exec, mktemp, printf, base64, mv,
-        chmod.
+        file, generazione copia Base64.
+      - Dipendenze: Funzioni safe_mkdir, lock_exec, comandi dirname, mktemp,
+        printf, base64, mv, chmod.
+
   - manifest_add_part
+
       - Scopo: Inserisce i metadati e il payload di una risorsa esterna (una
         parte o allegato) all'interno del file di manifesto JSON. Codifica in
         Base64 il contenuto del file di input, lo salva in una directory di
@@ -795,9 +984,12 @@ FUNZIONI
       - Side-effects: Creazione directory via safe_mkdir, codifica Base64,
         generazione e rimozione file temporanei intermedi, aggiornamento del
         JSON tramite jq, lock di file.
-      - Dipendenze: log_error, safe_mkdir, dirname, _tmpf, b64encode, mv, chmod,
-        lock_exec, mktemp, cp, base64, jq, rm.
+      - Dipendenze: Funzioni log_error, safe_mkdir, _tmpf, b64encode, lock_exec,
+        log_info, comandi dirname, basename, mv, chmod, mktemp, cp, base64, jq,
+        rm.
+
   - manifest_read
+
       - Scopo: Accede ed esegue la lettura decodificata del file di manifesto
         specificato, estraendolo direttamente dal file JSON di origine o, in
         alternativa, decodificando e ripristinando la sua controparte codificata
@@ -805,49 +997,126 @@ FUNZIONI
       - Input: $1 (percorso del file manifesto).
       - Output: Stampa il contenuto JSON risultante su standard output. Ritorna
         stato 0 o 1 in caso di assenza dei file.
-      - Dipendenze: cat, b64decode.
-  - _get_perm_string
-      - Scopo: Restituisce la stringa di permessi di accesso in notazione
-        simbolica (es. -rwxr-xr-x) di un file o directory, unificando le
-        discrepanze di formato tra distribuzioni Linux e Darwin/macOS tramite
-        platform checks.
-      - Input: $1 (percorso dell'oggetto del file-system).
-      - Output: Stringa di permessi stampata su standard output.
-      - Dipendenze: stat, ls, awk, printf.
-  - _get_owner
-      - Scopo: Identifica e restituisce il nome dell'utente proprietario di un
-        file o di una directory in modo portabile tra sistemi macOS e Linux
-        tramite platform checks.
-      - Input: $1 (percorso dell'oggetto).
-      - Output: Nome dell'owner stampato su standard output.
-      - Dipendenze: stat, ls, awk, printf.
+      - Side-effects: Nessuno.
+      - Dipendenze: Funzione b64decode, comando cat.
+
+  - anonymize_thread_id
+
+      - Scopo: Anonimizza crittograficamente l'ID thread in memoria tramite hash
+        unidirezionale SHA-256 (con fallback su MD5 o hashing di sistema) prima
+        di qualsiasi scrittura su disco per prevenire la fuga di PII o iniezioni
+        nel file-system.
+      - Input: $1 (identificatore del thread in chiaro).
+      - Output: Esporta la variabile globale SAFE_THREAD_ID contenente
+        esclusivamente caratteri esadecimali puliti. Ritorna stato 0, o esce con
+        codice BASH4LLM_ERR_SEC (17) se l'anonimizzazione fallisce o nessun
+        binario di hashing è disponibile.
+      - Side-effects: Esportazione della variabile d'ambiente SAFE_THREAD_ID.
+      - Dipendenze: Funzione log_error, comandi openssl, sha256sum, shasum,
+        md5sum, md5, awk, export.
+
+  - execute_isolated_hook
+
+      - Scopo: Esegue gli hook di pre-elaborazione (pre) o post-elaborazione
+        (post) in una sotto-shell isolata e pulita da ogni segreto o chiave API.
+        Verifica preventivamente i permessi del percorso e l'integrità SHA-256
+        dell'hook rispetto al manifesto. Utilizza un parser Zero-Eval sicuro
+        basato su whitelist per importare nel runtime principale esclusivamente
+        parametri approvati (BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD,
+        BASH4LLM_AUTH_TOKEN).
+      - Input: $1 (tipo di hook: "pre" o "post"), $2 (nome del modulo hook).
+      - Output: Ritorna lo stato di uscita dell'hook o 17 (BASH4LLM_ERR_SEC) se
+        i controlli di integrità o sicurezza falliscono.
+      - Side-effects: Esecuzione di sotto-shell isolate, eventuale modifica di
+        variabili di controllo tramite whitelist.
+      - Dipendenze: Funzioni validate_path_security, verify_module_integrity,
+        log_error, comandi compgen, unset, export.
+
   - _get_file_signature
+
       - Scopo: Calcola l'impronta di stato e integrità di un file. Se abilitato
-        l'uso degli hash ($BASH4LLM_SIG_HASH attivo ed eseguibile openssl o
-        sha256sum presente), calcola l'hash SHA-256 del contenuto; in caso
+        l'uso degli hash ($BASH4LLM_SIG_HASH attivo ed eseguibile sha256sum o
+        openssl presente), calcola l'hash SHA-256 del contenuto; in caso
         contrario o in aggiunta, interroga stat estraendo metadati fisici (ID
         dispositivo, inode, dimensione, ctime, mtime, ID proprietario, ID gruppo
         e permessi ottali) unificandoli in una stringa delimitata da pipe.
-        Questo rileva alterazioni del file anche in caso di falsificazione delle
-        date di modifica.
       - Input: $1 (percorso del file).
       - Output: Stringa strutturata
         hash|device|inode|size|ctime|mtime|uid|gid|mode stampata su standard
         output.
-      - Dipendenze: sha256sum, openssl, awk, stat, read.
+      - Side-effects: Nessuno.
+      - Dipendenze: Funzione _secure_hash_sha256, comandi sha256sum, awk, stat,
+        read, printf.
+
   - getfile_signature
-      - Scopo: Wrapper diretto della funzione interna _get_file_signature.
+
+      - Scopo: Wrapper diretto di interfaccia per la funzione interna
+        _get_file_signature.
       - Input: $1 (percorso del file).
       - Output: Stringa della firma stampata su standard output.
+      - Side-effects: Nessuno.
+      - Dipendenze: Funzione _get_file_signature.
+
   - _is_world_writable
+
       - Scopo: Verifica se una directory presenta permessi di accesso non sicuri
         che consentono la scrittura a gruppi esterni o a chiunque
         (world-writable).
       - Input: $1 (percorso della cartella).
       - Output: Ritorna stato 0 (vulnerabile/scrivibile pubblicamente),
         altrimenti 1 (sicura o errore).
-      - Dipendenze: _get_perm_string, awk, printf.
+      - Side-effects: Nessuno.
+      - Dipendenze: Funzione _get_perm_string, comando awk.
+
+  - _locked_history_save
+
+      - Scopo: Routine interna per lo spostamento e la protezione di file
+        storici da invocare esclusivamente all'interno di un blocco di lock.
+      - Input: $1 (file temporaneo sorgente), $2 (file destinazione).
+      - Output: Ritorna stato 0 se completato, 1 se gli argomenti sono
+        incompleti.
+      - Side-effects: Spostamento file e modifica permessi a 600.
+      - Dipendenze: Comandi mv, chmod.
+
+  - _locked_manifest_create
+
+      - Scopo: Routine interna per la creazione transazionale di file manifesto
+        JSON e relativa copia Base64 da eseguire sotto lock.
+      - Input: $1 (percorso del manifesto).
+      - Output: Ritorna 0 se completato, 1 se gli argomenti sono vuoti.
+      - Side-effects: Creazione file temporanei, scrittura JSON, codifica Base64
+        e permessi 600.
+      - Dipendenze: Comandi mktemp, printf, base64, mv, chmod.
+
+  - _locked_manifest_add_part
+
+      - Scopo: Routine interna per l'aggiunta di allegati e aggiornamento del
+        JSON del manifesto e della sua copia Base64 da eseguire sotto lock.
+      - Input: $1 (manifesto), $2 (staging Base64), $3 (nome), $4 (MIME type).
+      - Output: Ritorna 0 se completato, 1 se parametri non validi.
+      - Side-effects: Scrittura temporanea, parsing e modifica JSON via jq,
+        codifica Base64.
+      - Dipendenze: Comandi mktemp, cp, base64, jq, mv, chmod, rm.
+
+  - check_local_rate_limit
+
+      - Scopo: Engine di rate limiting locale basato su finestra scorrevole
+        (sliding window) di 30 secondi per thread anonimizzato. Bypassa il
+        controllo se è presente un token BASH4LLM_AUTH_TOKEN autorizzato o se il
+        limite è impostato su "unlimited". Mantiene ed elenca file marcatori
+        vuoti nella directory $BASH4LLM_RATES_DIR/<SAFE_THREAD_ID>, rimuovendo
+        quelli scaduti ed erogando un errore di blocco se la soglia viene
+        superata.
+      - Input: Nessuno (analizza $BASH4LLM_RATE_LIMIT, $BASH4LLM_AUTH_TOKEN,
+        $SAFE_THREAD_ID).
+      - Output: Ritorna stato 0 se la richiesta è autorizzata, 1 se il limite di
+        frequenza viene superato.
+      - Side-effects: Creazione e pulizia di file marcatori temporanei su disco.
+      - Dipendenze: Funzioni safe_mkdir, _file_mtime, log_info, log_error,
+        comandi date, rm, find, wc, tr, chmod.
+
   - make_tmpdir
+
       - Scopo: Crea una directory temporanea univoca e protetta all'interno di
         $BASH4LLM_TMPDIR sotto lock esclusivo $TMP_LOCK, impostando permessi
         blindati a 700 via safe_mkdir.
@@ -856,8 +1125,11 @@ FUNZIONI
         Ritorna stato 0 o il codice di errore BASH4LLM_ERR_TMP.
       - Side-effects: Creazione directory via safe_mkdir, modifica permessi,
         lock esclusivo su $TMP_LOCK.
-      - Dipendenze: safe_mkdir, chmod, lock_exec, _tmpf, printf.
+      - Dipendenze: Funzioni safe_mkdir, lock_exec, _tmpf, log_error, comando
+        umask.
+
   - _tmpf
+
       - Scopo: Generatore di oggetti temporanei sicuro. Convalida che la
         directory temporanea principale $BASH4LLM_TMPDIR non sia un collegamento
         simbolico, verifica che la cartella di base fornita risieda strettamente
@@ -865,14 +1137,16 @@ FUNZIONI
         di tipo Directory Traversal), imposta la maschera di processo umask 077
         e alloca file (permessi 600) o directory (permessi 700) avvalendosi di
         mktemp.
-      - Input: $1 (modalità: file o dir), $2 (directory di base), $3 (opzionale:
-        prefisso del nome, default "groq").
+      - Input: $1 (modalità: "file" o "dir"), $2 (directory di base), $3
+        (opzionale: prefisso del nome, default "groq").
       - Output: Stampa su standard output il percorso assoluto dell'oggetto
-        creato. Ritorna stato 0 o codici d'errore specifici.
+        creato. Ritorna stato 0 o il codice BASH4LLM_ERR_TMP.
       - Side-effects: Scrittura sul disco, modifica dei permessi del
         file-system, tracciamento log di errore.
-      - Dipendenze: log_error, chmod, mktemp, printf.
+      - Dipendenze: Funzione log_error, comandi chmod, mktemp, printf, umask.
+
   - thread_validate_id
+
       - Scopo: Verifica la correttezza sintattica dell'identificatore del thread
         fornito dall'utente per escludere iniezioni di percorsi o l'uso di
         caratteri speciali dannosi.
@@ -881,15 +1155,21 @@ FUNZIONI
         (comprendente caratteri alfanumerici, punto, trattino e underscore, con
         una lunghezza totale compresa tra 1 e 128 caratteri), altrimenti
         ritorna 1.
-      - Dipendenze: grep.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando grep.
+
   - thread_now_ts
+
       - Scopo: Restituisce la data e l'ora correnti espresse in formato ISO 8601
         UTC.
       - Input: Nessuno.
       - Output: Stringa di timestamp inviata a standard output (formato
         AAAA-MM-GGTHH:MM:SSZ).
-      - Dipendenze: date.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando date.
+
   - thread_messages_tmp_path
+
       - Scopo: Calcola e restituisce la posizione del file JSON destinato ad
         accumulare temporaneamente i messaggi del thread attivo nel corso
         dell'elaborazione corrente.
@@ -897,8 +1177,11 @@ FUNZIONI
       - Output: Stampa su standard output il percorso del file provvisorio
         generato all'interno di $RUN_TMPDIR. Ritorna stato 0 o 1 in caso di
         errori nell'allocazione della cartella temporanea.
-      - Dipendenze: ensure_run_tmpdir, printf.
+      - Side-effects: Invocazione di ensure_run_tmpdir.
+      - Dipendenze: Funzione ensure_run_tmpdir, comando printf.
+
   - thread_sanitize_cmd
+
       - Scopo: Pulisce e sanifica le stringhe dei comandi di esecuzione prima di
         registrarle nei log storici, rimuovendo le assegnazioni di variabili
         sensibili e mascherando segreti, token di sicurezza o chiavi private con
@@ -906,107 +1189,163 @@ FUNZIONI
         caratteri per ragioni di spazio.
       - Input: $1 (stringa del comando crudo).
       - Output: Stringa sanificata stampata su standard output.
-      - Dipendenze: printf, sed, cut.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi printf, sed, cut.
+
   - _update_thread_index
+
       - Scopo: Aggiorna in sicurezza l'indice globale dei thread attivi nel file
-        index.json posizionato nella directory threads/ dello stato utente sotto
-        lock esclusivo di storico.
+        index.json posizionato nella directory ui_state/threads/ dello stato
+        utente sotto lock esclusivo di storico.
       - Input: $1 (thread_id).
-      - Output: Stato 0 o errore.
-      - Dipendenze: mktemp, jq, mv, ui_state_write, rm, lock_exec.
+      - Output: Ritorna stato 0 se completato, o 1 in caso di errore.
+      - Side-effects: Creazione file temporanei, aggiornamento del JSON
+        dell'indice, scrittura atomica tramite ui_state_write.
+      - Dipendenze: Funzioni _tmpf, ui_state_write, comandi jq, mv, rm, cat.
+
   - _thread_delete_locked
-      - Scopo: Esegue la rimozione fisica del database dei thread, dei lock
-        concorrenti e dei metadati associati aggiornando l'indice globale.
+
+      - Scopo: Esegue la rimozione fisica del database NDJSON dei thread, dei
+        lock concorrenti e dei file di metadati associati aggiornando l'indice
+        globale.
       - Input: $1 (thread_id), $2 (file_thread), $3 (file_meta), $4
         (file_indice), $5 (tmp_indice).
       - Output: Eliminazione file da disco e aggiornamento indice JSON.
-      - Dipendenze: rm, jq, mv, chmod.
+      - Side-effects: Cancellazione fisica di file e directory di lock dal
+        disco.
+      - Dipendenze: Comandi rm, jq, mv, chmod.
+
   - thread_delete_core
+
       - Scopo: Rimuove transazionalmente un thread, i relativi lock e file di
         metadati dal disco invalidando la cache in memoria.
       - Input: $1 (thread_id).
-      - Output: Stato 0 o errore.
-      - Dipendenze: thread_validate_id, lock_exec, thread_cache_invalidate,
-        log_info.
+      - Output: Ritorna stato 0 se completato, o BASH4LLM_ERR_TMP se l'ID non è
+        valido.
+      - Side-effects: Eliminazione file e invalidazione della cache.
+      - Dipendenze: Funzioni thread_validate_id, lock_exec,
+        _thread_delete_locked, thread_cache_invalidate, log_error, log_info,
+        comandi rm.
+
   - _thread_rename_locked
+
       - Scopo: Aggiorna atomicamente il file di metadati di un thread per
-        cambiarne il titolo visualizzato.
+        cambiarne il titolo visualizzato nell'interfaccia.
       - Input: $1 (file_meta), $2 (tmp_meta), $3 (thread_id), $4 (titolo), $5
         (conteggio_msg), $6 (ultimo_ts).
-      - Output: Stato 0 o errore, metadati aggiornati.
-      - Dipendenze: jq, mv, chmod.
+      - Output: Scrittura del file di metadati aggiornato con permessi 600.
+      - Side-effects: Scrittura e sovrascrittura file.
+      - Dipendenze: Comandi jq, mv, chmod.
+
   - thread_rename_core
+
       - Scopo: Rinomina transazionalmente il titolo di un thread aggiornandone i
         metadati storici sotto lock esclusivo di storico.
-      - Input: $1 (thread_id), $2 (titolo).
-      - Output: Stato 0 o errore.
-      - Dipendenze: thread_validate_id, _tmpf, wc, tail, jq, lock_exec,
-        log_info.
+      - Input: $1 (thread_id), $2 (nuovo titolo).
+      - Output: Ritorna stato 0 se rinominato con successo, o BASH4LLM_ERR_TMP
+        se l'ID è invalido.
+      - Side-effects: Modifica dei file di metadati della UI sotto lock.
+      - Dipendenze: Funzioni thread_validate_id, _tmpf, lock_exec,
+        _thread_rename_locked, log_error, log_info, comandi printf, tr, awk, wc,
+        tail, jq, rm.
+
   - acquire_thread_lock
-      - Scopo: Acquisisce un lock esclusivo di processo non-bloccante sul thread
-        attivo (tramite flock o directory fallback) per prevenire conflitti
-        simultanei di scrittura.
-      - Input: Nessuno (usa $THREAD_ID).
-      - Output: Stato 0 o esce con errore 15 se già attivo.
-      - Dipendenze: thread_validate_id, flock, log_error.
+
+      - Scopo: Acquisisce un lock di processo esclusivo non-bloccante sul thread
+        attivo (tramite flock sul file descriptor 8) per prevenire scritture o
+        modifiche simultanee da parte di istanze concorrenti.
+      - Input: Nessuno (utilizza la variabile globale $THREAD_ID).
+      - Output: Ritorna stato 0 se il lock è acquisito o in modalità dry-run,
+        altrimenti ritorna 15 (BASH4LLM_ERR_TMP).
+      - Side-effects: Apertura del file descriptor 8 associato al file
+        .concurrency.lock e lock esclusivo del processo.
+      - Dipendenze: Funzioni thread_validate_id, safe_mkdir, log_error, comandi
+        dirname, flock, exec.
+
   - release_thread_lock
+
       - Scopo: Rilascia il lock di processo esclusivo del thread attivo
-        chiudendo il file descriptor dedicato.
-      - Input: Nessuno (usa $THREAD_ID).
-      - Dipendenze: thread_validate_id, flock, log_error.
+        chiudendo il file descriptor 8 associato.
+      - Input: Nessuno (utilizza la variabile globale $THREAD_ID).
+      - Output: Ritorna stato 0 o 15 se l'ID è invalido o il lockfile è un
+        symlink.
+      - Side-effects: Chiusura del file descriptor 8.
+      - Dipendenze: Funzioni thread_validate_id, log_error, comando exec.
+
   - _thread_read_window_locked
+
       - Scopo: Estrae l'ultima porzione del database NDJSON del thread senza
-        scansioni di tutto il file.
-      - Input: $1 (file_thread), $2 (n_righe), $3 (file_temporaneo).
-      - Dipendenze: tail, cp.
-  - thread_read_window
-      - Scopo: Estrae dal file log NDJSON del thread specificato la finestra
-        degli ultimi $n messaggi registrati. Opera sotto lock esclusivo, preleva
-        le righe via _thread_read_window_locked ed unifica in array JSON
-        ordinato tramite pipeline jq nativa (con Try-Catch resiliente ad
-        interruzioni). Aggiorna i metadati del thread in threads/.json via
-        ui_state_write.
-      - Input: $1 (thread_id), $2 (finestra, default 10), $3 (file JSON
+        effettuare scansioni complete dell'intero file, ottimizzando le
+        prestazioni di lettura.
+      - Input: $1 (file_thread), $2 (numero di righe n), $3 (file temporaneo di
         destinazione).
+      - Output: Righe estratte scritte nel file temporaneo.
+      - Side-effects: Scrittura su file temporaneo.
+      - Dipendenze: Comandi tail, cp.
+
+  - thread_read_window
+
+      - Scopo: Estrae dal file log NDJSON del thread la finestra degli ultimi n
+        messaggi registrati. Opera sotto lock esclusivo, preleva le righe via
+        _thread_read_window_locked ed unifica in array JSON ordinato tramite
+        pipeline jq nativa (con Try-Catch resiliente ad interruzioni). Aggiorna
+        i metadati del thread in threads/<tid>.json via ui_state_write.
+      - Input: $1 (thread_id), $2 (finestra messaggi, default 10), $3 (file JSON
+        di destinazione).
       - Output: File JSON strutturato scritto nel percorso di destinazione. File
         di stato UI aggiornati. Ritorna stato 0 o 1.
       - Side-effects: Lock esclusivo, allocazione e rimozione file temporanei
-        intermedi, lettura del registro di storico, aggiornamento delle
-        directory di stato UI.
-      - Dipendenze: safe_mkdir, lock_exec, _thread_read_window_locked, jq, mv,
-        cp, rm, ui_state_write, log_error, printf.
+        intermedi, lettura dello storico, aggiornamento directory di stato UI.
+      - Dipendenze: Funzioni thread_validate_id, safe_mkdir, _tmpf, lock_exec,
+        _thread_read_window_locked, ui_state_write, ensure_run_tmpdir,
+        log_error, log_warn, comandi grep, chmod, jq, mv, cp, rm, wc, tail,
+        printf.
+
   - thread_append
-      - Scopo: Accoda un messaggio nel registro NDJSON del thread specificato.
-        Genera ID univoco (SHA-256 di testo+ts+random), coordina la scrittura
-        tramite lock flock e previene conflitti controllando le cartelle marker
-        associate al PID. Aggiorna i metadati in threads/.json e l'indice
-        globale in threads/index.json sotto lock esclusivo.
-      - Input: $1 (thread_id), $2 (ruolo), $3 (testo), $4 (metadati).
+
+      - Scopo: Accoda un nuovo messaggio nel registro NDJSON del thread
+        specificato. Genera un ID messaggio univoco (digest SHA-256 di
+        testo+timestamp+casuale), coordina la scrittura atomica tramite lock
+        flock e previene conflitti verificando i marcatori di blocco associati
+        al PID. Aggiorna i metadati del thread ed il relativo indice globale
+        sotto lock esclusivo.
+      - Input: $1 (thread_id), $2 (ruolo: "user", "assistant", "system"), $3
+        (testo del messaggio), $4 (metadati JSON).
       - Output: Messaggio aggiunto in append nel file NDJSON di storico con
-        permessi 600. File di stato e indici JSON della UI aggiornati in modo
+        permessi 600. Metadati e indici JSON della UI aggiornati in modo
         atomico. Ritorna stato 0 o 1 in caso di fallimento.
       - Side-effects: Creazione directory via safe_mkdir, allocazione e
         rimozione directory di marker di blocco, lock esclusivo, elaborazioni
         crittografiche di hash, aggiornamenti multipli di file di stato UI.
-      - Dipendenze: thread_now_ts, jq, sed, awk, sha256sum, openssl, safe_mkdir,
-        _tmpf, flock, grep, wc, tail, ui_state_write, lock_exec, log_error,
-        log_warn.
+      - Dipendenze: Funzioni thread_validate_id, thread_now_ts, safe_mkdir,
+        _tmpf, ui_state_write, lock_exec, _update_thread_index,
+        ensure_run_tmpdir, log_error, log_warn, log_info, comandi jq, sed, awk,
+        sha256sum, openssl, mkdir, printf, chmod, grep, flock, rmdir, wc, tail,
+        touch.
+
   - _thread_hash
+
       - Scopo: Genera un hash crittografico sicuro SHA-256 (con fallback su
         codifica Base64 troncata qualora non vi siano binari idonei installati)
         per identificare in modo univoco una stringa o una combinazione di
         parametri.
       - Input: $1 (stringa di input).
       - Output: Stringa di hash stampata su standard output.
-      - Dipendenze: sha256sum, awk, openssl, base64, tr, cut, printf.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi sha256sum, awk, openssl, base64, tr, cut, printf.
+
   - thread_cache_key
+
       - Scopo: Calcola la chiave identificativa univoca di cache accoppiando
         l'ID thread con l'hash SHA-256 dei parametri di invocazione forniti.
       - Input: $1 (ID thread), $2 (stringa dei parametri).
       - Output: Chiave di cache stampata su standard output (formato
         thread_id|hash_parametri).
-      - Dipendenze: _thread_hash, printf.
+      - Side-effects: Nessuno.
+      - Dipendenze: Funzione _thread_hash, comando printf.
+
   - thread_cache_get
+
       - Scopo: Estrae i risultati archiviati nella cache temporanea per il
         specifico thread e i parametri indicati. Verifica la validità temporale
         del record leggendone la prima riga (timestamp Unix di scadenza) e
@@ -1018,8 +1357,10 @@ FUNZIONI
         la cache è valida. Ritorna stato 0 in caso di successo, 1 se mancante o
         scaduta.
       - Side-effects: Rimozione fisica dal disco del file di cache se scaduto.
-      - Dipendenze: thread_cache_key, date, rm, tail.
+      - Dipendenze: Funzione thread_cache_key, comandi date, rm, tail, read.
+
   - thread_cache_set
+
       - Scopo: Persiste i risultati di un thread e dei relativi parametri
         all'interno della cartella di cache, impostando un tempo di validità
         personalizzato (TTL, default 300 secondi). Scrive la scadenza assoluta
@@ -1033,8 +1374,11 @@ FUNZIONI
         Ritorna stato 0 o 1 in caso di errore.
       - Side-effects: Allocazione file temporanei, scrittura atomica con
         sovrascrittura.
-      - Dipendenze: thread_cache_key, date, cat, _tmpf, mv, rm, chmod.
+      - Dipendenze: Funzioni thread_cache_key, _tmpf, comandi date, cat, chmod,
+        mv, rm.
+
   - thread_cache_invalidate
+
       - Scopo: Invalida e purga i file di cache associati a una sessione thread.
         Se sono passati parametri specifici, elimina esclusivamente la cache di
         quella combinazione, altrimenti rimuove fisicamente tutti i file di
@@ -1042,189 +1386,226 @@ FUNZIONI
       - Input: $1 (ID thread), $2 (opzionale: parametri specifici).
       - Output: Eliminazione fisica dei file di cache. Ritorna stato 0, o 1 se
         l'ID sessione thread risulta vuoto.
-      - Dipendenze: thread_cache_key, rm.
+      - Side-effects: Cancellazione file su disco.
+      - Dipendenze: Funzione thread_cache_key, comando rm.
+
   - _normalize_bool_env
+
       - Scopo: Uniforma i parametri di configurazione booleani principali
         presenti nell'ambiente (ALLOW_API_CALLS, DRY_RUN, DEBUG), convertendo
         stringhe permissive (es. "true", "yes") nei valori numerici 1 (attivo)
         o 0 (inattivo) ed esportandoli per la coerenza globale del runtime.
-      - Input: Nessuno.
+      - Input: Nessuno (analizza l'ambiente di processo).
       - Output: Esporta le variabili d'ambiente allineate.
-      - Dipendenze: is_truthy, export.
+      - Side-effects: Esportazione di variabili d'ambiente.
+      - Dipendenze: Funzione is_truthy, comandi declare, export.
+
+  - _exec_curl_secure
+
+      - Scopo: Percorso autorevole ed unico per l'esecuzione di tutte le
+        chiamate HTTP/cURL. Isola gli header sensibili contenenti i token Bearer
+        all'interno di un file temporaneo con permessi 600 creato in
+        $RUN_TMPDIR. Collega il file ad un file descriptor dedicato (3) e passa
+        l'header a curl tramite la redirezione /dev/fd/3 o /proc/self/fd/3,
+        scollegando e rimuovendo immediatamente il file dal file-system. Questo
+        meccanismo garantisce la totale inesistenza di secret, chiavi API o
+        Bearer token negli argomenti di processo (argv), rendendoli del tutto
+        invisibili a strumenti di ispezione del sistema come ps, top o /proc.
+      - Input: $1 (metodo HTTP, default "POST"), $2 (URL API), $3 (chiave API),
+        $4 (file payload), $5 (file output), $6 (file log errori), $7 (flag
+        streaming 1/0), $8 (riferimento ad array opzioni cURL extra).
+      - Output: Restituisce lo stato HTTP o il codice di uscita di curl.
+      - Side-effects: Connessione di rete, allocazione e cancellazione immediata
+        di file temporanei per gli header su file descriptor, scrittura file di
+        risposta e log.
+      - Dipendenze: Funzione _tmpf, comandi printf, chmod, exec, curl, rm.
 
 BLOCCHI DI CODICE
 
-  - block_mkdir_thread_cache
-      - Fase: Inizializzazione cache.
-      - Azione: Alloca e configura sul file-system la cartella dedicata a
-        ospitare la cache temporanea dei thread ($THREAD_CACHE_DIR), blindandone
-        i permessi d'accesso a 700 tramite safe_mkdir.
-  - block_ensure_config_dir
-      - Fase: Validazione dell'ambiente transazionale di runtime.
-      - Azione: Garantisce l'esistenza e l'accessibilità della directory di
-        configurazione, richiamando ensure_config_dir o creando la cartella
-        qualora non si operi in esecuzione esclusiva.
-  - block_ensure_run_tmpdir
-      - Fase: Inizializzazione dell'ambiente provvisorio di istanza.
-      - Azione: Se non si è in modalità "solo caricamento sorgenti"
-        ($BASH4LLM_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di
-        fallimento nella creazione dei percorsi temporanei, emette un log di
-        errore fatale ed interrompe l'esecuzione con codice BASH4LLM_ERR_TMP
-        (15).
-  - block_normalize_bool_env_call
-      - Fase: Normalizzazione delle configurazioni d'ambiente.
-      - Azione: Esegue _normalize_bool_env per uniformare i flag booleani prima
-        di processare la logica dello script.
-  - block_last_check_lines_default
-      - Fase: Impostazione delle variabili di controllo.
-      - Azione: Definisce il valore di default a 50 per la variabile
-        $LAST_CHECK_LINES (utilizzata per scansioni e verifiche storiche)
-        qualora questa non sia pre-configurata in ambiente dall'utente.
+  - PRECORE_RUN_HISTORY
+
+      - Fase: Inizializzazione della gestione storico e pulizia log.
+      - Azione: Configura le variabili predefinite per la conservazione e la
+        rotazione automatica dello storico (BASH4LLM_ROTATE_HISTORY,
+        BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES,
+        BASH4LLM_HISTORY_KEEP_DAYS) e definisce le funzioni transazionali
+        rotate_history e save_to_history.
+
+  - PRECORE_RUN_MANIFEST
+
+      - Fase: Gestione dei manifesti e delle risorse multipart.
+      - Azione: Implementa l'infrastruttura per la creazione, l'aggiornamento e
+        la lettura dei manifesti delle risorse allegate e dei relativi payload
+        codificati in Base64 sotto lock concorrenziali.
+
+  - PRECORE_RUN_UTIL_HELPERS
+
+      - Fase: Utility di sicurezza, anonimizzazione e rate limiting.
+      - Azione: Definisce l'engine per l'anonimizzazione crittografica
+        unidirezionale degli ID thread (anonymize_thread_id), l'esecutore
+        isolato di hook con parser whitelist Zero-Eval (execute_isolated_hook),
+        il calcolatore di firma di sicurezza dei file (_get_file_signature),
+        l'engine di rate limiting locale a sliding window
+        (check_local_rate_limit) e gli allocatori di temporanei sicuri.
+
+  - PRECORE_RUN_THREAD_ENGINE
+
+      - Fase: Gestione completa del ciclo di vita dei thread NDJSON e caching.
+      - Azione: Implementa l'intero motore di gestione dei thread: validazione
+        sintattica degli ID, acquisizione e rilascio di file lock di processo
+        via flock, estrazione ad alta efficienza O(1) tail delle finestre di
+        contesto con parsing jq resiliente, scrittura in append dei messaggi,
+        gestione dei metadati UI e sistema di caching locale temporizzata con
+        TTL.
+
+  - PRECORE_RUN_RUNTIME_GLOBALS
+
+      - Fase: Inizializzazione delle variabili globali di runtime e della rete
+        sicura.
+      - Azione: Inizializza i default di configurazione di runtime, assicura la
+        creazione della directory temporanea dell'istanza $RUN_TMPDIR,
+        normalizza i flag booleani d'ambiente via _normalize_bool_env, definisce
+        i parametri base di curl (CURL_BASE_OPTS) e dichiara la funzione
+        autorevole per le chiamate HTTP protette _exec_curl_secure.
 
 3. PROVIDER
 
 VARIABILI
 
-  - GROQ_API_KEY: Chiave API deputata all'autenticazione delle richieste verso i
-    servizi del provider Groq. Eredita ${GROQ_API_KEY}.
+  - GROQ_API_KEY: Chiave API utilizzata per l'autenticazione delle richieste
+    verso i servizi del provider Groq. Eredita la variabile d'ambiente
+    ${GROQ_API_KEY} o viene sovrascritta dinamicamente se è impostata una
+    variabile d'ambiente con nome personalizzato (PROVIDER_API_ENV_groq).
+  - PROVIDER_API_ENV_groq: Nome della variabile d'ambiente personalizzata (se
+    configurata dall'utente) da cui estrarre la chiave API specifica per il
+    provider Groq.
 
 FUNZIONI
 
   - buildpayload_groq
+
       - Scopo: Compila ed organizza la struttura del file JSON di payload da
-        trasmettere alle API di Groq. Valida la correttezza numerica di
-        temperatura (TURE, default 1.0) e numero massimo di token (MAX_TOKENS,
-        default 4096), convertendoli in valori numerici JSON validi. Estrae i
-        messaggi della conversazione con priorità sequenziale: decodifica e
-        convalida il JSON utente se presente in $JSON_INPUT, estrae da
-        $MESSAGES_JSON, elabora file JSON completi di messaggi indicati in
-        $BUILD_MESSAGES_FILE o converte il prompt testuale crudo $CONTENT in un
-        record utente standard. Se non rileva alcun messaggio o testo valido,
-        genera come fallback un record utente contenente un testo vuoto ed
-        emette un avvertimento log. Se non definito, tenta di estrarre il
-        modello da utilizzare dal file dei messaggi. Scrive infine il file JSON
-        temporaneo risultante e lo converte in formato Base64 (tramite
-        stage_b64) per scopi di transazione sicura se la funzione è presente nel
-        runtime.
-      - Input: Parametri opzionali di configurazione.
-      - Output: Assegna il percorso del file di payload finale generato a
-        BASH4LLM_TMP_PAYLOAD (nella versione 2.5.0) e $PAYLOAD. Ritorna stato 0,
-        o BASH4LLM_ERR_TMP se si verificano errori fisici di scrittura o di
-        directory temporanea.
-      - Side-effects: Scrittura e cancellazione file temporanei, codifica
-        Base64, emissione di log di avvertimento su stderr.
-      - Dipendenze: ensure_run_tmpdir, _mktemp_in_dir, _tmpf, is_truthy, grep,
-        log_warn, is_valid_json_string, jq, is_valid_json_file, stage_b64, rm,
-        wc, head, log_error, log_info.
+        trasmettere all'endpoint delle API di Groq per le Chat Completions.
+      - Input: Variabili globali STREAM_MODE, TEMPERATURE / TURE, MAX_TOKENS,
+        JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, CONTENT, SYSTEM_PROMPT,
+        MODEL, RUN_TMPDIR.
+      - Output: Assegna il percorso del file di payload finale generato alla
+        variabile globale PAYLOAD (ed esporta PAYLOAD). Ritorna stato 0 se
+        completato con successo, o BASH4LLM_ERR_TMP se si verificano errori
+        fisici di scrittura o allocazione della cartella temporanea.
+      - Side-effects: Creazione e cancellazione di file temporanei intermedi nel
+        file-system, eventuale staging Base64 del payload via stage_b64,
+        scrittura di log di avvertimento o diagnostica su stderr.
+      - Dipendenze: Funzioni _mktemp_in_dir, _tmpf, is_truthy, log_warn,
+        is_valid_json_string, is_valid_json_file, stage_b64, log_error,
+        log_info, comandi grep, jq, rm, wc, head, export.
+
   - call_api_groq
-      - Scopo: Esegue una richiesta API sincrona non-streaming verso l'endpoint
-        di Groq. Verifica la politica di rete e accerta la presenza della chiave
-        API nell'ambiente. Se il file del payload è codificato in Base64
-        (estensione .b64), esegue la decodifica in un file provvisorio prima
-        dell'invio. Prepara l'array di argomenti per l'utilità curl (includendo
-        i parametri di rete e connessione, gli header HTTP di autenticazione e
-        il tipo di contenuto), esegue la chiamata trasmettendo in modalità
-        binaria il payload ed estrae lo stato HTTP restituito. Se la risposta
-        dell'API risulta corrotta o presenta testo non-JSON accodato in coda al
-        blocco strutturato principale, isola e ripristina la sola porzione JSON
-        sintatticamente corretta eliminando i dati estranei di trailing per
-        garantire la stabilità di esecuzione. Salva il risultato finale in $RESP
-        con permessi 600, o vi scrive un JSON diagnostico contenente i dettagli
-        dell'errore e i codici di errore in caso di fallimenti di connessione o
-        del server.
-      - Input: Nessuno.
-      - Output: File di risposta scritto in $RESP. Ritorna stato 0 se eseguito
-        (anche in presenza di errori HTTP restituiti dalle API), o codici di
-        fallimento in caso di errori fisici di curl o di directory non
-        scrivibili.
-      - Side-effects: Decodifica di flussi, connessioni di rete tramite curl,
-        generazione e cancellazione di file temporanei sul disco.
-      - Dipendenze: ensure_run_tmpdir, enforce_network_policy,
-        resolve_provider_url, _tmpf, b64decode, curl, jq, tail, awk, mv, chmod,
-        log_error, log_info, rm, head.
+
+      - Scopo: Esegue una richiesta API sincrona e non-streaming verso
+        l'endpoint delle Chat Completions di Groq.
+      - Input: Variabili globali BASH4LLM_PROVIDER_URL, GROQ_API_KEY, PAYLOAD,
+        RUN_TMPDIR, RESP, ERRF, DEBUG.
+      - Output: Salva la risposta ricevuta dal server nel file $RESP con
+        permessi 600. Ritorna stato 0 se l'API risponde con successo (codice
+        HTTP 2xx), BASH4LLM_ERR_CURL_FAILED in caso di fallimenti di rete/cURL,
+        o BASH4LLM_ERR_API se l'URL non è risolto o il codice HTTP indica un
+        errore del server/richiesta.
+      - Side-effects: Esecuzione di connessione HTTP POST via _exec_curl_secure,
+        eventuale decodifica del payload Base64, allocazione e rimozione di file
+        temporanei per output e log di errore, sovrascrittura del file $RESP.
+      - Dipendenze: Funzioni enforce_network_policy, _tmpf, b64decode,
+        _exec_curl_secure, log_error, log_info, comandi mv, cp, chmod, rm, cat.
+
   - call_api_streaming_groq
-      - Scopo: Esegue una chiamata API in tempo reale (streaming dei token)
-        verso l'endpoint di Groq. Decodifica il payload se codificato Base64,
-        configura curl disabilitando il buffering (-N) ed esegue una pipeline di
-        lettura riga per riga dell'output conforme allo standard Server-Sent
-        Events (SSE). Tramite un singolo pass unbuffered di jq, estrae i delta
-        testuali di risposta stampandoli all'istante su stdout, isolando e
-        visualizzando in parallelo i messaggi d'errore strutturati formali del
-        server. Accumula l'intero flusso crudo ricevuto in un file di log
-        temporaneo di staging. Al termine della connessione, convalida ed
-        assembla tutti i frammenti JSON estratti per ricostruire l'intero corpo
-        di risposta cumulativo, riversa il testo complessivo unificato e salva
-        il pacchetto JSON completo all'interno di $RESP con permessi 600.
-        Aggiorna infine in modo atomico il file di stato last_api.json con
-        metadati diagnostici dettagliati (ID della richiesta API, codice HTTP di
-        stato e motivo di arresto finish_reason).
-      - Input: Nessuno.
-      - Output: Flusso di token stampato istantaneamente su stdout. File JSON
-        finale di risposta salvato in $RESP. Ritorna lo stato dell'esecuzione
-        della pipeline di connessione.
-      - Side-effects: Connessione di rete persistente, decodifica, scrittura in
-        tempo reale su stdout, generazione e cancellazione di molteplici file di
-        staging di flussi, aggiornamento atomico dello stato dell'interfaccia.
-      - Dipendenze: ensure_run_tmpdir, enforce_network_policy,
-        resolve_provider_url, _tmpf, b64decode, curl, tee, jq, grep, sed, mv,
-        chmod, ui_state_write, log_error, log_info, log_warn, rm, head.
+
+      - Scopo: Esegue una chiamata API con risposta in tempo reale (streaming
+        dei token via Server-Sent Events - SSE) verso l'endpoint di Groq.
+      - Input: Variabili globali GROQ_API_KEY, BASH4LLM_API_KEY, PAYLOAD,
+        BASH4LLM_TMP_PAYLOAD, BASH4LLM_PROVIDER_URL, PROVIDER, RUN_TMPDIR, RESP,
+        QUIET.
+      - Output: Riversa i delta di contenuto testuale generati in tempo reale su
+        stdout. Ricostruisce la risposta JSON sintetica completa salvandola nel
+        file $RESP con permessi 600. Scrive atomicamente i metadati
+        dell'operazione nel file di stato UI last_api.json. Ritorna lo stato
+        d'uscita della pipeline cURL o codici d'errore
+        (BASH4LLM_ERR_CURL_FAILED, BASH4LLM_ERR_NO_API_KEY, BASH4LLM_ERR_TMP,
+        BASH4LLM_ERR_API).
+      - Side-effects: Connessione di rete persistente HTTP POST, decodifica di
+        payload Base64, output continuo su console, creazione e cancellazione di
+        file temporanei di accumulo del flusso SSE (resp.raw, resp.lines,
+        resp.valid, resp.chunks), aggiornamento atomico dello stato UI.
+      - Dipendenze: Funzioni enforce_network_policy, _tmpf, b64decode,
+        _exec_curl_secure, ui_state_write, log_error, log_info,
+        ensure_run_tmpdir, comandi jq, tee, grep, sed, mv, cp, chmod, rm, date.
+
   - refresh_models_groq
+
       - Scopo: Sincronizza ed aggiorna la lista locale dei modelli supportati
-        interrogando l'endpoint /openai/v1/models di Groq. Esegue una chiamata
-        GET autenticata tramite chiave API, valida la risposta JSON ricevuta ed
-        estrae i nomi dei modelli (.data o piatti), normalizzandoli (rimuove
-        spazi, modelli/ o groq/), ordinandoli e limitandoli a $MAX_MODELS. Salva
-        la lista all'interno del file dei modelli locali $MODELS_FILE in modo
-        transazionale e sicuro, codificandolo in Base64 atomico e riscrivendolo
-        sotto lock esclusivo a 10 secondi per escludere letture corrotte da
-        parte di processi concorrenti.
-      - Input: Nessuno.
-      - Output: File $MODELS_FILE aggiornato con l'elenco dei modelli
-        normalizzati. Ritorna stato 0 se completato con successo, codici
-        d'errore specifici in caso di fallimenti delle API, di parsing o di
-        lock.
-      - Side-effects: Invocazione di rete (GET HTTP), allocazione directory
-        temporanea, elaborazione dati intensiva, scrittura atomica con lock
-        esclusivo su $MODELS_FILE.
-      - Dipendenze: ensure_api_key_for_provider, ensure_run_tmpdir, mktemp,
-        resolve_provider_url, curl, jq, awk, sed, sort, _mktemp_in_dir, _tmpf,
-        b64_atomic_write, lock_exec, base64, chmod, rm, log_error, log_info.
+        interrogando l'endpoint /openai/v1/models di Groq.
+      - Input: Variabili globali GROQ_API_KEY, PROVIDER_API_ENV_groq,
+        RUN_TMPDIR, PROVIDER, BASH4LLM_PROVIDER_URL, MAX_MODELS, MODELS_FILE,
+        MODELS_LOCK.
+      - Output: Aggiorna e salva il file $MODELS_FILE contenente l'elenco dei
+        modelli normalizzati. Ritorna stato 0 se completato,
+        BASH4LLM_ERR_NO_API_KEY se la chiave manca, BASH4LLM_ERR_API se la
+        risposta o il parsing falliscono, o BASH4LLM_ERR_TMP se fallisce la
+        scrittura atomica sotto lock.
+      - Side-effects: Esecuzione di chiamata HTTP GET, allocazione di directory
+        temporanea isolata, elaborazione e filtraggio stringhe, staging Base64
+        via b64_atomic_write, scrittura atomicamente protetta da lock con
+        lock_exec.
+      - Dipendenze: Funzioni ensure_run_tmpdir, resolve_provider_url,
+        _exec_curl_secure, safe_mkdir, _mktemp_in_dir, _tmpf, b64_atomic_write,
+        lock_exec, log_info_user, log_error, comandi mktemp, rm, jq, awk, sed,
+        sort, cat, base64, chmod.
+
   - validate_model_groq
-      - Scopo: Convalida la compatibilità del modello richiesto chiamando
-        validate_model_core.
-      - Input: $1 (nome del modello da validare).
-      - Output: Ritorna stato 0 se il modello è valido, 1 in caso d'errore.
-      - Dipendenze: validate_model_core.
+
+      - Scopo: Convalida la compatibilità del modello richiesto rispetto al file
+        dei modelli locali di Groq e ai vincoli di I/O testuale.
+      - Input: $1 (nome del modello da convalidare).
+      - Output: Ritorna stato 0 se il modello è valido e supportato, 1
+        altrimenti.
+      - Side-effects: Nessuno.
+      - Dipendenze: Funzione validate_model_core.
+
   - validate_key_groq
+
       - Scopo: Diagnostica la validità della chiave API del provider inviando
-        una richiesta di test sincrona con timeout ridotto (10s) all'endpoint
-        dei modelli di Groq.
-      - Input: $1 (chiave da testare).
-      - Output: Codice stato: 0 (connessione ed autenticazione riuscita), 1
-        (chiave non valida/errore HTTP), 28 (timeout di rete).
-      - Dipendenze: _mktemp_in_dir, _tmpf, mktemp, curl, rm.
+        una richiesta GET di test con timeout ridotto (10s) all'endpoint dei
+        modelli di Groq.
+      - Input: $1 (chiave API da testare).
+      - Output: Codici stato: 0 (connessione ed autenticazione riuscita /
+        HTTP 200), 1 (chiave non valida o errore HTTP), 28 (timeout di rete).
+      - Side-effects: Chiamata di rete GET di diagnostica, allocazione e
+        rimozione di file temporanei di log.
+      - Dipendenze: Funzioni _mktemp_in_dir, _tmpf, _exec_curl_secure, comandi
+        mktemp, rm.
+
   - auto_select_model_groq
-      - Scopo: Scansiona in ordine sequenziale il file dei modelli locali
-        $MODELS_FILE e la prima riga del file di modello canonico model.groq ed
-        estrae in modo automatico il primo modello conforme che risulti
-        supportato dal motore interno (escludendo modelli multimodali o non
-        testuali).
-      - Input: Nessuno.
-      - Output: Stampa su stdout il nome del modello normalizzato se
-        individuato, e ritorna stato 0. Ritorna stato 1 se non viene
-        identificato alcun modello valido.
-      - Dipendenze: canonical_model_file, head, _normalize_model_name,
-        is_supported_model.
+
+      - Scopo: Scansiona in ordine sequenziale il file di modello canonico
+        (model.groq) e il file dei modelli locali $MODELS_FILE ed estrae in modo
+        automatico il primo modello conforme che risulti supportato dal motore
+        interno per I/O testuale.
+      - Input: Nessuno (analizza il file restituito da canonical_model_file
+        "groq" e $MODELS_FILE).
+      - Output: Stampa il nome del modello normalizzato su stdout e ritorna
+        stato 0. Ritorna 1 se nessun modello valido viene identificato.
+      - Side-effects: Lettura da file-system.
+      - Dipendenze: Funzioni canonical_model_file, _normalize_model_name,
+        is_supported_model, comandi head.
 
 BLOCCHI DI CODICE
 
   - GROQ_API_KEY_override
       - Fase: Avvio ed autenticazione delle richieste del provider.
-      - Azione: Verifica in modo sicuro tramite declare -p se è impostata una
-        variabile d'ambiente personalizzata per la chiave API di Groq
-        (PROVIDER_API_ENV_groq). Se presente e valorizzata, estrae e sovrascrive
-        il valore all'interno della variabile globale $GROQ_API_KEY per
-        allineare l'autenticazione delle richieste.
+      - Azione: Blocco di inizializzazione che controlla via declare -p se
+        l'utente ha definito il nome di una variabile d'ambiente personalizzata
+        per la chiave API di Groq (PROVIDER_API_ENV_groq). In caso positivo, ne
+        estrae il valore e lo assegna alla variabile globale $GROQ_API_KEY per
+        garantire l'autenticazione corretta delle chiamate.
 
 4. CORE_SETUP
 
@@ -1237,7 +1618,7 @@ VARIABILI
   - BATCH_FILE: Percorso del file contenente l'elenco di prompt per
     l'elaborazione batch (eredita ${BATCH_FILE}).
   - CHAT_MODE: Flag booleano (valore 1 o 0, default 0) che abilita l'interfaccia
-    interattiva di chat.
+    interattiva TUI REPL.
   - SET_DEFAULT_MODEL: Nome del modello da impostare come default persistente
     per il provider (eredita ${SET_DEFAULT_MODEL}).
   - LIST_MODELS: Flag booleano (valore 1 o 0, default 0) per visualizzare la
@@ -1245,18 +1626,21 @@ VARIABILI
   - LIST_PROVIDERS: Flag booleano (valore 1 o 0, default 0) per visualizzare la
     lista dei provider installati.
   - LIST_PROVIDERS_RAW: Flag booleano interno che richiede la stampa dei
-    provider in formato stringa crudo.
+    provider in formato stringa crudo su stdout.
   - LIST_MODELS_RAW: Flag booleano interno che richiede la stampa dei modelli
-    locali in formato stringa crudo.
+    locali in formato stringa crudo su stdout.
   - FORCE_SAVE_MODE: Regola il salvataggio dei risultati sul disco (eredita
-    ${FORCE_SAVE_MODE}).
-  - OUT_PATH: Percorso di output personalizzato (eredita ${OUT_PATH}).
-  - DRY_RUN: Flag booleano di simulazione (eredita ${DRY_RUN}).
+    ${FORCE_SAVE_MODE}, valori "save" o "nosave").
+  - OUT_PATH: Percorso di output personalizzato per il salvataggio del file
+    generato (eredita ${OUT_PATH}).
+  - DRY_RUN: Flag booleano di simulazione per escludere chiamate di rete
+    (eredita ${DRY_RUN}).
   - STREAM_MODE: Flag booleano per attivare la ricezione dei token in streaming
-    (eredita ${STREAM_MODE}).
-  - QUIET: Flag booleano per inibire i log informativi (eredita ${QUIET}).
-  - INSTALL_EXTRAS: Flag booleano per attivare l'installazione delle estensioni
-    (eredita ${INSTALL_EXTRAS}).
+    SSE (eredita ${STREAM_MODE}).
+  - QUIET: Flag booleano per inibire i log informativi su stderr (eredita
+    ${QUIET}).
+  - INSTALL_EXTRAS: Flag booleano per attivare l'installazione e
+    sincronizzazione delle estensioni (eredita ${INSTALL_EXTRAS}).
   - DEBUG: Flag per attivare l'output di tracciamento dello sviluppo (eredita
     ${DEBUG}).
   - PROVIDER_CLI: Nome del provider indicato esplicitamente tramite parametri a
@@ -1279,8 +1663,7 @@ VARIABILI
   - INSTALL_EXTRAS_SRC: Percorso della directory sorgente da cui prelevare le
     estensioni da installare.
   - BOOTSTRAP_ONLY: Flag booleano (valore 1 o 0, default 0) per arrestare lo
-    script immediatamente dopo la fase di bootstrap e importazione dei moduli
-    (senza elaborare input o effettuare chiamate API).
+    script immediatamente dopo la fase di bootstrap e importazione dei moduli.
   - INIT_THREAD: Flag booleano che richiede l'inizializzazione transazionale di
     un thread (default 0).
   - DELETE_THREAD: Flag booleano che richiede la rimozione fisica ed atomica di
@@ -1292,18 +1675,36 @@ VARIABILI
   - RENAME_THREAD_ID: Identificatore alfanumerico del thread da rinominare
     passato tramite l'opzione --rename-thread.
   - RENAME_TITLE: Titolo testuale da applicare al thread in ridenominazione.
+  - RUN_SUITE: Flag booleano per attivare l'esecuzione della suite di test
+    master unificata.
   - _B4L_RT_CTX: Token d'ambiente temporaneo in memoria adibito a sbloccare
     l'OpenSSL Vault durante sessioni interattive parent-shell.
-  - _engine_path: Percorso relativo/assoluto dello script del Session Engine
-    esterno.
+  - _engine_path: Percorso dello script del Session Engine esterno
+    ($BASH4LLM_EXTRAS_DIR/session/session-engine.sh).
   - _engine_available: Flag booleano interno (valore 1 o 0, default 0) che
-    attesta se il Session Engine è caricato ed operativo nel runtime corrente.
+    attesta se il Session Engine è stato caricato e verificato nel runtime
+    corrente.
   - _supported_providers_arr: Array interno che elenca e indicizza tutti i
     moduli provider supportati ed installati.
 
 FUNZIONI
 
+  - validate_provider_interface
+
+      - Scopo: Convalida che il modulo del provider caricato implementi
+        correttamente l'interfaccia richiesta da Bash4LLM⁺. Verifica la presenza
+        fisica in memoria delle funzioni obbligatorie (buildpayload_<p> e
+        call_api_<p>), e traccia a scopo informativo la presenza o assenza dei
+        metodi opzionali (call_api_streaming_<p>, refresh_models_<p>,
+        validate_model_<p>, auto_select_model_<p>).
+      - Input: $1 (nome identificativo del provider).
+      - Output: Ritorna stato 0 se l'interfaccia obbligatoria è pienamente
+        implementata, 1 in caso contrario.
+      - Side-effects: Scrittura di log di errore o info su stderr.
+      - Dipendenze: Comandi type, funzioni log_error, log_info.
+
   - call_provider
+
       - Scopo: Esegue in modo dinamico una specifica funzione dichiarata da un
         modulo provider esterno, a patto che la funzione risulti regolarmente
         caricata in memoria.
@@ -1311,18 +1712,25 @@ FUNZIONI
         relativi parametri da inoltrare.
       - Output: Restituisce lo stato d'uscita della funzione eseguita, o il
         codice di errore 127 se la funzione non è definita nel runtime.
-      - Dipendenze: type.
+      - Side-effects: Esecuzione della routine specificata.
+      - Dipendenze: Comando type.
+
   - validate_provider_key_dispatch
+
       - Scopo: Dispaccia l'esecuzione della validazione formale della chiave API
-        delegando al metodo del provider attivo (es. validate_key_groq).
+        delegando al metodo specializzato del provider attivo
+        (validate_key_<provider>).
       - Input: $1 (chiave API da convalidare).
       - Output: Ritorna il codice stato del validatore del provider, o 127 se
         non definito.
-      - Dipendenze: type.
+      - Side-effects: Invocazione della routine del provider.
+      - Dipendenze: Comando type.
+
   - refresh_models_dispatch
+
       - Scopo: Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando
-        la routine dedicata del provider attivo (es. refresh_models_groq). Tenta
-        prioritariamente l'invocazione passando il percorso del file di
+        la routine dedicata del provider attivo (refresh_models_<provider>).
+        Tenta prioritariamente l'invocazione passando il percorso del file di
         destinazione, ed esegue un fallback sulla versione senza argomenti in
         caso di firme non compatibili del metodo.
       - Input: $1 (opzionale: percorso del file di modelli, default
@@ -1330,24 +1738,48 @@ FUNZIONI
       - Output: Lista locale dei modelli aggiornata sul disco. Ritorna stato 0
         se completato con successo, o codici di errore in caso di fallimenti del
         provider o di interfaccia non definita (127).
-      - Dipendenze: type, log_error, log_info.
+      - Side-effects: Aggiornamento file dei modelli su disco, avviso di
+        persistenza chiave se applicabile.
+      - Dipendenze: Comando type, funzioni log_error, log_info,
+        print_persistence_reminder.
+
   - validate_model_dispatch
+
       - Scopo: Dispaccia la validazione sintattica e di compatibilità del
-        modello richiamando la routine dedicata del provider attivo (es.
-        validate_model_groq). Se il provider non supporta la convalida
+        modello richiamando la routine dedicata del provider attivo
+        (validate_model_<provider>). Se il provider non supporta la convalida
         specializzata, emette un avvertimento una tantum ed esegue una convalida
         permissiva di fallback.
       - Input: $1 (nome del modello).
       - Output: Ritorna lo stato di uscita del validatore o 0 se opera in
         convalida permissiva.
-      - Dipendenze: type, log_warn.
+      - Side-effects: Emissione di avvertimenti log.
+      - Dipendenze: Comando type, funzione log_warn.
+
   - auto_select_model_dispatch
+
       - Scopo: Dispaccia la selezione automatica del modello chiamando la
-        routine nativa del provider attivo (es. auto_select_model_groq).
+        routine nativa del provider attivo (auto_select_model_<provider>).
       - Input: Nessuno.
-      - Output: Nome del modello su stdout e stato d'uscita.
-      - Dipendenze: type.
+      - Output: Nome del modello su stdout e stato d'uscita della funzione.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando type.
+
+  - _lock_security_guards
+
+      - Scopo: Sigilla in sola lettura (readonly -f) le funzioni critiche di
+        sicurezza e mediazione, impedendo qualsiasi tentativo di ridefinizione o
+        monkey-patching durante l'esecuzione dello script.
+      - Input: Nessuno.
+      - Output: Nessuno.
+      - Side-effects: Rende immutabili le funzioni _exec_curl_secure,
+        verify_module_integrity, read_secure_input, validate_path_security,
+        atomic_write, check_local_rate_limit, enforce_network_policy,
+        execute_isolated_hook.
+      - Dipendenze: Comando readonly.
+
   - resolve_model
+
       - Scopo: Risolve ed assegna il modello LLM finale da adottare seguendo un
         rigoroso ordine di precedenza sequenziale:
         1.  Se impostato esplicitamente via parametro CLI (-m/--model), adotta
@@ -1356,8 +1788,8 @@ FUNZIONI
             il file canonico del provider $PROVIDER_FILE o adottando il fallback
             standard "groq").
         3.  Tenta di leggere la prima riga del file di configurazione specifico
-            del modello per tale provider (model.). Se presente, valido e
-            supportato, lo adotta dopo averlo normalizzato.
+            del modello per tale provider (model.<provider>). Se presente,
+            valido e supportato, lo adotta dopo averlo normalizzato.
         4.  Tenta di richiamare la funzione di auto-selezione nativa del
             provider (auto_select_model_dispatch). Se restituisce un modello
             valido, lo adotta.
@@ -1371,71 +1803,91 @@ FUNZIONI
             restituisce un errore di selezione.
       - Input: Nessuno.
       - Output: Ritorna stato 0 se risolto (assegnando il nome del modello alla
-        variabile globale $MODEL), 1 in caso di totale fallimento di
+        variabile globale FINAL_MODEL), 1 in caso di totale fallimento di
         risoluzione.
       - Side-effects: Letture multiple sul file-system, invocazione di
-        validatori.
-      - Dipendenze: canonical_model_file, canonical_provider_file, sed, awk,
-        validate_model_core, validate_model_dispatch,
+        validatoratori.
+      - Dipendenze: Funzioni canonical_model_file, canonical_provider_file,
+        canonical_config_dir, validate_model_core, validate_model_dispatch,
         auto_select_model_dispatch, _normalize_model_name, is_supported_model,
-        log_warn, log_error.
+        log_warn, log_error, comandi sed, awk.
+
   - build_payload_from_vars
+
       - Scopo: Dispaccia ed orchestra la costruzione del file JSON di richiesta
         API richiamando dinamicamente la routine dedicata del provider attivo
-        (buildpayload_).
+        (buildpayload_<provider>).
       - Input: Nessuno.
       - Output: Generazione del file di payload. Ritorna stato 0, o termina lo
         script con codice d'errore BASH4LLM_ERR_API se la funzione non è
         implementata nel modulo.
-      - Dipendenze: ensure_run_tmpdir, call_provider, log_error.
+      - Side-effects: Invocazione del builder del provider e scrittura file su
+        disco.
+      - Dipendenze: Funzioni ensure_run_tmpdir, call_provider, log_error.
+
   - call_api_once
+
       - Scopo: Dispaccia l'esecuzione di una singola chiamata API sincrona
         non-streaming richiamando la routine dedicata del provider attivo
-        (call_api_). Se è attiva la simulazione dry-run, esclude la chiamata
-        reale e visualizza a schermo a scopo diagnostico l'intestazione del
-        payload d'invio.
+        (call_api_<provider>). Se è attiva la simulazione dry-run, esclude la
+        chiamata reale e visualizza a schermo l'intestazione del payload
+        d'invio.
       - Input: Nessuno.
       - Output: Ritorna lo stato dell'esecuzione della chiamata o 0 se operato
         in simulazione.
-      - Dipendenze: call_provider, show_payload_head, log_info, log_error.
+      - Side-effects: Connessione di rete o output diagnostico in dry-run.
+      - Dipendenze: Funzioni call_provider, show_payload_head, log_info,
+        log_error.
+
   - call_api_streaming
+
       - Scopo: Dispaccia l'esecuzione della chiamata API in streaming
         richiamando la routine dedicata del provider attivo
-        (call_api_streaming_) sotto lock di thread esclusivo. Implementa un
-        meccanismo di ripristino sicuro del segnale d'interruzione (SIGINT) per
-        sbloccare l'fd lock in caso di uscita abrupta. Se è attiva la
+        (call_api_streaming_<provider>) sotto lock di thread esclusivo e
+        verifica preventiva di rate limiting. Implementa un meccanismo di
+        ripristino sicuro del segnale d'interruzione (SIGINT) per sbloccare il
+        file lock del thread in caso di uscita abrupta. Se è attiva la
         simulazione dry-run, simula la connessione e visualizza l'intestazione
         del payload d'invio.
       - Input: Nessuno.
       - Output: Ritorna lo stato dell'esecuzione o 0 se simulato.
-      - Side-effects: Gestione dei segnali e dei lock concorrenziali del
-        database.
-      - Dipendenze: acquire_thread_lock, release_thread_lock, call_provider,
-        show_payload_head, log_info, log_error.
+      - Side-effects: Acquisizione e rilascio lock, gestione segnali,
+        connessione di rete persistente.
+      - Dipendenze: Funzioni acquire_thread_lock, release_thread_lock,
+        check_local_rate_limit, call_provider, show_payload_head, log_info,
+        log_error, comandi trap, printf.
+
   - extract_api_error
+
       - Scopo: Ispeziona ed estrae in modo strutturato l'eventuale messaggio
         d'errore formale restituito dal provider all'interno del file di
         risposta $RESP (ricercando campi errore standard nel JSON o leggendo la
         prima riga di testo crudo).
       - Input: Nessuno (analizza $RESP).
       - Output: Messaggio d'errore stampato su standard output.
-      - Dipendenze: jq, awk.
+      - Side-effects: Lettura file.
+      - Dipendenze: Comandi jq, awk, head.
+
   - detect_empty_edge_case
+
       - Scopo: Algoritmo diagnostico per rilevare ed intercettare "risposte
         vuote" anomale dei provider (situazioni in cui l'API restituisce stato
         HTTP 200 e termina la generazione con motivo "stop" o assenza di token,
         ma senza produrre alcun testo utile). Analizza il file di risposta $RESP
         ed estrae metadati come l'ID richiesta, il finish reason e il conteggio
         dei token generati per classificare l'evento.
-      - Input: Nessuno.
-      - Output: Assegna il verdetto booleano a
-        BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in variabili globali (BASH4LLM_EDGE_REQ_ID,
-        $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).
+      - Input: Nessuno (analizza $RESP).
+      - Output: Assegna il verdetto booleano a BASH4LLM_EDGE_EMPTY (1 se
+        rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in
+        variabili globali (BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON,
+        BASH4LLM_EDGE_COMPLETION_TOKENS).
       - Side-effects: Duplicazione temporanea del file per l'analisi sicura.
-      - Dipendenze: _tmpf, cp, is_valid_json_file, jq, rm.
+      - Dipendenze: Funzioni _tmpf, is_valid_json_file, comandi cp, jq, rm.
+
   - finalize_and_output
+
       - Scopo: Formatta e visualizza i risultati finali generati in base alla
-        modalità selezionata in $OUTPUT_MODE (testo, raw, json o pretty).
+        modalità selezionata in $OUTPUT_MODE (text, raw, json o pretty).
         Inoltre, se l'output testuale supera la soglia di caratteri $THRESHOLD o
         se è forzato dall'utente, si occupa di salvare i risultati nel
         file-system (all'interno di $OUT_PATH o nella directory storica standard
@@ -1447,66 +1899,89 @@ FUNZIONI
         codice d'errore BASH4LLM_ERR_TMP.
       - Side-effects: Scrittura a schermo, salvataggio file storico
         transazionale, creazione directory via safe_mkdir.
-      - Dipendenze: _tmpf, cp, cat, jq, printf, wc, tr, date, safe_mkdir,
-        dirname, lock_exec, log_error, log_warn.
+      - Dipendenze: Funzioni _tmpf, safe_mkdir, lock_exec, log_error, log_warn,
+        comandi cp, cat, jq, printf, wc, tr, date, dirname, chmod.
+
   - perform_request_once
+
       - Scopo: Orchestra l'esecuzione complessiva di una chiamata API sincrona
-        sotto lock concorrenziale di thread, implementando una logica di retry
-        automatico in caso di errori di rete temporanei (fino a $MAX_RETRIES
-        tentativi, applicando un backoff lineare per l'attesa tra i tentativi) e
-        ripristino dei segnali. Gestisce l'estrazione dei testi, la diagnostica
-        dei casi vuoti anomali (detect_empty_edge_case), la notifica degli
-        errori formali inviati dalle API e la scrittura dello stato dell'ultima
-        transazione in last_api.json. Formatta i risultati e restituisce lo
-        stato d'uscita.
+        sotto lock concorrenziale di thread, integrando l'esecuzione di hook
+        isolati pre e post via execute_isolated_hook, la verifica del rate limit
+        locale (check_local_rate_limit), ed un ciclo di retry automatico in caso
+        di errori di rete temporanei (fino a $MAX_RETRIES tentativi). Gestisce
+        l'estrazione dei testi, la diagnostica dei casi vuoti anomali
+        (detect_empty_edge_case), la notifica degli errori formali inviati dalle
+        API e la scrittura dello stato dell'ultima transazione in last_api.json.
+        Formatta i risultati e restituisce lo stato d'uscita.
       - Input: Nessuno.
       - Output: Output generato stampato su console e file di log aggiornati.
         Ritorna stato 0 se completata, codice d'errore BASH4LLM_ERR_API se
         fallisce.
-      - Side-effects: Tentativi multipli di rete, sospensione temporanea del
-        processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su
-        stderr, gestione dei segnali e del file fd lock.
-      - Dipendenze: acquire_thread_lock, release_thread_lock, call_api_once,
-        extract_text_from_resp, detect_empty_edge_case, jq, ui_state_write,
-        extract_api_error, finalize_and_output, sleep, log_info, log_error,
-        log_warn.
+      - Side-effects: Invocazione di hook isolati, tentativi multipli di rete,
+        sospensione temporanea del processo (sleep), aggiornamenti dello stato
+        UI, messaggi diagnostici su stderr, gestione dei segnali e del file
+        descriptor lock del thread.
+      - Dipendenze: Funzioni acquire_thread_lock, release_thread_lock,
+        execute_isolated_hook, check_local_rate_limit, call_api_once,
+        extract_text_from_resp, detect_empty_edge_case, ui_state_write,
+        extract_api_error, finalize_and_output, log_info, log_error, log_warn,
+        b64decode, comandi trap, jq, head, sleep, printf.
+
   - collect_input_from_files
+
       - Scopo: Legge e concatena in un'unica stringa i contenuti di una lista di
-        file di input, inserendo delimitatori visivi strutturati tra i file per
-        consentire al modello LLM di distinguere nettamente le sorgenti. (Nota:
-        eredita la deviazione di espansione testuale sulla variabile d'ambiente
-        iterativa nel prompt dello script core).
+        file di input passati via opzione -f, validandone preventivamente la
+        sicurezza tramite validate_file_input ed inserendo delimitatori visivi
+        strutturati tra i file.
       - Input: Array di percorsi di file ($@).
       - Output: Stringa di testo unificata stampata su stdout. Interrompe lo
-        script con errore BASH4LLM_ERR_TMP se un file non è leggibile.
-      - Dipendenze: file_readable, cat, log_error.
+        script con errore BASH4LLM_ERR_SEC (17) se un file contiene byte nulli o
+        dati non sicuri, o BASH4LLM_ERR_TMP se non leggibile.
+      - Side-effects: Lettura file-system.
+      - Dipendenze: Funzioni file_readable, validate_file_input, log_error,
+        comandi cat.
+
   - expand_args_to_content
+
       - Scopo: Converte gli argomenti CLI posizionali in frammenti di prompt. Se
         un argomento corrisponde a un percorso file esistente e leggibile, ne
-        legge e ne riversa il contenuto formattato all'interno del prompt
-        complessivo, altrimenti lo accoda direttamente come testo letterale.
+        valida la sicurezza via validate_file_input e ne legge il contenuto,
+        altrimenti lo accoda direttamente come testo letterale.
       - Input: Elementi accumulati nell'array $ARGS.
       - Output: Stringa di prompt unificata stampata su stdout.
-      - Dipendenze: file_readable, cat.
+      - Side-effects: Lettura file-system.
+      - Dipendenze: Funzioni file_readable, validate_file_input, log_error,
+        comandi cat.
+
   - file_readable
+
       - Scopo: Convalida se il percorso indicato corrisponde a un file regolare
         effettivamente leggibile dall'utente corrente.
       - Input: $1 (percorso file).
       - Output: Ritorna stato 0 se leggibile, 1 in caso contrario.
+      - Side-effects: Nessuno.
+      - Dipendenze: Test shell [ -r ... ] && [ -f ... ].
+
   - trim
-      - Scopo: Rimuove in modo efficiente gli spazi vuoti, i tabulatori e i
-        caratteri di a capo dall'inizio e dalla fine di una stringa testuale
-        passata.
+
+      - Scopo: Rimuove gli spazi vuoti, i tabulatori e i caratteri di a capo
+        dall'inizio e dalla fine di una stringa testuale passata tramite awk.
       - Input: $1 (stringa da pulire).
       - Output: Stringa pulita stampata su stdout.
-      - Dipendenze: awk, printf.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi awk, printf.
+
   - is_number
+
       - Scopo: Verifica se il valore testuale fornito rappresenta un valore
         numerico valido (intero o decimale).
       - Input: $1 (stringa da analizzare).
       - Output: Ritorna stato 0 se numerico, 1 altrimenti.
-      - Dipendenze: awk, printf.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comandi awk, printf.
+
   - is_supported_model
+
       - Scopo: Analizza il nome del modello e ne convalida la compatibilità con
         Bash4LLM⁺. Filtra e scarta (ritornando stato 1) modelli che richiedono
         formati non-testuali esclusivi (immagini, visione/VQA,
@@ -1515,8 +1990,11 @@ FUNZIONI
         compatibili.
       - Input: $1 (nome del modello).
       - Output: Ritorna stato 0 se supportato, 1 se escluso.
-      - Dipendenze: tr.
+      - Side-effects: Nessuno.
+      - Dipendenze: Comando tr.
+
   - list_models_cli
+
       - Scopo: Formatta e visualizza sulla console l'elenco dei modelli
         disponibili memorizzati in locale normalizzandoli con
         _normalize_model_name, evidenziando chiaramente quali modelli non sono
@@ -1525,8 +2003,12 @@ FUNZIONI
       - Input: Nessuno (scansiona $MODELS_FILE).
       - Output: Elenco stampato su stderr. Ritorna stato 0 se completato, 1 se
         il file dei modelli è assente o vuoto.
-      - Dipendenze: _normalize_model_name, is_supported_model, printf.
+      - Side-effects: Scrittura su stderr.
+      - Dipendenze: Funzioni _normalize_model_name, is_supported_model, comando
+        printf.
+
   - validate_model_core
+
       - Scopo: Algoritmo centrale di validazione dei modelli. Normalizza il nome
         tramite _normalize_model_name. Controlla se è registrato nel file dei
         modelli locali e verifica se è escluso per via di formati non testuali
@@ -1534,113 +2016,168 @@ FUNZIONI
       - Input: $1 (nome modello).
       - Output: Ritorna stato 0 se valido, 1 in caso d'errore (emettendo
         dettagli su stderr).
-      - Dipendenze: _normalize_model_name, grep, awk, is_supported_model,
-        printf.
+      - Side-effects: Scrittura messaggi su stderr.
+      - Dipendenze: Funzioni _normalize_model_name, is_supported_model, comandi
+        grep, awk, printf.
+
   - load_local_config
+
       - Scopo: Carica in memoria i parametri di configurazione definiti
         dall'utente nel file di configurazione locale (config all'interno della
         cartella $BASH4LLM_CONFIG_DIR), interpretando le righe chiave/valore e
         impostando le variabili globali corrispondenti (MODEL, TEMPERATURE/TURE,
         MAX_TOKENS, OUTPUT_MODE/FORMAT, THRESHOLD). Ignora commenti e righe
-        vuote.
+        vuote e pulisce gli spazi vuoti nativamente.
       - Input: Nessuno.
       - Output: Assegnazione di variabili globali di ambiente.
+      - Side-effects: Modifica delle variabili globali in memoria.
+      - Dipendenze: Lettura file-system.
+
   - load_whitelist
+
       - Scopo: Carica in memoria e normalizza l'elenco di tutti i modelli
         autorizzati presenti nel file dei modelli locali tramite normalizzazione
         riga per riga di _normalize_model_name per comporre la stringa globale
         di whitelist $ALLOWED_MODELS usata per i filtri di convalida dei
         modelli.
-      - Input: Nessuno.
-      - Output: Popola la variabile globale $ALLOWED_MODELS con i nomi
+      - Input: Nessuno (analizza $MODELS_FILE).
+      - Output: Popola la variabile globale ALLOWED_MODELS con i nomi
         normalizzati separati da a capo.
-      - Dipendenze: _normalize_model_name.
+      - Side-effects: Modifica della variabile globale ALLOWED_MODELS.
+      - Dipendenze: Funzione _normalize_model_name.
+
   - is_tty_out
+
       - Scopo: Verifica se lo standard output (stdout) dello script è collegato
         a un terminale interattivo (TTY) reale anziché essere ridiretto a un
         file o pipeline.
       - Input: Nessuno.
       - Output: Ritorna stato 0 se TTY, 1 in caso contrario.
+      - Side-effects: Nessuno.
+      - Dipendenze: Test shell [ -t 1 ].
 
 BLOCCHI DI CODICE
 
-  - parse_cli_arguments
-      - Fase: Parsing iniziale dei parametri a riga di comando.
-      - Azione: Analizza in modo iterativo tutti gli argomenti passati da CLI.
-        Registra e configura le opzioni booleane e i parametri complessi,
-        comprese le nuove direttive concorrenti per i thread (--thread,
-        --thread-window, --init-thread, --delete-thread, --rename-thread,
-        --title) e il Key Vault crittografico (--vault). Raggruppa i parametri
-        posizionali o i prompt liberi all'interno dell'array $ARGS. Esclude
-        interamente i vecchi parametri obsoleti basati su sessione. Gestisce la
-        terminazione immediata dello script in caso di parametri di aiuto
-        (-h/--help) o visualizzazione versione (--version).
-  - source_session_engine
-      - Fase: Integrazione ed attivazione dei moduli estesi.
+  - CORE_SETUP_DISPATCH_HELPERS
+
+      - Fase: Registrazione delle routine di dispatch verso i moduli provider e
+        blocco di sicurezza del runtime.
+      - Azione: Definisce le funzioni di interfaccia e dispatch verso i moduli
+        estesi dei provider e richiama immediatamente _lock_security_guards per
+        rendere immutabili e in sola lettura le funzioni critiche di sicurezza.
+
+  - CORE_SETUP_API_CALL
+
+      - Fase: Gestione del ciclo di vita delle richieste API, modello e gestione
+        risposte.
+      - Azione: Implementa l'algoritmo di risoluzione sequenziale dei modelli
+        (resolve_model), il dispatch per la costruzione del payload
+        (build_payload_from_vars), l'invocazione di chiamate sincrone e
+        streaming, l'estrazione degli errori formali, la diagnosi dei casi vuoti
+        anomali e l'orchestratore con retry perform_request_once.
+
+  - CORE_SETUP_INPUT_HELPERS
+
+      - Fase: Assemblaggio dell'input, anonimizzazione e gestione del sourcing
+        parent-shell.
+      - Azione: Definisce le routine di lettura e validazione di file ed
+        argomenti posizionali, la validazione dei modelli e l'ispezione della
+        whitelist. Esegue l'anonimizzazione immediata di $THREAD_ID tramite
+        anonymize_thread_id. Gestisce inoltre il caricamento tramite sourcing da
+        shell padre interattiva: se lo script viene incluso senza esecuzione
+        diretta (BASH_SOURCE[0] != $0), richiede lo sblocco del Key Vault
+        OpenSSL memorizzando il token in _B4L_RT_CTX ed esegue la pulizia
+        automatica del namespace delle funzioni private via
+        _cleanup_sourced_env.
+
+  - CORE_SETUP_CLI_PARSE
+
+      - Fase: Parsing ed elaborazione rigorosa delle opzioni della riga di
+        comando.
+      - Azione: Analizza in un ciclo iterativo tutti i parametri CLI. Supporta
+        le opzioni per la gestione dei thread (--thread, --thread-window,
+        --init-thread, --delete-thread, --rename-thread, --title), il Key Vault
+        crittografico (--vault), l'orchestrazione della suite di test
+        (--test/--run-all-tests), l'installazione estensioni (--install-extras),
+        i parametri di configurazione del modello e delle API, applicando
+        immediatamente l'anonimizzazione crittografica anonymize_thread_id a
+        qualsiasi identificatore di thread ricevuto.
+
+  - CORE_SETUP_SESSION_ENGINE
+
+      - Fase: Integrazione ed attivazione del Session Engine esterno.
       - Azione: Rileva e tenta di importare lo script del Session Engine esterno
-        (session-engine.sh). Esegue un dry-run di analisi sintattica (bash -n) e
-        verifica la presenza in memoria delle funzioni chiave di interfaccia. Se
-        i controlli hanno successo e l'engine non è disabilitato da
-        configurazione utente, attiva il flag _engine_available=1 (abilitando la
-        gestione estesa e la compressione automatica della cronologia dei
-        thread), altrimenti imposta il fallback automatico sui metodi storici
-        legacy integrati.
-  - verify_api_calls_and_rebuild_providers
-      - Fase: Convalida delle chiamate esterne e mappatura dei plug-in.
-      - Azione: Blocca l'esecuzione dello script se è configurata la chiave API
-        ma le chiamate esterne sono inibite senza essere in modalità di
-        simulazione dry-run. Esegue una scansione dei file all'interno della
-        directory dei provider (providers/*.sh) per raccogliere dinamicamente
-        tutti i moduli dei provider installati e comporre la stringa globale
-        aggiornata $SUPPORTED_PROVIDERS.
-  - raw_listings
-      - Fase: Elaborazione delle interrogazioni rapide.
-      - Azione: Intercetta le richieste di visualizzazione cruda dei provider
-        (--list-providers-raw) o dei modelli locali (--list-models-raw), le
-        stampa riga per riga su stdout ed esce immediatamente con stato 0 (o
-        codici di errore in caso di elenchi vuoti o assenti) senza procedere
-        oltre con l'esecuzione dello script.
-  - immediate_actions
-      - Fase: Esecuzione comandi immediati ed installazione estensioni.
-      - Azione: Elabora ed esegue le azioni amministrative che non richiedono
-        l'avvio delle chiamate API: eliminazione di un thread database e del suo
-        file di lock (--delete-thread), ridenominazione dei metadati di un
-        thread (--rename-thread), elenco dei provider installati, elenco dei
-        modelli, configurazione persistente del modello di default per il
-        provider attivo, sincronizzazione e blindatura dei permessi delle
-        estensioni locali (--install-extras via cp-R, chmod 700/600 e conformità
-        owner) e inizializzazione formale di un nuovo thread operativo
-        (--init-thread). Blocca inoltre l'avvio se la modalità streaming è
-        accoppiata con output strutturato JSON. Esce con stato 0.
-  - normalize_boolean_flags
-      - Fase: Normalizzazione e allineamento logico dei flag booleani.
-      - Azione: Scorre una lista predefinita di variabili di controllo booleane
-        dello script, converte i loro valori in stati numerici puri 0 o 1
-        tramite is_truthy, uniformandone l'elaborazione interna.
+        (session-engine.sh). Esegue la verifica di sicurezza del percorso e la
+        convalida dell'integrità crittografica SHA-256 rispetto al manifesto. Se
+        validato, esegue un test di sintassi (bash -n) e ne carica le funzioni
+        abilitando _engine_available=1 per la gestione avanzata e la
+        compressione automatica della cronologia della chat, altrimenti attiva
+        il fallback sui metodi storici legacy.
+
+  - CORE_SETUP_NORM_FLAGS
+
+      - Fase: Normalizzazione dei flag e censimento dinamico dei plug-in.
+      - Azione: Imposta i valori di default di ALLOW_API_CALLS, esegue una
+        scansione della directory delle estensioni dei provider (providers/*.sh)
+        per mappare dinamicamente tutti i moduli installati ed aggiornare la
+        stringa globale $SUPPORTED_PROVIDERS.
+
+  - CORE_SETUP_ACTIONS
+
+      - Fase: Esecuzione delle azioni amministrative ed offline immediate.
+      - Azione: Elabora ed esegue immediatamente i comandi che non richiedono
+        chiamate API: eliminazione di un thread (--delete-thread),
+        ridenominazione dei metadati di un thread (--rename-thread), listati dei
+        provider e dei modelli, impostazione del modello predefinito
+        (--set-default), delega transazionale all'orchestratore della test suite
+        master (--test), installazione delle estensioni (--install-extras) con
+        sincronizzazione cp -R, applicazione del principio del minimo privilegio
+        sui permessi (700/600) e verifica dei digest SHA-256 contro il file
+        manifesto manifest.sha256, ed infine l'inizializzazione transazionale di
+        un nuovo thread (--init-thread). Esce con stato 0 al termine
+        dell'operazione richiesta.
 
 5. CORE_PROVIDER
 
 VARIABILI
 
-  - _supported_providers_arr: Array interno per l'indicizzazione dei provider
-    rilevati.
+  - _supported_providers_arr: Array interno utilizzato per la memorizzazione e
+    l'indicizzazione dinamica di tutti i moduli provider rilevati ed installati
+    nella directory delle estensioni.
   - SUPPORTED_PROVIDERS: Elenco testuale unificato dei provider supportati
     separati da caratteri di spazio.
+  - PROVIDER: Identificatore del provider attivo (sincronizzato con la selezione
+    persistita nel file canonico del provider o sovrascritta tramite CLI/menu
+    interattivo).
+  - PROVIDER_INTERACTIVE_SELECTED: Flag booleano interno (valore 1 o 0) che
+    attesta l'avvenuta selezione del provider tramite menu interattivo da
+    terminale.
+  - FINAL_MODEL: Nome del modello finale validato e risolto dalla routine
+    resolve_model, pronto per l'invio nelle chiamate API.
+  - STDIN_CONTENT: Buffer di memoria adibito alla memorizzazione del flusso di
+    testo catturato dallo standard input (cat -) in caso di redirezioni o
+    pipeline.
 
 FUNZIONI
 
   - validate_provider_interface
-      - Scopo: Convalida che il modulo del provider caricato implementi
+
+      - Scopo: Convalida che il modulo del provider attivo implementi
         correttamente le specifiche dell'interfaccia di Bash4LLM⁺. Verifica la
-        presenza fisica in memoria delle funzioni obbligatorie (buildpayload_ e
-        call_api_), e traccia a scopo informativo la presenza o assenza di
-        metodi opzionali (streaming, validazione modelli, auto-selezione,
-        refresh modelli).
+        presenza fisica in memoria delle funzioni obbligatorie
+        (buildpayload_<provider> e call_api_<provider>), e traccia a scopo
+        informativo la presenza o assenza dei metodi opzionali
+        (call_api_streaming_<provider>, refresh_models_<provider>,
+        validate_model_<provider>, auto_select_model_<provider>).
       - Input: $1 (nome identificativo del provider da analizzare).
       - Output: Ritorna stato 0 se l'interfaccia obbligatoria è pienamente
-        implementata, 1 in caso contrario (emettendo errori critici loggati).
-      - Dipendenze: type, log_error, log_info.
+        implementata, 1 in caso contrario (emettendo errori critici loggati via
+        log_error).
+      - Side-effects: Scrittura di log di errore o informativi su stderr.
+      - Dipendenze: Comandi type, funzioni log_error, log_info.
+
   - assemble_content
+
       - Scopo: Compila ed organizza la stringa del prompt di input principale
         $CONTENT che verrà inviata al modello LLM. Segue una catena di regole di
         priorità esclusive:
@@ -1648,9 +2185,10 @@ FUNZIONI
             $CONTENT ed esce (in quanto il JSON di input definisce autonomamente
             i messaggi).
         2.  Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne
-            raccoglie ed unifica i contenuti via collect_input_from_files. Se
-            sono presenti argomenti posizionali aggiuntivi, li annette in coda
-            come frammenti testuali.
+            raccoglie ed unifica i contenuti via collect_input_from_files
+            (previa validazione di sicurezza validate_file_input). Se sono
+            presenti argomenti posizionali aggiuntivi, li annette in coda come
+            frammenti testuali.
         3.  Se è richiesto l'uso di un template ($TEMPLATE), preleva il file del
             modello dalla directory dei template, esegue la sostituzione della
             stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito
@@ -1662,59 +2200,67 @@ FUNZIONI
             coda eventuali argomenti posizionali.
         5.  Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed
             unisce nel prompt testuale principale via expand_args_to_content.
-      - Input: Nessuno.
-      - Output: Stringa compilata assegnata alla variabile globale $CONTENT.
+      - Input: Variabili globali JSON_INPUT, FILE_INPUTS, TEMPLATE,
+        STDIN_CONTENT, ARGS, BASH4LLM_TEMPLATES_DIR, RUN_TMPDIR.
+      - Output: Stringa compilata assegnata alla variabile globale CONTENT.
+        Ritorna stato 0.
       - Side-effects: Lettura file, generazione e distruzione di file di staging
-        temporanei sul disco.
-      - Dipendenze: collect_input_from_files, expand_args_to_content, cat,
-        ensure_run_tmpdir, _mktemp_in_dir, awk, mv, rm, printf.
+        temporanei atomici sul disco tramite _mktemp_in_dir, sostituzione di
+        stringhe via awk.
+      - Dipendenze: Funzioni collect_input_from_files, expand_args_to_content,
+        ensure_run_tmpdir, _mktemp_in_dir, comandi cat, awk, mv, rm, printf.
 
 BLOCCHI DI CODICE
 
   - CORE_PROVIDER_PRO_LOAD_INITIALIZATION
-      - Fase: Selezione e caricamento del modulo provider attivo.
+
+      - Fase: Selezione, persistenza e caricamento del modulo provider attivo.
       - Azione: Scansiona la directory dei provider esterni per mappare i moduli
         installati. Determina il provider attivo leggendolo dai parametri CLI o
-        dal file di configurazione del provider $PROVIDER_FILE (adottando "groq"
-        in caso di assenza).
-          - Se configurato un nuovo provider da CLI ($PROVIDER_CLI diverso da
-            "list"): convalida che appartenga a quelli supportati, salva
-            transazionalmente la scelta nel file $PROVIDER_FILE con permessi 600
-            e, se il provider è cambiato, cancella il vecchio file locale dei
-            modelli $MODELS_FILE (per forzarne l'allineamento API), elimina il
-            vecchio file URL del provider e risolve il nuovo URL.
+        dal file di configurazione canonico del provider $PROVIDER_FILE
+        (adottando "groq" in caso di assenza).
+          - Se specificato un nuovo provider da CLI ($PROVIDER_CLI diverso da
+            "list" e non interattivo): convalida l'appartenenza ai provider
+            supportati, salva transazionalmente la scelta nel file
+            $PROVIDER_FILE con permessi 600 via atomic_write, rimuove il vecchio
+            file URL del provider e risolve il nuovo endpoint.
           - Se richiesta la selezione interattiva (--provider senza argomenti o
-            valore "list"): visualizza a schermo il menu numerato di tutti i
-            provider installati evidenziando il default, acquisisce la scelta
-            dell'utente dallo standard input (accettando l'indice o il nome
-            letterale e adottando il default se premuto invio), scrive in modo
-            atomico la scelta in $PROVIDER_FILE con permessi 600, rimuove l'URL
-            preesistente e invalida il file locale dei modelli. Infine, se il
-            provider attivo è "groq" e manca il file URL locale, scrive l'URL
-            dell'API predefinito nel file canonico. Invoca la funzione di
-            caricamento sicuro load_provider_module per importare i metodi del
-            modulo provider ed esegue la risoluzione dell'URL dell'API. Se
+            valore "list"): visualizza a schermo il menu numerato dei provider
+            disponibili evidenziando il predefinito corrente, acquisisce la
+            scelta dell'utente da stdin (accettando l'indice o il nome letterale
+            e adottando il default se premuto invio), scrive in modo atomico la
+            scelta in $PROVIDER_FILE con permessi 600 via atomic_write, rimuove
+            il vecchio file URL del provider e risolve il nuovo URL.
+          - Se il provider attivo è "groq" e manca il file URL locale, scrive
+            l'URL dell'API predefinito nel file canonico tramite
+            write_provider_url_if_missing. Invoca la funzione di caricamento
+            sicuro load_provider_module per importare le funzioni del modulo
+            provider ed esegue la risoluzione dell'URL dell'API. Se
             l'interfaccia interattiva viene eseguita senza comandi aggiuntivi,
             stampa la conferma del provider impostato ed esce direttamente con
             stato 0.
+
   - CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH
+
       - Fase: Validazione del modulo provider ed allineamento modelli.
       - Azione: Verifica che il modulo del provider sia stato correttamente
         importato ed esegue la convalida della conformità della sua interfaccia
         via validate_provider_interface; in caso di errori strutturali termina
         con codice BASH4LLM_ERR_API. Se è stato richiesto esplicitamente il
-        refresh dei modelli ($REFRESH_MODELS attivo), richiede la chiave API ed
-        avvia l'allineamento dei modelli locali tramite refresh_models_dispatch,
-        terminando con stato 0. In subordine, se il file dei modelli locali
-        $MODELS_FILE è assente o completamente vuoto, tenta di eseguire un
-        allineamento automatico dei modelli in background (richiedendo la chiave
-        API ed invocando la routine di refresh, senza interrompere lo script in
-        caso di fallimento per permettere l'elaborazione dei flussi in
-        background).
+        refresh dei modelli ($REFRESH_MODELS attivo), assicura la presenza della
+        chiave API via ensure_api_key_for_provider ed avvia l'allineamento dei
+        modelli locali tramite refresh_models_dispatch, terminando con stato 0.
+        In subordine, se il file dei modelli locali $MODELS_FILE è assente o
+        completamente vuoto, tenta di eseguire un allineamento automatico dei
+        modelli in background (richiedendo la chiave API ed invocando la routine
+        di refresh, senza interrompere lo script in caso di fallimento per
+        permettere l'elaborazione dei flussi).
+
   - CORE_PROVIDER_SHOW
+
       - Fase: Esecuzione delle risposte diagnostiche immediate.
-      - Azione: Gestisce e soddisfa le richieste diagnostiche e di ispezione dei
-        percorsi dello script, terminando l'esecuzione con stato 0 dopo la
+      - Azione: Gestisce e satisfies le richieste diagnostiche e di ispezione
+        dei percorsi dello script, terminando l'esecuzione con stato 0 dopo la
         visualizzazione dei dati:
           - --print-config-dir / PRINT_CONFIG_DIR: Stampa il percorso della
             directory di configurazione canonica.
@@ -1724,99 +2270,85 @@ BLOCCHI DI CODICE
             per il provider indicato.
           - SHOW_CONFIG: Visualizza un riepilogo tabulare dettagliato dei
             parametri correnti dell'installazione (versione, date, provider
-            attivo, modello attivo, modello di default, percorsi di tutte le
-            directory di lavoro di Bash4LLM⁺, stato di debug e simulazione,
-            conteggio dei modelli in whitelist).
+            attivo, modello attivo, temperatura, token massimi, formato output,
+            soglia di salvataggio).
           - DIAGNOSTICS: Esegue un'analisi di integrità diagnostica completa
-            dello stato del sistema. Scansiona e verifica l'esistenza e
-            l'accessibilità fisica di tutte le directory operative, attesta che
-            le funzioni obbligatorie del provider selezionato siano regolarmente
-            mappate in memoria, verifica la conformità del modello attivo
-            rispetto alla whitelist locale, controlla l'effettiva presenza della
-            chiave API nell'ambiente correlandola con il nome esatto della
-            variabile attesa dal provider, lo stato di sblocco della sessione
-            vault (_B4L_RT_CTX), l'esito dei test crittografici e del TLS
-            Handshake verso l'endpoint remoto attivo.
+            dello stato del sistema: scansiona e verifica l'esistenza e
+            l'accessibilità fisica di tutte le directory operative, verifica lo
+            stato del file di manifesto dell'integrità delle estensioni,
+            controlla lo stato di abilitazione del Key Vault OpenSSL, lo stato
+            di sblocco della sessione (_B4L_RT_CTX), il supporto PBKDF2, lo
+            stato di inizializzazione del Vault ed esegue un test reale di TLS
+            Handshake verso l'endpoint remoto attivo del provider via
+            diagnose_tls_connection.
+
   - CORE_PROVIDER_MAIN_RESOLVE
-      - Fase: Risoluzione del modello e cattura standard input.
-      - Azione: Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY), esce
-        immediatamente con stato 0. Carica la configurazione locale e le
-        whitelist dei modelli, garantisce la stabilità della directory
-        temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via
-        resolve_model ed esegue su di esso le convalide sintattiche e di
-        interfaccia del provider (terminando con codice BASH4LLM_ERR_BAD_MODEL
-        se il modello selezionato fallisce le verifiche). Infine, cattura e
-        memorizza l'eventuale flusso di testo in arrivo da una redirezione o
-        pipeline nello standard input (cat -) all'interno di STDIN_CONTENT e, in
-        presenza di un JSON strutturato, ne estrae transazionalmente la chiave
-        API interna ed i prompt d'ingresso.
+
+      - Fase: Risoluzione del modello e cattura dello standard input.
+      - Azione: Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY attivo), esce
+        immediatamente con stato 0. Carica le configurazioni locali via
+        load_local_config e le whitelist dei modelli via load_whitelist,
+        garantisce la stabilità della directory temporanea $RUN_TMPDIR, risolve
+        il modello LLM finale da adottare via resolve_model ed esegue su di esso
+        le convalide sintattiche e di interfaccia del provider
+        (validate_model_core e validate_model_dispatch), terminando con codice
+        BASH4LLM_ERR_BAD_MODEL se falliscono. Infine, cattura l'eventuale flusso
+        di testo in arrivo da una redirezione o pipeline nello standard input
+        (cat -) all'interno di STDIN_CONTENT e, in presenza di un JSON
+        strutturato, ne estrae transazionalmente la chiave API interna ed i
+        prompt d'ingresso sovrascrivendo e cancellando immediatamente il buffer
+        per sicurezza.
+
   - CORE_PROVIDER_MAIN_EXECUTION
-      - Fase: Esecuzione principale del prompt (Core Execution loop).
+
+      - Fase: Esecuzione principale del prompt (Core Execution Loop).
       - Azione: Invoca assemble_content per generare il prompt definitivo. Se lo
         script è stato richiamato in modalità interattiva e non contiene prompt,
         visualizza la notifica del provider attivo ed esce. Esegue controlli di
         sicurezza sull'input bloccando l'esecuzione con codice
         BASH4LLM_ERR_NO_PROMPT in assenza di prompt testuale o JSON d'input
-        (tranne se in chat interattiva o elaborazione batch). Valida la
-        correttezza numerica dei parametri di temperatura e token massimi.
-        Controlla che il modello sia regolarmente supportato o non deprecato
-        ispezionando la whitelist e garantisce la presenza della directory
-        temporanea $RUN_TMPDIR. Procede quindi con i tre flussi di esecuzione
-        principali:
+        (tranne se in chat interattiva, inizializzazione thread o elaborazione
+        batch). Procede quindi con i tre flussi di esecuzione principali:
         1.  Elaborazione BATCH ($BATCH_FILE attivo): Scansiona il file batch
-            riga per riga, escludendo righe vuote o commenti. Per ciascun
-            prompt:
-              - Configura l'ambiente di thread operativo se richiesto (validando
-                l'ID thread, limitando la finestra dei messaggi, e richiamando
-                session_engine_build_window o la legacy thread_read_window per
-                compilare il JSON storico $BUILD_MESSAGES_FILE). Se lo storico è
-                assente o vuoto, lo inizializza inserendo un record utente con
-                il prompt corrente.
-              - Dispaccia la costruzione del payload del file JSON via
-                build_payload_from_vars.
-              - Verifica e richiede la chiave API per il provider e avvia
-                l'interrogazione dell'API (eseguendo la chiamata in tempo reale
-                se $STREAM_MODE è attivo, oppure richiamando la routine
-                perform_request_once).
-        2.  Chat Interattiva ($CHAT_MODE attivo): Delega integralmente il ciclo
-            di chat interattiva multi-turno ed allocazione del terminale TTY
-            all'utility esterna tui-repl.sh per ottimizzare l'isolamento ed
-            isolamento di processo.
-        3.  Esecuzione Standard di Singolo Prompt (Streaming o Sincrona):
+            riga per riga, escludendo righe vuote o commenti. Per ciascun prompt
+            configura l'ambiente di thread se richiesto (validando l'ID thread,
+            limitando la finestra dei messaggi, e richiamando
+            session_engine_build_window o la legacy thread_read_window per
+            compilare il JSON storico $BUILD_MESSAGES_FILE). Dispaccia la
+            costruzione del payload via build_payload_from_vars, assicura la
+            chiave API via ensure_api_key_for_provider ed avvia l'interrogazione
+            dell'API (sincrona via perform_request_once o in streaming via
+            call_api_streaming).
+        2.  Chat Interattiva ($CHAT_MODE attivo): Trasferisce atomicamente
+            l'esecuzione sostituendo l'immagine di processo dello script (exec
+            bash) con l'utility esterna TUI REPL (tui-repl.sh) previa verifica
+            di sicurezza del percorso e convalida dell'integrità crittografica
+            SHA-256 via verify_module_integrity.
+        3.  Esecuzione Singolo Prompt (Streaming o Sincrona):
               - Se è definito un thread operativo ($THREAD_ID), esegue la
                 validazione dell'ID, determina la finestra di recupero, e
                 compila il file storico dei messaggi $BUILD_MESSAGES_FILE
                 interrogando il Session Engine o richiamando la routine legacy
                 di lettura NDJSON.
-              - Compila il payload del file JSON via build_payload_from_vars.
-              - Se si opera in esecuzione reale (non simulata), valida la
-                presenza della chiave API del provider.
-              - Se streaming attivo ($STREAM_MODE == 1): Invoca la funzione di
-                streaming dedicatale (call_api_streaming) sotto lock esclusivo
-                di thread. Se completato con successo:
-                  - Se vi è un thread attivo, sanifica ed accoda il messaggio
-                    dell'utente al registro storico (via session_engine_append o
-                    la legacy thread_append).
-                  - Se la connessione ha generato risposta reale ed il file
-                    $RESP contiene dati validi, estrae il testo generato
-                    dall'assistente, ne esegue la sanificazione dai ritorni a
-                    capo ed accoda in modo sicuro la risposta dell'assistente
-                    nel file NDJSON storico del thread (delegandola al Session
-                    Engine o alla legacy thread_append).
-                  - Stampa un carattere a capo e termina l'esecuzione con
-                    stato 0. In caso di errore termina con errore di curl.
-              - Se sincrona standard ($STREAM_MODE == 0): Stampa i dettagli
+              - Compila il payload JSON via build_payload_from_vars.
+              - Se si opera in esecuzione reale (non simulata DRY_RUN), valida e
+                recupera la chiave API del provider via
+                ensure_api_key_for_provider.
+              - Se Streaming attivo ($STREAM_MODE == 1): Invoca la funzione di
+                streaming dedicada (call_api_streaming) sotto lock esclusivo di
+                thread. Se completato con successo, e non in modalità simulata
+                DRY_RUN, sanifica ed accoda il messaggio dell'utente ed il testo
+                restituito dall'assistente nel registro NDJSON del thread
+                (delegando al Session Engine o alla legacy thread_append).
+                Stampa un carattere a capo ed esce con stato 0.
+              - Se Sincrono standard ($STREAM_MODE == 0): Stampa i dettagli
                 diagnostici di visualizzazione del prompt e del modello se in
-                terminale interattivo verboso. Invoca la chiamata transazionale
-                via perform_request_once sotto lock esclusivo di thread. In caso
-                di successo:
-                  - Se è configurato un thread, sanifica e registra il messaggio
-                    dell'utente nel file storico. Se l'esecuzione è reale ed il
-                    file di risposta contiene dati, estrae il testo generato
-                    dall'assistente, lo ripulisce e registra in modo sicuro la
-                    risposta dell'assistente nel file NDJSON di storico. Esce
-                    con stato 0. In caso di fallimento della chiamata, accoda
-                    comunque il messaggio utente al thread operativo
-                    contrassegnandolo come interazione fallita ed interrompe
-                    l'esecuzione restituendo lo stato d'uscita della
-                    perform_request_once.
+                terminale TTY interattivo verboso. Invoca la chiamata
+                transazionale via perform_request_once sotto lock esclusivo di
+                thread. In caso di successo, formatta l'output via
+                finalize_and_output, registra l'interazione utente ed assistente
+                nel file NDJSON del thread ed esce con stato 0. In caso di
+                fallimento della chiamata, accoda comunque il messaggio utente
+                al thread registrandolo come operazione fallita ed interrompe
+                l'esecuzione restituendo lo stato d'uscita della
+                perform_request_once.
