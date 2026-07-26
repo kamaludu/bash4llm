@@ -220,9 +220,9 @@ execute_canonical_suite() {
 }
 
 main() {
-  printf '\n%s========================================%s\n' "$C_BOLD" "$C_RST"
+  printf '\n%s============================================%s\n' "$C_BOLD" "$C_RST"
   printf '%s Bash4LLM⁺ — Master Unified Test Suite (Edition 2026.1) %s\n' "$C_BCYAN" "$C_RST"
-  printf '%s========================================%s\n' "$C_BOLD" "$C_RST"
+  printf '%s============================================%s\n' "$C_BOLD" "$C_RST"
 
   local level_failures=0
   local executed_count=0
