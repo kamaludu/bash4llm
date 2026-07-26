@@ -134,7 +134,7 @@ export GROQ_API_KEY="dummy_conc_key"
 mkdir -p "${BASH4LLM_DIR}/models" "${BASH4LLM_DIR}/config" "${BASH4LLM_DIR}/tmp"
 printf 'llama-3.3-70b-versatile\n' > "${BASH4LLM_DIR}/models/groq.txt"
 
-# Source bash4llm FIRST so environment detection variables are populated before calling detect_safe_concurrency
+# Source bash4llm FIRST so platform detection environment variables are fully populated
 export BASH4LLM_SOURCE_ONLY=1
 . "$TARGET_BIN" >/dev/null 2>&1 || true
 
