@@ -175,9 +175,9 @@ else
   assert_test "Thread lifecycle: Safe deletion (--delete-thread)" 0 1 "Check thread file purge."
 fi
 
-printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 3 Regression Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
-printf '%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
