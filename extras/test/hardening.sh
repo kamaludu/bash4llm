@@ -168,7 +168,10 @@ assert_test "[INV-2] Absolute Workspace Isolation (BASH4LLM_TMPDIR outside /tmp)
 
 # [INV-3] Dynamic Code Evaluation Guard (Zero Unsafe eval)
 # Multiline-aware filter explicitly excluding audited parent trap restoration lines
-unsafe_eval_count="$(grep -E '\beval[[:space:]]' "$TARGET_BIN" 2>/dev/null | grep -v -E 'TECHNICAL DEBT AUDIT|_parent_trap_' | wc -l | tr -d ' ' || echo 0)"
+unsafe_eval_count="$(grep -E '\beval[[:space:]]' "$TARGET_BIN" 2>/dev/null | grep -v -E 'TECHNICAL DEBT AUDIT|_parent_trap_' | wc -l || true)"
+unsafe_eval_count="${unsafe_eval_count//[[:space:]]/}"
+: "${unsafe_eval_count:=0}"
+
 if [ "$unsafe_eval_count" -eq 0 ]; then rc_inv3=0; else rc_inv3=1; fi
 assert_test "[INV-3] Dynamic Code Evaluation Guard (Zero Unsafe eval)" 0 $rc_inv3
 
