@@ -195,9 +195,9 @@ rc_setdef=$?
 set -e
 assert_test "Default model persistence contract (--set-default)" 0 $rc_setdef
 
-printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 2 Compatibility Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
-printf '%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
