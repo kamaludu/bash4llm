@@ -1,7 +1,6 @@
-----------------------------------------
+========================================
 Bash4LLM⁺ 2.x — Bash-first wrapper for the LLM
-----------------------------------------
-
+========================================
 Usage:
   bash4llm "prompt"
   echo "text" | bash4llm
@@ -10,7 +9,7 @@ Usage:
   bash4llm --chat
 
 Options:
-`........................................`
+`----------------------------------------`
 
 Input & Templates:
   -f <file>              Add file content to prompt (repeatable)
@@ -95,7 +94,7 @@ Maintenance & Testing:
   --version              Print Bash4LLM version and release date
   -h, --help             Display this help message
 
-`........................................`
+`----------------------------------------`
 
 Examples:
   bash4llm "Summarize this text"
@@ -107,4 +106,4 @@ Examples:
   bash4llm --run-all-tests
   bash4llm --explain-error 17
 
-----------------------------------------
+========================================
