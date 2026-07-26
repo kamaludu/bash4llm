@@ -21,7 +21,7 @@ extras/
 │   ├── help.txt
 │   ├── manual-en.txt
 │   └── manual-it.txt
-├── providers/                # Secondary LLM Provider Extension Modules
+├── providers/                # Optional LLM Provider Extension Modules
 │   ├── gemini.sh
 │   ├── huggingface.md
 │   ├── huggingface.sh
@@ -47,3 +47,9 @@ extras/
 └── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
 
 ```
+
+
+**Installazione / Installation**
+
+`./bash4llm --install-extras </path/to/extras/>`
+
