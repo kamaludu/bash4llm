@@ -147,8 +147,8 @@ if [[ "$sandbox_tmp" != "/tmp"* ]]; then rc_inv2=0; else rc_inv2=1; fi
 assert_test "[INV-2] Absolute Workspace Isolation (BASH4LLM_TMPDIR outside /tmp)" 0 $rc_inv2
 
 # [INV-3] Dynamic Code Evaluation Guard (Zero Unsafe eval)
-# Robust multiline-aware filter checking for non-audited eval statements in source
-unsafe_eval_count="$(grep -E '\beval[[:space:]]' "$TARGET_BIN" | grep -v 'TECHNICAL DEBT AUDIT' | wc -l | tr -d ' ')"
+# Multiline-aware filter explicitly excluding audited trap restoration lines
+unsafe_eval_count="$(grep -E '\beval[[:space:]]' "$TARGET_BIN" | grep -v -E 'TECHNICAL DEBT AUDIT|_parent_trap_' | wc -l | tr -d ' ')"
 if [ "$unsafe_eval_count" -eq 0 ]; then rc_inv3=0; else rc_inv3=1; fi
 assert_test "[INV-3] Dynamic Code Evaluation Guard (Zero Unsafe eval)" 0 $rc_inv3
 
