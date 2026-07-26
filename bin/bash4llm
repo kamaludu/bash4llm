@@ -659,23 +659,25 @@ verify_module_integrity() {
   fi
 
   # 2. Check for the official integrity manifest file
-  manifest_file="${BASH4LLM_EXTRAS_DIR:-}/manifest.sha256"
+  local extras_base="${BASH4LLM_EXTRAS_DIR%/}"
+  manifest_file="${extras_base}/manifest.sha256"
   if [ ! -f "$manifest_file" ] || [ ! -r "$manifest_file" ]; then
     return 0
   fi
 
-  # Resolve path relative to BASH4LLM_EXTRAS_DIR
+  # Resolve path relative to extras base directory without trailing slash
   local canonical_extras="" canonical_target=""
-  canonical_extras="$(cd "${BASH4LLM_EXTRAS_DIR:-.}" >/dev/null 2>&1 && pwd -P || echo "${BASH4LLM_EXTRAS_DIR:-}")"
+  canonical_extras="$(cd "${extras_base:-.}" >/dev/null 2>&1 && pwd -P || echo "${extras_base}")"
+  canonical_extras="${canonical_extras%/}"
   canonical_target="$(cd "$(dirname "$target_file")" >/dev/null 2>&1 && pwd -P || echo "")/$(basename "$target_file")"
 
   if [[ "$canonical_target" == "${canonical_extras}/"* ]]; then
     rel_path="${canonical_target#"${canonical_extras}/"}"
   else
-    rel_path="${target_file#"${BASH4LLM_EXTRAS_DIR}/"}"
+    rel_path="${target_file#"${extras_base}/"}"
   fi
 
-  # 3. Lookup expected hash in manifest (robust against binary mode asterisk and CRLF line endings)
+  # 3. Lookup expected hash in manifest
   expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); sub(/^\*/,"",$2); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
 
   # Fallback for custom user modules not present in the official manifest
@@ -5482,7 +5484,7 @@ fi
 # Ensure provider is fully loaded and validated
 if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
   if ! validate_provider_interface "$PROVIDER"; then
-    exit "$BASH4LLM_ERR_API"
+    exit "${BASH4LLM_ERR_SEC:-17}"
   fi
 else
   load_provider_module "$PROVIDER"
@@ -5492,7 +5494,7 @@ else
     exit "$prov_rc"
   fi
   if ! validate_provider_interface "$PROVIDER"; then
-    exit "$BASH4LLM_ERR_API"
+    exit "${BASH4LLM_ERR_SEC:-17}"
   fi
 fi
 #--1<---[ /SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
@@ -5698,7 +5700,6 @@ assemble_content() {
   if [ -n "$JSON_INPUT" ]; then CONTENT=""; return 0; fi
 
   if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
-    # Propagate exit code 17 from subshell on binary file rejection
     CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")" || exit $?
     if [ "${#ARGS[@]}" -gt 0 ]; then
       extra="$(expand_args_to_content)" || exit $?
