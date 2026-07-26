@@ -1,6 +1,6 @@
 [![Logo 320](../../docs/img/bash4llm320.png "Logo bash4llm")](../../README.md)
 
-# Master Test Suite (`extras/test/run-all-tests.sh`)
+# Master Test Suite Architecture (`extras/test/run-all-tests.sh`)
 
 **[🇮🇹 Italiano](#-sezione-italiana) / [🇬🇧 English](#-english-section)**
 
@@ -8,120 +8,194 @@
 
 ## 🇮🇹 Sezione Italiana
 
-# Guida ed Elenco dei Test Automatizzati (`run-all-tests.sh`)
+# Guida all'Architettura di Test e all'Orchestratore (`run-all-tests.sh`)
 
-Lo script `extras/test/run-all-tests.sh` costituisce la suite di test master unificata di **Bash4LLM⁺**. Consente la validazione automatizzata, deterministica ed isolata dell'intero runtime, verificate le invarianti di sicurezza, la gestione dei file di lock e la conformità alle specifiche dell'**Architecture Specification (Edition 2026.1)**.
+Lo script `extras/test/run-all-tests.sh` costituisce il **Master Orchestrator** della suite di test unificata di **Bash4LLM⁺**. Permette la validazione automatizzata, deterministica, isolata e sicura dell'intero runtime, garantendo il rispetto delle invarianti di architettura, la gestione dei lockfile e la piena conformità alle specifiche della **Test Architecture Specification (Edition 2026.1)**.
 
-La suite viene eseguita all'interno di una sandbox isolata su filesystem (`.test_tmp/`), applicando i permessi POSIX `0700` senza mai scrivere nella directory condivisa `/tmp`.
+Tutti i test vengono eseguiti all'interno di una sandbox isolata su filesystem (`.test_tmp/`), applicando i permessi restrittivi POSIX `0700` senza mai contaminare la directory condivisa di sistema `/tmp` (**Principio `[TST-1]`**).
 
-Esecuzione da riga di comando:
+---
+
+## Invocazione e Sintassi CLI da Core (`bash4llm`)
+
+Il Core `bash4llm` agisce da **Gatekeeper di Sicurezza** e supporta gli alias abbreviati ed estesi per delegare l'esecuzione all'orchestratore:
+
 ```sh
+# Invocazione della suite completa (dati di default)
+./bash4llm --test
+./bash4llm --run-all-test
 ./bash4llm --run-all-tests
+
+# Visualizzazione della guida CLI e dell'elenco delle suite autorizzate
+./bash4llm --test help
+./bash4llm --test list
+
+# Esecuzione con arresto immediato al primo errore (Fail-Fast)
+./bash4llm --test all --fail-fast
+
+# Esecuzione di una singola suite di livello
+./bash4llm --test sanity
+./bash4llm --test hardening
+
+# Esecuzione di più suite specifiche in sequenza
+./bash4llm --test sanity compatibility regression
 ```
 
 ---
 
-## Elenco dei Moduli di Test e Verifiche Eseguite
+## La Piramide di Verifica a 6 Livelli
 
-### Modulo 1: Configurazione, Utilità e Getter di Percorso
-* **Static configuration linter (`--check-config`)**: Verifica la presenza di permessi non restrittivi sui file di configurazione (`group/world-writable`) ed esegue il linter delle variabili.
-* **Error documentation explainer (`--explain-error`)**: Valida il funzionamento dell'utilità di spiegazione dei codici d'errore e degli alias canoici.
-* **Path getters (`--print-config-dir`, `--print-provider-file`, `--list-providers-raw`)**: Verifica la risoluzione corretta dei percorsi canonici di sistema e l'output grezzo dei provider installati.
+L'architettura di test è strutturata in 6 livelli a responsabilità singola, organizzati per durata ed ambito di verifica:
 
-### Modulo 2: Pipeline di Input e Assemblaggio Template
-* **Piped STDIN prompt assembly**: Verifica l'acquisizione del prompt inviato tramite conduttura (pipe) di standard input.
-* **File input payload assembly (`-f`)**: Valida il caricamento e la concatenazione di file di testo come contesto di input.
-* **Template engine expansion (`--template`)**: Verifica la sostituzione dinamica del segnaposto `{{CONTENT}}` nei file di modello.
+```text
+               / \
+              /   \     [Livello 6] Stress Test (stress.sh)
+             /     \    [Livello 5] Concurrency Test (concurrency.sh)
+            /       \   [Livello 4] Hardening Test (hardening.sh)
+           /         \  [Livello 3] Regression Test (regression.sh)
+          /           \ [Livello 2] Compatibility Test (compatibility.sh)
+         /_____________\[Livello 1] Sanity Test (sanity.sh)
+```
 
-### Modulo 3: Sicurezza Modelli e Formattazione Output
-* **Default model persistence (`--set-default`)**: Valida la scrittura e la persistenza del modello predefinito per provider.
-* **Non-text model rejection (Exit Code 11)**: Verifica il blocco preventivo dei modelli multimodali non testuali (audio, vision, whisper) con codice di uscita `11` (`BASH4LLM_ERR_BAD_MODEL`).
-* **Structured & Pretty JSON selection (`--json`, `--pretty`)**: Valida le modalità di formattazione dell'output JSON.
+### Livello 1: Sanity Test (`sanity.sh`)
+* **Scope & Durata:** Interattivo / Rapido. Controllo immediato della vitalità del sistema.
+* **Verifiche:** Disponibilità dipendenze host (Bash >= 4.0, POSIX, `jq`), bootstrap della CLI, flag `--version` e `--help`, discoverability dei provider installati e linter statico della configurazione (`--check-config`).
 
-### Modulo 4: Gestione Thread, Anonimizzazione PII e Fuzzing
-* **Path traversal mitigation**: Verifica la neutralizzazione di sequenze di attraversamento directory (es. `../../../etc/passwd`) nei parametri degli ID di thread.
-* **Null-byte & command injection fuzzing**: Controlla il blocco di byte nulli (`\x00`) e tenta di iniezione di comandi nei nomi di thread.
-* **PII Thread ID anonymization**: Verifica che gli ID dei thread (es. indirizzi email) vengano cifrati in hash SHA-256 (`SAFE_THREAD_ID`) prima di essere scritti su disco nei file `.ndjson` e nei file di metadati.
-* **Thread lifecycle operations (`--init-thread`, `--rename-thread`, `--delete-thread`)**: Valida l'inizializzazione locale, la rinomina del titolo e l'eliminazione atomica dei file di storico.
+### Livello 2: Compatibility Test (`compatibility.sh`)
+* **Scope & Durata:** Breve durata. Validazione del Contratto Pubblico di Compatibilità.
+* **Verifiche:** Exit Code canonici (`10`, `11`, `12`, `14`, `15`, `16`, `17`), opzioni CLI, precedenza delle variabili d'ambiente, schemi di output (`json`, `pretty`, `raw`, `text`) e persistenza del modello predefinito.
 
-### Modulo 5: Motore di Sicurezza, Rate Limiter e Filtro Binari
-* **Binary file rejection filter (Exit Code 17)**: Verifica il blocco immediato dei file binari contenenti byte nulli con codice di uscita `17` (`BASH4LLM_ERR_SEC`).
-* **Sliding window rate limiter (Exit Code 17)**: Testa il blocco del traffico al superamento della quota di richieste consentite entro una finestra di 30 secondi.
-* **Symlink traversal check**: Verifica il rilevamento e il blocco di collegamenti simbolici non autorizzati sui percorsi di configurazione e temporanei.
-* **Cryptographic SHA-256 integrity (Exit Code 17)**: Verifica che la modifica di un singolo byte in un modulo esterno rispetto a `extras/manifest.sha256` provochi l'arresto immediato con codice `17`.
+### Livello 3: Regression Test (`regression.sh`)
+* **Scope & Durata:** Breve durata. Verifica dei flussi funzionali End-to-End.
+* **Verifiche:** Assemblaggio prompt da STDIN piped, elaborazione file d'input (`-f`), espansione dei modelli di template (`--template`), ciclo di vita dei thread di storico (init, rename, delete) e metadati `ui_state`.
 
-### Modulo 6: Motore Vault Crittografico OpenSSL
-* **AES-256/PBKDF2 Vault encryption & decryption**: Test funzionale di cifratura e decifrazione delle chiavi API utilizzando OpenSSL, PBKDF2 (100.000 iterazioni) e salt crittografico.
-* **Encrypted vault disk file creation**: Verifica la creazione corretta dei file `keys.enc` e `keys.dat` con permessi restrittivi `0600`.
+### Livello 4: Hardening Test (`hardening.sh`)
+* **Scope & Durata:** Breve durata. Invarianti di sicurezza e sbarramenti di confine.
+* **Verifiche:**
+  * **`[INV-1]`** Assenza di segreti in `argv` (`_exec_curl_secure`);
+  * **`[INV-2]`** Isolamento workspace rispetto a `/tmp`;
+  * **`[INV-3]`** Audit statico della guardia di valutazione del codice dinamico (`eval`);
+  * **`[INV-4]`** Verifica di manomissione dei moduli via SHA-256 (Exit Code `17`);
+  * **`[INV-5]`** Anonimizzazione crittografica PII degli ID thread su disco;
+  * Filtro dei file binari con byte nulli (Exit Code `17`), mitigazione path traversal/command injection, rate limiter a finestra scorrevole, blocco immutabilità delle funzioni e cifratura/decifratura Key Vault OpenSSL.
 
-### Modulo 7: Test di Stress sulla Concorrenza dei Lock
-* **High-concurrency parallel workers stress test**: Avvia un numero dinamico di processi worker paralleli (adattati alla piattaforma: da 10 su Termux a 50 su Linux/macOS) che eseguono accodamenti NDJSON simultanei sullo stesso file di thread. Verifica l'assenza di corruzione dei dati o perdita di righe tramite `lock_exec`.
+### Livello 5: Concurrency Test (`concurrency.sh`)
+* **Scope & Durata:** Media durata. Correttezza della sincronizzazione multiprocesso.
+* **Verifiche:** Adattamento dinamico dei worker paralleli (in base ai core CPU o all'ambiente vincolato come Termux/WSL/Cygwin), contesa dei lock di file (`flock` / dir-lock) ed integrità dell'append atomico su stream NDJSON senza corruzione dei dati.
 
-### Modulo 8: Motore Opzionale di Parsing Python 3
-* **JSON escaping & SSE chunk payload extractor**: Valida l'esecuzione delle routine di riserva per l'escape delle stringhe JSON ed il parsing SSE via Python 3 (qualora l'interprete sia installato).
+### Livello 6: Stress Test (`stress.sh`)
+* **Scope & Durata:** Lunga durata / Intensivo. Scalabilità e limiti delle risorse.
+* **Verifiche:** Gestione della memoria per lo staging di payload ad alto volume (Base64) e politiche di rotazione e ritenzione dello storico dei thread (`rotate_history`).
 
-### Modulo 9: Invarianti di Sicurezza e Guardie Read-Only
-* **Read-only function guard enforcement (`readonly -f`)**: Verifica che le funzioni critiche di sicurezza (`_exec_curl_secure`, `verify_module_integrity`, `read_secure_input`, ecc.) marcate da `_lock_security_guards()` non possano essere ridefinite o rimosse in memoria.
-* **Module tampering fail-closed enforcement**: Conferma il modello *fail-closed* che interrompe l'esecuzione con codice `17` in caso di manomissione dei moduli.
-* **Authoritative secure cURL path**: Verifica la presenza e la disponibilità della funzione centralizzata `_exec_curl_secure()`.
+---
+
+## Modello di Sicurezza: *Manifest-Authorized Test Discovery*
+
+In conformità al principio **`[TST-7] No Implicit Test Execution`**, l'orchestratore non esegue mai script arbitrari trovati su disco tramite scansioni generiche (`find` o `*.sh`).
+
+Un modulo di test viene eseguito **esclusivamente** se soddisfa il modello ad **Intersezione a 4 Livelli**:
+
+$$\text{Esecuzione} = \text{Suite Canonica} \;\cap\; \text{File Esistente} \;\cap\; \text{Whitelist Manifest} \;\cap\; \text{Integrità SHA-256 Validata}$$
+
+1. **Nome Canonico:** La suite deve appartenere al registro ufficiale (`sanity`, `compatibility`, `regression`, `hardening`, `concurrency`, `stress`).
+2. **Esistenza Percorso:** Il file deve risiedere in `extras/test/<suite>.sh`.
+3. **Whitelist Manifest:** La suite deve essere iscritta ufficialmente in `extras/manifest.sha256`.
+4. **Validazione Crittografica:** L'hash SHA-256 attuale del file deve corrispondere esattamente a quello registrato.
 
 ---
 
 ## 🇬🇧 English Section
 
-# Master Automated Test Suite Guide (`run-all-tests.sh`)
+# Master Test Architecture & Orchestrator Guide (`run-all-tests.sh`)
 
-The `extras/test/run-all-tests.sh` script represents the unified automated test suite for **Bash4LLM⁺**. It provides deterministic, isolated validation of the core runtime, security invariants, lock concurrency, and compliance with the **Architecture Specification (Edition 2026.1)**.
+The `extras/test/run-all-tests.sh` script serves as the **Master Test Suite Orchestrator** for **Bash4LLM⁺**. It delivers automated, deterministic, isolated, and secure verification of the core runtime, ensuring total compliance with system invariants, lock file handling, and the **Test Architecture Specification (Edition 2026.1)**.
 
-The suite executes inside an isolated filesystem sandbox (`.test_tmp/`) enforcing POSIX `0700` directory permissions without polluting the system `/tmp` directory.
+All test suites execute within a strictly isolated filesystem sandbox (`.test_tmp/`), enforcing POSIX `0700` restrictive directory permissions without polluting system shared storage `/tmp` (**Principle `[TST-1]`**).
 
-Execution command:
+---
+
+## Command Line Interface & Core Delegation (`bash4llm`)
+
+The core executable `bash4llm` acts as a **Security Gatekeeper**, supporting both short and long flag aliases to delegate execution to the orchestrator:
+
 ```sh
+# Execute full test suite sequence (default)
+./bash4llm --test
+./bash4llm --run-all-test
 ./bash4llm --run-all-tests
+
+# Display test suite CLI help manual and list authorized suites
+./bash4llm --test help
+./bash4llm --test list
+
+# Execute full suite with fail-fast mode enabled
+./bash4llm --test all --fail-fast
+
+# Execute a single specific test level
+./bash4llm --test sanity
+./bash4llm --test hardening
+
+# Execute multiple specific test levels sequentially
+./bash4llm --test sanity compatibility regression
 ```
 
 ---
 
-## Test Modules and Executed Checks
+## The 6-Level Verification Pyramid
 
-### Module 1: Configuration, Utilities & Path Getters
-* **Static configuration linter (`--check-config`)**: Validates configuration file permissions for group/world write vulnerabilities and lints active variables.
-* **Error documentation explainer (`--explain-error`)**: Tests the error code and alias documentation lookup utility.
-* **Path getters (`--print-config-dir`, `--print-provider-file`, `--list-providers-raw`)**: Verifies exact canonical directory paths and raw provider listings.
+The verification framework is structured into 6 discrete, single-responsibility testing levels categorized by execution duration and scope:
 
-### Module 2: Input Pipeline & Template Assembly
-* **Piped STDIN prompt assembly**: Validates reading input prompts forwarded via standard input pipes.
-* **File input payload assembly (`-f`)**: Tests reading and concatenating external text files into the prompt queue.
-* **Template engine expansion (`--template`)**: Verifies dynamic replacement of the `{{CONTENT}}` placeholder inside template files.
+```text
+               / \
+              /   \     [Level 6] Stress Test (stress.sh)
+             /     \    [Level 5] Concurrency Test (concurrency.sh)
+            /       \   [Level 4] Hardening Test (hardening.sh)
+           /         \  [Level 3] Regression Test (regression.sh)
+          /           \ [Level 2] Compatibility Test (compatibility.sh)
+         /_____________\[Level 1] Sanity Test (sanity.sh)
+```
 
-### Module 3: Model Safety & Output Formatting
-* **Default model persistence (`--set-default`)**: Tests saving default models persistently per provider.
-* **Non-text model rejection (Exit Code 11)**: Verifies proactive blocking of non-textual multimodal models (audio, vision, whisper) with exit code `11` (`BASH4LLM_ERR_BAD_MODEL`).
-* **Structured & Pretty JSON selection (`--json`, `--pretty`)**: Validates JSON response output formatting options.
+### Level 1: Sanity Test (`sanity.sh`)
+* **Scope & Duration:** Interactive / Fast. Rapid black-box system vitality check.
+* **Checks:** Host dependency verification (Bash >= 4.0, POSIX, `jq`), Core CLI bootstrap, `--version` and `--help` responses, provider discoverability, and static configuration linter (`--check-config`).
 
-### Module 4: Thread Lifecycle, PII Anonymization & Fuzzing
-* **Path traversal mitigation**: Confirms rejection or neutralization of path traversal sequences (e.g., `../../../etc/passwd`) in thread IDs.
-* **Null-byte & command injection fuzzing**: Tests blocking of embedded null bytes (`\x00`) and command injection payloads in thread identifiers.
-* **PII Thread ID anonymization**: Verifies that user thread IDs (e.g., email addresses) are hashed via SHA-256 (`SAFE_THREAD_ID`) before writing `.ndjson` history or metadata files to disk.
-* **Thread lifecycle operations (`--init-thread`, `--rename-thread`, `--delete-thread`)**: Validates thread registration, title updating, and atomic file deletion.
+### Level 2: Compatibility Test (`compatibility.sh`)
+* **Scope & Duration:** Short-running. Public Compatibility Contract verification.
+* **Checks:** Canonical Exit Codes (`10`, `11`, `12`, `14`, `15`, `16`, `17`), CLI options, environment variable precedence, output format schemas (`json`, `pretty`, `raw`, `text`), and default model persistence.
 
-### Module 5: Security Engine, Rate Limiter & Binary Safety
-* **Binary file rejection filter (Exit Code 17)**: Verifies immediate rejection of binary files containing null bytes with exit code `17` (`BASH4LLM_ERR_SEC`).
-* **Sliding window rate limiter (Exit Code 17)**: Tests request throttling when per-thread request quotas are exceeded within a 30-second window.
-* **Symlink traversal check**: Confirms detection and handling of unauthorized symbolic links on configuration paths.
-* **Cryptographic SHA-256 integrity (Exit Code 17)**: Verifies that altering a single byte in an extension module triggers an immediate halt with exit code `17`.
+### Level 3: Regression Test (`regression.sh`)
+* **Scope & Duration:** Short-running. End-to-end functional flow verification.
+* **Checks:** Piped STDIN prompt assembly, file input processing (`-f`), template variable expansion (`--template`), thread history lifecycle (init, rename, delete), and `ui_state` metadata writes.
 
-### Module 6: OpenSSL Cryptographic Key Vault Engine
-* **AES-256/PBKDF2 Vault encryption & decryption**: Validates API key encryption and decryption using OpenSSL, PBKDF2 (100,000 iterations), and salt.
-* **Encrypted vault disk file creation**: Confirms creation of `keys.enc` and `keys.dat` files with restrictive `0600` permissions.
+### Level 4: Hardening Test (`hardening.sh`)
+* **Scope & Duration:** Short-running. Security boundaries and system invariants.
+* **Checks:**
+  * **`[INV-1]`** No Secret Exposure in `argv` (`_exec_curl_secure`);
+  * **`[INV-2]`** Absolute Workspace Isolation outside `/tmp`;
+  * **`[INV-3]`** Dynamic Code Evaluation Guard static audit (`eval`);
+  * **`[INV-4]`** Module Integrity Enforcement via SHA-256 (Exit Code `17`);
+  * **`[INV-5]`** Cryptographic PII Thread Anonymization on disk;
+  * Null-byte binary input filter (Exit Code `17`), path traversal and command injection fuzzing, sliding-window rate limiting, read-only function immutability locks, and OpenSSL Key Vault operations.
 
-### Module 7: High-Concurrency Lock Contention Stress Test
-* **Parallel worker stress test**: Launches platform-adapted parallel worker processes (10 workers on Termux/Cygwin up to 50 on multi-core Linux/macOS) executing simultaneous NDJSON appends to the same thread file, verifying data integrity and locking via `lock_exec`.
+### Level 5: Concurrency Test (`concurrency.sh`)
+* **Scope & Duration:** Medium-running. Multi-process synchronization correctness.
+* **Checks:** Platform-adaptive parallel worker detection (scaling according to CPU cores or constrained environments like Termux/WSL/Cygwin), process lock contention (`flock` / dir-lock), and atomic append integrity on concurrent NDJSON data streams.
 
-### Module 8: Optional Python 3 SSE & JSON Parsing Engine
-* **JSON escaping & SSE chunk payload extractor**: Tests fallback helper routines for JSON escaping and SSE chunk parsing via Python 3 when present on the host.
+### Level 6: Stress Test (`stress.sh`)
+* **Scope & Duration:** Long-running / Resource-intensive. System scalability and boundaries.
+* **Checks:** High-volume base64 payload staging memory handling (`stage_b64`), thread history retention and rotation policies (`rotate_history`).
 
-### Module 9: Security Invariants & Read-Only Function Guards
-* **Read-only function guard enforcement (`readonly -f`)**: Asserts that critical security functions (`_exec_curl_secure`, `verify_module_integrity`, `read_secure_input`, etc.) locked by `_lock_security_guards()` cannot be overridden or unset in memory.
-* **Module tampering fail-closed enforcement**: Confirms the *fail-closed* execution halt (exit code `17`) on modified modules.
-* **Authoritative secure cURL path**: Asserts availability and presence of `_exec_curl_secure()`.
+---
+
+## Security Model: *Manifest-Authorized Test Discovery*
+
+In compliance with **Principle `[TST-7] No Implicit Test Execution`**, the orchestrator never executes arbitrary scripts discovered on disk via un-filtered directory scans (`find` or `*.sh`).
+
+A test module is executed **strictly** if it satisfies the **4-Level Set Intersection Model**:
+
+$$\text{Execution} = \text{Canonical Suite} \;\cap\; \text{Physical File} \;\cap\; \text{Manifest Whitelist} \;\cap\; \text{Verified SHA-256 Hash}$$
+
+1. **Canonical Name:** The suite must belong to the official registry (`sanity`, `compatibility`, `regression`, `hardening`, `concurrency`, `stress`).
+2. **Physical Location:** The script file must reside at `extras/test/<suite>.sh`.
+3. **Manifest Whitelist:** The suite must be explicitly registered in `extras/manifest.sha256`.
+4. **Cryptographic Integrity:** The calculated SHA-256 digest of the script must strictly match the registered manifest hash.
