@@ -3,27 +3,30 @@
 # Changelog
 
 ## [Unreleased]
- * Additional documentation improvements
- * Optional enhancements for extras and test suites
+ * Optimization of `llms.txt` index file for LLM crawlers and RAG ingestion systems.
+ * Additional documentation alignment for Timeless Specifications.
+ * Optional enhancements for extras and test suites.
 
-## [2.8.0] – 2026‑07‑24 - RELEASE NOTES
+## [2.8.0] – 2026‑07‑26 - RELEASE NOTES
 ### Added
- * Introduzione dell'Authoritative Secure Network Engine (`_exec_curl_secure`): funzione centrale di mediazione HTTP per la gestione unificata di tutte le chiamate di rete (sincrone, streaming, refresh dei modelli e validazione chiavi) per tutti i provider (Groq, Gemini, Hugging Face, Mistral).
- * Introduzione delle guardie di inizializzazione Read-Only (`_lock_security_guards`): blocco in memoria delle funzioni di sicurezza, mediazione e gestione del filesystem mediante `readonly -f` al termine della fase di bootstrap del Core per prevenire qualsiasi hijacking post-inizializzazione.
- * Estensione della Master Test Suite con il **Modulo 9 (Security Invariants & Function Guard Locking)**: integrazione di asserzioni di test avversarie per convalidare automaticamente il blocco delle funzioni `readonly`, il comportamento fail-closed in presenza di moduli manomessi e la verifica dell'isolamento dei segreti.
+ * **Authoritative Secure Network Engine (`_exec_curl_secure`)**: Funzione centrale di mediazione HTTP per la gestione unificata di tutte le chiamate di rete (sincrone, streaming, refresh dei modelli e validazione chiavi) per tutti i provider (Groq, Gemini, Hugging Face, Mistral).
+ * **Guardie di Inizializzazione Read-Only (`_lock_security_guards`)**: Blocco in memoria delle funzioni di sicurezza, mediazione e gestione del filesystem mediante `readonly -f` al termine della fase di bootstrap del Core per prevenire qualsiasi hijacking post-inizializzazione.
+ * **Integrazione Specifiche Normative Timeless**: Introduzione delle specifiche formali di architettura e test in `docs/timeless/` (`timeless-arc-spec.md` e `timeless-test-spec.md`).
+ * **Interfaccia TUI REPL e Localizzazione Multilingua**: Chat interattiva da terminale (`extras/chat/tui-repl.sh`) con supporto i18n via `BASH4LLM_LANG` (`en`, `it`, `de`, `es`, `fr`).
+ * **Estensione della Master Test Suite (Modulo Hardening & Security)**: Integrazione di asserzioni di test avversarie per convalidare automaticamente il blocco delle funzioni `readonly`, il comportamento fail-closed in presenza di moduli manomessi e la verifica dell'isolamento dei segreti.
 ### Changed
  * **Secret Redaction in `argv` [INV-1]**: Azzerata completamente l'esposizione delle chiavi API e dei token Bearer nei vettori d'argomento del processo (`ps aux` / `/proc/<pid>/cmdline`). Gli header di autenticazione vengono scritti esclusivamente in file temporanei isolati (`0600`) in `$RUN_TMPDIR` e passati a `curl` tramite reindirizzamento di File Descriptor (`/dev/fd/3`).
  * **Bonifica dell'Ambiente di Esecuzione all'Avvio**: Rimozione automatica all'avvio delle variabili d'ambiente ad alto rischio (`unset BASH_ENV ENV CDPATH GLOBIGNORE`) nella sezione iniziale di boot del Core.
  * **Integrità Crittografica Moduli Fail-Closed [INV-4]**: Trasformazione della funzione `verify_module_integrity()` in un modello strictly *fail-closed*, con blocco immediato ed errore canonico `17` (`BASH4LLM_ERR_SEC`) qualora il calcolo dell'hash SHA-256 fallisca o differisca dal manifesto `extras/manifest.sha256`.
  * **Migrazione dei Provider Secondari (`gemini.sh`, `huggingface.sh`, `mistral.sh`)**: Refactoring completo delle chiamate HTTP dei provider opzionali sulla funzione centrale `_exec_curl_secure()`. Per Gemini e Hugging Face, le chiavi API sono state completamente rimosse dai parametri dell'URL (`?key=...`).
- * **Allineamento della Documentazione e dei Manuali**: Aggiornamento integrale della documentazione ufficiale (`README`, `SECURITY`, `INSTALL`, `llms.txt`, `manual-it.txt`, `manual-en.txt` e `core-notes.sh`) alla versione **v2.8.0** in conformità con l'**Architecture Specification (Edition 2026.1)**.
+ * **Allineamento della Documentazione e dell'Indice LLM**: Aggiornamento integrale della documentazione ufficiale (`README`, `SECURITY`, `INSTALL`, `llms.txt`, `manual-it.txt`, `manual-en.txt` e `core-notes.sh`) alla versione **v2.8.0** in conformità con l'**Architecture Specification (Edition 2026.1)**.
 ### Fixed
  * Eliminato il secret leak delle chiavi API negli argomenti del comando `curl` durante l'esecuzione di `refresh_models_groq()`, `validate_key_groq()`, `refresh_models_gemini()` e `validate_key_gemini()`.
  * Risolta la vulnerabilità *fail-open* in `verify_module_integrity()` che consentiva l'esecuzione dei moduli qualora il calcolo dell'hash SHA-256 restituisse una stringa vuota.
 
 ## [2.7.0] – 2026‑07‑24 - RELEASE NOTES
 ### Added
- * Nuova opzione CLI `--run-all-tests` (e alias `--run-all-test`) per l'esecuzione automatizzata e verificata della suite di test unificata a 8 moduli con controllo preventivo d'integrità crittografica SHA-256.
+ * Nuova opzione CLI `--run-all-tests` (e alias `--run-all-test`) per l'esecuzione automatizzata e verificata della suite di test unificata con controllo preventivo d'integrità crittografica SHA-256.
  * Algoritmo di rilevamento dinamico della concorrenza (`detect_safe_concurrency`) nel Modulo 7 della suite di test per adattare automaticamente il numero di worker paralleli alla piattaforma in uso (`10` su Termux/Android e Cygwin, `20` su WSL, fino a `50` su Linux/macOS multi-core), con supporto all'override manuale tramite `BASH4LLM_TEST_CONCURRENCY`.
  * Report diagnostico dettagliato per test falliti (`DETAILED FAILURE DIAGNOSTICS`) e test saltati (`SKIPPED TESTS DIAGNOSTICS`) con motivazioni, codici di stato attesi/ricevuti e suggerimenti operativi di mitigazione.
  * Chiusura visiva della suite di test con cornice e banner finale `===` perfettamente coordinato all'intestazione.
