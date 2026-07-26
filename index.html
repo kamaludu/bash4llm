@@ -2,11 +2,128 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=https://github.com/kamaludu/bash4llm">
-  <link rel="canonical" href="https://github.com/kamaludu/bash4llm">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bash4LLM⁺</title>
+  <link rel="canonical" href="https://github.com/kamaludu/bash4llm">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --link: #58a6ff;
+      --btn-bg: #21262d;
+      --btn-hover: #30363d;
+      --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px;
+      width: 100%;
+      max-width: 580px;
+    }
+
+    .version {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 12px;
+    }
+
+    p {
+      font-size: 0.95rem;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 10px 14px;
+      background-color: var(--btn-bg);
+      color: var(--link);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-decoration: none;
+      text-align: center;
+      transition: background-color 0.15s ease;
+    }
+
+    .btn:hover {
+      background-color: var(--btn-hover);
+    }
+
+    .meta {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .meta a {
+      color: var(--text-muted);
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-  <p>Redirecting to <a href="https://github.com/kamaludu/bash4llm">Bash4LLM⁺ GitHub Repository</a>...</p>
+  <main class="card">
+    <div class="version">v2.8.0</div>
+    <h1>Bash4LLM⁺</h1>
+    <p>
+      🇮🇹   Framework client POSIX Bash per l'inferenza di modelli linguistici di grandi dimensioni, streaming SSE, persistenza dei thread e gestione di segreti crittografati. Funziona utilizzando le utilità di sistema standard, curl e jq.
+    </p>
+    <p>
+      🇬🇧   POSIX Bash client framework for Large Language Model inference, SSE streaming, thread persistence, and encrypted secret management. Operates using standard base system utilities, curl, and jq.
+    </p>
+
+    <nav class="nav">
+      <a href="https://github.com/kamaludu/bash4llm" class="btn">Official GitHub Repository</a>
+      <a href="llms.txt" class="btn">llms.txt Specification Index</a>
+    </nav>
+
+    <footer class="meta">
+      License: GPL-3.0-or-later · <a href="https://github.com/kamaludu/bash4llm/releases">Releases</a>
+    </footer>
+  </main>
 </body>
 </html>
