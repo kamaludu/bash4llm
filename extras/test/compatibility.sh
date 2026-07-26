@@ -112,7 +112,7 @@ printf 'llama-3.3-70b-versatile\nwhisper-large-v3\n' > "${BASH4LLM_DIR}/models/g
 
 printf '\n%b[LEVEL 2] Compatibility Test Suite (Public Contract Verification)%b\n' "$C_BCYAN" "$C_RST"
 
-# 1. Canonical Exit Code 10: Missing API Key in non-interactive mode
+# 1. Canonical Exit Code 10: Missing API Key in non-interactive stdin mode
 set +e
 (
   unset GROQ_API_KEY BASH4LLM_API_KEY PROVIDER_API_ENV_groq
@@ -159,7 +159,7 @@ rc_15=$?
 set -e
 assert_test "Canonical Exit Code 15: System / Temp Directory Rejection Contract" 15 $rc_15 "Check BASH4LLM_DIR /tmp guard."
 
-# 6. Canonical Exit Code 17: Security Violation / Binary Input Filter
+# 6. Canonical Exit Code 17: Security Violation / Binary Input Filter (Global Scope)
 bin_file="${TEST_SANDBOX}/binary_input.bin"
 printf '\x00\x01\x02UNSAFE_BINARY_DATA' > "$bin_file"
 set +e
