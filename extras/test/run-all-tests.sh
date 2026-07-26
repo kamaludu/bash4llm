@@ -233,7 +233,7 @@ main() {
     execute_canonical_suite "$suite_key" || level_failures=$((level_failures + 1))
   done
 
-  printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+  printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
   if [ "$level_failures" -eq 0 ]; then
     printf ' %sRESULT: ALL %d EXECUTED TEST SUITES PASSED SUCCESSFULLY%s\n' "$C_BGREEN" "$executed_count" "$C_RST"
     printf '%s=======================================================%s\n\n' "$C_BOLD" "$C_RST"
