@@ -3,12 +3,11 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/mistral.sh
-# Extra: Provider Mistral
-# Copyright (C) 2026 Cristian Evangelisti
+# Authority: Architecture Specification (Edition 2026.1)
+# Extra: Provider Mistral Module
 # License: GPL-3.0-or-later
-# Repository: https://github.com/kamaludu/bash4llm
-# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
+# Purpose: Bash4LLM provider adapter for Mistral AI APIs
 
 # When sourced, avoid enabling strict mode globally.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
@@ -255,7 +254,7 @@ call_api_mistral() {
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  local workdir tmpout tmpresp api_url http_code time_total curl_cmd last_char
+  local workdir tmpout tmpresp api_url http_code time_total
   workdir="$(_get_work_tmpdir_mistral)" || return "${BASH4LLM_ERR_TMP:-15}"
   tmpout="$(_mktemp_in_dir_mistral "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
   tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
@@ -264,21 +263,9 @@ call_api_mistral() {
   
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
 
-  # Array argument expansion preventing command injection
-  local -a curl_cmd=(curl)
-  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
-    curl_cmd+=(${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"})
-  fi
-  curl_cmd+=(
-    -H "Authorization: Bearer $key"
-    -H "Content-Type: application/json"
-    --data-binary @"$PAYLOAD"
-    -o "$tmpresp"
-    -w '%{http_code} %{time_total}'
-    "$api_url"
-  )
-
-  "${curl_cmd[@]}" 2>"$ERRF" >"$tmpout" || true
+  # Execute HTTP POST request via Authoritative Secure Path (Redacts Bearer Token from argv)
+  local -a extra_opts=(-w '%{http_code} %{time_total}')
+  _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "$tmpresp" "$ERRF" 0 extra_opts >"$tmpout" || true
 
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
@@ -342,7 +329,7 @@ call_api_streaming_mistral() {
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  local api_url rc RESP_RAW workdir tmp_dir unified_text synthetic_resp clean_chunks _line curl_cmd
+  local api_url rc RESP_RAW workdir tmp_dir unified_text synthetic_resp clean_chunks _line
   
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
   
@@ -354,20 +341,8 @@ call_api_streaming_mistral() {
   ERRF="${ERRF:-$workdir/curl.err}"
   RESP="${RESP:-$workdir/resp.json}"
 
-  # Array argument expansion preventing command injection
-  local -a curl_cmd=(curl)
-  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
-    curl_cmd+=(${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"})
-  fi
-  curl_cmd+=(
-    -H "Authorization: Bearer $key"
-    -H "Content-Type: application/json"
-    --data-binary @"$PAYLOAD"
-    "$api_url"
-  )
-
-  # Real-time streaming decoder using a single unbuffered jq process
-  "${curl_cmd[@]}" 2>"$ERRF" | \
+  # Unbuffered streaming pipeline via Authoritative Network Path (Redacts Bearer Token from argv)
+  _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "" "$ERRF" 1 | \
   tee -a "$RESP_RAW" | \
   jq --unbuffered -R -r '
     if startswith("data: ") then
@@ -431,7 +406,7 @@ call_api_streaming_mistral() {
 # refresh_models_mistral
 # -------------------------
 refresh_models_mistral() {
-  local outpath="${1:-${MODELS_FILE:-}}" key="" workdir tmpd out errf api_url parsed http_code tmp_trim curl_cmd
+  local outpath="${1:-${MODELS_FILE:-}}" key="" workdir tmpd out errf api_url parsed http_code tmp_trim
 
   key="$(_get_api_key_mistral)"
 
@@ -461,18 +436,9 @@ refresh_models_mistral() {
   
   api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # Array argument expansion preventing command injection
-  local -a curl_cmd=(curl -s -w "%{http_code}")
-  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
-    curl_cmd+=(${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"})
-  fi
-  curl_cmd+=(
-    -H "Authorization: Bearer $key"
-    -H "Content-Type: application/json"
-    "$api_url" -o "$out"
-  )
-
-  http_code=$("${curl_cmd[@]}" 2>"$errf" || echo "CURL_FAILED")
+  # Execute GET request via Authoritative Secure Path
+  local -a extra_opts=(-s -w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$out" "$errf" 0 extra_opts || echo "CURL_FAILED")"
 
   if [ "$http_code" = "CURL_FAILED" ] || [ ! -f "$out" ]; then
     dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
@@ -543,6 +509,9 @@ auto_select_model_mistral() {
   return 0
 }
 
+# -------------------------
+# validate_key_mistral
+# -------------------------
 validate_key_mistral() {
   local key="${1:-}"
   local http_code curl_rc=0
@@ -561,19 +530,9 @@ validate_key_mistral() {
 
   local api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # Array argument expansion preventing command injection
-  local -a curl_cmd=(curl -s -w "%{http_code}")
-  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
-    curl_cmd+=(${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"})
-  fi
-  curl_cmd+=(
-    --max-time 10
-    -H "Authorization: Bearer $key"
-    -H "Content-Type: application/json"
-    "$api_url" -o "$tmpout"
-  )
-
-  http_code="$("${curl_cmd[@]}" 2>"$errf" || echo "CURL_ERR")"
+  # GET call via Authoritative Secure Path
+  local -a key_val_opts=(--max-time 10 -s -w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true

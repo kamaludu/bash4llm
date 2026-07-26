@@ -3,14 +3,11 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/gemini.sh
-# Extra: Provider Gemini
-# Copyright (C) 2026 Cristian Evangelisti
+# Authority: Architecture Specification (Edition 2026.1)
+# Extra: Provider Gemini Module
 # License: GPL-3.0-or-later
-# Repository: https://github.com/kamaludu/bash4llm
-# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
-# Provider: Gemini (extras/providers/gemini.sh)
-# Purpose: Bash4LLM provider adapter for Gemini-style APIs (compat shim)
+# Purpose: Bash4LLM provider adapter for Gemini APIs (Google Generative Language)
 
 # -------------------------
 # Helpers
@@ -37,7 +34,7 @@ _gemini_write_atomic() {
   if [ -z "${src:-}" ] || [ -z "${dst:-}" ] || [ ! -s "$src" ]; then
     return 1
   fi
-  # Self-contained transactional write fallback if core atomic_write is absent
+  # Transactional write fallback if core atomic_write is absent
   if type atomic_write >/dev/null 2>&1; then
     cat "$src" | atomic_write "$dst" "$timeout"
   else
@@ -308,11 +305,9 @@ call_api_gemini() {
 
   dbg "call_api_gemini: url=${api_url}"
 
-  if ! curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} --silent --show-error --no-buffer --max-time 120 \
-       -H "x-goog-api-key: ${key_trim}" -H "Content-Type: application/json" \
-       --data-binary @"$send_payload" -o "$tmpresp" -w '%{http_code} %{time_total}' "$api_url" 2>"$errf" >"$tmpout"; then
-    :
-  fi
+  # Execute HTTP call through Authoritative Secure Network Path (Redacts API Key from argv)
+  local -a extra_opts=(-w '%{http_code} %{time_total}')
+  _exec_curl_secure "POST" "$api_url" "x-goog-api-key: ${key_trim}" "$send_payload" "$tmpresp" "$errf" 0 extra_opts >"$tmpout" || true
 
   rm -f "$decoded_payload" 2>/dev/null || true
 
@@ -375,7 +370,6 @@ call_api_gemini() {
 # -------------------------
 # call_api_streaming_gemini
 # -------------------------
-# Optimized Gemini streaming using single unbuffered jq processor
 call_api_streaming_gemini() {
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
@@ -467,8 +461,8 @@ call_api_streaming_gemini() {
 
   dbg "call_api_streaming_gemini: url=${api_url}"
 
-  # Real-time streaming decoder using a single unbuffered jq process
-  curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} -H "x-goog-api-key: ${key_trim}" -H "Content-Type: application/json" --no-buffer --max-time 0 --data-binary @"$send_payload" "$api_url" 2>"$errf" | \
+  # Unbuffered streaming pipeline routed through _exec_curl_secure (API Key hidden from argv)
+  _exec_curl_secure "POST" "$api_url" "x-goog-api-key: ${key_trim}" "$send_payload" "" "$errf" 1 | \
   tee -a "$RESP_RAW" | \
   jq --unbuffered -R -r '
     select(length > 0) |
@@ -624,11 +618,12 @@ refresh_models_gemini() {
 
   key_trim="$(printf '%s' "$key" | awk '{$1=$1; print}' 2>/dev/null || printf '%s' "$key")"
 
-  api_url="https://generativelanguage.googleapis.com/v1beta/models"
-  api_url="${api_url}?pageSize=${MAX_MODELS:-200}&key=${key_trim}"
+  # API key passed via x-goog-api-key header instead of URL parameter (Redacts API Key from argv)
+  api_url="https://generativelanguage.googleapis.com/v1beta/models?pageSize=${MAX_MODELS:-200}"
 
   rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
-  if ! curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} -H "Content-Type: application/json" --silent --show-error --no-buffer --max-time 120 -w '%{http_code} %{time_total}' "$api_url" -o "$out" 2>"$errf" >"$curlout"; then
+  local -a extra_opts=(-w '%{http_code} %{time_total}')
+  if ! _exec_curl_secure "GET" "$api_url" "x-goog-api-key: ${key_trim}" "" "$out" "$errf" 0 extra_opts >"$curlout"; then
     log_error "MODELREFRESH" "HTTP request to Gemini models endpoint failed."
     log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
@@ -765,6 +760,9 @@ auto_select_model_gemini() {
   return 0
 }
 
+# -------------------------
+# validate_key_gemini
+# -------------------------
 validate_key_gemini() {
   local key="${1:-}"
   local http_code curl_rc=0
@@ -781,13 +779,11 @@ validate_key_gemini() {
   [ -n "$tmpout" ] || tmpout="${workdir}/gemini-key-diag.tmp"
   errf="${tmpout}.err"
 
-  # GET call passing the key as a URL parameter (?key=...)
-  local api_url="https://generativelanguage.googleapis.com/v1beta/models?key=${key}"
+  # GET call passing x-goog-api-key header via secure path instead of URL parameter
+  local api_url="https://generativelanguage.googleapis.com/v1beta/models"
 
-  http_code="$(curl ${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"} --silent --show-error --no-buffer --max-time 10 \
-    -o "$tmpout" \
-    -w "%{http_code}" \
-    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  local -a key_val_opts=(--max-time 10 -w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "x-goog-api-key: ${key}" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true
@@ -797,7 +793,7 @@ validate_key_gemini() {
     return 28
   fi
 
-  # HTTP 200 = Valid;  HTTP 400/403 = Invalid
+  # HTTP 200 = Valid; HTTP 400/403 = Invalid
   if [ "$http_code" = "200" ]; then
     return 0
   else

@@ -2,27 +2,27 @@
 
 [![Security](https://img.shields.io/badge/security-OpenSSL%20Helper-gold?style=flat-square&logo=securityscorecard&logoColor=white)](#)
 
-# ​🔐 Specifica Tecnica: Modulo di Sicurezza e Cifratura `openssl-helper.sh`
+# Specifica Tecnica: Modulo di Sicurezza e Cifratura `openssl-helper.sh`
 
-La presente specifica tecnica descrive l'architettura, i flussi crittografici, le misure di tolleranza ai guasti e i dettagli implementativi del modulo opzionale di sicurezza `openssl-helper.sh` per l'applicazione `bash4llm`.
+La presente specifica tecnica descrive l'architettura, i flussi crittografici, le misure di tolleranza ai guasti e i dettagli implementativi del modulo opzionale di sicurezza `openssl-helper.sh` per la suite `Bash4LLM⁺`.
 
 ---
 
-## 1. Introduzione e Filosofia di Design
+## 1. Introduzione e Principi di Progettazione
 
-Il modulo `openssl-helper.sh` è progettato come un'estensione opzionale (*soft dependency*) per la gestione sicura e locale delle chiavi API dei provider di modelli linguistici. Il modulo aderisce ai seguenti principi:
+Il modulo `openssl-helper.sh` è sviluppato come un'estensione opzionale (*soft dependency*) per la gestione e cifratura locale delle chiavi API dei provider di modelli linguistici. Il modulo aderisce ai seguenti principi:
 
-* **Graceful Degradation (Degradazione Fluida)**: L'assenza di OpenSSL nel sistema non compromette il funzionamento del core script di `bash4llm`, che degrada automaticamente verso il prompt manuale delle chiavi senza causare blocchi.
-* **Zero-Knowledge Locale**: Nessuna chiave o password viene memorizzata in chiaro su disco o trasmessa in rete. La cifratura e la decifrazione avvengono interamente in memoria locale.
-* **Compatibilità Multipiattaforma**: Il codice è sviluppato per essere eseguito in modo uniforme sulle piattaforme supportate da `bash4llm`, comprese Termux (Android), Linux, macOS (Darwin), BSD, WSL e Cygwin, superando le divergenze sintattiche e crittografiche tra le implementazioni GNU e BSD (LibreSSL).
+* **Graceful Degradation (Degradazione Controllata)**: L'assenza dell'utilità OpenSSL nel sistema non compromette il funzionamento del Core di `bash4llm`, che degrada automaticamente verso il prompt manuale delle chiavi senza blocchi di processo.
+* **Zero-Knowledge Locale**: Nessuna chiave o password viene memorizzata in chiaro su disco o trasmessa in rete. La cifratura e la decifrazione avvengono esclusivamente nella memoria RAM locale del processo.
+* **Compatibilità Multipiattaforma**: Il codice è sviluppato per essere eseguito in modo uniforme sulle piattaforme supportate, comprese Linux, macOS (Darwin), Termux (Android), BSD, WSL e Cygwin, superando le difformità tra le implementazioni OpenSSL standard e LibreSSL.
 
 ---
 
 ## 2. Architettura Crittografica (Vault Key Wrapping)
 
-Per garantire che i backup e il ripristino delle chiavi API rimangano sincronizzati in modo trasparente, il modulo implementa un modello di cifratura a **chiave intermedia (Vault Key)**.
+Per garantire che l'aggiornamento delle chiavi API non richieda la rigenerazione e la riscrittura dei credenziali di emergenza offline, il modulo implementa un modello di cifratura a **chiave intermedia (Vault Key)**.
 
-```
+```text
                           [ Master Password ]
                                    │
                                    v (PBKDF2 / AES-256-CBC)
@@ -33,13 +33,13 @@ Per garantire che i backup e il ripristino delle chiavi API rimangano sincronizz
                                                  (AES-256-CBC)
 ```
 
-### Meccanismo di Sincronizzazione Automatica
-1. All'atto dell'inizializzazione del vault, viene generata una chiave simmetrica casuale a 256 bit denominata **Vault Key** (`openssl rand -hex 32`).
+### Meccanismo di Sincronizzazione
+1. All'inizializzazione del vault viene generata una chiave simmetrica casuale a 256 bit denominata **Vault Key** (`openssl rand -hex 32`).
 2. Il database contenente le chiavi API reali (`keys.dat`) viene cifrato **esclusivamente con questa Vault Key** tramite algoritmo AES-256-CBC.
 3. La Vault Key viene cifrata a sua volta due volte e memorizzata in due file distinti:
    * **`keys.enc`**: Cifrato utilizzando la Master Password definita dall'utente.
    * **`keys.rec`**: Cifrato utilizzando la Recovery Key (chiave di emergenza offline) generata dal sistema.
-4. **Trasparenza degli aggiornamenti**: Quando l'utente aggiunge, modifica o rimuove chiavi API, il sistema decifra la Vault Key (usando la Master Password), aggiorna il file delle chiavi `keys.dat` e lo risollecita con la stessa Vault Key. Di conseguenza, il file di recupero `keys.rec` **non necessita di alcuna riscrittura**, garantendo che la Recovery Key memorizzata offline rimanga sempre aggiornata e valida per il ripristino dell'intero database corrente.
+4. **Indipendenza dei file di recupero**: Quando l'utente aggiunge, modifica o rimuove chiavi API, il sistema decifra la Vault Key (tramite Master Password), aggiorna il payload `keys.dat` e lo risollecita con la medesima Vault Key. Il file `keys.rec` **non viene modificato**, garantendo che la Recovery Key memorizzata offline rimanga sempre valida per il ripristino dell'intero database.
 
 ---
 
@@ -49,79 +49,77 @@ Tutti i file del vault sono memorizzati all'interno della directory di configura
 
 | Nome File | Contenuto | Algoritmo | Permessi |
 | :--- | :--- | :--- | :--- |
-| **`keys.enc`** | Vault Key (Master Key simmetrica) | AES-256-CBC + PBKDF2 (Master Pass) | `600` (Lettura/Scrittura proprietario) |
-| **`keys.rec`** | Vault Key (Master Key simmetrica) | AES-256-CBC + PBKDF2 (Recovery Key) | `600` (Lettura/Scrittura proprietario) |
-| **`keys.dat`** | Database JSON delle chiavi API | AES-256-CBC (Vault Key) | `600` (Lettura/Scrittura proprietario) |
+| **`keys.enc`** | Vault Key (Master Key simmetrica) | AES-256-CBC + PBKDF2 (Master Pass) | `0600` (Lettura/Scrittura proprietario) |
+| **`keys.rec`** | Vault Key (Master Key simmetrica) | AES-256-CBC + PBKDF2 (Recovery Key) | `0600` (Lettura/Scrittura proprietario) |
+| **`keys.dat`** | Database JSON delle chiavi API | AES-256-CBC (Vault Key) | `0600` (Lettura/Scrittura proprietario) |
 
 ---
 
-## 4. Tolleranza ai Guasti, Atomicità e Sicurezza di Esecuzione
+## 4. Atomicità e Sicurezza di Esecuzione
 
-Per operare in modo sicuro in ambienti shell complessi con opzioni restrittive attive (`set -euo pipefail`), il modulo implementa specifiche tecniche di protezione del runtime:
-
-### Scrittura Atomica e Rilevamento dei Fallimenti fisici
-Il salvataggio di qualsiasi file cifrato non avviene mai scrivendo direttamente sul file di destinazione. 
-1. I dati vengono crittografati in un file temporaneo sicuro generato tramite la funzione core `_tmpf`.
-2. Se la cifratura fallisce, il file temporaneo viene rimosso e l'operazione viene interrotta restituendo un errore.
-3. Se la cifratura ha successo, viene tentato uno spostamento atomico (`mv -f`). Se il comando `mv` fallisce (es. per restrizioni di partizione), viene eseguito un fallback con copia forzata (`cp -f`).
-4. Se entrambi i tentativi falliscono (es. filesystem saturo o in sola lettura), il modulo rimuove il file temporaneo e restituisce esplicitamente `1` (fallimento). Questo previene la perdita silente dei dati.
+### Scrittura Atomica su Filesystem
+Il salvataggio dei file cifrati non avviene mai scrivendo direttamente sul file di destinazione:
+1. I dati vengono crittografati in un file temporaneo sicuro generato tramite la funzione core `_tmpf` all'interno di `$RUN_TMPDIR` con permessi `0600`.
+2. Se la cifratura fallisce, il file temporaneo viene rimosso immediatamente.
+3. Se la cifratura ha successo, viene eseguito uno spostamento atomico (`mv -f`). Se il comando `mv` fallisce (es. per restrizioni di partizione), viene eseguito il fallback con copia forzata (`cp -f`).
+4. In caso di errore su entrambi i comandi, il file temporaneo viene rimosso e viene restituito il codice di fallimento `1`.
 
 ### Integrità Transazionale JSON
-Prima di riscrivere il database `keys.dat` durante le modifiche alle chiavi, il risultato elaborato da `jq` viene salvato in una variabile di memoria transitoria e convalidato formalmente:
+Prima di riscrivere il database `keys.dat` durante la modifica delle chiavi, il risultato elaborato da `jq` viene convalidato in memoria:
 ```bash
 if [ -n "$updated_payload" ] && printf '%s' "$updated_payload" | jq -e . >/dev/null 2>&1;
 ```
-La sovrascrittura su disco viene autorizzata **solo se** la convalida strutturale del JSON ha successo, evitando di corrompere o azzerare il database esistente a causa di errori imprevisti di sintassi o parsing.
+La sovrascrittura su disco viene autorizzata **solo se** la convalida strutturale del JSON ha esito positivo.
 
-### Immunità al Mascheramento del Codice di Ritorno (`$?`)
-Nelle funzioni di decifrazione, per preservare l'esito del comando di openssl prima della pulizia delle credenziali in memoria, il codice di stato di openssl viene catturato immediatamente in una variabile locale dedicata (`rc=$?`), prevenendo che l'istruzione successiva `unset BASH4LLM_VAULT_PASS` (che restituisce sempre `0`) mascheri un eventuale fallimento di decodifica.
+### Gestione del Codice di Ritorno (`$?`)
+Nelle funzioni di decifrazione, il codice di stato di OpenSSL viene memorizzato immediatamente in una variabile locale (`rc=$?`) prima dell'esecuzione di `unset BASH4LLM_VAULT_PASS`, per evitare che la successiva operazione di un-export mascheri un eventuale fallimento di decodifica.
 
-### Prevenzione della Visibilità dei Processi (Pass-By-Env)
-Per impedire che la Master Password o le chiavi simmetriche siano visibili nell'albero dei processi di sistema (es. tramite comandi `ps` o `top`), le chiavi di cifratura non vengono mai passate come argomento a riga di comando (flag `-k`). Il modulo esporta temporaneamente la credenziale in una variabile d'ambiente privata del processo ed istruisce OpenSSL ad attingervi direttamente tramite il flag `-pass env:BASH4LLM_VAULT_PASS`. La variabile viene rimossa dall'ambiente (`unset`) subito dopo l'esecuzione dell'istruzione.
+### Protezione dalla Visibilità dei Processi (Pass-By-Env) [INV-1]
+Per impedire che la Master Password o le chiavi simmetriche siano visibili nell'albero dei processi di sistema (`ps aux` o `/proc/<pid>/cmdline`), le chiavi non vengono mai passate come argomento di riga di comando (flag `-k` o `-pass pass:...`). Il modulo esporta temporaneamente la credenziale in una variabile d'ambiente privata del processo ed istruisce OpenSSL ad attingervi tramite `-pass env:BASH4LLM_VAULT_PASS`. La variabile viene rossa dall'ambiente (`unset`) subito dopo l'esecuzione.
 
 ---
 
-## 5. Standardizzazione Crittografica e Ottimizzazioni
+## 5. Standardizzazione Crittografica e Portabilità
 
-### Rilevamento PBKDF2 Immune a `pipefail`
-Le versioni di OpenSSL 3.x e LibreSSL rispondono in modo differente all'opzione `-help`, uscendo talvolta con codici di errore diversi da zero. Per evitare che l'opzione shell `pipefail` interpreti questo comportamento come un errore globale della pipeline (disattivando erroneamente il supporto a PBKDF2), il rilevamento memorizza l'output del comando in una variabile sicura con fallback positivo ed esegue una ricerca di stringa tramite globbing nativo di Bash, eliminando fork e pipeline:
+### Rilevamento Diretto di PBKDF2
+L'abilitazione del supporto al KDF avanzato (PBKDF2) viene verificata a runtime eseguendo un test di cifratura reale su uno stream di prova, evitando il parsing del testo di aiuto di OpenSSL o la dipendenza dalle differenze di sintassi tra OpenSSL 3.x e LibreSSL:
 ```bash
-_openssl_help_text="$(openssl enc -help 2>&1 || true)"
-if [[ "$_openssl_help_text" == *"-pbkdf2"* ]]; then ...
+_BASH4LLM_VAULT_PBKDF2=0
+if printf 'test' | openssl enc -aes-256-cbc -pbkdf2 -iter 10 -salt -pass pass:test >/dev/null 2>&1; then
+  _BASH4LLM_VAULT_PBKDF2=1
+fi
 ```
 
 ### Portabilità Base64
-Per scongiurare il bug di LibreSSL su macOS/BSD (che tronca in modo silente i flussi Base664 superiori a 1024 byte se manipolati con il flag `-A` di openssl), il modulo non utilizza il flag `-A`. Per le normali operazioni di encoding/decoding delle transazioni standard di `bash4llm` viene delegata l'utility di sistema `base64` (di coreutils, già richiesta e validata all'avvio del core), limitando l'uso della cifratura openssl unicamente alla persistenza fisica dei tre file crittografici descritti nel layout.
+Per evitare l'anomalia di LibreSSL su macOS/BSD (che tronca i flussi Base64 superiori a 1024 byte se elaborati con la flag `-A` di `openssl`), il modulo non impiega la flag `-A`. Per le normali operazioni di encoding/decoding viene utilizzata l'utility di sistema `base64` di coreutils, limitando l'uso di `openssl enc` esclusivamente alla cifratura binaria/armored dei file del vault.
 
 ---
 
 ## 6. API Pubblica del Modulo
 
-Il modulo esporta le seguenti funzioni chiave integrate direttamente nel ciclo di vita e nell'interfaccia a riga di comando di `bash4llm`:
-
 ### `vault_init()`
-Inizializza una nuova istanza del Key Vault. Richiede l'inserimento e la conferma di una Master Password, genera una Recovery Key offline ad alta entropia e crea i file di base con un payload JSON vuoto (`{}`).
+Inizializza il Key Vault. Richiede l'inserimento e la conferma di una Master Password, genera la Recovery Key offline a 32 caratteri esadecimali e crea i file di base con un payload JSON vuoto (`{}`).
 
 ### `vault_load_keys()`
-Richiede la Master Password, estrae la Vault Key da `keys.enc` e decifra il database `keys.dat`, restituendo il payload JSON in chiaro su stdout. In caso di errore di autenticazione o corruzione dei file, restituisce un codice di stato non-zero.
+Verifica il token di contesto `_B4L_RT_CTX` o richiede la Master Password, estrae la Vault Key da `keys.enc` e decifra il database `keys.dat`, restituendo il payload JSON su `stdout`.
 
 ### `vault_change_password()`
-Consente la rotazione sicura delle credenziali. Richiede la Master Password corrente, estrae la Vault Key simmetrica, e la ricifra sotto una nuova Master Password (riscrittura di `keys.enc`) e una nuova Recovery Key generata sul momento (riscrittura di `keys.rec`).
+Consente la rotazione delle credenziali. Decifra la Vault Key simmetrica con la Master Password corrente e la ricifra sotto una nuova Master Password (riscrittura di `keys.enc`) e una nuova Recovery Key (riscrittura di `keys.rec`).
 
 ### `vault_recover()`
-Avvia la procedura di emergenza in caso di smarrimento della password. Consente di decifrare la Vault Key intermedia inserendo la Recovery Key offline memorizzata in `keys.rec`. In caso di successo, richiede e imposta una nuova Master Password riscritturando `keys.enc`.
+Procedura d'emergenza in caso di smarrimento della password. Decifra la Vault Key utilizzando la Recovery Key offline registrata in `keys.rec` e reimposta una nuova Master Password.
 
 ### `vault_manage_keys()`
-Console interattiva del Key Manager. Consente l'aggiunta, la visualizzazione e la rimozione delle chiavi dei provider all'interno del database, applicando verifiche di integrità transazionale prima di scrivere le modifiche su disco.
+Console interattiva del Key Manager per l'aggiunta, visualizzazione e rimozione delle chiavi API dei provider all'interno del database.
 
 ### `vault_destroy()`
-Esegue un wipe crittografico di sicurezza. Richiede una conferma esplicita a schermo, esegue una sovrascrittura fisica multilivello dei dati (tramite `shred` o riempimento con zeri via `dd`) per impedire il recupero dei file, ed elimina definitivamente i file crittografati dal filesystem.
+Esegue il wipe crittografico di sicurezza. Richiede conferma esplicita a schermo, esegue la sovrascrittura dei dati sul filesystem (tramite `shred` o riempimento con zeri via `dd`) e cancella i file del vault.
 
 ### `vault_get_provider_key <provider> <master_password>`
-Funzione programmatica e non interattiva utilizzata dal core script di `bash4llm` per estrarre la chiave API di un provider specifico fornendo la Master Password corretta, restituendo la stringa della chiave direttamente su stdout.
+Estrazione programmatica non interattiva dell'API key di uno specifico provider fornendo la Master Password.
 
 ### `_secure_hash_sha256 <file_path>`
-Genera l'hash SHA-256 standard di un file utilizzando il motore crittografico ottimizzato di OpenSSL, garantendo un output esadecimale a 64 caratteri uniforme e immune alle variazioni di implementazione tra i sistemi GNU e BSD.
+Genera l'hash SHA-256 di un file tramite il motore di OpenSSL, garantendo un output a 64 caratteri esadecimali uniforme tra sistemi GNU e BSD.
 
 ### `diagnose_tls_connection <url>`
-Isola i problemi di trasporto di rete eseguendo un handshake TLS interamente locale verso l'host specificato nell'URL del provider, bypassando i trust store del browser ed esponendo errori relativi a certificati scaduti, catene di attendibilità interrotte o intercettazioni proxy. Incorpora un timeout di sicurezza di 5 secondi.
+Esegue un test di handshake TLS verso l'host specificato nell'URL del provider utilizzando `openssl s_client` con un timeout di 5 secondi, evidenziando errori di certificato o intercettazioni proxy.

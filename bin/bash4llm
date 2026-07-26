@@ -21,12 +21,15 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
 fi
 
+# Environment Sanitization - Unset high-risk environment variables to prevent injection or environment hijacking
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
 # Disable writing of core dumps to prevent leaking API keys in RAM to disk on crash
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.7.0"
-SCRIPT_DATE="2026-07-24"
+SCRIPT_VERSION="2.8.0"
+SCRIPT_DATE="2026-07-26"
 
 # ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -351,12 +354,14 @@ dbg() {
 # --------------------------------------------------
 # Terminal Color Theme Initialization (conforms to NO_COLOR standard)
 # --------------------------------------------------
-# Pre-parse arguments to intercept --no-color early and set the standard env variable
+# Pre-parse arguments to intercept early flags
+BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 if [ "$#" -gt 0 ]; then
   for _arg in "$@"; do
     if [ "$_arg" = "--no-color" ]; then
       export NO_COLOR=1
-      break
+    elif [ "$_arg" = "--bootstrap-only" ]; then
+      BOOTSTRAP_ONLY=1
     fi
   done
   unset _arg
@@ -450,8 +455,9 @@ read_secure_input() {
         stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
       fi
     fi
-    if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi
-    if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi
+    # TECHNICAL DEBT AUDIT [INV-3]: Isolated parent trap restoration.
+    if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi # TECHNICAL DEBT AUDIT _parent_trap_
+    if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi # TECHNICAL DEBT AUDIT _parent_trap_
   }
 
   trap '_rsi_cleanup; printf "\n" >&2; return 1' INT TERM
@@ -492,18 +498,10 @@ read_secure_input() {
   return 0
 }
 
-# ======================================
-# TASK A: CENTRALIZED FILE INPUT VALIDATION (Locale-Independent & Safe)
-# ======================================
-# Validates path existence, readability, non-empty state, and excludes
-# binary bytes (null bytes) and unwanted C0 control characters securely.
-# Returns:
-#   0 = Success (Valid printable text file)
-#   1 = File path empty
-#   2 = File not found or not readable
-#   3 = File is empty (0 bytes) - REJECTED
-#   4 = File contains null bytes or unwanted control characters
-# ======================================
+# ------------------------------------
+# Function: validate_file_input
+# Purpose: Locale-independent text validation & binary byte filter
+# ------------------------------------
 validate_file_input() {
   local f="${1:-}" size=""
   if [ -z "$f" ]; then
@@ -518,8 +516,6 @@ validate_file_input() {
     return 3
   fi
 
-  # Safely count non-compliant bytes (including nulls) using wc -c
-  # This completely avoids passing raw binary streams to command substitutions
   local count=""
   count="$(LC_ALL=C tr -d '\t\r\n -~\200-\377' < "$f" | wc -c)"
   count="${count//[[:space:]]/}"
@@ -663,25 +659,26 @@ verify_module_integrity() {
   fi
 
   # 2. Check for the official integrity manifest file
-  manifest_file="${BASH4LLM_EXTRAS_DIR:-}/manifest.sha256"
+  local extras_base="${BASH4LLM_EXTRAS_DIR%/}"
+  manifest_file="${extras_base}/manifest.sha256"
   if [ ! -f "$manifest_file" ] || [ ! -r "$manifest_file" ]; then
-    # Manifest absent: allow execution if file path permissions are secure (e.g., custom modules)
     return 0
   fi
 
-  # Resolve path relative to BASH4LLM_EXTRAS_DIR
+  # Resolve path relative to extras base directory without trailing slash
   local canonical_extras="" canonical_target=""
-  canonical_extras="$(cd "${BASH4LLM_EXTRAS_DIR:-.}" >/dev/null 2>&1 && pwd -P || echo "${BASH4LLM_EXTRAS_DIR:-}")"
+  canonical_extras="$(cd "${extras_base:-.}" >/dev/null 2>&1 && pwd -P || echo "${extras_base}")"
+  canonical_extras="${canonical_extras%/}"
   canonical_target="$(cd "$(dirname "$target_file")" >/dev/null 2>&1 && pwd -P || echo "")/$(basename "$target_file")"
 
   if [[ "$canonical_target" == "${canonical_extras}/"* ]]; then
     rel_path="${canonical_target#"${canonical_extras}/"}"
   else
-    rel_path="${target_file#"${BASH4LLM_EXTRAS_DIR}/"}"
+    rel_path="${target_file#"${extras_base}/"}"
   fi
 
-  # 3. Lookup expected hash in manifest (robust against Windows CRLF line endings)
-  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
+  # 3. Lookup expected hash in manifest
+  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); sub(/^\*/,"",$2); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
 
   # Fallback for custom user modules not present in the official manifest
   if [ -z "$expected_hash" ]; then
@@ -694,8 +691,8 @@ verify_module_integrity() {
   # 4. Calculate actual file digest and verify match
   actual_hash="$(_core_sha256 "$target_file" 2>/dev/null || true)"
   if [ -z "$actual_hash" ]; then
-    log_warn "SEC" "Unable to compute SHA-256 hash for module integrity check: $target_file"
-    return 0
+    log_error "SEC" "Unable to compute SHA-256 hash for module integrity check: $target_file"
+    return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
   if [ "$expected_hash" != "$actual_hash" ]; then
@@ -1171,9 +1168,10 @@ stage_b64() {
   return 0
 }
 
-# --------------------------------------------------
-# Function: lock_exec (Silent & Race-Condition Proof POSIX Directory Lock)
-# --------------------------------------------------
+# ------------------------------------
+# Function: lock_exec
+# Purpose: Race-condition proof POSIX directory/flock lock
+# ------------------------------------
 lock_exec() {
   local lockfile="${1:-}"
   local timeout="${2:-10}"
@@ -1200,15 +1198,14 @@ lock_exec() {
 
   if [ "$use_flock" -eq 1 ]; then
     (
-      exec 9>"$lockfile" || exit 1
-      if flock -x -w "$timeout" 9 2>/dev/null; then
+      if flock -x -w "$timeout" 200 2>/dev/null; then
         set -e
         "$@"
       else
         log_error "LOCKTIMEOUT" "could not acquire lock on $lockfile within $timeout seconds"
         exit 124
       fi
-    )
+    ) 200>"$lockfile"
     rc=$?
     return "$rc"
   else
@@ -1229,7 +1226,6 @@ lock_exec() {
             is_orphan=1
           fi
         else
-          # Grace period for empty metadata during creation
           lock_ts=0
           if [ -f "$lockdir/owner.ts" ]; then
             lock_ts=$(cat "$lockdir/owner.ts" 2>/dev/null || echo 0)
@@ -1818,7 +1814,6 @@ load_provider_module() {
 
   safe_mkdir "$PROVIDER_DIR" 700
 
-  # Relax permission-checks block under WSL or explicit user opt-out variable policy
   local ignore_sec=0
   if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ] || is_truthy "${BASH4LLM_IGNORE_SEC_CHECKS:-0}"; then
     ignore_sec=1
@@ -1829,7 +1824,7 @@ load_provider_module() {
       log_warn "SEC" "provider directory is world-writable (ignored due to WSL/policy)."
     else
       log_error "SEC" "provider directory is world-writable."
-      return 1
+      return "${BASH4LLM_ERR_SEC:-17}"
     fi
   fi
 
@@ -1853,11 +1848,10 @@ load_provider_module() {
     log_error "SEC" "Provider module failed integrity check: $PROVIDER_MODULE_PATH"
     return "${BASH4LLM_ERR_SEC:-17}"
   fi
-  # -----------------------
 
   if [ -L "$PROVIDER_MODULE_PATH" ]; then
     log_error "SEC" "provider file is symlink."
-    return 1
+    return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
   file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
@@ -1866,7 +1860,7 @@ load_provider_module() {
       log_warn "SEC" "wrong owner for provider file: $file_owner (ignored due to WSL/policy)."
     else
       log_error "SEC" "wrong owner for provider file."
-      return 1
+      return "${BASH4LLM_ERR_SEC:-17}"
     fi
   fi
 
@@ -1878,7 +1872,7 @@ load_provider_module() {
       log_warn "SEC" "provider file writable by group/world (ignored due to WSL/policy)."
     else
       log_error "SEC" "provider file writable by group/world."
-      return 1
+      return "${BASH4LLM_ERR_SEC:-17}"
     fi
   fi
 
@@ -1886,7 +1880,7 @@ load_provider_module() {
 
   if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
     dump_file="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
-    [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return 1; }
+    [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return "${BASH4LLM_ERR_SEC:-17}"; }
 
     (
       set -e
@@ -1921,7 +1915,7 @@ load_provider_module() {
     if [ "$rc" -ne 0 ]; then
       log_error "PROVIDER" "provider module failed isolation load (rc=$rc)"
       rm -f "$dump_file" 2>/dev/null || true
-      return 1
+      return "${BASH4LLM_ERR_SEC:-17}"
     fi
 
     _nounset_was_on=0
@@ -1940,7 +1934,7 @@ load_provider_module() {
     rm -f "$dump_file" 2>/dev/null || true
 
     aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return 1; }
+    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return "${BASH4LLM_ERR_SEC:-17}"; }
 
   else
     log_warn "PROVIDER" "provider module invalid; falling back to embedded provider."
@@ -2517,12 +2511,14 @@ _locked_manifest_add_part() {
   rm -f "$tmp" 2>/dev/null || true
 }
 
-# NATIVE LOCAL RATE LIMITING ENGINE
+# ------------------------------------
+# Function: check_local_rate_limit
+# Purpose: Sliding window rate limiting engine
+# ------------------------------------
 check_local_rate_limit() {
   local limit="${BASH4LLM_RATE_LIMIT:-unlimited}"
   [ "$limit" = "unlimited" ] && return 0
   
-  # Bypass rate limiting if an authorized token is present
   if [ -n "${BASH4LLM_AUTH_TOKEN:-}" ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "RATE" "Authorized token detected. Bypassing rate limiter."
@@ -2540,16 +2536,15 @@ check_local_rate_limit() {
   now=$(date +%s 2>/dev/null || echo 0)
   cutoff=$((now - 30))
 
-  # Remove expired transaction files older than 30 seconds
   for f in "$rate_dir"/*; do
     [ -e "$f" ] || continue
     mtime=$(_file_mtime "$f")
-    if [ "$mtime" -lt "$cutoff" ]; then
+    # Only prune transaction files if mtime is valid (>0) and strictly older than cutoff
+    if [ "$mtime" -gt 0 ] && [ "$mtime" -lt "$cutoff" ]; then
       rm -f "$f" 2>/dev/null || true
     fi
   done
 
-  # Count active transaction files in the current sliding window
   count=$(find "$rate_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
 
   if [ "$count" -ge "$limit" ]; then
@@ -2557,7 +2552,6 @@ check_local_rate_limit() {
     return 1
   fi
 
-  # Record the current transaction using an empty tracking file
   local tx_file="${rate_dir}/${now}_${RANDOM}"
   : > "$tx_file"
   chmod 600 "$tx_file" 2>/dev/null || true
@@ -2758,6 +2752,9 @@ thread_rename_core() {
   [ -n "$title" ] || title="Thread ${tid:0:8}"
 
   local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${tid}.json"
+  # Explicitly ensure target directory exists before file operations
+  safe_mkdir "$(dirname "$meta_file")" 700
+
   local tmp_meta="" msg_count=0 last_ts="" last_line=""
   local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
 
@@ -3293,6 +3290,94 @@ _normalize_bool_env() {
   done
 }
 _normalize_bool_env
+
+# --------------------------------------------------
+# Function: _exec_curl_secure
+# Purpose: Authoritative Code Path for all Network Calls
+# Invariants: [INV-1] No Secret Exposure in argv | [INV-2] Isolated Storage
+# --------------------------------------------------
+_exec_curl_secure() {
+  local method="${1:-POST}"
+  local url="${2:-}"
+  local api_key="${3:-}"
+  local payload_file="${4:-}"
+  local out_file="${5:-}"
+  local err_file="${6:-}"
+  local is_streaming="${7:-0}"
+  local extra_opts_ref="${8:-}"
+
+  [ -n "$url" ] || return "$BASH4LLM_ERR_API"
+
+  local hdr_file="" hdr_target="" rc=0
+  local target_dir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR}}"
+
+  # 1. Isolation: Write sensitive headers strictly to a 0600 temp file inside RUN_TMPDIR
+  hdr_file="$(_tmpf file "$target_dir" curl_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
+
+  if [ -n "$api_key" ]; then
+    printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+  else
+    printf 'Content-Type: application/json\n' > "$hdr_file"
+  fi
+  chmod 600 "$hdr_file" 2>/dev/null || true
+
+  # 2. FD Redirection: Hide header file path from process inspection if supported
+  hdr_target="$hdr_file"
+  if exec 3< "$hdr_file" 2>/dev/null; then
+    if [ -e "/dev/fd/3" ]; then
+      hdr_target="/dev/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    elif [ -e "/proc/self/fd/3" ]; then
+      hdr_target="/proc/self/fd/3"
+      rm -f "$hdr_file" 2>/dev/null || true
+    else
+      exec 3<&- 2>/dev/null || true
+    fi
+  fi
+
+  # 3. Construct command vector securely without putting tokens in argv
+  local -a cmd=(curl)
+  if [ "$is_streaming" -eq 1 ]; then
+    cmd+=(--http1.1 -sS -N)
+  fi
+
+  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
+    cmd+=("${CURL_BASE_OPTS[@]}")
+  fi
+
+  cmd+=(-X "$method" -H @"$hdr_target")
+
+  if [ -n "$payload_file" ] && [ -f "$payload_file" ]; then
+    cmd+=(--data-binary @"$payload_file")
+  fi
+
+  if [ -n "$out_file" ]; then
+    cmd+=(-o "$out_file")
+  fi
+
+  if [ -n "$extra_opts_ref" ]; then
+    local -n _extra_ref="$extra_opts_ref" 2>/dev/null || true
+    if [ "${#_extra_ref[@]}" -gt 0 ]; then
+      cmd+=("${_extra_ref[@]}")
+    fi
+  fi
+
+  cmd+=("$url")
+
+  # 4. Single Execution Path
+  if [ -n "$err_file" ]; then
+    "${cmd[@]}" < /dev/null 2>"$err_file"
+    rc=$?
+  else
+    "${cmd[@]}" < /dev/null
+    rc=$?
+  fi
+
+  exec 3<&- 2>/dev/null || true
+  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
+
+  return "$rc"
+}
 #--5<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 ########################################
 # SECTION: PRECORE_RUN - END
@@ -3446,9 +3531,19 @@ buildpayload_groq() {
 call_api_groq() {
   local provider_url="${BASH4LLM_PROVIDER_URL:-}"
   local api_key="${GROQ_API_KEY:-}"
-  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err="" hdr_file="" hdr_target=""
+  local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err=""
 
-  enforce_network_policy || return $?
+  if ! enforce_network_policy >/dev/null 2>&1; then
+    if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        show_payload_head "${PAYLOAD:-}" 200 || true
+        log_info "DRYRUN" "DRY-RUN/SKIP_NETWORK: skipping provider HTTP call"
+      fi
+      return 0
+    fi
+    log_error "NETWORK" "Network calls disabled; aborting API request."
+    return "$BASH4LLM_ERR_CURL_FAILED"
+  fi
 
   if [ -z "$provider_url" ]; then
     log_error "CALL" "Provider URL not resolved"
@@ -3468,43 +3563,13 @@ call_api_groq() {
   tmp_resp="$(_tmpf file "$RUN_TMPDIR" resp.tmp 2>/dev/null)" || { [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
   tmp_err="$(_tmpf file "$RUN_TMPDIR" err.tmp 2>/dev/null)" || { rm -f "$tmp_resp" 2>/dev/null || true; [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true; return "$BASH4LLM_ERR_TMP"; }
 
-  # SECURE HEADER ISOLATION (Fail-Safe Unlinked FD Sequence)
-  hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_hdr 2>/dev/null)" || {
-    rm -f "$tmp_resp" "$tmp_err" 2>/dev/null || true
-    [ "$payload_dec" != "$PAYLOAD" ] && rm -f "$payload_dec" 2>/dev/null || true
-    return "$BASH4LLM_ERR_TMP"
-  }
-  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
-  chmod 600 "$hdr_file" 2>/dev/null || true
-
-  hdr_target="$hdr_file"
-  if exec 3< "$hdr_file" 2>/dev/null; then
-    if [ -e "/dev/fd/3" ]; then
-      hdr_target="/dev/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    elif [ -e "/proc/self/fd/3" ]; then
-      hdr_target="/proc/self/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    else
-      exec 3<&- 2>/dev/null || true
-    fi
-  fi
-
   if [ "${DEBUG:-0}" -eq 1 ]; then
     log_info "CURL" "POST -> $provider_url"
   fi
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" \
-    -X POST \
-    -H @"$hdr_target" \
-    --data-binary @"$payload_dec" \
-    -o "$tmp_resp" \
-    -w "%{http_code}" \
-    "$provider_url" < /dev/null 2>"$tmp_err")"
+  local -a extra_w_opts=(-w "%{http_code}")
+  http_code="$(_exec_curl_secure "POST" "$provider_url" "$api_key" "$payload_dec" "$tmp_resp" "$tmp_err" 0 extra_w_opts)"
   rc=$?
-
-  exec 3<&- 2>/dev/null || true
-  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
 
   if [ "$payload_dec" != "$PAYLOAD" ]; then
     rm -f "$payload_dec" 2>/dev/null || true
@@ -3541,7 +3606,7 @@ call_api_streaming_groq() {
   local curl_err_log="" _line="" hdr_file="" hdr_target="" api_key="" custom_key_var=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
-    if is_truthy "${DRY_RUN:-0}"; then
+    if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
       if [ "${DEBUG:-0}" -eq 1 ]; then
         show_payload_head "${PAYLOAD:-}" 200 || true
         log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"
@@ -3586,7 +3651,6 @@ call_api_streaming_groq() {
   resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
   curl_err_log="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
 
-  # SECURE HEADER ISOLATION (Fail-Safe Unlinked FD Sequence)
   hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_stream_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
   printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
   chmod 600 "$hdr_file" 2>/dev/null || true
@@ -3628,8 +3692,7 @@ call_api_streaming_groq() {
     printf '\n' >&2
   fi
 
-  # Single-pass unbuffered streaming pipeline
-  "${CURL_CMD[@]}" --data-binary @"$send_payload" "$provider_url" 2> "$curl_err_log" | \
+  _exec_curl_secure "POST" "$provider_url" "$api_key" "$send_payload" "" "$curl_err_log" 1 | \
   tee "$resp_raw" | \
   jq --unbuffered -R -r '
     if startswith("data: ") then
@@ -3649,9 +3712,17 @@ call_api_streaming_groq() {
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -eq 141 ] && rc=0
 
+  rm -f "$decoded_payload" 2>/dev/null || true
+
   exec 3<&- 2>/dev/null || true
   [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
-  rm -f "$decoded_payload" 2>/dev/null || true
+
+  # Ensure network errors return the canonical exit code BASH4LLM_ERR_CURL_FAILED (12)
+  if [ "$rc" -ne 0 ]; then
+    log_error "CURL" "Streaming network call failed with code $rc"
+    rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" "$curl_err_log" 2>/dev/null || true
+    return "$BASH4LLM_ERR_CURL_FAILED"
+  fi
 
   if [ -s "$resp_raw" ]; then
     grep -E '^data:' "$resp_raw" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$resp_lines" 2>/dev/null || true
@@ -3706,7 +3777,6 @@ call_api_streaming_groq() {
   [ -z "${RESP:-}" ] && RESP="${RUN_TMPDIR%/}/resp.json"
   safe_mkdir "$(dirname "$RESP")" 700
 
-  # Reset target response file to prevent checking stale output from previous calls
   : > "${RESP}" 2>/dev/null || true
 
   if [ -s "$resp_tmp" ]; then
@@ -3716,7 +3786,6 @@ call_api_streaming_groq() {
 
   rm -f "$resp_tmp" "$curl_err_log" 2>/dev/null || true
 
-  # API Error Verification in Response Payload
   if [ -s "${RESP}" ] && jq -e '.error // empty' "${RESP}" >/dev/null 2>&1; then
     http_code=400
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -3736,7 +3805,7 @@ call_api_streaming_groq() {
     ui_state_write "last_api.json" "$api_json" || { if [ "${DEBUG:-0}" -eq 1 ]; then log_warn "UI_STATE" "failed to write last_api.json (streaming)"; fi; }
   fi
 
-  return "${rc:-0}"
+  return 0
 }
 
 refresh_models_groq() {
@@ -3768,7 +3837,7 @@ refresh_models_groq() {
   fi
 
   rm -f "$out" "$errf" 2>/dev/null || true
-  if ! curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" -H "Authorization: Bearer ${GROQ_API_KEY}" -H "Content-Type: application/json" "${api_url}?limit=${MAX_MODELS}" -o "$out" 2>"$errf"; then
+  if ! _exec_curl_secure "GET" "${api_url}?limit=${MAX_MODELS}" "${GROQ_API_KEY}" "" "$out" "$errf" 0; then
     log_error "MODELREFRESH" "Failed to fetch models from $api_url"
     if [ "${DEBUG:-0}" -eq 1 ]; then
       head -n 200 "$errf" >&2 || true
@@ -3867,25 +3936,27 @@ validate_key_groq() {
     return 1
   fi
 
+  # Allocate isolated diagnostic output and error files
   if type _mktemp_in_dir >/dev/null 2>&1; then
     tmpout="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" 2>/dev/null || true)"
   fi
   [ -n "$tmpout" ] || tmpout="$(_tmpf file "$BASH4LLM_TMPDIR" groq-key-diag 2>/dev/null || mktemp "${BASH4LLM_TMPDIR}/groq-key-diag.XXXXXX")"
   errf="${tmpout}.err"
 
-  http_code="$(curl "${CURL_BASE_OPTS[@]+"${CURL_BASE_OPTS[@]}"}" --max-time 10 \
-    -H "Authorization: Bearer $key" \
-    -o "$tmpout" \
-    -w "%{http_code}" \
-    "$api_url" 2>"$errf" || echo "CURL_ERR")"
+  # Execute API key validation GET request through the secure authoritative path
+  local -a key_val_opts=(--max-time 10 -w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
   curl_rc=$?
 
+  # Immediately cleanup diagnostic temporary files
   rm -f "$tmpout" "$errf" 2>/dev/null || true
 
+  # Handle network failures or cURL timeout (exit code 28)
   if [ "$http_code" = "CURL_ERR" ] || [ "$curl_rc" -eq 28 ]; then
     return 28
   fi
 
+  # Validate HTTP response status
   if [ "$http_code" = "200" ]; then
     return 0
   else
@@ -4028,6 +4099,23 @@ auto_select_model_dispatch() {
   fi
   return 127
 }
+
+# --------------------------------------------------
+# Function: _lock_security_guards
+# Purpose: Lock critical security & mediation functions as read-only
+# Invariant: Prevents post-initialization function hijacking or override
+# --------------------------------------------------
+_lock_security_guards() {
+  readonly -f _exec_curl_secure \
+              verify_module_integrity \
+              read_secure_input \
+              validate_path_security \
+              atomic_write \
+              check_local_rate_limit \
+              enforce_network_policy \
+              execute_isolated_hook 2>/dev/null || true
+}
+_lock_security_guards
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
 #--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
 resolve_model() {
@@ -4197,7 +4285,7 @@ call_api_streaming() {
     return 0
   fi
 
-  # Clean interrupt handling without eval (security policy compliant)
+  # Clean interrupt handling (security policy compliant)
   trap 'printf "\n[Streaming request interrupted by user]\n" >&2; exit 130' INT
 
   call_provider "$fn"
@@ -4353,14 +4441,14 @@ perform_request_once() {
   # HARDENING CHECK: Enforce local rate limit policy before continuing
   if ! check_local_rate_limit; then
     release_thread_lock
-    return 17 # Security limit exit code
+    return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
   local attempt=1 rc="" text="" api_err="" ui_last="" finish_reason="" req_id="" edgecase=0 now_ts="" http_code_fallback="" api_json=""
   local prev_trap=""
 
   while [ "$attempt" -le "$MAX_RETRIES" ]; do
-    # Clean interrupt handling without eval (security policy compliant)
+    # Clean interrupt handling (security policy compliant)
     trap 'printf "\n[Request interrupted by user]\n" >&2; exit 130' INT
 
     call_api_once
@@ -4375,9 +4463,9 @@ perform_request_once() {
     fi
 
     if [ "$rc" -eq 0 ]; then
-      if [ "${DRY_RUN:-0}" -eq 1 ]; then
+      if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
         if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
+          log_info "DRYRUN" "DRY-RUN/SKIP_NETWORK: request simulated successfully. Payload: $PAYLOAD"
         fi
         release_thread_lock
         return 0
@@ -4648,11 +4736,18 @@ is_tty_out() {
   [ -t 1 ]
 }
 
-# --------------------------------------------------
-# Sourcing Guard & Interactive Parent-Shell Sourcing Handler (Session Unlock)
-# --------------------------------------------------
+# ------------------------------------
+# Sourcing Guard & Session Unlock
+# ------------------------------------
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-  # === AUTOMATIC NAMESPACE CLEANUP ===
+  # Preserve internal functions if loading library or running bootstrap
+  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 1 ] || [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
+    return 0 2>/dev/null || exit 0
+  fi
+
+  # ====================================
+  # AUTOMATIC NAMESPACE CLEANUP
+  # ====================================
   _cleanup_sourced_env() {
     unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
              canonical_provider_file canonical_model_file canonical_provider_url_file \
@@ -4691,44 +4786,40 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
                  diagnose_tls_connection _cleanup_sourced_env 2>/dev/null || true
   }
 
-  # Skip execution and preserve functions if only loading library (BASH4LLM_SOURCE_ONLY=1)
-  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
-    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists && [ -t 0 ]; then
-      if [ -z "${_B4L_RT_CTX:-}" ]; then
-        # Display session unlock prompt strictly blind (allow_verify = 0)
-        read_secure_input "_B4L_RT_CTX" "$(printf '%bUnlock Vault Session%b' "${C_BCYAN:-}" "${C_RST:-}")" 0 0
+  if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists && [ -t 0 ]; then
+    if [ -z "${_B4L_RT_CTX:-}" ]; then
+      # Display session unlock prompt strictly blind (allow_verify = 0)
+      read_secure_input "_B4L_RT_CTX" "$(printf '%bUnlock Vault Session%b' "${C_BCYAN:-}" "${C_RST:-}")" 0 0
+      
+      if [ -n "$_B4L_RT_CTX" ]; then
+        # Attempt to decrypt the master vault key to validate the password
+        _test_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
         
-        if [ -n "$_B4L_RT_CTX" ]; then
-          # Attempt to decrypt the master vault key to validate the password
-          _test_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
-          
-          # Validate key format: must be successful and output a 64-character hex string
-          if [ -n "$_test_key" ] && [[ "$_test_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
-            export _B4L_RT_CTX
-            printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
-          else
-            unset _B4L_RT_CTX
-            printf "%bUnlock failed: incorrect Master Password.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
-            
-            # Clean up the sourced environment functions and return early
-            _cleanup_sourced_env
-            return 1 2>/dev/null || exit 1
-          fi
-          unset _test_key
+        # Validate key format: must be successful and output a 64-character hex string
+        if [ -n "$_test_key" ] && [[ "$_test_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+          export _B4L_RT_CTX
+          printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
         else
-          printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+          unset _B4L_RT_CTX
+          printf "%bUnlock failed: incorrect Master Password.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+          
+          # Clean up the sourced environment functions and return early
           _cleanup_sourced_env
           return 1 2>/dev/null || exit 1
         fi
+        unset _test_key
       else
-        printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+        printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+        _cleanup_sourced_env
+        return 1 2>/dev/null || exit 1
       fi
+    else
+      printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
     fi
-
-    # Clean up environment functions ONLY if NOT in BASH4LLM_SOURCE_ONLY mode
-    _cleanup_sourced_env
   fi
 
+  # Clean up environment functions ONLY for interactive session unlock
+  _cleanup_sourced_env
   return 0 2>/dev/null || exit 0
 fi
 #--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
@@ -4870,9 +4961,36 @@ while [ $# -gt 0 ]; do
     --chat|--tui) CHAT_MODE=1; shift ;;
     --show-config) SHOW_CONFIG=1; shift ;;
     --diagnostics|--diagnostic) DIAGNOSTICS=1; shift ;;
-    --run-all-tests|--run-all-test)
-      RUN_SUITE=1
+    # --------------------------------------------------
+    # Test Suite Orchestration Entrypoint Gatekeeper
+    # --------------------------------------------------
+    --test|--run-all-test|--run-all-tests)
       shift
+      suite_script="${BASH4LLM_EXTRAS_DIR}/test/run-all-tests.sh"
+
+      if [ ! -f "$suite_script" ]; then
+        log_error "TEST" "Master test suite orchestrator not found at: $suite_script"
+        log_error "TEST" "Please install optional extras using: $0 --install-extras"
+        exit "$BASH4LLM_ERR_TMP"
+      fi
+
+      # Strict Path Security & Cryptographic Integrity Enforcement (INV-4)
+      if ! validate_path_security "$suite_script"; then
+        log_error "SEC" "Path security validation failed for test orchestrator: $suite_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      if ! verify_module_integrity "$suite_script"; then
+        log_error "SEC" "Test suite orchestrator failed SHA-256 integrity check: $suite_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "TEST" "Delegating test execution to verified orchestrator: $suite_script"
+      fi
+
+      # Atomic process image transfer forwarding all remaining positional arguments
+      exec bash "$suite_script" "$@"
       ;;
     --provider|--providers)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
@@ -5366,7 +5484,7 @@ fi
 # Ensure provider is fully loaded and validated
 if [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
   if ! validate_provider_interface "$PROVIDER"; then
-    exit "$BASH4LLM_ERR_API"
+    exit "${BASH4LLM_ERR_SEC:-17}"
   fi
 else
   load_provider_module "$PROVIDER"
@@ -5376,7 +5494,7 @@ else
     exit "$prov_rc"
   fi
   if ! validate_provider_interface "$PROVIDER"; then
-    exit "$BASH4LLM_ERR_API"
+    exit "${BASH4LLM_ERR_SEC:-17}"
   fi
 fi
 #--1<---[ /SECTION: CORE_PROVIDER_PRO_LOAD ]--->1--
@@ -5582,9 +5700,9 @@ assemble_content() {
   if [ -n "$JSON_INPUT" ]; then CONTENT=""; return 0; fi
 
   if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
-    CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")"
+    CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")" || exit $?
     if [ "${#ARGS[@]}" -gt 0 ]; then
-      extra="$(expand_args_to_content)"
+      extra="$(expand_args_to_content)" || exit $?
       [ -n "$extra" ] && CONTENT="${CONTENT}"$'\n\n'"$extra"
     fi
     return 0
@@ -5592,11 +5710,11 @@ assemble_content() {
 
   if [ -n "$TEMPLATE" ]; then
     if [ "${#FILE_INPUTS[@]}" -gt 0 ]; then
-      CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")"
+      CONTENT="$(collect_input_from_files "${FILE_INPUTS[@]}")" || exit $?
     elif [ -n "$STDIN_CONTENT" ]; then
       CONTENT="$STDIN_CONTENT"
     else
-      if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
+      if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)" || exit $?; else CONTENT=""; fi
     fi
 
     tmpl="$(cat "$BASH4LLM_TEMPLATES_DIR/$TEMPLATE" 2>/dev/null || true)"
@@ -5618,13 +5736,13 @@ assemble_content() {
   if [ -n "$STDIN_CONTENT" ]; then
     CONTENT="$STDIN_CONTENT"
     if [ "${#ARGS[@]}" -gt 0 ]; then
-      extra="$(expand_args_to_content)"
+      extra="$(expand_args_to_content)" || exit $?
       [ -n "$extra" ] && CONTENT="${CONTENT}"$'\n\n'"$extra"
     fi
     return 0
   fi
 
-  if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)"; else CONTENT=""; fi
+  if [ "${#ARGS[@]}" -gt 0 ]; then CONTENT="$(expand_args_to_content)" || exit $?; else CONTENT=""; fi
   return 0
 }
 

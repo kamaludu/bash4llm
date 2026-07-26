@@ -1,8 +1,8 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.5.0",
-    "date": "2026-07-18"
+    "version": "2.8.0",
+    "date": "2026-07-24"
   },
   "functions": [
     {
@@ -24,10 +24,10 @@
     {
       "name": "refresh_models_dispatch",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando la routine dedicata del provider attivo (es. refresh_models_groq). Tenta prioritariamente l'invocazione passando il percorso del file di destinazione, ed esegue un fallback sulla versione senza argomenti in caso di firme non compatibili del metodo.",
+      "purpose": "Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando la routine dedicata del provider attivo (es. refresh_models_groq). Tenta prioritariamente l'invocazione passando il percorso del file di destinazione, ed esegue un fallback sulla versione senza argomenti in caso di firme non compatibili del metodo. Al rientro con successo, invoca print_persistence_reminder.",
       "input": "$1 (opzionale: percorso del file di modelli, default $MODELS_FILE).",
       "output": "Lista locale dei modelli aggiornata sul disco. Ritorna stato 0 se completato con successo, o codici di errore in caso di fallimenti del provider o di interfaccia non definita (127).",
-      "dependencies": ["type", "log_error", "log_info"]
+      "dependencies": ["type", "log_error", "log_info", "print_persistence_reminder"]
     },
     {
       "name": "validate_model_dispatch",
@@ -44,6 +44,14 @@
       "input": "Nessuno.",
       "output": "Stampa il nome del modello selezionato su stdout. Ritorna stato 0 in caso di successo, 127 se non supportato.",
       "dependencies": ["type"]
+    },
+    {
+      "name": "_lock_security_guards",
+      "category": "CORE_SETUP",
+      "purpose": "Marca le funzioni critiche di sicurezza, mediazione di rete e gestione del filesystem come 'readonly -f' al termine del bootstrap, impedendone il hijacking o la ridefinizione in memoria da parte di script o sotto-shell.",
+      "input": "Nessuno.",
+      "output": "Funzioni bloccate come read-only nel contesto di memoria dello script.",
+      "dependencies": ["readonly"]
     },
     {
       "name": "resolve_model",
@@ -107,27 +115,27 @@
     {
       "name": "perform_request_once",
       "category": "CORE_SETUP",
-      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, applicando una logica concorrente protetta da lock sul thread attivo e ripristino sicuro dei segnali d'interruzione. Gestisce i retry automatici in caso di errori temporanei di rete (fino a $MAX_RETRIES tentativi con backoff), l'estrazione testuale, la diagnostica dei casi vuoti anomali (detect_empty_edge_case) e l'aggiornamento dello stato UI in last_api.json.",
+      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, applicando una logica concorrente protetta da lock sul thread attivo e ripristino sicuro dei segnali d'interruzione. Gestisce i retry automatici in caso di errori temporanei di rete (fino a $MAX_RETRIES tentativi con backoff), gli hook pre/post esecuzione (execute_isolated_hook), il controllo di rate-limiting (check_local_rate_limit), l'estrazione testuale, la diagnostica dei casi vuoti anomali (detect_empty_edge_case) e l'aggiornamento dello stato UI in last_api.json.",
       "input": "Nessuno.",
       "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata con successo, o codice d'errore BASH4LLM_ERR_API in caso di fallimento definitivo.",
       "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su stderr, gestione dei file lock di concorrenza del database dei thread.",
-      "dependencies": ["acquire_thread_lock", "release_thread_lock", "call_api_once", "extract_text_from_resp", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "execute_isolated_hook", "check_local_rate_limit", "call_api_once", "extract_text_from_resp", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
     },
     {
       "name": "collect_input_from_files",
       "category": "CORE_SETUP",
-      "purpose": "Legge e concatena in un'unica stringa i contenuti di una lista di file di input, inserendo delimitatori visivi strutturati tra i file per consentire al modello LLM di distinguere nettamente le sorgenti. (Nota: include una deviazione d'espansione testuale sulla variabile d'ambiente iterativa nel prompt, ereditata direttamente dallo script core).",
+      "purpose": "Legge e concatena in un'unica stringa i contenuti di una lista di file di input previa validazione di sicurezza via validate_file_input, inserendo delimitatori visivi strutturati tra i file per consentire al modello LLM di distinguere nettamente le sorgenti.",
       "input": "Array di percorsi di file ($@).",
-      "output": "Stringa di testo unificata stampata su stdout. Interrompe lo script con codice d'uscita BASH4LLM_ERR_TMP se un file non è leggibile.",
-      "dependencies": ["file_readable", "cat", "log_error"]
+      "output": "Stringa di testo unificata stampata su stdout. Interrompe lo script con codice d'uscita 17 (BASH4LLM_ERR_SEC) se un file contiene byte nulli o dati binari non sicuri, o BASH4LLM_ERR_TMP se un file non è leggibile.",
+      "dependencies": ["file_readable", "validate_file_input", "cat", "log_error"]
     },
     {
       "name": "expand_args_to_content",
       "category": "CORE_SETUP",
-      "purpose": "Converte gli argomenti CLI posizionali in frammenti di prompt. Se un argomento corrisponde a un percorso file esistente e leggibile, ne legge e ne riversa il contenuto formattato all'interno del prompt complessivo, altrimenti lo accoda direttamente come testo letterale.",
+      "purpose": "Converte gli argomenti CLI posizionali in frammenti di prompt. Se un argomento corrisponde a un percorso file esistente e leggibile, ne valida la sicurezza via validate_file_input, ne legge e ne riversa il contenuto formattato all'interno del prompt complessivo, altrimenti lo accoda direttamente come testo letterale.",
       "input": "Elementi accumulati nell'array $ARGS.",
       "output": "Stringa di prompt unificata stampata su stdout.",
-      "dependencies": ["file_readable", "cat"]
+      "dependencies": ["file_readable", "validate_file_input", "cat", "log_error"]
     },
     {
       "name": "file_readable",
@@ -209,7 +217,7 @@
     {
       "name": "assemble_content",
       "category": "CORE_PROVIDER",
-      "purpose": "Compila ed organizza la stringa del prompt di input principale $CONTENT che verrà inviata al modello LLM. Segue una catena di regole di priorità esclusive: 1. Se è configurato un JSON utente in $JSON_INPUT, pulisce la variabile $CONTENT ed esce (in quanto il JSON di input definisce autonomamente i messaggi). 2. Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne raccoglie ed unifica i contenuti via collect_input_from_files. Se sono presenti argomenti posizionali aggiuntivi, li annette in coda come frammenti testuali. 3. Se è richiesto l'uso di un template ($TEMPLATE), preleva il file del modello dalla directory dei template, esegue la sostituzione della stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito (proveniente da file, da stdin o da argomenti posizionali) usando awk con file di staging intermedi temporanei, e assegna il testo risultante a $CONTENT. 4. Se è presente dell'input catturato dallo standard input ($STDIN_CONTENT), lo adotta come prompt principale, allegando in coda eventuali argomenti posizionali. 5. Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed unisce nel prompt testuale principale via expand_args_to_content.",
+      "purpose": "Compila ed organizza la stringa del prompt di input principale $CONTENT che verrà inviata al modello LLM. Segue una catena di priorità esclusive: 1. Se è configurato un JSON utente in $JSON_INPUT, pulisce la variabile $CONTENT ed esce (in quanto il JSON di input definisce autonomamente i messaggi). 2. Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne raccoglie ed unifica i contenuti via collect_input_from_files. Se sono presenti argomenti posizionali aggiuntivi, li annette in coda come frammenti testuali. 3. Se è richiesto l'uso di un template ($TEMPLATE), preleva il file del modello dalla directory dei template, esegue la sostituzione della stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito (proveniente da file, da stdin o da argomenti posizionali) usando awk con file di staging intermedi temporanei, e assegna il testo risultante a $CONTENT. 4. Se è presente dell'input catturato dallo standard input ($STDIN_CONTENT), lo adotta come prompt principale, allegando in coda eventuali argomenti posizionali. 5. Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed unisce nel prompt testuale principale via expand_args_to_content.",
       "input": "Nessuno.",
       "output": "Stringa compilata assegnata alla variabile globale $CONTENT.",
       "side_effects": "Lettura file, generazione e distruzione di file di staging temporanei sul disco.",

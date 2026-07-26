@@ -21,7 +21,7 @@ extras/
 │   ├── help.txt
 │   ├── manual-en.txt
 │   └── manual-it.txt
-├── providers/                # Secondary LLM Provider Extension Modules
+├── providers/                # Optional LLM Provider Extension Modules
 │   ├── gemini.sh
 │   ├── huggingface.md
 │   ├── huggingface.sh
@@ -35,6 +35,21 @@ extras/
 │   ├── session-engine.sh
 │   └── struttura.md
 ├── test/                     # Automated Verification Test Suites
-│   └── run-all-tests.sh      # Master Unified Automated Test Suite (chmod 700)
+│   ├── README-tests.md
+│   ├── compatibility.sh
+│   ├── concurrency.sh
+│   ├── hardening.sh
+│   ├── help-test.txt
+│   ├── regression.sh
+│   ├── run-all-tests.sh      # Master Unified Automated Test Suite (chmod 700)
+│   ├── sanity.sh
+│   └── stress.sh
 └── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
+
 ```
+
+
+**Installazione / Installation**
+
+`./bash4llm --install-extras </path/to/extras/>`
+

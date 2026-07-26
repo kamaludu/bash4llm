@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ======================================
+# =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/security/output-sanitizer.sh
-# Component: Extra Optional Content Safety Layer
-# Copyright (C) 2026 Cristian Evangelisti
+# Authority: Architecture Specification (Edition 2026.1)
+# Component: Extra Content Safety & Output Sanitizer Engine
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
-# ======================================
+# =============================================================================
 # Purpose: Zero-Eval Output Sanitization & Terminal Escape Code Filter
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

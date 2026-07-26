@@ -1,15 +1,15 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.5.0",
-    "date": "2026-07-18"
+    "version": "2.8.0",
+    "date": "2026-07-24"
   },
   "code_blocks": [
     {
       "name": "PRECORE_BOOT_SETUP_SHELL",
       "category": "PRECORE_BOOT",
       "phase": "Inizializzazione primaria assoluta dello script.",
-      "action": "Imposta i parametri operativi restrittivi della shell Bash (set -euo pipefail) esclusivamente in caso di esecuzione diretta per prevenire l'inquinamento della shell interattiva chiamante. Disabilita la scrittura dei file di core dump per proteggere le chiavi API in RAM, imposta l'identità del software alla versione 2.5.0 e inizializza i flag di piattaforma."
+      "action": "Imposta i parametri operativi restrittivi della shell Bash (set -euo pipefail) esclusivamente in caso di esecuzione diretta per prevenire l'inquinamento della shell interattiva chiamante. Esegue la bonifica dell'ambiente (unset BASH_ENV ENV CDPATH GLOBIGNORE), disabilita la scrittura dei file di core dump per proteggere le chiavi API in RAM, imposta l'identità del software alla versione 2.8.0 e inizializza i flag di piattaforma."
     },
     {
       "name": "PRECORE_BOOT_ENVIRONMENT_AUTODETECTION",
@@ -21,19 +21,19 @@
       "name": "PRECORE_BOOT_SETUP_ENV_CMDS",
       "category": "PRECORE_BOOT",
       "phase": "Validazione dei requisiti software di sistema.",
-      "action": "Esegue una scansione del percorso di sistema per accertarsi che tutte le utilità essenziali richieste siano installate nel sistema (bash, jq, curl, mktemp, stat, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf, comm). Se un'utilità risulta assente, emette un messaggio di errore fatale ed interrompe l'esecuzione con stato 1. Il comando flock è intenzionalmente escluso da questo controllo preventivo per consentire il fallback nativo su macOS, BSD e Android."
+      "action": "Esegue una scansione del percorso di sistema per accertarsi che tutte le utilità essenziali richieste siano installate nel sistema (bash, jq, curl, mktemp, stat, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf, comm). Se un'utilità risulta assente, emette un messaggio di errore fatale ed interrompe l'esecuzione con stato 15. Il comando flock è intenzionalmente escluso da questo controllo preventivo per consentire il fallback nativo su macOS, BSD e Android."
     },
     {
       "name": "PRECORE_BOOT_DIR_PATH",
       "category": "PRECORE_BOOT",
       "phase": "Determinazione della directory di runtime.",
-      "action": "Risolve il percorso radice dell'installazione del software ($BASH4LLM_DIR) adottando in ordine di priorità la variabile d'ambiente dedicata, il percorso derivato da $BASH4LLM_ROOT o la cartella predefinita in $SCRIPTDIR/bash4llm.d (escludendo l'uso di percorsi sotto /tmp). Crea transazionalmente e in sicurezza la gerarchia di directory operative tramite safe_mkdir (config, models, templates, history, tmp, extras, providers, history/threads) impostando permessi restrittivi (700) e mitigando minacce di symlink attack."
+      "action": "Risolve il percorso radice dell'installazione del software ($BASH4LLM_DIR) adottando in ordine di priorità la variabile d'ambiente dedicata, il percorso derivato da $BASH4LLM_ROOT o la cartella predefinita in $SCRIPTDIR/bash4llm.d (escludendo l'uso di percorsi sotto /tmp). Crea transazionalmente e in sicurezza la gerarchia di directory operative tramite safe_mkdir (config, models, templates, history, tmp, var/run, var/run/locks, extras, providers, history/threads) impostando permessi restrittivi (700) e mitigando minacce di symlink attack."
     },
     {
       "name": "PRECORE_BOOT_CRYPTOGRAPHIC_VAULT_LOAD",
       "category": "PRECORE_BOOT",
       "phase": "Inizializzazione del Key Vault crittografico.",
-      "action": "Verifica se il modulo crittografico è abilitato dall'utente (BASH4LLM_VAULT_ENABLED=1). In caso positivo, convalida l'esistenza, la leggibilità e l'assenza di collegamenti simbolici sul modulo openssl-helper.sh (salvo disattivazione dei controlli via BASH4LLM_IGNORE_SEC_CHECKS) e lo importa nel runtime impostando la variabile globale BASH4LLM_OPENSSL_ACTIVE a 1."
+      "action": "Verifica se il modulo crittografico è abilitato dall'utente (BASH4LLM_VAULT_ENABLED=1). In caso positivo, valida l'integrità del modulo openssl-helper.sh tramite verify_module_integrity contro manifest.sha256 e lo importa nel runtime impostando BASH4LLM_OPENSSL_ACTIVE a 1."
     },
     {
       "name": "PRECORE_BOOT_CLI_HELPERS",
@@ -87,13 +87,13 @@
       "name": "parse_cli_arguments",
       "category": "CORE_SETUP",
       "phase": "Parsing iniziale dei parametri a riga di comando.",
-      "action": "Analizza in modo iterativo tutti gli argomenti passati da CLI. Registra e configura le opzioni booleane e i parametri complessi, comprese le nuove direttive concorrenti per i thread (--thread, --thread-window, --init-thread, --delete-thread, --rename-thread, --title) e il Key Vault crittografico (--vault). Raggruppa i parametri posizionali o i prompt liberi all'interno dell'array $ARGS. Esclude interamente i vecchi parametri obsoleti basati su sessione."
+      "action": "Analizza in modo iterativo tutti gli argomenti passati da CLI. Registra e configura le opzioni booleane e i parametri complessi, comprese le direttive concorrenti per i thread (--thread, --thread-window, --init-thread, --delete-thread, --rename-thread, --title), la Master Test Suite (--run-all-tests) ed il Key Vault crittografico (--vault). Raggruppa i parametri posizionali o i prompt liberi all'interno dell'array $ARGS."
     },
     {
       "name": "source_session_engine",
       "category": "CORE_SETUP",
       "phase": "Integrazione ed attivazione dei moduli estesi.",
-      "action": "Rileva e tenta di importare lo script del Session Engine esterno (session-engine.sh). Esegue un dry-run di analisi sintattica (bash -n) e verifica la presenza in memoria delle funzioni chiave di interfaccia. Se i controlli hanno successo e l'engine non è disabilitato da configurazione utente, attiva le flag _engine_available=1 (abilitando la gestione estesa e la compressione automatica della cronologia dei thread), altrimenti imposta il fallback automatico sui metodi storici legacy integrati."
+      "action": "Rileva e tenta di importare lo script del Session Engine esterno (session-engine.sh). Esegue la verifica di integrità SHA-256 tramite verify_module_integrity ed un dry-run di analisi sintattica (bash -n). Se i controlli hanno successo e l'engine non è disabilitato da configurazione utente, attiva la flag _engine_available=1, altrimenti imposta il fallback automatico sui metodi storici legacy integrati."
     },
     {
       "name": "verify_api_calls_and_rebuild_providers",
@@ -111,7 +111,7 @@
       "name": "immediate_actions",
       "category": "CORE_SETUP",
       "phase": "Esecuzione comandi immediati ed installazione estensioni.",
-      "action": "Elabora ed esegue le azioni amministrative che non richiedono l'avvio delle chiamate API, terminando lo script con stato 0: eliminazione fisica ed atomica di un thread database e del suo file di lock (--delete-thread), ridenominazione transazionale dei metadati di un thread (--rename-thread), elenco dei provider installati, elenco dei modelli, configurazione persistente del modello di default per il provider attivo, sincronizzazione e blindatura dei permessi delle estensioni locali (--install-extras) e inizializzazione formale con scrittura di file di stato e indice di un nuovo thread operativo (--init-thread)."
+      "action": "Elabora ed esegue le azioni amministrative che non richiedono l'avvio delle chiamate API: eliminazione fisica ed atomica di un thread database (--delete-thread), ridenominazione transazionale dei metadati di un thread (--rename-thread), elenco dei provider installati, elenco dei modelli, configurazione del modello di default per il provider attivo, esecuzione della Master Test Suite automatizzata (--run-all-tests previa verifica di integrità), sincronizzazione e blindatura dei permessi delle estensioni locali (--install-extras con verifica manifest.sha256) ed inizializzazione formale di un nuovo thread (--init-thread)."
     },
     {
       "name": "normalize_boolean_flags",
@@ -147,7 +147,7 @@
       "name": "CORE_PROVIDER_MAIN_EXECUTION",
       "category": "CORE_PROVIDER",
       "phase": "Esecuzione principale del prompt (Core Execution loop).",
-      "action": "Invoca assemble_content per generare il prompt definitivo. Gestisce i tre flussi di esecuzione principali della versione 2.5.0: 1) Elaborazione BATCH, leggendo il file batch riga per riga, definendo le finestre storiche dei thread via Session Engine o modulo legacy, compilando il payload e inoltrando le chiamate; 2) Chat REPL, delegando integralmente l'esecuzione interattiva all'utility dedicata tui-repl.sh per ottimizzare l'allocazione e l'isolamento del processo; 3) Esecuzione Standard di Singolo Prompt, gestendo le finestre di contesto del thread attivo sotto lock atomico di concorrenza, compilando il payload ed eseguendo la chiamata in streaming (call_api_streaming) o sincrona standard (perform_request_once) con relativo accodamento transazionale dei messaggi sul file NDJSON storico del thread."
+      "action": "Invoca assemble_content per generare il prompt definitivo. Gestisce i tre flussi di esecuzione principali della versione 2.8.0: 1) Elaborazione BATCH, leggendo il file batch riga per riga, definendo le finestre storiche dei thread via Session Engine o modulo legacy, compilando il payload ed inoltrando le chiamate; 2) Chat REPL, convalidando l'integrità crittografica via verify_module_integrity e delegando l'esecuzione a tui-repl.sh via exec bash; 3) Esecuzione Standard di Singolo Prompt, gestendo le finestre di contesto sotto lock atomico di concorrenza, compilando il payload ed eseguendo la chiamata HTTP tramite l'engine sicuro _exec_curl_secure() (streaming SSE via call_api_streaming o sincrona via perform_request_once) con relativo accodamento transazionale dei messaggi sul file NDJSON storico del thread."
     }
   ]
 }

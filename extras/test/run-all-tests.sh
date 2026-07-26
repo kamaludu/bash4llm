@@ -1,511 +1,247 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ======================================
+# ==============================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/test/run-all-tests.sh
-# Component: Extra Unified Master Test Suite
+# Component: Master Unified Automated Test Suite & Orchestrator
+# Scope: Single entrypoint master test orchestrator.
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
-# ======================================
-# Purpose: Single-entrypoint automated test suite covering End-to-End features,
-#          PII anonymization, security isolation, OpenSSL Vault, rate limiting,
-#          manifest integrity, high-concurrency stress, and JSON/SSE parsing.
-# Usage: ./extras/test/run-all-tests.sh [--dry-run] [--no-color]
+# ==============================================================
 
 set -euo pipefail
 
-# ------------------------------------------------------
-# Terminal Color Theme Initialization
-# ------------------------------------------------------
+# [TST-4] Fail-Fast Host Dependency Verification
+verify_host_prerequisites() {
+  local missing=0
+  if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    printf 'run-all-tests: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
+    exit 15
+  fi
+
+  for cmd in bash jq mktemp stat awk sed grep find cut tr sort head tail wc date chmod cp mv rm; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      printf 'run-all-tests: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
+      missing=1
+    fi
+  done
+
+  if [ "$missing" -ne 0 ]; then
+    exit 15
+  fi
+}
+verify_host_prerequisites
+
 init_colors() {
   if { [ -t 1 ] || [ -t 2 ]; } && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
-    C_RST=$'\e[0m' C_BOLD=$'\e[1m'
-    C_GREEN=$'\e[0;32m' C_RED=$'\e[0;31m' C_YELLOW=$'\e[0;33m' C_CYAN=$'\e[0;36m'
+    C_RST=$'\e[0m' C_BOLD=$'\e[1m' C_GREEN=$'\e[0;32m' C_RED=$'\e[0;31m' C_YELLOW=$'\e[0;33m' C_CYAN=$'\e[0;36m'
     C_BGREEN=$'\e[1;32m' C_BRED=$'\e[1;31m' C_BYELLOW=$'\e[1;33m' C_BCYAN=$'\e[1;36m'
   else
-    C_RST="" C_BOLD=""
-    C_GREEN="" C_RED="" C_YELLOW="" C_CYAN=""
-    C_BGREEN="" C_BRED="" C_BYELLOW="" C_BCYAN=""
+    C_RST="" C_BOLD="" C_GREEN="" C_RED="" C_YELLOW="" C_CYAN="" C_BGREEN="" C_BRED="" C_BYELLOW="" C_BCYAN=""
   fi
 }
 init_colors
 
-PASS=0
-FAIL=0
-SKIPPED=0
-TOTAL=0
-
-# Diagnostic log accumulators for failure reporting
-declare -a FAILED_LOGS=()
-declare -a SKIPPED_LOGS=()
-
-assert_test() {
-  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
-  TOTAL=$((TOTAL + 1))
-  if [ "$expected_rc" -eq "$actual_rc" ]; then
-    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
-    PASS=$((PASS + 1))
-  else
-    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
-    FAIL=$((FAIL + 1))
-    
-    local detail="$desc [Expected Code: $expected_rc, Got: $actual_rc]"
-    if [ -n "$hint" ]; then
-      detail="$detail — Hint: $hint"
-    fi
-    FAILED_LOGS+=("$detail")
-  fi
-}
-
-skip_test() {
-  local desc="${1:-}" reason="${2:-}"
-  TOTAL=$((TOTAL + 1))
-  SKIPPED=$((SKIPPED + 1))
-  printf '  [%sSKIP%s] %s (%s)\n' "$C_BYELLOW" "$C_RST" "$desc" "$reason"
-  SKIPPED_LOGS+=("$desc — Reason: $reason")
-}
-
-# Portable SHA-256 helper resistant to set -o pipefail
-calc_sha256() {
-  local input="${1:-}"
-  if command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$input" | sha256sum 2>/dev/null | awk '{print $1}'
-  elif command -v openssl >/dev/null 2>&1; then
-    printf '%s' "$input" | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$input" | shasum -a 256 2>/dev/null | awk '{print $1}'
-  else
-    printf ''
-  fi
-}
-
+# Architectural Constants & Canonical Suite Map
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXTRAS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MANIFEST_FILE="${EXTRAS_DIR}/manifest.sha256"
 
-# Dynamic Root and Target Binary Resolution
-ROOT_DIR=""
-TARGET_BIN=""
+declare -A CANONICAL_SUITES=(
+  ["sanity"]="Level 1 — Sanity Test Suite|sanity.sh|1"
+  ["compatibility"]="Level 2 — Compatibility Test Suite|compatibility.sh|2"
+  ["regression"]="Level 3 — Regression Test Suite|regression.sh|3"
+  ["hardening"]="Level 4 — Hardening Test Suite|hardening.sh|4"
+  ["concurrency"]="Level 5 — Concurrency Test Suite|concurrency.sh|5"
+  ["stress"]="Level 6 — Stress Test Suite|stress.sh|6"
+)
 
-if [ -f "$SCRIPT_DIR/../../bash4llm" ]; then
-  ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  TARGET_BIN="$ROOT_DIR/bash4llm"
-elif [ -f "$SCRIPT_DIR/../../../bash4llm" ]; then
-  ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-  TARGET_BIN="$ROOT_DIR/bash4llm"
-elif command -v bash4llm >/dev/null 2>&1; then
-  TARGET_BIN="$(command -v bash4llm)"
-  ROOT_DIR="$(dirname "$TARGET_BIN")"
-fi
+# Ordered list of canonical level names for full pipeline execution
+CANONICAL_ORDER=("sanity" "compatibility" "regression" "hardening" "concurrency" "stress")
 
-if [ -z "$TARGET_BIN" ] || [ ! -x "$TARGET_BIN" ]; then
-  printf 'bash4llm: ERROR: Target binary executable not found at: %s\n' "${TARGET_BIN:-<unknown>}" >&2
-  exit 15
-fi
+FAIL_FAST=0
+FORWARD_ARGS=()
+REQUESTED_SUITES=()
 
-# Resolve effective extras directory portably
-EFFECTIVE_EXTRAS_DIR=""
-if [ -d "$ROOT_DIR/bash4llm.d/extras" ]; then
-  EFFECTIVE_EXTRAS_DIR="$(cd "$ROOT_DIR/bash4llm.d/extras" && pwd)"
-elif [ -d "$ROOT_DIR/extras" ]; then
-  EFFECTIVE_EXTRAS_DIR="$(cd "$ROOT_DIR/extras" && pwd)"
-fi
-
-# Strict local test sandbox allocation (No system /tmp pollution)
-TEST_SANDBOX_PARENT="${ROOT_DIR}/.test_tmp"
-mkdir -p "$TEST_SANDBOX_PARENT" 2>/dev/null || true
-chmod 700 "$TEST_SANDBOX_PARENT" 2>/dev/null || true
-
-TEST_SANDBOX="$(mktemp -d "${TEST_SANDBOX_PARENT}/sandbox.XXXXXX")"
-cleanup_sandbox() {
-  rm -rf "$TEST_SANDBOX" 2>/dev/null || true
-  rmdir "$TEST_SANDBOX_PARENT" 2>/dev/null || true
-}
-trap cleanup_sandbox EXIT INT TERM
-
-# Export environment variables for test isolation
-export BASH4LLM_DIR="${TEST_SANDBOX}/bash4llm.d"
-if [ -n "$EFFECTIVE_EXTRAS_DIR" ]; then
-  export BASH4LLM_EXTRAS_DIR="$EFFECTIVE_EXTRAS_DIR"
-fi
-export BASH4LLM_SKIP_NETWORK=1
-export GROQ_API_KEY="dummy_suite_key_for_testing"
-
-# Seed default mock configuration in sandbox
-mkdir -p "${BASH4LLM_DIR}/models" "${BASH4LLM_DIR}/config" "${BASH4LLM_DIR}/tmp"
-printf 'llama-3.3-70b-versatile\nwhisper-large-v3\n' > "${BASH4LLM_DIR}/models/groq.txt"
-printf 'llama-3.3-70b-versatile\n' > "${BASH4LLM_DIR}/config/model.groq"
-
-printf '\n%s==============================================%s\n' "$C_BOLD" "$C_RST"
-printf '%s Bash4LLM⁺ — Unified Master Test Suite %s\n' "$C_BCYAN" "$C_RST"
-printf '%s==============================================%s\n\n' "$C_BOLD" "$C_RST"
-
-# ======================================
-# MODULE 1: CLI Configuration, Path Getters & Linter
-# ======================================
-printf '%b[MODULE 1] Configuration, Utilities & Path Getters%b\n' "$C_CYAN" "$C_RST"
-
-out_linter="$("$TARGET_BIN" --check-config 2>&1 || true)"
-if printf '%s' "$out_linter" | grep -q "Configuration Security"; then rc_1a=0; else rc_1a=1; fi
-assert_test "Static configuration linter (--check-config)" 0 $rc_1a
-
-out_explain="$("$TARGET_BIN" --explain-error BASH4LLM_ERR_SEC 2>&1 || true)"
-if printf '%s' "$out_explain" | grep -q "Evaluating error code"; then rc_1b=0; else rc_1b=1; fi
-assert_test "Error documentation explainer (--explain-error)" 0 $rc_1b
-
-cfg_dir="$("$TARGET_BIN" --print-config-dir 2>/dev/null || true)"
-if [ "$cfg_dir" = "${BASH4LLM_DIR}/config" ]; then rc_1c=0; else rc_1c=1; fi
-assert_test "Canonical config directory getter (--print-config-dir)" 0 $rc_1c
-
-prov_file="$("$TARGET_BIN" --print-provider-file 2>/dev/null || true)"
-if [ "$prov_file" = "${BASH4LLM_DIR}/config/provider" ]; then rc_1d=0; else rc_1d=1; fi
-assert_test "Canonical provider file getter (--print-provider-file)" 0 $rc_1d
-
-prov_raw="$("$TARGET_BIN" --list-providers-raw 2>/dev/null || true)"
-if printf '%s' "$prov_raw" | grep -q "groq"; then rc_1e=0; else rc_1e=1; fi
-assert_test "Raw provider list querying (--list-providers-raw)" 0 $rc_1e
-
-# ======================================
-# MODULE 2: Input Pipeline & Template Assembly
-# ======================================
-printf '\n%b[MODULE 2] Input Pipeline & Template Assembly%b\n' "$C_CYAN" "$C_RST"
-
-set +e
-echo "Piped Input Prompt" | "$TARGET_BIN" --dry-run >/dev/null 2>&1
-rc_2a=$?
-set -e
-assert_test "Piped STDIN prompt assembly" 0 $rc_2a
-
-tmp_input_file="${TEST_SANDBOX}/test_input.txt"
-printf 'File Input Data' > "$tmp_input_file"
-set +e
-"$TARGET_BIN" -f "$tmp_input_file" --dry-run >/dev/null 2>&1
-rc_2b=$?
-set -e
-assert_test "File input payload assembly (-f)" 0 $rc_2b
-
-mkdir -p "${BASH4LLM_DIR}/templates"
-printf 'System Header\n{{CONTENT}}\nSystem Footer' > "${BASH4LLM_DIR}/templates/test.tmpl"
-set +e
-"$TARGET_BIN" --template test.tmpl "Dynamic Content" --dry-run >/dev/null 2>&1
-rc_2c=$?
-set -e
-assert_test "Template engine variable expansion (--template)" 0 $rc_2c
-
-# ======================================
-# MODULE 3: Model Validation & Formatting Rules
-# ======================================
-printf '\n%b[MODULE 3] Model Safety & Output Formatting%b\n' "$C_CYAN" "$C_RST"
-
-set +e
-"$TARGET_BIN" --provider groq --set-default "llama-3.3-70b-versatile" >/dev/null 2>&1
-rc_3a=$?
-set -e
-assert_test "Default model persistence (--set-default)" 0 $rc_3a
-
-set +e
-"$TARGET_BIN" -m "whisper-large-v3" --dry-run "Test audio model" >/dev/null 2>&1
-rc_3b=$?
-set -e
-assert_test "Non-text audio/multimodal model rejection (Exit Code 11)" 11 $rc_3b
-
-set +e
-"$TARGET_BIN" --json --dry-run "Format Test" >/dev/null 2>&1
-rc_3c=$?
-"$TARGET_BIN" --pretty --dry-run "Pretty Test" >/dev/null 2>&1
-rc_3d=$?
-set -e
-assert_test "Structured JSON output selection (--json)" 0 $rc_3c
-assert_test "Pretty-printed JSON output selection (--pretty)" 0 $rc_3d
-
-# ======================================
-# MODULE 4: Thread Lifecycle, PII Anonymization & Path Traversal Fuzzing
-# ======================================
-printf '\n%b[MODULE 4] Thread Lifecycle, PII Anonymization & Fuzzing%b\n' "$C_CYAN" "$C_RST"
-
-TRAVERSAL_ID="../../../etc/passwd"
-ANONYMIZED_OUT="$("$TARGET_BIN" --thread "$TRAVERSAL_ID" --bootstrap-only 2>&1 || true)"
-if [[ "$ANONYMIZED_OUT" == *"../"* ]] || [[ "$ANONYMIZED_OUT" == *"/etc/passwd"* ]]; then rc_4a=1; else rc_4a=0; fi
-assert_test "Path traversal attack sequence mitigation in --thread" 0 $rc_4a
-
-FUZZ_ID=$'test_thread\x00_injection; id;'
-FUZZ_OUT="$("$TARGET_BIN" --thread "$FUZZ_ID" --bootstrap-only 2>&1 || true)"
-if [[ "$FUZZ_OUT" == *"uid="* ]] || [[ "$FUZZ_OUT" == *"; id;"* ]]; then rc_4b=1; else rc_4b=0; fi
-assert_test "Null-byte & command injection fuzzing mitigation" 0 $rc_4b
-
-RAW_PII_THREAD="john_doe_user_email@example.com"
-set +e
-"$TARGET_BIN" --thread "$RAW_PII_THREAD" --init-thread >/dev/null 2>&1
-rc_4c=$?
-set -e
-assert_test "Thread initialization (--init-thread)" 0 $rc_4c
-
-# Calculate exact SHA-256 hash expected on disk portably
-EXPECTED_HASH="$(calc_sha256 "$RAW_PII_THREAD")"
-THREAD_FILE="${BASH4LLM_DIR}/history/threads/${EXPECTED_HASH}.ndjson"
-
-if [ -f "$THREAD_FILE" ] && ! ls "${BASH4LLM_DIR}/history/threads/"*"john_doe"* >/dev/null 2>&1; then rc_4d=0; else rc_4d=1; fi
-assert_test "Cryptographic PII thread ID anonymization on disk" 0 $rc_4d
-
-set +e
-"$TARGET_BIN" --thread "$RAW_PII_THREAD" --rename-thread "$RAW_PII_THREAD" --title "Custom Thread Title" >/dev/null 2>&1
-set -e
-META_FILE="${BASH4LLM_DIR}/config/ui_state/threads/${EXPECTED_HASH}.json"
-if [ -f "$META_FILE" ] && grep -q "Custom Thread Title" "$META_FILE"; then rc_4e=0; else rc_4e=1; fi
-assert_test "Thread metadata title rename (--rename-thread)" 0 $rc_4e
-
-set +e
-"$TARGET_BIN" --delete-thread "$RAW_PII_THREAD" >/dev/null 2>&1
-set -e
-if [ ! -f "$THREAD_FILE" ]; then rc_4f=0; else rc_4f=1; fi
-assert_test "Safe thread deletion and disk purging (--delete-thread)" 0 $rc_4f
-
-# ======================================
-# MODULE 5: Security Engine, Rate Limiter & Binary Safety
-# ======================================
-printf '\n%b[MODULE 5] Security Engine, Rate Limiter & Binary Safety%b\n' "$C_CYAN" "$C_RST"
-
-binary_file="${TEST_SANDBOX}/unsafe_binary.bin"
-printf '\x00\x01\x02\x03UNSAFE_BINARY_DATA\x00' > "$binary_file"
-set +e
-"$TARGET_BIN" -f "$binary_file" --dry-run >/dev/null 2>&1
-bin_rc=$?
-set -e
-assert_test "Binary file rejection filter blocks null bytes (Exit Code 17)" 17 $bin_rc
-
-export BASH4LLM_RATE_LIMIT=3
-THREAD_RATE_ID="rate_limit_test_thread"
-set +e
-"$TARGET_BIN" --thread "$THREAD_RATE_ID" --dry-run "Rate req 1" >/dev/null 2>&1
-"$TARGET_BIN" --thread "$THREAD_RATE_ID" --dry-run "Rate req 2" >/dev/null 2>&1
-"$TARGET_BIN" --thread "$THREAD_RATE_ID" --dry-run "Rate req 3" >/dev/null 2>&1
-"$TARGET_BIN" --thread "$THREAD_RATE_ID" --dry-run "Rate req 4 - Exceeded" >/dev/null 2>&1
-rate_rc=$?
-set -e
-assert_test "Sliding window rate limiter blocks exceeded quota (Exit Code 17)" 17 $rate_rc
-unset BASH4LLM_RATE_LIMIT
-
-SYMLINK_TARGET="${TEST_SANDBOX}/symlink_target.txt"
-echo "SENSITIVE_DATA" > "$SYMLINK_TARGET"
-SYMLINK_ATTACK="${BASH4LLM_DIR}/tmp/malicious_link.tmp"
-ln -s "$SYMLINK_TARGET" "$SYMLINK_ATTACK" 2>/dev/null || true
-
-set +e
-"$TARGET_BIN" --check-config >/dev/null 2>&1
-sym_rc=$?
-set -e
-assert_test "Safe directory check handles symlink traversal safely" 0 $sym_rc
-
-EXTRAS_TEST_DIR="${BASH4LLM_DIR}/extras"
-mkdir -p "${EXTRAS_TEST_DIR}/hooks"
-DUMMY_HOOK="${EXTRAS_TEST_DIR}/hooks/hook.sh"
-printf '#!/usr/bin/env bash\necho "OK"\n' > "$DUMMY_HOOK"
-printf "0000000000000000000000000000000000000000000000000000000000000000  hooks/hook.sh\n" > "${EXTRAS_TEST_DIR}/manifest.sha256"
-
-export BASH4LLM_EXTRAS_DIR="$EXTRAS_TEST_DIR"
-set +e
-"$TARGET_BIN" --dry-run "Test hook integrity" >/dev/null 2>&1
-integrity_rc=$?
-set -e
-assert_test "Cryptographic SHA-256 mismatch halts execution (Exit Code 17)" 17 $integrity_rc
-
-if [ -n "$EFFECTIVE_EXTRAS_DIR" ]; then
-  export BASH4LLM_EXTRAS_DIR="$EFFECTIVE_EXTRAS_DIR"
-else
-  unset BASH4LLM_EXTRAS_DIR
-fi
-
-# ======================================
-# MODULE 6: OpenSSL Cryptographic Key Vault Engine
-# ======================================
-printf '\n%b[MODULE 6] Cryptographic Key Vault Engine%b\n' "$C_CYAN" "$C_RST"
-
-HELPER_PATH="${EFFECTIVE_EXTRAS_DIR}/security/openssl-helper.sh"
-if [ -f "$HELPER_PATH" ] && command -v openssl >/dev/null 2>&1; then
-  VAULT_PASS="TestMasterPassword123!"
-  vault_file="${BASH4LLM_DIR}/config/keys.enc"
-
-  vault_test_out="$(
-    export BASH4LLM_DIR="${BASH4LLM_DIR}"
-    export BASH4LLM_EXTRAS_DIR="${EFFECTIVE_EXTRAS_DIR}"
-    export BASH4LLM_SOURCE_ONLY=1
-    export BASH4LLM_IGNORE_SEC_CHECKS=1
-
-    . "$TARGET_BIN" >/dev/null 2>&1 || true
-    safe_mkdir "$BASH4LLM_DIR" 700
-    safe_mkdir "${BASH4LLM_DIR}/config" 700
-    safe_mkdir "${BASH4LLM_DIR}/tmp" 700
-    ensure_run_tmpdir >/dev/null 2>&1 || true
-
-    if [ -f "$HELPER_PATH" ]; then
-      . "$HELPER_PATH" >/dev/null 2>&1 || true
-    fi
-
-    if type _vault_encrypt_to_file >/dev/null 2>&1; then
-      if _vault_encrypt_to_file '{"groq":"secret_vault_api_key_777"}' "$vault_file" "$VAULT_PASS" >/dev/null 2>&1; then
-        decrypted="$(_vault_decrypt_file "$vault_file" "$VAULT_PASS" 2>/dev/null || true)"
-        if printf '%s' "$decrypted" | grep -q "secret_vault_api_key_777"; then
-          echo "SUCCESS"
-        else
-          echo "DECRYPT_FAILED"
-        fi
-      else
-        echo "ENCRYPT_FAILED"
-      fi
+display_help() {
+  local help_file="${SCRIPT_DIR}/help-test.txt"
+  if [ -f "$help_file" ] && [ -r "$help_file" ]; then
+    if [ -z "${C_BCYAN:-}" ]; then
+      cat "$help_file"
     else
-      echo "HELPER_NOT_LOADED"
+      sed \
+        -e "s/^\([A-Za-z][A-Za-z[:blank:]&]*:\)/${C_BCYAN}\1${C_RST}/" \
+        -e "s/\(--[a-zA-Z0-9-][a-zA-Z0-9-]*\)/${C_BGREEN}\1${C_RST}/g" \
+        "$help_file"
     fi
-  )"
-
-  if [ "$vault_test_out" = "SUCCESS" ]; then rc_6a=0; else rc_6a=1; fi
-  assert_test "AES-256/PBKDF2 key vault encryption & decryption" 0 $rc_6a
-
-  if [ -f "$vault_file" ]; then rc_6b=0; else rc_6b=1; fi
-  assert_test "Encrypted key vault disk file creation" 0 $rc_6b
-else
-  skip_test "OpenSSL Cryptographic Key Vault" "openssl binary or openssl-helper.sh missing"
-fi
-
-# ======================================
-# MODULE 7: High-Concurrency Lock Stress Test
-# ======================================
-
-# Adaptive concurrency detection based on active platform and hardware limits
-detect_safe_concurrency() {
-  # 1. Allow explicit user override via environment variable
-  if [ -n "${BASH4LLM_TEST_CONCURRENCY:-}" ] && [[ "${BASH4LLM_TEST_CONCURRENCY}" =~ ^[0-9]+$ ]]; then
-    printf '%s' "$BASH4LLM_TEST_CONCURRENCY"
-    return
+  else
+    printf 'run-all-tests: Help manual file missing at: %s\n' "$help_file" >&2
   fi
-
-  # 2. Constrained mobile environments (Android / Termux)
-  if [ "${BASH4LLM_PLAT_ANDROID:-0}" -eq 1 ] || [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ]; then
-    printf '10'
-    return
-  fi
-
-  # 3. Emulated fork environments (Windows Cygwin / MSYS2)
-  if [ "${BASH4LLM_PLAT_CYGWIN:-0}" -eq 1 ]; then
-    printf '10'
-    return
-  fi
-
-  # 4. Virtualized Windows Subsystem for Linux (WSL)
-  if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ]; then
-    printf '20'
-    return
-  fi
-
-  # 5. Dynamic core scaling for Linux, macOS, and BSD
-  local cores=2
-  if command -v nproc >/dev/null 2>&1; then
-    cores="$(nproc 2>/dev/null || echo 2)"
-  elif command -v sysctl >/dev/null 2>&1; then
-    cores="$(sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-  fi
-
-  local calculated=$((cores * 10))
-  if [ "$calculated" -gt 50 ]; then calculated=50; fi
-  if [ "$calculated" -lt 10 ]; then calculated=10; fi
-
-  printf '%s' "$calculated"
+  exit 0
 }
 
-NUM_WORKERS="$(detect_safe_concurrency)"
-
-printf '\n%b[MODULE 7] High-Concurrency Lock Contention (%d Parallel Processes)%b\n' "$C_CYAN" "$NUM_WORKERS" "$C_RST"
-
-CONCURRENCY_THREAD="concurrency_stress_test_thread"
-export BASH4LLM_SOURCE_ONLY=1
-. "$TARGET_BIN" >/dev/null 2>&1 || true
-
-anonymize_thread_id "$CONCURRENCY_THREAD"
-STRESS_HASH="$SAFE_THREAD_ID"
-STRESS_NDJSON="${BASH4LLM_DIR}/history/threads/${STRESS_HASH}.ndjson"
-
-rm -f "$STRESS_NDJSON" 2>/dev/null || true
-export BASH4LLM_SOURCE_ONLY=0
-"$TARGET_BIN" --thread "$CONCURRENCY_THREAD" --init-thread >/dev/null 2>&1 || true
-
-PIDS=()
-for ((i=1; i<=NUM_WORKERS; i++)); do
-  (
-    export BASH4LLM_DIR="${BASH4LLM_DIR}"
-    export BASH4LLM_SOURCE_ONLY=1
-    . "$TARGET_BIN" >/dev/null 2>&1 || true
-    thread_append "$STRESS_HASH" "user" "Concurrent message payload #$i" '{"source":"stress_test"}' >/dev/null 2>&1
-  ) &
-  PIDS+=($!)
-done
-
-for pid in "${PIDS[@]}"; do
-  wait "$pid" 2>/dev/null || true
-done
-
-if [ -f "$STRESS_NDJSON" ]; then
-  LINE_COUNT="$(wc -l < "$STRESS_NDJSON" | tr -d ' ')"
-  VALID_JSON_COUNT="$(jq -s 'length' "$STRESS_NDJSON" 2>/dev/null || echo 0)"
-  if [ "$LINE_COUNT" -eq "$NUM_WORKERS" ] && [ "$VALID_JSON_COUNT" -eq "$NUM_WORKERS" ]; then rc_7=0; else rc_7=1; fi
-else
-  rc_7=1
-fi
-
-init_colors
-assert_test "$NUM_WORKERS parallel workers atomic NDJSON append lock stress test" 0 $rc_7
-rm -f "$STRESS_NDJSON" 2>/dev/null || true
-
-# ======================================
-# MODULE 8: Optional SSE & JSON Logic (Python 3 Helper)
-# ======================================
-printf '\n%b[MODULE 8] Optional Python 3 SSE & JSON Parsing Engine%b\n' "$C_CYAN" "$C_RST"
-
-if command -v python3 >/dev/null 2>&1; then
-  py_escape_out="$(printf 'He said "Hi"' | python3 -c 'import sys, json; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null || true)"
-  if [ "$py_escape_out" = 'He said \"Hi\"' ]; then rc_8a=0; else rc_8a=1; fi
-  assert_test "JSON string escaping via Python 3 decoder" 0 $rc_8a
-
-  py_sse_out="$(printf '{"content":"Hello World"}' | python3 -c '
-import sys, json
-s = sys.stdin.read()
-v = json.loads(s).get("content", "")
-print(v, end="")' 2>/dev/null || true)"
-  if [ "$py_sse_out" = "Hello World" ]; then rc_8b=0; else rc_8b=1; fi
-  assert_test "SSE chunk payload extractor via Python 3 decoder" 0 $rc_8b
-else
-  skip_test "Python 3 SSE & JSON Parsing Engine" "python3 executable not found in PATH"
-fi
-
-# ======================================
-# FINAL SUMMARY REPORT
-# ======================================
-
-printf '\n%s--------------------------------------------%s\n' "$C_BOLD" "$C_RST"
-printf ' %sTEST SUITE EXECUTION SUMMARY%s\n' "$C_BCYAN" "$C_RST"
-printf '   Total Executed Tests : %s%d%s\n' "$C_BOLD" "$TOTAL" "$C_RST"
-printf '   Passed Tests         : %s%d%s\n' "$C_BGREEN" "$PASS" "$C_RST"
-printf '   Failed Tests         : %s%d%s\n' "$C_BRED" "$FAIL" "$C_RST"
-printf '   Skipped Tests        : %s%d%s\n' "$C_BYELLOW" "$SKIPPED" "$C_RST"
-printf '%s--------------------------------------------%s\n' "$C_BOLD" "$C_RST"
-
-# Display detailed report for skipped tests if any
-if [ "${#SKIPPED_LOGS[@]}" -gt 0 ]; then
-  printf '\n%sSKIPPED TESTS DIAGNOSTICS:%s\n' "$C_BYELLOW" "$C_RST"
-  for sk in "${SKIPPED_LOGS[@]}"; do
-    printf '  • %s\n' "$sk"
+# Parse CLI options and positional commands/suite selections
+parse_cli_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      help|-h|--help)
+        display_help
+        ;;
+      list)
+        printf '%bAuthorized Canonical Test Suites:%b\n' "$C_BCYAN" "$C_RST"
+        for suite in "${CANONICAL_ORDER[@]}"; do
+          IFS='|' read -r desc file_name level_num <<< "${CANONICAL_SUITES[$suite]}"
+          printf '  • %b%-15s%b (%s)\n' "$C_BGREEN" "$suite" "$C_RST" "$desc"
+        done
+        exit 0
+        ;;
+      all)
+        REQUESTED_SUITES=("${CANONICAL_ORDER[@]}")
+        shift
+        ;;
+      --fail-fast)
+        FAIL_FAST=1
+        FORWARD_ARGS+=("--fail-fast")
+        shift
+        ;;
+      --no-color)
+        export NO_COLOR=1
+        init_colors
+        FORWARD_ARGS+=("--no-color")
+        shift
+        ;;
+      --dry-run)
+        FORWARD_ARGS+=("--dry-run")
+        shift
+        ;;
+      -*)
+        printf 'run-all-tests: ERROR: Unknown option %s\n' "$1" >&2
+        printf 'Use "bash4llm --test help" for usage details.\n' >&2
+        exit 15
+        ;;
+      *)
+        # Positional suite name matching canonical suites
+        if [ -n "${CANONICAL_SUITES[$1]:-}" ]; then
+          REQUESTED_SUITES+=("$1")
+        else
+          printf 'run-all-tests: ERROR: Unrecognized canonical test suite: %s\n' "$1" >&2
+          printf 'Use "bash4llm --test list" to view available suites.\n' >&2
+          exit 15
+        fi
+        shift
+        ;;
+    esac
   done
-fi
 
-# Display detailed report for failures if any
-if [ "${#FAILED_LOGS[@]}" -gt 0 ]; then
-  printf '\n%sDETAILED FAILURE DIAGNOSTICS:%s\n' "$C_BRED" "$C_RST"
-  for fl in "${FAILED_LOGS[@]}"; do
-    printf '  ✖ %s\n' "$fl"
+  # Default to executing all canonical suites if none explicitly selected
+  if [ "${#REQUESTED_SUITES[@]}" -eq 0 ]; then
+    REQUESTED_SUITES=("${CANONICAL_ORDER[@]}")
+  fi
+}
+parse_cli_args "$@"
+
+# [INV-4] Module Integrity Verification Helper
+verify_module_integrity_local() {
+  local target_file="${1:-}"
+  local rel_path="" expected_hash="" actual_hash=""
+
+  [ -f "$target_file" ] || return 1
+  [ -f "$MANIFEST_FILE" ] || return 1
+
+  rel_path="test/$(basename "$target_file")"
+  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); if ($2 == rel) {print $1; exit}}' "$MANIFEST_FILE" 2>/dev/null || true)"
+
+  if [ -z "$expected_hash" ]; then
+    printf 'run-all-tests: [SECURITY ERROR] Suite %s not registered in manifest.sha256!\n' "$rel_path" >&2
+    return 17
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash="$(sha256sum "$target_file" 2>/dev/null | awk '{print $1}')"
+  elif command -v openssl >/dev/null 2>&1; then
+    actual_hash="$(openssl dgst -sha256 -r "$target_file" 2>/dev/null | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_hash="$(shasum -a 256 "$target_file" 2>/dev/null | awk '{print $1}')"
+  fi
+
+  if [ "$expected_hash" != "$actual_hash" ]; then
+    printf 'run-all-tests: [SECURITY ERROR] Integrity mismatch for %s!\n' "$rel_path" >&2
+    return 17
+  fi
+
+  return 0
+}
+
+# [TST-7] Set Intersection Verification & Level Execution Dispatcher
+execute_canonical_suite() {
+  local suite_key="${1:-}"
+  if [ -z "${CANONICAL_SUITES[$suite_key]:-}" ]; then
+    return 1
+  fi
+
+  IFS='|' read -r desc file_name level_num <<< "${CANONICAL_SUITES[$suite_key]}"
+  local script_path="${SCRIPT_DIR}/${file_name}"
+
+  printf '\n%s>>> Executing %s (%s)%s\n' "$C_BCYAN" "$desc" "$file_name" "$C_RST"
+
+  # 1. Physical File Existence Check
+  if [ ! -f "$script_path" ] || [ ! -r "$script_path" ]; then
+    printf '  [%sERROR%s] Missing executable script for canonical suite: %s\n' "$C_BRED" "$C_RST" "$script_path" >&2
+    if [ "$FAIL_FAST" -eq 1 ]; then exit 1; fi
+    return 1
+  fi
+
+  # 2. Manifest Whitelist & SHA-256 Integrity Verification (Set Intersection Model)
+  if ! verify_module_integrity_local "$script_path"; then
+    printf '  [%sSECURITY ERROR%s] Suite %s failed integrity check! (Exit Code 17)\n' "$C_BRED" "$C_RST" "$file_name" >&2
+    if [ "$FAIL_FAST" -eq 1 ]; then exit 17; fi
+    return 17
+  fi
+
+  # 3. Execution
+  set +e
+  bash "$script_path" ${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}
+  local rc=$?
+  set -e
+
+  if [ "$rc" -ne 0 ]; then
+    printf '  [%sLEVEL %s FAILED%s] %s returned exit code %d\n' "$C_BRED" "$level_num" "$C_RST" "$file_name" "$rc"
+    if [ "$FAIL_FAST" -eq 1 ]; then
+      printf '\n%s[FAIL-FAST HALT] Halting execution due to failure in %s.%s\n\n' "$C_BRED" "$suite_key" "$C_RST" >&2
+      exit 1
+    fi
+    return 1
+  else
+    printf '  [%sLEVEL %s PASSED%s] %s completed successfully.\n' "$C_BGREEN" "$level_num" "$C_RST" "$file_name"
+    return 0
+  fi
+}
+
+main() {
+  printf '\n%s============================================%s\n' "$C_BOLD" "$C_RST"
+  printf '%s Bash4LLM⁺ — Master Unified Test Suite (Edition 2026.1) %s\n' "$C_BCYAN" "$C_RST"
+  printf '%s============================================%s\n' "$C_BOLD" "$C_RST"
+
+  local level_failures=0
+  local executed_count=0
+
+  for suite_key in "${REQUESTED_SUITES[@]}"; do
+    executed_count=$((executed_count + 1))
+    execute_canonical_suite "$suite_key" || level_failures=$((level_failures + 1))
   done
-  printf '\n%sRESULT: SUITE FAILED (%d failures detected)%s\n\n' "$C_BRED" "$FAIL" "$C_RST"
-  printf '%s==============================================%s\n\n' "$C_BOLD" "$C_RST"
-  exit 1
-else
-  printf '\n%sRESULT: ALL TESTS PASSED SUCCESSFULLY%s\n\n' "$C_BGREEN" "$C_RST"
-  printf '%s==============================================%s\n\n' "$C_BOLD" "$C_RST"
-  exit 0
-fi
+
+  printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
+  if [ "$level_failures" -eq 0 ]; then
+    printf ' %sRESULT: ALL %d EXECUTED TEST SUITES PASSED SUCCESSFULLY%s\n' "$C_BGREEN" "$executed_count" "$C_RST"
+    printf '%s========================================%s\n\n' "$C_BOLD" "$C_RST"
+    exit 0
+  else
+    printf ' %sRESULT: SUITE FAILED (%d failures detected among %d suites)%s\n' "$C_BRED" "$level_failures" "$executed_count" "$C_RST"
+    printf '%s========================================%s\n\n' "$C_BOLD" "$C_RST"
+    exit 1
+  fi
+}
+
+main "$@"

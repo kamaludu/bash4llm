@@ -2,10 +2,10 @@
 BASH4LLM(1)                      Bash4LLM Manual                    BASH4LLM(1)
 ================================================================================
 
-NAME
+NOME
     bash4llm - Resilient and secure Bash-first wrapper for querying external 
-    LLM providers (v2.6.0)
-
+    LLM providers (v2.8.0)
+    
 SYNOPSIS
     bash4llm [OPTIONS] [PROMPT]
     bash4llm -f FILE [OPTIONS]
@@ -468,30 +468,39 @@ OPERATIONAL MODES
 INTERNAL IMPLEMENTATION DETAILS
     This section describes core algorithms and security logics.
 
-  1. Cryptographic Module Integrity and Manifest Verification
+  1. Centralized Secure Network Mediation & Secret Redaction in argv
+    All HTTP calls (synchronous, streaming, model-refresh, key-validation) 
+    are routed through _exec_curl_secure. Authentication tokens are written 
+    strictly to private temporary header files (0600) and passed to cURL via 
+    File Descriptor redirection, completely redacting credentials from process 
+    argument vectors (argv / ps aux).
+
+  2. Cryptographic Module Integrity, Manifest Verification and Read-Only Function Guards
     External providers, hooks, and extensions undergo mandatory two-tier verification 
     via verify_module_integrity before loading: path security validation (ownership, 
     no group/world write) and SHA-256 hash matching against extras/manifest.sha256. 
-    Mismatches abort execution with exit code 17.
+    Mismatches abort execution with exit code 17. At the conclusion of bootstrap, 
+    _lock_security_guards locks critical security functions as readonly -f to 
+    prevent in-memory function hijacking.
 
-  2. Thread PII Anonymization and Locking
+  3. Thread PII Anonymization and Locking
     Raw thread IDs are cryptographically hashed using SHA-256 via anonymize_thread_id 
     producing $SAFE_THREAD_ID. All disk files (.ndjson, .json, locks) use this 
     anonymized hash, preventing sensitive PII leakage to the file system.
 
-  3. Local Sliding Window Rate Limiting
+  4. Local Sliding Window Rate Limiting
     check_local_rate_limit tracks request timestamp files under $BASH4LLM_RATES_DIR/$SAFE_THREAD_ID. 
     Requests exceeding $BASH4LLM_RATE_LIMIT within a 30-second window are blocked with exit code 17.
 
-  4. Cryptographic Key Vault Architecture
+  5. Cryptographic Key Vault Architecture
     When OpenSSL is active, provider API keys are encrypted using Master Key wrapped 
     AES-256-CBC with PBKDF2 (100,000 iterations) and salt. Session context token 
     $_B4L_RT_CTX holds unlocked vault keys in RAM to bypass password prompts.
 
-  5. Prompt Assembly Priority Chain
+  6. Prompt Assembly Priority Chain
     Assembly of $CONTENT: Structured JSON ($JSON_INPUT) -> files via -f -> 
     templates ($TEMPLATE) -> standard input ($STDIN_CONTENT) -> positional arguments.
-
+    
 LEGACY COMPATIBILITY WRAPPERS
     To ensure integration with legacy workflows, the runtime exposes:
 

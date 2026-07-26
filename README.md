@@ -20,271 +20,252 @@
 
 # Bash4LLM⁺ 🇮🇹 [🇬🇧](README-en.md)
 
-**Bash4LLM⁺** — Wrapper CLI sicuro, Bash-first, modulare e interamente controllabile per l'interfacciamento con API LLM compatibili con OpenAI (con provider Groq incorporato di serie ed estendibile ad altri tramite moduli esterni).
+Wrapper CLI in ambiente Bash per l'interfacciamento con API LLM compatibili con lo standard OpenAI. Integra un provider predefinito (Groq) ed è estendibile ad altri provider tramite moduli aggiuntivi.
 
-Bash4LLM⁺ è uno script singolo, auto-contenuto, leggibile e progettato per non avere dipendenze esterne al di fuori dei comandi POSIX standard e delle utilità di base della shell.
+Il progetto è strutturato come uno script Bash autonomo senza dipendenze esterne oltre ai comandi POSIX standard e alle utilità di base della shell.
 
-Funziona in modo nativo su: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
-
----
-
-## Caratteristiche principali
-
-*   **Lista modelli dinamica ed esente da obsolescenza**  
-    Ottenuta tramite interrogazione degli endpoint live (`GET /v1/models`). Nessun nome di modello è hardcoded all'interno del core script.
-*   **Sicurezza e Sandboxing a livello di Filesystem**  
-    Nessun uso di cartelle condivise globali come `/tmp`. File temporanei isolati tramite directory esclusive di processo (`RUN_TMPDIR`) con permessi restrittivi `700` (`umask 077`). Divieto assoluto dell'uso di `eval`.
-*   **Cryptographic Vault incorporato (`--vault`)**  
-    Integrazione opzionale basata su OpenSSL per conservare e gestire in modo sicuro le chiavi API sul filesystem. Le chiavi vengono cifrate con algoritmo AES-256-CBC mediante Master Password e derivazione della chiave PBKDF2 (100.000 iterazioni). Supporta una chiave di ripristino (*Recovery Key*) offline di emergenza e lo sblocco della sessione di shell (`_B4L_RT_CTX`) per evitare costanti richieste di password.
-*   **Portabilità su Termux / Android**  
-    Rilevamento automatico dell'ambiente Android Termux per aggirare i limiti del kernel o di SELinux sull'uso di `flock`. La gestione della concorrenza sui file viene deviata in modo trasparente sul meccanismo atomico di directory lock (`mkdir`).
-*   **Sistema di Stato UI (`ui_state`)**  
-    Il CORE espone in tempo reale metadati operativi in formato JSON atomico (scrittura protetta da lock) per agevolare l'integrazione strutturata con pannelli di controllo esterni, GUI o automazioni di terze parti (es. Home Assistant).
-*   **Caching conversazionale e Session Engine avanzato**  
-    Supporta sessioni multi-turn e gestione della cronologia dei thread in formato NDJSON. L'integrazione del modulo opzionale `session-engine.sh` consente la segmentazione automatica dei file storici (rotazione e compressione automatica dei blocchi superiori a 1MB) e caching in memoria con TTL per massimizzare la reattività.
-*   **Estendibilità modulare**  
-    Caricamento on-demand di provider esterni (Gemini, Hugging Face, Mistral) posizionati nella cartella degli extras, con isolamento dinamico delle sole definizioni delle funzioni e verifiche di integrità.
+Compatibilità nativa: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
 
 ---
 
-## Requisiti
+## Caratteristiche tecniche
 
-Bash4LLM⁺ richiede che i seguenti pacchetti siano disponibili nel `PATH`:
-
-- ***bash*** (versione 4.0 o superiore)
-- coreutils (stat, chmod, mkdir, ecc.)
-- findutils
-- util-linux
-- awk
-- curl
-- jq
-
----
-
-## Installazione rapida
-
-> [!TIP]
-> **⏩ FAST FORWARD (Installazione Rapida)**
-> 
-> Esegui questi comandi nel tuo terminale per scaricare e configurare subito **Bash4LLM⁺**:
-> 
-> ```sh
-> # 1. Clona il repository (solo l'ultimo commit per massima velocità)
-> git clone --depth 1 --branch main https://github.com/kamaludu/bash4llm.git repo-bash4llm  
-> 
-> # 2. Crea una cartella di lavoro ed estrai l'eseguibile
-> mkdir -p bash4llm
-> cp repo-bash4llm/bin/bash4llm bash4llm/
-> chmod +x bash4llm/bash4llm
-> 
-> # 3. Entra nella cartella e aggiorna i modelli 
-> cd bash4llm 
-> ./bash4llm --refresh-models
-> ```
-> 
-> Lo script rileverà l'assenza della chiave e ti chiederà l'inserimento interattivo mascherato:
-> `Enter API key for provider groq (env GROQ_API_KEY) [input is hidden]:`
->
-> Inserisci la tua API key di Groq (la digitazione rimarrà invisibile a schermo). Subito dopo, lo script ti proporrà in modo sicuro di esportarla automaticamente per la sessione corrente tramite l'avviso interattivo (Session Sandboxing):
->
-> `Export this API key to your current terminal session? [y/N]: y`
->
-> Rispondi **`y` (Sì)** per caricare la chiave in memoria RAM e iniziare subito a utilizzare lo script senza inserire nuovamente la password in questa sessione.
-> 
-> Consigliato: ***installa gli Extras opzionali*** (provider aggiuntivi, chat REPL, template):
-> ```sh
-> # 4. Installazione degli Extras
-> ./bash4llm --install-extras ../repo-bash4llm/extras/
-> ```
-> 
-> Usa Bash4llm ⚡
->
-
-Istruzioni di installazione dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
+* **Gestione dinamica dei modelli**  
+  Interrogazione degli endpoint degli utenti (`GET /v1/models`) per l'aggiornamento dell'elenco dei modelli supportati, senza identificatori hardcoded nello script principale.
+* **Isolamento a livello di filesystem**  
+  I file temporanei sono gestiti all'interno di directory di processo dedicate (`RUN_TMPDIR`) con permessi restrittivi `0700` (`umask 077`). Non vengono usate directory condivise come `/tmp`.
+* **Cifratura delle chiavi API (`--vault`)**  
+  Integrazione opzionale tramite OpenSSL per la cifratura locale delle chiavi API. Utilizza l'algoritmo AES-256-CBC con derivazione della chiave tramite PBKDF2 (100.000 iterazioni) e Master Password. Supporta una chiave di ripristino offline e il riutilizzo del contesto di sessione (`_B4L_RT_CTX`).
+* **Supporto Termux / Android**  
+  Rilevamento dell'ambiente Android Termux con adattamento dei meccanismi di locking: dove `flock` presenta limitazioni di sistema, la gestione della concorrenza è reindirizzata su atomic directory lock (`mkdir`).
+* **Integrazione dati di stato (`ui_state`)**  
+  Scrittura atomica di file JSON contenenti i metadati operativi del runtime nella cartella `ui_state`, per l'integrazione con pannelli di controllo esterni o script di monitoraggio.
+* **Gestione sessioni e cronologia**  
+  Gestione del contesto conversazionale multi-turno con salvataggio dello storico in formato NDJSON. Con il modulo opzionale `session-engine.sh` vengono abilitati il tracciamento dei token, la rotazione/compressione dei segmenti di storico e il caching locale con TTL.
+* **Moduli estendibili**  
+  Caricamento dinamico dei moduli provider esterni (Gemini, Hugging Face, Mistral) con verifica di integrità crittografica dell'hash SHA-256 rispetto al manifest.
 
 ---
 
-## Uso rapido ed esempi
+## Requisiti di sistema
 
-Prompt diretto:
+Pacchetti richiesti nel `PATH`:
+
+* **bash** (versione 4.0 o superiore)
+* **coreutils** (`stat`, `chmod`, `mkdir`, `mv`, `rm`, ecc.)
+* **findutils**
+* **util-linux**
+* **awk**
+* **curl**
+* **jq**
+
+---
+
+## Guida all'installazione
+
+### Installazione rapida ⏩
+
 ```sh
-./bash4llm "Fornisci una spiegazione sintetica del protocollo SSH."
+# 1. Clona il repository
+git clone --depth 1 --branch main https://github.com/kamaludu/bash4llm.git repo-bash4llm  
+
+# 2. Copia l'eseguibile nella cartella di lavoro
+mkdir -p bash4llm
+cp repo-bash4llm/bin/bash4llm bash4llm/
+chmod +x bash4llm/bash4llm
+
+# 3. Inizializzazione e aggiornamento modelli
+cd bash4llm 
+./bash4llm --refresh-models
 ```
 
-Pipe di standard input:
+Al primo avvio senza variabile d'ambiente impostata, lo script chiederà l'inserimento interattivo della chiave API (input nascosto a schermo).
+
+**Installazione degli Extras opzionali:**
+
 ```sh
-cat codice.sh | ./bash4llm "Ottimizza questo script Bash"
+# 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
+./bash4llm --install-extras ../repo-bash4llm/extras/
 ```
 
-Uso di un modello specifico:
+Istruzioni dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
+
+---
+
+## Esempi d'uso
+
+Prompt da linea di comando:
+```sh
+./bash4llm "Fornisci una spiegazione del protocollo SSH."
+```
+
+Input da standard input (pipe):
+```sh
+cat codice.sh | ./bash4llm "Analizza questo script"
+```
+
+Selezione di un modello specifico:
 ```sh
 ./bash4llm -m llama-3.3-70b-versatile "Spiega il paradosso di Fermi."
 ```
 
-Esecuzione simulata (Dry-Run):
+Esecuzione di prova senza chiamate di rete (Dry-Run):
 ```sh
-./bash4llm --dry-run "Genera una risposta fittizia"
+./bash4llm --dry-run "Test di generazione payload"
 ```
 
-Uso di un provider esterno (se installato e configurato):
+Uso di un provider secondario:
 ```sh
-./bash4llm --provider gemini "Traduci in inglese il seguente testo"
+./bash4llm --provider gemini "Traduci il testo in inglese"
 ```
 
 ---
 
-## 🚨 Sicurezza & Hardening del File System
+## Sicurezza e permessi del filesystem 🚨
 
-Il binario principale `bash4llm` agisce come la **Root of Trust** del sistema. Per prevenirne la manomissione da parte di processi non autorizzati, applica i comandi di protezione rapidi per la tua piattaforma:
+Per proteggere lo script `bash4llm` da modifiche non autorizzate in ambienti condivisi, è possibile impostare i permessi di sola lettura/esecuzione appropriati per il sistema operativo in uso:
 
 * **Linux (GNU/Linux):**
   ```bash
   sudo chown root:root /path/to/bash4llm && sudo chmod 755 /path/to/bash4llm
-  sudo chattr +i /path/to/bash4llm  # Immutabilità Kernel
+  sudo chattr +i /path/to/bash4llm
   ```
 * **macOS / BSD:**
   ```bash
   sudo chown root:wheel /path/to/bash4llm && sudo chmod 755 /path/to/bash4llm
-  sudo chflags schg /path/to/bash4llm  # Flag System Immutable
+  sudo chflags schg /path/to/bash4llm
   ```
 * **Termux (Android):**
   ```bash
-  chmod 500 ~/bash4llm  # Sola lettura/esecuzione per l'utente sandbox
+  chmod 500 ~/bash4llm
   ```
-* **WSL / Cygwin (Windows):**
+* **WSL / Cygwin:**
   ```bash
-  setfacl -b /path/to/bash4llm 2>/dev/null  # Pulizia ACL Windows
+  setfacl -b /path/to/bash4llm 2>/dev/null
   chmod 755 /path/to/bash4llm
   ```
 
- 📖 **Guida Completa:** Per istruzioni dettagliate, consulta il file: **[SECURITY.md](SECURITY.md)**.
+Per informazioni dettagliate sulle politiche di sicurezza, consultare **[SECURITY.md](SECURITY.md)**.
 
 ---
 
-## 🛡️ Core Hardening & Audit di Sicurezza Automatizzati
+## Verifiche di sicurezza e test automatizzati 🛡️
 
-Oltre alla standard CI/CD cross-platform, l'eseguibile `./bash4llm` viene sottoposto a **5 audit automatizzati continui di sicurezza e architettura**, focalizzati esclusivamente sul file sorgente del core:
+L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente di esecuzione:
 
-1. **[Section Marker Integrity Audit](.github/workflows/section-integrity.yml)**: Valida la Flat Architecture a 23 Sezioni, verificando la simmetria al 100% dei tag, le ancore di coda e prevenendo il leak di sottosezioni ($N.X$).
-2. **[Sourcing Isolation & Namespace Audit](.github/workflows/sourcing-isolation.yml)**: Testa `_cleanup_sourced_env` per garantire che l'importazione via `source` di `bash4llm` in una shell interattiva lasci **Zero Function Leaks** nella memoria della shell padre.
-3. **[Security & Process List Leak Audit](.github/workflows/security-hardening.yml)**: Esegue vere transazioni `curl` verso endpoint mock locali campionando `ps aux` ad intervalli di 5ms, dimostrando che le API Key Bearer **non finiscono mai nella tabella dei processi di sistema**. Applica e verifica il rispetto dei permessi POSIX `0700` e `0600` sul file system.
-4. **[API Chaos & Resilience Mock Suite](.github/workflows/api-mock-chaos.yml)**: Simula il fault-injection (errori HTTP 500, rate limit ed edge-case di completamento vuoto) utilizzando un Mock Server HTTP Python locale.
-5. **[Extras SHA-256 Manifest Integrity](.github/workflows/extras-integrity-manifest.yml)**: Verifica gli hash crittografici di tutte le estensioni rispetto a `extras/manifest.sha256` per prevenire tampering o moduli corrotti.
+1. **[Verifica marcatura sezioni](.github/workflows/section-integrity.yml)**: Controllo della struttura ad ancoraggi e delimitatori di sezione del file principale.
+2. **[Isolamento ambiente di sourcing](.github/workflows/sourcing-isolation.yml)**: Test della funzione `_cleanup_sourced_env` per verificare che l'inclusione via `source` non lasci funzioni residue nella shell chiamante.
+3. **[Verifica secret leak in `argv`](.github/workflows/security-hardening.yml)**: Verifica della mancata presenza di chiavi API e token Bearer nella tabella dei processi del sistema operativo durante l'esecuzione di `curl`. Controllo permessi POSIX `0700` e `0600`.
+4. **[Test di resilienza API](.github/workflows/api-mock-chaos.yml)**: Simulazione di risposte di errore HTTP, rate limit e casi limite tramite server mock.
+5. **[Integrità del manifest `extras`](.github/workflows/extras-integrity-manifest.yml)**: Controllo degli hash SHA-256 dei moduli opzionali rispetto al file `extras/manifest.sha256`.
 
 ---
 
-## Comandi, flag e opzioni disponibili
+## Riferimento comandi e opzioni
 
 ### Modelli e provider
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `--refresh-models`, `--refresh-model` | no | Sincronizza la lista dei modelli attivi del provider (richiede chiave API). |
-| `--list-models` | no | Mostra i modelli del provider attivo (formato interattivo). |
-| `--list-models-raw` | no | Stampa l'elenco dei modelli attivi in formato raw (un modello per riga). |
-| `--list-providers` | no | Stampa l'elenco dei provider disponibili. |
-| `--list-providers-raw` | no | Stampa l'elenco dei provider in formato raw. |
-| `--set-default <model>` | sì | Salva e imposta il modello predefinito in modo persistente per il provider attivo. |
-| `-m <model>`, `--model <model>` | sì | Specifica il modello da utilizzare per l'esecuzione corrente. |
-| `--provider <name>` | sì | Seleziona il provider attivo per questa esecuzione. |
-| `--provider` | no | Mostra il menu interattivo di selezione del provider di default. |
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `--refresh-models`, `--refresh-model` | No | Sincronizza l'elenco dei modelli del provider attivo. |
+| `--list-models` | No | Elenca i modelli disponibili per il provider attivo. |
+| `--list-models-raw` | No | Stampa l'elenco dei modelli in formato testo grezzo. |
+| `--list-providers` | No | Elenca i provider installati. |
+| `--list-providers-raw` | No | Stampa l'elenco dei provider in formato testo grezzo. |
+| `--set-default <modello>` | Sì | Imposta il modello predefinito per il provider attivo. |
+| `-m <modello>`, `--model <modello>` | Sì | Specifica il modello per l'esecuzione corrente. |
+| `--provider <nome>` | Sì | Seleziona il provider attivo per l'esecuzione corrente. |
+| `--provider` | No | Apre il menu interattivo di selezione del provider. |
 
-### Input (file, JSON, template, batch)
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `-f <file>` | sì | Carica il file specificato accodandolo alla coda degli input di testo. |
-| `--json-input <json>` | sì | Passa una struttura JSON diretta OpenAI-like (array di messaggi). |
-| `--template <name>` | sì | Carica ed elabora il prompt inserendolo nel template prescelto. |
-| `--batch <file>` | sì | Esegue una serie di prompt memorizzati nel file (uno per riga). |
+### Input
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `-f <file>` | Sì | Aggiunge il contenuto del file al prompt di input. |
+| `--json-input <json>` | Sì | Invia una struttura JSON diretta con l'array dei messaggi. |
+| `--template <nome>` | Sì | Applica un file di modello dalla cartella dei template. |
+| `--batch <file>` | Sì | Esegue una serie di prompt da file (un prompt per riga). |
 
-### Gestione dei Thread conversazionali (Memoria)
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `--thread <id>` | sì | Attiva la sessione conversazionale per il thread specificato. |
-| `--thread-window [n]` | opzionale | Definisce il numero massimo di messaggi della cronologia da includere (default: 10). |
-| `--init-thread` | no | Inizializza in sicurezza i file NDJSON e i metadati locali per un nuovo thread. Richiede l'uso di `--thread <id>`. |
+### Gestione thread e contesto
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `--thread <id>` | Sì | Attiva il contesto conversazionale per l'ID specificato. |
+| `--thread-window [n]` | Opzionale | Imposta il numero massimo di messaggi storici da includere (default: 10). |
+| `--init-thread` | No | Inizializza i file di contesto per un nuovo thread ed esce. |
 
-### Parametri di Generazione
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `--system <text>` | sì | Imposta il prompt di sistema (*System Prompt*) per l'esecuzione corrente. |
-| `--ture <n>`, `--temperature <n>` | sì | Regola la temperatura di generazione (valore numerico validato da 0.0 a 2.0). |
-| `--max <n>` | sì | Imposta il limite massimo dei token di risposta (default: 4096). |
+### Parametri di generazione
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `--system <testo>` | Sì | Imposta il prompt di sistema per l'esecuzione. |
+| `--ture <n>`, `--temperature <n>` | Sì | Imposta il valore di temperatura (da 0.0 a 2.0). |
+| `--max <n>` | Sì | Imposta il limite massimo dei token della risposta (default: 4096). |
 
-### Output e Salvataggio automatico
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `--save` | no | Forza la scrittura e l'archiviazione della risposta nella cartella history. |
-| `--nosave` | no | Disattiva completamente il salvataggio automatico della risposta. |
-| `--out <path>` | sì | Redirige e salva la risposta nel file o nella directory specificata. |
-| `--threshold <n>` | sì | Imposta la soglia minima in byte per il salvataggio automatico (default: 1000). |
-| `--json` | no | Restituisce la risposta JSON originale e completa restituita dall'API. |
-| `--pretty` | no | Restituisce la risposta JSON originale formattata in modo leggibile. |
-| `--text` | no | Estrae e restituisce unicamente la risposta testuale (comportamento predefinito). |
-| `--raw` | no | Restituisce la risposta testuale grezza escludendo le spaziature di a capo finali. |
+### Output e salvataggio
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `--save` | No | Forza il salvataggio della risposta nella cronologia. |
+| `--nosave` | No | Disabilita il salvataggio della risposta nella cronologia. |
+| `--out <percorso>` | Sì | Salva l'output nel file o nella directory specificata. |
+| `--threshold <n>` | Sì | Soglia minima in byte per il salvataggio automatico (default: 1000). |
+| `--json` | No | Restituisce il payload JSON completo dell'API. |
+| `--pretty` | No | Restituisce il payload JSON formattato. |
+| `--text` | No | Restituisce il solo testo della risposta (predefinito). |
+| `--raw` | No | Restituisce il testo grezzo senza a capo finale. |
 
-### Modalità Operative
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `--dry-run` | no | Simula l'intera esecuzione a vuoto senza contattare i server API. |
-| `--quiet` | no | Riduce al minimo i messaggi di intestazione diagnostici su stderr. |
-| `--stream` | no | Abilita lo streaming in tempo reale dei token su stdout (Server-Sent Events). |
-| `--no-stream` | no | Disabilita la modalità streaming per la richiesta corrente. |
-| `--chat` | no | Avvia la chat interattiva REPL basata su TUI (richiede l'installazione degli extras). |
-| `--bootstrap-only` | no | Esegue solo le verifiche di bootstrap del filesystem e si arresta. |
+### Modalità operative
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `--dry-run` | No | Simula l'esecuzione senza effettuare chiamate di rete. |
+| `--quiet` | No | Omette i messaggi informativi non essenziali su stderr. |
+| `--stream` | No | Abilita la ricezione in streaming (Server-Sent Events). |
+| `--no-stream` | No | Disabilita lo streaming per la richiesta corrente. |
+| `--chat` | No | Avvia l'interfaccia interattiva TUI/REPL. |
+| `--bootstrap-only` | No | Esegue la fase di avvio e verificate filesystem, poi termina. |
 
-### Configurazione e Diagnostica
-| Flag | Argomento | Effetto |
-|------|-----------|---------|
-| `--check-config` | no | Verifica la sicurezza dei permessi del file di configurazione e rileva errori di linter. |
-| `--explain-error <codice>` | sì | Restituisce la definizione dettagliata e le mitigazioni per il codice d'errore o alias inserito. |
-| `--show-config` | no | Stampa l'elenco delle variabili e dei parametri attivi in runtime. |
-| `--diagnostics` | no | Esegue una diagnostica integrata comprensiva di handshake TLS verso l'endpoint attivo. |
-| `--vault` | no | Avvia la console interattiva di gestione del Key Vault crittografato OpenSSL. |
-| `--version` | no | Mostra la versione corrente dello script e termina. |
-| `-h`, `--help` | no | Rende a schermo l'aiuto in linea formattato da file locale. |
+### Configurazione e diagnostica
+| Flag | Argomento | Descrizione |
+|------|-----------|-------------|
+| `--check-config` | No | Esegue la verifica dei permessi e il linter della configurazione. |
+| `--explain-error <codice>` | Sì | Mostra la definizione e le mitigazioni per il codice d'errore inserito. |
+| `--show-config` | No | Stampa le variabili di configurazione attive. |
+| `--diagnostics` | No | Esegue i test diagnostici di sistema e la verifica TLS. |
+| `--vault` | No | Avvia la console di gestione del Key Vault cifrato. |
+| `--version` | No | Mostra la versione dello script. |
+| `-h`, `--help` | No | Mostra l'aiuto in linea. |
 
 ---
 
-## Struttura dello Stato UI (`ui_state`)
+## Struttura dello stato UI (`ui_state`)
 
-Per facilitare l'integrazione di monitoraggio o automazione (come Home Assistant o pannelli grafici locali), Bash4LLM⁺ scrive in modo atomico metadati di stato aggiornati all'interno della cartella:
+Il runtime aggiorna in modo atomico i metadati di stato nella directory:
 
 `bash4llm.d/config/ui_state/`
 
-I file disponibili sono:
-*   `threads/<thread_id>.json` → Stato specifico del thread (active, msg_count, last_ts, title).
-*   `threads/index.json` → Indice strutturato contenente l'elenco dei thread attivi.
-*   `last_api.json` → Metadati dell'ultima chiamata effettuata (http_status, finish_reason, req_id, edgecase_detected).
-*   `last_history.json` → Dettagli sull'ultimo file salvato fisicamente nella cartella cronologia.
-*   `provider_capabilities.json` → Informazioni sul provider in uso (se supporta streaming, modelli, o refresh).
+File generati:
+* `threads/<thread_id>.json`: Stato e metadati del thread attivo.
+* `threads/index.json`: Indice dei thread salvati.
+* `last_api.json`: Metadati dell'ultima chiamata API (stato HTTP, ID richiesta, tempo).
+* `last_history.json`: Informazioni sull'ultimo file scritto in cronologia.
+* `provider_capabilities.json`: Funzionalità supportate dal provider attivo.
 
 ---
 
 ## Codici di uscita (Exit Codes)
 
-| Codice | Variabile canonica | Significato |
+| Codice | Costante | Descrizione |
 |:---:|:---|:---|
-| **0** | - | Successo operativo. |
-| **10** | `BASH4LLM_ERR_NO_API_KEY` | Autenticazione fallita o API Key mancante per il provider attivo. |
-| **11** | `BASH4LLM_ERR_BAD_MODEL` | Modello non valido, non supportato (non testuale) o assente in whitelist. |
-| **12** | `BASH4LLM_ERR_CURL_FAILED` | Errore di connessione di rete o fallimento dell'esecuzione del comando `curl`. |
-| **14** | `BASH4LLM_ERR_NO_PROMPT` | Input vuoto o prompt di richiesta non specificato. |
-| **15** | `BASH4LLM_ERR_TMP` | Errore di filesystem (directory non creabile, collisione di lock o symlink rilevato). |
-| **16** | `BASH4LLM_ERR_API` | Errore HTTP restituito dall'API o risposta JSON non interpretabile dal core. |
-| **17** | `BASH4LLM_ERR_SEC` | Violazione delle politiche di sicurezza (file di configurazione modificabile da terzi). |
+| **0** | - | Esecuzione completata con successo. |
+| **10** | `BASH4LLM_ERR_NO_API_KEY` | Chiave API non trovata per il provider attivo. |
+| **11** | `BASH4LLM_ERR_BAD_MODEL` | Modello non valido o formato non supportato. |
+| **12** | `BASH4LLM_ERR_CURL_FAILED` | Errore durante l'esecuzione della richiesta HTTP (`curl`). |
+| **14** | `BASH4LLM_ERR_NO_PROMPT` | Prompt o payload di input vuoto. |
+| **15** | `BASH4LLM_ERR_TMP` | Errore di filesystem, allocazione temporanea o lock. |
+| **16** | `BASH4LLM_ERR_API` | Errore restituito dall'API o completamento vuoto. |
+| **17** | `BASH4LLM_ERR_SEC` | Violazione della politica di sicurezza o mancata corrispondenza dell'hash del modulo. |
 
 ---
 
-## Licenza
+## Licenza e Contatti
 
-Bash4LLM⁺ è rilasciato sotto licenza **GNU GPL v3**.  
-Vedi il file **[LICENSE](LICENSE)** per maggiori dettagli.
-
----
-
-## Contatti
-
-*   **Autore:** Cristian Evangelisti  
-*   **Email:** `opensource@cevangel.anonaddy.me`  
-*   **Repository:** [GitHub kamaludu/bash4llm](https://github.com/kamaludu/bash4llm)
-```
+* **Licenza:** GNU General Public License v3.0 ([LICENSE](LICENSE))
+* **Autore:** Cristian Evangelisti  
+* **Email:** `opensource@cevangel.anonaddy.me`  
+* **Repository:** [GitHub kamaludu/bash4llm](https://github.com/kamaludu/bash4llm)
