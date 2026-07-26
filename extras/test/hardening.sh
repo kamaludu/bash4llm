@@ -243,9 +243,9 @@ else
   skip_test "OpenSSL Key Vault Test" "openssl binary or openssl-helper.sh missing"
 fi
 
-printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 4 Hardening Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
-printf '%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
