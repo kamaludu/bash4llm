@@ -35,6 +35,15 @@ extras/
 │   ├── session-engine.sh
 │   └── struttura.md
 ├── test/                     # Automated Verification Test Suites
-│   └── run-all-tests.sh      # Master Unified Automated Test Suite (chmod 700)
+│   ├── README-tests.md
+│   ├── compatibility.sh
+│   ├── concurrency.sh
+│   ├── hardening.sh
+│   ├── help-test.txt
+│   ├── regression.sh
+│   ├── run-all-tests.sh      # Master Unified Automated Test Suite (chmod 700)
+│   ├── sanity.sh
+│   └── stress.sh
 └── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
+
 ```
