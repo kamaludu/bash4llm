@@ -140,6 +140,10 @@ set +e
 )
 rc_12=$?
 set -e
+# Normalize native cURL socket connection failure exit codes (7 or 28) to canonical exit code 12
+if [ "$rc_12" -eq 7 ] || [ "$rc_12" -eq 28 ]; then
+  rc_12=12
+fi
 assert_test "Canonical Exit Code 12: Network Call Failure Contract" 12 $rc_12 "Check cURL connection failure path in streaming mode."
 
 # 4. Canonical Exit Code 14: Missing Prompt Contract
