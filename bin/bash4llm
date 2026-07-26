@@ -354,12 +354,14 @@ dbg() {
 # --------------------------------------------------
 # Terminal Color Theme Initialization (conforms to NO_COLOR standard)
 # --------------------------------------------------
-# Pre-parse arguments to intercept --no-color early and set the standard env variable
+# Pre-parse arguments to intercept early flags
+BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 if [ "$#" -gt 0 ]; then
   for _arg in "$@"; do
     if [ "$_arg" = "--no-color" ]; then
       export NO_COLOR=1
-      break
+    elif [ "$_arg" = "--bootstrap-only" ]; then
+      BOOTSTRAP_ONLY=1
     fi
   done
   unset _arg
@@ -669,7 +671,6 @@ verify_module_integrity() {
   # 2. Check for the official integrity manifest file
   manifest_file="${BASH4LLM_EXTRAS_DIR:-}/manifest.sha256"
   if [ ! -f "$manifest_file" ] || [ ! -r "$manifest_file" ]; then
-    # Manifest absent: allow execution if file path permissions are secure (e.g., custom modules)
     return 0
   fi
 
@@ -684,8 +685,8 @@ verify_module_integrity() {
     rel_path="${target_file#"${BASH4LLM_EXTRAS_DIR}/"}"
   fi
 
-  # 3. Lookup expected hash in manifest (robust against Windows CRLF line endings)
-  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
+  # 3. Lookup expected hash in manifest (robust against binary mode asterisk and CRLF line endings)
+  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); sub(/^\*/,"",$2); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
 
   # Fallback for custom user modules not present in the official manifest
   if [ -z "$expected_hash" ]; then
@@ -1175,9 +1176,10 @@ stage_b64() {
   return 0
 }
 
-# --------------------------------------------------
-# Function: lock_exec (Silent & Race-Condition Proof POSIX Directory Lock)
-# --------------------------------------------------
+# ------------------------------------
+# Function: lock_exec
+# Purpose: Race-condition proof POSIX directory/flock lock
+# ------------------------------------
 lock_exec() {
   local lockfile="${1:-}"
   local timeout="${2:-10}"
@@ -1204,15 +1206,14 @@ lock_exec() {
 
   if [ "$use_flock" -eq 1 ]; then
     (
-      exec 9>"$lockfile" || exit 1
-      if flock -x -w "$timeout" 9 2>/dev/null; then
+      if flock -x -w "$timeout" 200 2>/dev/null; then
         set -e
         "$@"
       else
         log_error "LOCKTIMEOUT" "could not acquire lock on $lockfile within $timeout seconds"
         exit 124
       fi
-    )
+    ) 200>"$lockfile"
     rc=$?
     return "$rc"
   else
@@ -1233,7 +1234,6 @@ lock_exec() {
             is_orphan=1
           fi
         else
-          # Grace period for empty metadata during creation
           lock_ts=0
           if [ -f "$lockdir/owner.ts" ]; then
             lock_ts=$(cat "$lockdir/owner.ts" 2>/dev/null || echo 0)
@@ -2762,6 +2762,9 @@ thread_rename_core() {
   [ -n "$title" ] || title="Thread ${tid:0:8}"
 
   local meta_file="${BASH4LLM_CONFIG_DIR%/}/ui_state/threads/${tid}.json"
+  # Explicitly ensure target directory exists before file operations
+  safe_mkdir "$(dirname "$meta_file")" 700
+
   local tmp_meta="" msg_count=0 last_ts="" last_line=""
   local thread_file="${THREAD_DIR:-${BASH4LLM_HISTORY_DIR:-.}/threads}/${tid}.ndjson"
 
@@ -3540,7 +3543,17 @@ call_api_groq() {
   local api_key="${GROQ_API_KEY:-}"
   local http_code="" rc=0 payload_dec="" tmp_resp="" tmp_err=""
 
-  enforce_network_policy || return $?
+  if ! enforce_network_policy >/dev/null 2>&1; then
+    if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        show_payload_head "${PAYLOAD:-}" 200 || true
+        log_info "DRYRUN" "DRY-RUN/SKIP_NETWORK: skipping provider HTTP call"
+      fi
+      return 0
+    fi
+    log_error "NETWORK" "Network calls disabled; aborting API request."
+    return "$BASH4LLM_ERR_CURL_FAILED"
+  fi
 
   if [ -z "$provider_url" ]; then
     log_error "CALL" "Provider URL not resolved"
@@ -3603,7 +3616,7 @@ call_api_streaming_groq() {
   local curl_err_log="" _line="" hdr_file="" hdr_target="" api_key="" custom_key_var=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
-    if is_truthy "${DRY_RUN:-0}"; then
+    if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
       if [ "${DEBUG:-0}" -eq 1 ]; then
         show_payload_head "${PAYLOAD:-}" 200 || true
         log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"
@@ -3648,7 +3661,6 @@ call_api_streaming_groq() {
   resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
   curl_err_log="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
 
-  # SECURE HEADER ISOLATION (Fail-Safe Unlinked FD Sequence)
   hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_stream_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
   printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
   chmod 600 "$hdr_file" 2>/dev/null || true
@@ -3690,7 +3702,6 @@ call_api_streaming_groq() {
     printf '\n' >&2
   fi
 
-  # Single-pass unbuffered streaming pipeline via Authoritative Network Path
   _exec_curl_secure "POST" "$provider_url" "$api_key" "$send_payload" "" "$curl_err_log" 1 | \
   tee "$resp_raw" | \
   jq --unbuffered -R -r '
@@ -3715,7 +3726,13 @@ call_api_streaming_groq() {
 
   exec 3<&- 2>/dev/null || true
   [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
-  rm -f "$decoded_payload" 2>/dev/null || true
+
+  # Ensure network errors return the canonical exit code BASH4LLM_ERR_CURL_FAILED (12)
+  if [ "$rc" -ne 0 ]; then
+    log_error "CURL" "Streaming network call failed with code $rc"
+    rm -f "$resp_raw" "$resp_lines" "$resp_valid" "$resp_chunks" "$curl_err_log" 2>/dev/null || true
+    return "$BASH4LLM_ERR_CURL_FAILED"
+  fi
 
   if [ -s "$resp_raw" ]; then
     grep -E '^data:' "$resp_raw" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$resp_lines" 2>/dev/null || true
@@ -3770,7 +3787,6 @@ call_api_streaming_groq() {
   [ -z "${RESP:-}" ] && RESP="${RUN_TMPDIR%/}/resp.json"
   safe_mkdir "$(dirname "$RESP")" 700
 
-  # Reset target response file to prevent checking stale output from previous calls
   : > "${RESP}" 2>/dev/null || true
 
   if [ -s "$resp_tmp" ]; then
@@ -3780,7 +3796,6 @@ call_api_streaming_groq() {
 
   rm -f "$resp_tmp" "$curl_err_log" 2>/dev/null || true
 
-  # API Error Verification in Response Payload
   if [ -s "${RESP}" ] && jq -e '.error // empty' "${RESP}" >/dev/null 2>&1; then
     http_code=400
     now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -3800,7 +3815,7 @@ call_api_streaming_groq() {
     ui_state_write "last_api.json" "$api_json" || { if [ "${DEBUG:-0}" -eq 1 ]; then log_warn "UI_STATE" "failed to write last_api.json (streaming)"; fi; }
   fi
 
-  return "${rc:-0}"
+  return 0
 }
 
 refresh_models_groq() {
@@ -4458,9 +4473,9 @@ perform_request_once() {
     fi
 
     if [ "$rc" -eq 0 ]; then
-      if [ "${DRY_RUN:-0}" -eq 1 ]; then
+      if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
         if [ "${DEBUG:-0}" -eq 1 ]; then
-          log_info "DRYRUN" "DRY-RUN: request simulated successfully. Payload: $PAYLOAD"
+          log_info "DRYRUN" "DRY-RUN/SKIP_NETWORK: request simulated successfully. Payload: $PAYLOAD"
         fi
         release_thread_lock
         return 0
@@ -4731,11 +4746,18 @@ is_tty_out() {
   [ -t 1 ]
 }
 
-# --------------------------------------------------
-# Sourcing Guard & Interactive Parent-Shell Sourcing Handler (Session Unlock)
-# --------------------------------------------------
+# ------------------------------------
+# Sourcing Guard & Session Unlock
+# ------------------------------------
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-  # === AUTOMATIC NAMESPACE CLEANUP ===
+  # Preserve internal functions if loading library or running bootstrap
+  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -eq 1 ] || [ "${BOOTSTRAP_ONLY:-0}" -eq 1 ]; then
+    return 0 2>/dev/null || exit 0
+  fi
+
+  # ====================================
+  # AUTOMATIC NAMESPACE CLEANUP
+  # ====================================
   _cleanup_sourced_env() {
     unset -f resolve_script_dir safe_mkdir check_required_arg canonical_config_dir \
              canonical_provider_file canonical_model_file canonical_provider_url_file \
@@ -4774,44 +4796,40 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
                  diagnose_tls_connection _cleanup_sourced_env 2>/dev/null || true
   }
 
-  # Skip execution and preserve functions if only loading library (BASH4LLM_SOURCE_ONLY=1)
-  if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ]; then
-    if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists && [ -t 0 ]; then
-      if [ -z "${_B4L_RT_CTX:-}" ]; then
-        # Display session unlock prompt strictly blind (allow_verify = 0)
-        read_secure_input "_B4L_RT_CTX" "$(printf '%bUnlock Vault Session%b' "${C_BCYAN:-}" "${C_RST:-}")" 0 0
+  if [ "${BASH4LLM_OPENSSL_ACTIVE:-0}" -eq 1 ] && vault_exists && [ -t 0 ]; then
+    if [ -z "${_B4L_RT_CTX:-}" ]; then
+      # Display session unlock prompt strictly blind (allow_verify = 0)
+      read_secure_input "_B4L_RT_CTX" "$(printf '%bUnlock Vault Session%b' "${C_BCYAN:-}" "${C_RST:-}")" 0 0
+      
+      if [ -n "$_B4L_RT_CTX" ]; then
+        # Attempt to decrypt the master vault key to validate the password
+        _test_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
         
-        if [ -n "$_B4L_RT_CTX" ]; then
-          # Attempt to decrypt the master vault key to validate the password
-          _test_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
-          
-          # Validate key format: must be successful and output a 64-character hex string
-          if [ -n "$_test_key" ] && [[ "$_test_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
-            export _B4L_RT_CTX
-            printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
-          else
-            unset _B4L_RT_CTX
-            printf "%bUnlock failed: incorrect Master Password.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
-            
-            # Clean up the sourced environment functions and return early
-            _cleanup_sourced_env
-            return 1 2>/dev/null || exit 1
-          fi
-          unset _test_key
+        # Validate key format: must be successful and output a 64-character hex string
+        if [ -n "$_test_key" ] && [[ "$_test_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+          export _B4L_RT_CTX
+          printf "%bSession unlocked successfully.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
         else
-          printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+          unset _B4L_RT_CTX
+          printf "%bUnlock failed: incorrect Master Password.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+          
+          # Clean up the sourced environment functions and return early
           _cleanup_sourced_env
           return 1 2>/dev/null || exit 1
         fi
+        unset _test_key
       else
-        printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+        printf "%bUnlock aborted: empty passcode.%b\n" "${C_BRED:-}" "${C_RST:-}" >&2
+        _cleanup_sourced_env
+        return 1 2>/dev/null || exit 1
       fi
+    else
+      printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
     fi
-
-    # Clean up environment functions ONLY if NOT in BASH4LLM_SOURCE_ONLY mode
-    _cleanup_sourced_env
   fi
 
+  # Clean up environment functions ONLY for interactive session unlock
+  _cleanup_sourced_env
   return 0 2>/dev/null || exit 0
 fi
 #--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
