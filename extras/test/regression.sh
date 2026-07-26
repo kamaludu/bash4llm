@@ -16,12 +16,12 @@ set -euo pipefail
 verify_host_prerequisites() {
   local missing=0
   if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-    printf 'test: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
+    printf 'regression.sh: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
     exit 15
   fi
   for cmd in bash jq mktemp stat awk sed grep find cut tr sort head tail wc date chmod cp mv rm; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      printf 'test: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
+      printf 'regression.sh: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
       missing=1
     fi
   done
@@ -64,23 +64,6 @@ parse_cli_args() {
 }
 parse_cli_args "$@"
 
-assert_test() {
-  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
-  TOTAL=$((TOTAL + 1))
-  if [ "$expected_rc" -eq "$actual_rc" ]; then
-    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
-    PASS=$((PASS + 1))
-  else
-    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
-    FAIL=$((FAIL + 1))
-    FAILED_LOGS+=("$desc [Expected: $expected_rc, Got: $actual_rc] ${hint:+— Hint: $hint}")
-    if [ "$FAIL_FAST" -eq 1 ]; then
-      printf '\n%s[FAIL-FAST] Halting Level 3 execution on first test failure.%s\n\n' "$C_BRED" "$C_RST" >&2
-      exit 1
-    fi
-  fi
-}
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=""
 TARGET_BIN=""
@@ -113,6 +96,41 @@ TEST_SANDBOX="$(mktemp -d "${TEST_SANDBOX_PARENT}/sandbox.regr.XXXXXX")"
 cleanup_sandbox() { rm -rf "$TEST_SANDBOX" 2>/dev/null || true; rmdir "$TEST_SANDBOX_PARENT" 2>/dev/null || true; }
 trap cleanup_sandbox EXIT INT TERM
 
+CMD_LOG="${TEST_SANDBOX}/last_cmd.log"
+
+print_failed_output() {
+  if [ -f "$CMD_LOG" ] && [ -s "$CMD_LOG" ]; then
+    printf '  %s--- bash4llm output ---%s\n' "$C_CYAN" "$C_RST"
+    local lines
+    lines="$(wc -l < "$CMD_LOG" | tr -d ' ')"
+    if [ "$lines" -gt 50 ]; then
+      printf '  [Output truncated to last 50 lines of %s total]\n' "$lines"
+      tail -n 50 "$CMD_LOG" | sed 's/^/  /'
+    else
+      sed 's/^/  /' "$CMD_LOG"
+    fi
+    printf '  %s-------------------------%s\n' "$C_CYAN" "$C_RST"
+  fi
+}
+
+assert_test() {
+  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
+  TOTAL=$((TOTAL + 1))
+  if [ "$expected_rc" -eq "$actual_rc" ]; then
+    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
+    PASS=$((PASS + 1))
+  else
+    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
+    FAIL=$((FAIL + 1))
+    FAILED_LOGS+=("$desc [Expected: $expected_rc, Got: $actual_rc] ${hint:+— Hint: $hint}")
+    print_failed_output
+    if [ "$FAIL_FAST" -eq 1 ]; then
+      printf '\n%s[FAIL-FAST] Halting Level 3 execution on first test failure.%s\n\n' "$C_BRED" "$C_RST" >&2
+      exit 1
+    fi
+  fi
+}
+
 export BASH4LLM_DIR="${TEST_SANDBOX}/bash4llm.d"
 export BASH4LLM_SKIP_NETWORK=1
 export GROQ_API_KEY="dummy_regr_key"
@@ -124,7 +142,7 @@ printf '\n%b[LEVEL 3] Regression Test Suite (End-to-End Functional Flow)%b\n' "$
 
 # 1. Pipe STDIN Prompt Assembly
 set +e
-echo "Piped STDIN Regression Prompt" | "$TARGET_BIN" --dry-run >/dev/null 2>&1
+echo "Piped STDIN Regression Prompt" | "$TARGET_BIN" --dry-run > "$CMD_LOG" 2>&1
 rc_piped=$?
 set -e
 assert_test "STDIN piping prompt assembly" 0 $rc_piped
@@ -133,7 +151,7 @@ assert_test "STDIN piping prompt assembly" 0 $rc_piped
 tmp_input_file="${TEST_SANDBOX}/regression_input.txt"
 printf 'Regression File Input Payload' > "$tmp_input_file"
 set +e
-"$TARGET_BIN" -f "$tmp_input_file" --dry-run >/dev/null 2>&1
+"$TARGET_BIN" -f "$tmp_input_file" --dry-run > "$CMD_LOG" 2>&1
 rc_filein=$?
 set -e
 assert_test "File input processing (-f)" 0 $rc_filein
@@ -141,7 +159,7 @@ assert_test "File input processing (-f)" 0 $rc_filein
 # 3. Template Engine Expansion
 printf 'Header\n{{CONTENT}}\nFooter' > "${BASH4LLM_DIR}/templates/regression.tmpl"
 set +e
-"$TARGET_BIN" --template regression.tmpl "Expanded Payload Data" --dry-run >/dev/null 2>&1
+"$TARGET_BIN" --template regression.tmpl "Expanded Payload Data" --dry-run > "$CMD_LOG" 2>&1
 rc_tmpl=$?
 set -e
 assert_test "Template engine variable expansion (--template)" 0 $rc_tmpl
@@ -149,14 +167,14 @@ assert_test "Template engine variable expansion (--template)" 0 $rc_tmpl
 # 4. Thread History Lifecycle
 raw_thread_id="regression_user_thread_01"
 set +e
-"$TARGET_BIN" --thread "$raw_thread_id" --init-thread >/dev/null 2>&1
+"$TARGET_BIN" --thread "$raw_thread_id" --init-thread > "$CMD_LOG" 2>&1
 rc_th_init=$?
 set -e
 assert_test "Thread lifecycle: Initialization (--init-thread)" 0 $rc_th_init
 
 expected_hash="$(calc_sha256 "$raw_thread_id")"
 set +e
-"$TARGET_BIN" --thread "$raw_thread_id" --rename-thread "$raw_thread_id" --title "Regression Title" >/dev/null 2>&1
+"$TARGET_BIN" --thread "$raw_thread_id" --rename-thread "$raw_thread_id" --title "Regression Title" > "$CMD_LOG" 2>&1
 rc_th_ren=$?
 set -e
 meta_file="${BASH4LLM_DIR}/config/ui_state/threads/${expected_hash}.json"
@@ -167,7 +185,7 @@ else
 fi
 
 set +e
-"$TARGET_BIN" --delete-thread "$raw_thread_id" >/dev/null 2>&1
+"$TARGET_BIN" --delete-thread "$raw_thread_id" > "$CMD_LOG" 2>&1
 rc_th_del=$?
 set -e
 thread_ndjson="${BASH4LLM_DIR}/history/threads/${expected_hash}.ndjson"
