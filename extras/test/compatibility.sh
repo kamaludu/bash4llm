@@ -130,7 +130,7 @@ rc_11=$?
 set -e
 assert_test "Canonical Exit Code 11: Bad / Multimodal Model Contract" 11 $rc_11 "Check validate_model_core filter."
 
-# 3. Canonical Exit Code 12: Network / cURL Failure in Streaming Mode
+# 3. Canonical Exit Code 12: Network / cURL Failure Contract
 set +e
 (
   export BASH4LLM_SKIP_NETWORK=0
