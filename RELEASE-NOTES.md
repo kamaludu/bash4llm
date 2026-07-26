@@ -4,7 +4,7 @@
 
 # Bash4LLM v2.8.0 — Release Notes
 
-**Data / Date:** 2026-07-25  
+**Data / Date:** 2026-07-26  
 **Stato / Status:** Stable – Security Hardening & Zero Secret Exposure Release (Upgrade from v2.7.0)
 
 ## EVOLUZIONE ARCHITETTURALE / ARCHITECTURAL EVOLUTION
