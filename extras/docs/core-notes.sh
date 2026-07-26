@@ -76,6 +76,7 @@ Key primitives (documented)
   Calculate SHA-256 digest portably using native system binaries (sha256sum, openssl, or shasum).
 - verify_module_integrity(target_file)
   Verify file path security and cryptographic SHA-256 digest against extras/manifest.sha256.
+  Supports path normalization without trailing slashes and handles Windows CRLF and binary mode asterisk prefixes (*).
   Return 0 on match, or BASH4LLM_ERR_SEC (17) on tamper detection or permission failure.
 - ensure_api_key_for_provider(provider)
   Validate API key presence in Vault or Environment. If BASH4LLM_REQUIRE_VAULT=1 is set,
@@ -121,7 +122,7 @@ Key primitives (documented)
 - stage_b64([src,] dst)
   Securely encode source (file or stdin) to Base64 under size limits ($MAX_STAGE_BYTES), writing atomically to dst with permissions 600.
 - lock_exec(lockfile, timeout -- command ...)
-  Acquire exclusive flock with timeout and run command in subshell; fail with status 124 on timeout.
+  Acquire exclusive flock with timeout and run command in subshell using subshell-isolated FD 200 redirection to support nested lock operations safely without descriptor collisions; fail with status 124 on timeout.
 - _mktemp_in_dir(root_dir, [prefix])
   Create unique temp file inside the designated root directory.
 - show_payload_head(path, [lines])
@@ -146,7 +147,7 @@ Key primitives (documented)
 - load_provider_module(provider)
   Safe-load external provider modules with checks (no group/world writable, belongs to owner, `bash -n` check,
   cryptographic signatures check). Source in a subshell, verify interface functions buildpayload_<p> and call_api_<p>,
-  import into main environment, and write provider_capabilities.json via ui_state_write.
+  import into main environment, and write provider_capabilities.json via ui_state_write. Failures return BASH4LLM_ERR_SEC (17).
 - _detect_base64_opts()
   Detect system base64 flags (B64_WRAP_OPT and B64_DECODE_OPT) dynamically for GNU and macOS/BSD.
 - list_files_sorted_by_mtime(dir)
@@ -225,7 +226,7 @@ Key primitives (documented)
 - thread_delete_core(thread_id)
   Wipe active thread files, locks, metadata files, and remove the ID from the index under lock.
 - thread_rename_core(thread_id, title)
-  Securely update the user-facing title inside the thread metadata JSON file under lock.
+  Securely update the user-facing title inside the thread metadata JSON file under lock, creating target directories if missing.
 - acquire_thread_lock()
   Attempt to acquire an exclusive lock on the active thread file to prevent concurrent access conflicts.
 - release_thread_lock()
@@ -310,10 +311,12 @@ Key functions (documented)
   JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, or CONTENT). Perform Base64 staging.
 - call_api_groq()
   Synchronous HTTP call. Handles .b64 payload decoding, builds curl headers via unlinked descriptor (-H @"$hdr_target")
-  to prevent process list leakage, and writes RESP (600) or diagnostic JSON.
+  to prevent process list leakage, and writes RESP (600) or diagnostic JSON. In DRY_RUN or BASH4LLM_SKIP_NETWORK mode,
+  simulates success and returns status 0.
 - call_api_streaming_groq()
   Streaming HTTP SSE call. Pipeline processing of SSE streams, incremental print of tokens to stdout, writes raw stream
   and chunk accumulators under RUN_TMPDIR, compiles final RESP, and updates last_api.json. Correctly detects error JSON objects.
+  In DRY_RUN or BASH4LLM_SKIP_NETWORK mode, simulates success and returns status 0. On network failure, returns BASH4LLM_ERR_CURL_FAILED (12).
 - refresh_models_groq()
   Query /openai/v1/models, normalize names, enforce MAX_MODELS, and write MODELS_FILE atomically under lock (10s) in Base64.
 - validate_model_groq(model)
@@ -360,9 +363,9 @@ Key flows and functions (documented)
   THRESHOLD or if FORCE_SAVE_MODE is active.
 - perform_request_once()
   Execute call_api_once with linear backoff retry loops (up to MAX_RETRIES). Extract text, detect empty completions,
-  parse errors, update last_api.json, and finalize outputs.
+  parse errors, update last_api.json, and finalize outputs. In DRY_RUN or BASH4LLM_SKIP_NETWORK mode, short-circuits to return 0.
 - collect_input_from_files(file_list...)
-  Concatenate source files with visual delimiters separating structures.
+  Concatenate source files with visual delimiters separating structures; validates inputs and exits with 17 on binary files.
 - expand_args_to_content(args...)
   Read existing files or append arguments literally to build prompt content.
 - file_readable(path)
@@ -401,11 +404,11 @@ Discover available providers (builtin + extras), persist provider choice, resolv
 
 Key behaviors (documented)
 - validate_provider_interface(provider)
-  Verify that the loaded provider module defines the mandatory buildpayload_<p> and call_api_<p> functions.
+  Verify that the loaded provider module defines the mandatory buildpayload_<p> and call_api_<p> functions; exits with BASH4LLM_ERR_SEC (17) on failure.
 - assemble_content()
   Build the prompt $CONTENT with strict priorities:
     1) Clear content if JSON_INPUT is defined.
-    2) Concatenate files from FILE_INPUTS and append pos args.
+    2) Concatenate files from FILE_INPUTS and append pos args (propagating subshell exit codes like 17).
     3) Apply TEMPLATE placeholders (replacing {{CONTENT}} with the prompt).
     4) Use captured standard input ($STDIN_CONTENT).
     5) Fall back to expanding $ARGS.
@@ -452,10 +455,10 @@ Key points
 - enforce_network_policy() is the single gate for network access.
 - Inputs: DRY_RUN, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET, DEBUG.
 - Behavior:
-  - If DRY_RUN => block real network calls (simulate).
-  - If BASH4LLM_SKIP_NETWORK=1 => block network.
+  - If DRY_RUN => block real network calls (simulate successfully with exit status 0).
+  - If BASH4LLM_SKIP_NETWORK=1 => block network (simulate successfully with exit status 0).
   - If QUIET and BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET=1 => block network.
-  - When blocked, call_api_* must return non-zero and produce RESP diagnostic.
+  - When blocked by policy violation, call_api_* produces RESP diagnostic and fails with exit status 12.
 - All provider call sites must call enforce_network_policy() before curl.
 
 ----------------------------------------
@@ -470,6 +473,7 @@ Key points
 - Minimal unescape applied; JSON fragments validated before aggregation.
 - resp.chunks.json (array) and resp.text.txt (concatenated text) are produced; final RESP written atomically.
 - Streaming emits incremental text to stdout but never executes content.
+- Network connection failures cleanly return canonical BASH4LLM_ERR_CURL_FAILED (12).
 
 ----------------------------------------
 EDGE CASES AND DIAGNOSTICS
@@ -556,7 +560,7 @@ OPERATIONAL TIPS (concise)
 CHANGE NOTES (summary)
 ----------------------------------------
 This document provides the reference core notes aligned to:
-- bash4llm (v2.7.0)
+- bash4llm (v2.8.0)
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 ----------------------------------------
