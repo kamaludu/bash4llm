@@ -16,16 +16,18 @@ set -euo pipefail
 verify_host_prerequisites() {
   local missing=0
   if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-    printf 'hardening.sh: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
+    printf 'test: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
     exit 15
   fi
   for cmd in bash jq mktemp stat awk sed grep find cut tr sort head tail wc date chmod cp mv rm; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      printf 'hardening.sh: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
+      printf 'test: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
       missing=1
     fi
   done
-  [ "$missing" -ne 0 ] && exit 15
+  if [ "$missing" -ne 0 ]; then
+    exit 15
+  fi
 }
 verify_host_prerequisites
 
