@@ -4953,9 +4953,36 @@ while [ $# -gt 0 ]; do
     --chat|--tui) CHAT_MODE=1; shift ;;
     --show-config) SHOW_CONFIG=1; shift ;;
     --diagnostics|--diagnostic) DIAGNOSTICS=1; shift ;;
-    --run-all-tests|--run-all-test)
-      RUN_SUITE=1
+    # --------------------------------------------------
+    # Test Suite Orchestration Entrypoint Gatekeeper
+    # --------------------------------------------------
+    --test|--run-all-test|--run-all-tests)
       shift
+      suite_script="${BASH4LLM_EXTRAS_DIR}/test/run-all-tests.sh"
+
+      if [ ! -f "$suite_script" ]; then
+        log_error "TEST" "Master test suite orchestrator not found at: $suite_script"
+        log_error "TEST" "Please install optional extras using: $0 --install-extras"
+        exit "$BASH4LLM_ERR_TMP"
+      fi
+
+      # Strict Path Security & Cryptographic Integrity Enforcement (INV-4)
+      if ! validate_path_security "$suite_script"; then
+        log_error "SEC" "Path security validation failed for test orchestrator: $suite_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      if ! verify_module_integrity "$suite_script"; then
+        log_error "SEC" "Test suite orchestrator failed SHA-256 integrity check: $suite_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "TEST" "Delegating test execution to verified orchestrator: $suite_script"
+      fi
+
+      # Atomic process image transfer forwarding all remaining positional arguments
+      exec bash "$suite_script" "$@"
       ;;
     --provider|--providers)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
