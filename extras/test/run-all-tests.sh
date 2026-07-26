@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# =============================================================================
+# ==============================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/test/run-all-tests.sh
 # Component: Master Unified Automated Test Suite & Orchestrator
@@ -9,7 +9,7 @@
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
-# =============================================================================
+# ==============================================================
 
 set -euo pipefail
 
@@ -220,10 +220,10 @@ execute_canonical_suite() {
 }
 
 main() {
-  printf '\n%s=======================================================%s\n' "$C_BOLD" "$C_RST"
+  printf '\n%s========================================%s\n' "$C_BOLD" "$C_RST"
   printf '%s Bash4LLM⁺ — Master Unified Test Suite (Edition 2026.1) %s\n' "$C_BCYAN" "$C_RST"
   printf '%s Authority: Test Architecture Specification (Edition 2026.1) %s\n' "$C_CYAN" "$C_RST"
-  printf '%s=======================================================%s\n' "$C_BOLD" "$C_RST"
+  printf '%s========================================%s\n' "$C_BOLD" "$C_RST"
 
   local level_failures=0
   local executed_count=0
@@ -236,11 +236,11 @@ main() {
   printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
   if [ "$level_failures" -eq 0 ]; then
     printf ' %sRESULT: ALL %d EXECUTED TEST SUITES PASSED SUCCESSFULLY%s\n' "$C_BGREEN" "$executed_count" "$C_RST"
-    printf '%s=======================================================%s\n\n' "$C_BOLD" "$C_RST"
+    printf '%s========================================%s\n\n' "$C_BOLD" "$C_RST"
     exit 0
   else
     printf ' %sRESULT: SUITE FAILED (%d failures detected among %d suites)%s\n' "$C_BRED" "$level_failures" "$executed_count" "$C_RST"
-    printf '%s=======================================================%s\n\n' "$C_BOLD" "$C_RST"
+    printf '%s========================================%s\n\n' "$C_BOLD" "$C_RST"
     exit 1
   fi
 }
