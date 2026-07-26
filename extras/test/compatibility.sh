@@ -159,7 +159,7 @@ rc_15=$?
 set -e
 assert_test "Canonical Exit Code 15: System / Temp Directory Rejection Contract" 15 $rc_15 "Check BASH4LLM_DIR /tmp guard."
 
-# 6. Canonical Exit Code 17: Security Violation / Binary Input Filter (Global Scope)
+# 6. Canonical Exit Code 17: Security Violation / Binary Input Filter
 bin_file="${TEST_SANDBOX}/binary_input.bin"
 printf '\x00\x01\x02UNSAFE_BINARY_DATA' > "$bin_file"
 set +e
