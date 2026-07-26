@@ -149,9 +149,9 @@ remaining_cnt="$(find "$hist_dir" -type f -name "*.ndjson" 2>/dev/null | wc -l |
 if [ "$rc_rot" -eq 0 ] && [ "$remaining_cnt" -le 10 ]; then rc_rot_test=0; else rc_rot_test=1; fi
 assert_test "History retention rotation policy enforcement" 0 $rc_rot_test
 
-printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 6 Stress Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
-printf '%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
