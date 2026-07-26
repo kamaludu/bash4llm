@@ -80,6 +80,8 @@ cd bash4llm
 
 If no API key environment variable is set on first run, the script prompts for masked key entry.
 
+**Installing Optional Extras:**
+
 ```sh
 # 4. Optional: Install Extras
 ./bash4llm --install-extras ../repo-bash4llm/extras/
