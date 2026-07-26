@@ -44,13 +44,63 @@ init_colors() {
 }
 init_colors
 
-FAIL_FAST=0
-TARGET_LEVEL=0 # 0 = Execute all levels (Sanity -> Compatibility -> Regression -> Hardening -> Concurrency -> Stress)
-FORWARD_ARGS=()
+# Architectural Constants & Canonical Suite Map
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXTRAS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MANIFEST_FILE="${EXTRAS_DIR}/manifest.sha256"
 
+declare -A CANONICAL_SUITES=(
+  ["sanity"]="Level 1 — Sanity Test Suite|sanity.sh|1"
+  ["compatibility"]="Level 2 — Compatibility Test Suite|compatibility.sh|2"
+  ["regression"]="Level 3 — Regression Test Suite|regression.sh|3"
+  ["hardening"]="Level 4 — Hardening Test Suite|hardening.sh|4"
+  ["concurrency"]="Level 5 — Concurrency Test Suite|concurrency.sh|5"
+  ["stress"]="Level 6 — Stress Test Suite|stress.sh|6"
+)
+
+# Ordered list of canonical level names for full pipeline execution
+CANONICAL_ORDER=("sanity" "compatibility" "regression" "hardening" "concurrency" "stress")
+
+FAIL_FAST=0
+FORWARD_ARGS=()
+REQUESTED_SUITES=()
+
+display_help() {
+  local help_file="${SCRIPT_DIR}/help-test.txt"
+  if [ -f "$help_file" ] && [ -r "$help_file" ]; then
+    if [ -z "${C_BCYAN:-}" ]; then
+      cat "$help_file"
+    else
+      sed \
+        -e "s/^\([A-Za-z][A-Za-z[:blank:]&]*:\)/${C_BCYAN}\1${C_RST}/" \
+        -e "s/\(--[a-zA-Z0-9-][a-zA-Z0-9-]*\)/${C_BGREEN}\1${C_RST}/g" \
+        "$help_file"
+    fi
+  else
+    printf 'run-all-tests: Help manual file missing at: %s\n' "$help_file" >&2
+  fi
+  exit 0
+}
+
+# Parse CLI options and positional commands/suite selections
 parse_cli_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
+      help|-h|--help)
+        display_help
+        ;;
+      list)
+        printf '%bAuthorized Canonical Test Suites:%b\n' "$C_BCYAN" "$C_RST"
+        for suite in "${CANONICAL_ORDER[@]}"; do
+          IFS='|' read -r desc file_name level_num <<< "${CANONICAL_SUITES[$suite]}"
+          printf '  • %b%-15s%b (%s)\n' "$C_BGREEN" "$suite" "$C_RST" "$desc"
+        done
+        exit 0
+        ;;
+      all)
+        REQUESTED_SUITES=("${CANONICAL_ORDER[@]}")
+        shift
+        ;;
       --fail-fast)
         FAIL_FAST=1
         FORWARD_ARGS+=("--fail-fast")
@@ -66,146 +116,130 @@ parse_cli_args() {
         FORWARD_ARGS+=("--dry-run")
         shift
         ;;
-      --sanity|--level-1|--level=1)
-        TARGET_LEVEL=1
-        shift
-        ;;
-      --compatibility|--level-2|--level=2)
-        TARGET_LEVEL=2
-        shift
-        ;;
-      --regression|--level-3|--level=3)
-        TARGET_LEVEL=3
-        shift
-        ;;
-      --hardening|--level-4|--level=4)
-        TARGET_LEVEL=4
-        shift
-        ;;
-      --concurrency|--level-5|--level=5)
-        TARGET_LEVEL=5
-        shift
-        ;;
-      --stress|--level-6|--level=6)
-        TARGET_LEVEL=6
-        shift
-        ;;
-      --level)
-        if [ $# -gt 1 ] && [[ "$2" =~ ^[1-6]$ ]]; then
-          TARGET_LEVEL="$2"
-          shift 2
-        else
-          printf 'run-all-tests: ERROR: --level requires an integer between 1 and 6\n' >&2
-          exit 15
-        fi
-        ;;
-      --level=*)
-        local lvl="${1#--level=}"
-        if [[ "$lvl" =~ ^[1-6]$ ]]; then
-          TARGET_LEVEL="$lvl"
-          shift
-        else
-          printf 'run-all-tests: ERROR: --level requires an integer between 1 and 6\n' >&2
-          exit 15
-        fi
-        ;;
-      --help|-h)
-        printf 'Usage: %s [OPTIONS]\n' "$0"
-        printf 'Options:\n'
-        printf '  --fail-fast           Halt execution immediately on first test failure\n'
-        printf '  --sanity, --level 1   Execute Level 1: Sanity Test Suite (sanity.sh)\n'
-        printf '  --compatibility, -2   Execute Level 2: Compatibility Test Suite (compatibility.sh)\n'
-        printf '  --regression, -3      Execute Level 3: Regression Test Suite (regression.sh)\n'
-        printf '  --hardening, -4       Execute Level 4: Hardening Test Suite (hardening.sh)\n'
-        printf '  --concurrency, -5     Execute Level 5: Concurrency Test Suite (concurrency.sh)\n'
-        printf '  --stress, -6          Execute Level 6: Stress Test Suite (stress.sh)\n'
-        printf '  --no-color            Disable ANSI terminal color output\n'
-        printf '  --dry-run             Simulate request flows without external network\n'
-        exit 0
+      -*)
+        printf 'run-all-tests: ERROR: Unknown option %s\n' "$1" >&2
+        printf 'Use "bash4llm --test help" for usage details.\n' >&2
+        exit 15
         ;;
       *)
+        # Positional suite name matching canonical suites
+        if [ -n "${CANONICAL_SUITES[$1]:-}" ]; then
+          REQUESTED_SUITES+=("$1")
+        else
+          printf 'run-all-tests: ERROR: Unrecognized canonical test suite: %s\n' "$1" >&2
+          printf 'Use "bash4llm --test list" to view available suites.\n' >&2
+          exit 15
+        fi
         shift
         ;;
     esac
   done
+
+  # Default to executing all canonical suites if none explicitly selected
+  if [ "${#REQUESTED_SUITES[@]}" -eq 0 ]; then
+    REQUESTED_SUITES=("${CANONICAL_ORDER[@]}")
+  fi
 }
 parse_cli_args "$@"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# [INV-4] Module Integrity Verification Helper
+verify_module_integrity_local() {
+  local target_file="${1:-}"
+  local rel_path="" expected_hash="" actual_hash=""
 
-execute_level_script() {
-  local level_num="${1:-}"
-  local script_name="${2:-}"
-  local desc="${3:-}"
-  local script_path="${SCRIPT_DIR}/${script_name}"
+  [ -f "$target_file" ] || return 1
+  [ -f "$MANIFEST_FILE" ] || return 1
 
-  printf '\n%s>>> Executing Level %d: %s (%s)%s\n' "$C_BCYAN" "$level_num" "$desc" "$script_name" "$C_RST"
+  rel_path="test/$(basename "$target_file")"
+  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); if ($2 == rel) {print $1; exit}}' "$MANIFEST_FILE" 2>/dev/null || true)"
 
-  if [ -f "$script_path" ] && [ -r "$script_path" ]; then
-    set +e
-    bash "$script_path" ${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}
-    local rc=$?
-    set -e
-    if [ "$rc" -ne 0 ]; then
-      printf '  [%sLEVEL %d FAILED%s] %s returned exit code %d\n' "$C_BRED" "$level_num" "$C_RST" "$script_name" "$rc"
-      if [ "$FAIL_FAST" -eq 1 ]; then
-        printf '\n%s[FAIL-FAST HALT] Halting master suite execution due to failure in Level %d.%s\n\n' "$C_BRED" "$level_num" "$C_RST" >&2
-        exit 1
-      fi
-      return 1
-    else
-      printf '  [%sLEVEL %d PASSED%s] %s completed successfully.\n' "$C_BGREEN" "$level_num" "$C_RST" "$script_name"
-      return 0
-    fi
-  else
-    printf '  [%sLEVEL %d ERROR%s] Level script missing: %s\n' "$C_BRED" "$level_num" "$C_RST" "$script_path" >&2
+  if [ -z "$expected_hash" ]; then
+    printf 'run-all-tests: [SECURITY ERROR] Suite %s not registered in manifest.sha256!\n' "$rel_path" >&2
+    return 17
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash="$(sha256sum "$target_file" 2>/dev/null | awk '{print $1}')"
+  elif command -v openssl >/dev/null 2>&1; then
+    actual_hash="$(openssl dgst -sha256 -r "$target_file" 2>/dev/null | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_hash="$(shasum -a 256 "$target_file" 2>/dev/null | awk '{print $1}')"
+  fi
+
+  if [ "$expected_hash" != "$actual_hash" ]; then
+    printf 'run-all-tests: [SECURITY ERROR] Integrity mismatch for %s!\n' "$rel_path" >&2
+    return 17
+  fi
+
+  return 0
+}
+
+# [TST-7] Set Intersection Verification & Level Execution Dispatcher
+execute_canonical_suite() {
+  local suite_key="${1:-}"
+  if [ -z "${CANONICAL_SUITES[$suite_key]:-}" ]; then
+    return 1
+  fi
+
+  IFS='|' read -r desc file_name level_num <<< "${CANONICAL_SUITES[$suite_key]}"
+  local script_path="${SCRIPT_DIR}/${file_name}"
+
+  printf '\n%s>>> Executing %s (%s)%s\n' "$C_BCYAN" "$desc" "$file_name" "$C_RST"
+
+  # 1. Physical File Existence Check
+  if [ ! -f "$script_path" ] || [ ! -r "$script_path" ]; then
+    printf '  [%sERROR%s] Missing executable script for canonical suite: %s\n' "$C_BRED" "$C_RST" "$script_path" >&2
+    if [ "$FAIL_FAST" -eq 1 ]; then exit 1; fi
+    return 1
+  fi
+
+  # 2. Manifest Whitelist & SHA-256 Integrity Verification (Set Intersection Model)
+  if ! verify_module_integrity_local "$script_path"; then
+    printf '  [%sSECURITY ERROR%s] Suite %s failed integrity check! (Exit Code 17)\n' "$C_BRED" "$C_RST" "$file_name" >&2
+    if [ "$FAIL_FAST" -eq 1 ]; then exit 17; fi
+    return 17
+  fi
+
+  # 3. Execution
+  set +e
+  bash "$script_path" ${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}
+  local rc=$?
+  set -e
+
+  if [ "$rc" -ne 0 ]; then
+    printf '  [%sLEVEL %s FAILED%s] %s returned exit code %d\n' "$C_BRED" "$level_num" "$C_RST" "$file_name" "$rc"
     if [ "$FAIL_FAST" -eq 1 ]; then
-      printf '\n%s[FAIL-FAST HALT] Halting execution due to missing Level %d script.%s\n\n' "$C_BRED" "$level_num" "$C_RST" >&2
+      printf '\n%s[FAIL-FAST HALT] Halting execution due to failure in %s.%s\n\n' "$C_BRED" "$suite_key" "$C_RST" >&2
       exit 1
     fi
     return 1
+  else
+    printf '  [%sLEVEL %s PASSED%s] %s completed successfully.\n' "$C_BGREEN" "$level_num" "$C_RST" "$file_name"
+    return 0
   fi
 }
 
 main() {
   printf '\n%s=======================================================%s\n' "$C_BOLD" "$C_RST"
   printf '%s Bash4LLM⁺ — Master Unified Test Suite (Edition 2026.1) %s\n' "$C_BCYAN" "$C_RST"
-  printf '%s Authority: Test Architecture Specification %s\n' "$C_CYAN" "$C_RST"
+  printf '%s Authority: Test Architecture Specification (Edition 2026.1) %s\n' "$C_CYAN" "$C_RST"
   printf '%s=======================================================%s\n' "$C_BOLD" "$C_RST"
 
   local level_failures=0
+  local executed_count=0
 
-  if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 1 ]; then
-    execute_level_script 1 "sanity.sh" "Sanity Check Suite" || level_failures=$((level_failures + 1))
-  fi
-
-  if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 2 ]; then
-    execute_level_script 2 "compatibility.sh" "Public Contract Compatibility Suite" || level_failures=$((level_failures + 1))
-  fi
-
-  if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 3 ]; then
-    execute_level_script 3 "regression.sh" "End-to-End Regression Suite" || level_failures=$((level_failures + 1))
-  fi
-
-  if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 4 ]; then
-    execute_level_script 4 "hardening.sh" "Security Boundaries & Hardening Suite" || level_failures=$((level_failures + 1))
-  fi
-
-  if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 5 ]; then
-    execute_level_script 5 "concurrency.sh" "Process Lock Contention Suite" || level_failures=$((level_failures + 1))
-  fi
-
-  if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 6 ]; then
-    execute_level_script 6 "stress.sh" "Scalability & Resource Stress Suite" || level_failures=$((level_failures + 1))
-  fi
+  for suite_key in "${REQUESTED_SUITES[@]}"; do
+    executed_count=$((executed_count + 1))
+    execute_canonical_suite "$suite_key" || level_failures=$((level_failures + 1))
+  done
 
   printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
   if [ "$level_failures" -eq 0 ]; then
-    printf ' %sRESULT: ALL VERIFICATION LEVELS PASSED SUCCESSFULLY%s\n' "$C_BGREEN" "$C_RST"
+    printf ' %sRESULT: ALL %d EXECUTED TEST SUITES PASSED SUCCESSFULLY%s\n' "$C_BGREEN" "$executed_count" "$C_RST"
     printf '%s=======================================================%s\n\n' "$C_BOLD" "$C_RST"
     exit 0
   else
-    printf ' %sRESULT: SUITE FAILED (%d level failures detected)%s\n' "$C_BRED" "$level_failures" "$C_RST"
+    printf ' %sRESULT: SUITE FAILED (%d failures detected among %d suites)%s\n' "$C_BRED" "$level_failures" "$executed_count" "$C_RST"
     printf '%s=======================================================%s\n\n' "$C_BOLD" "$C_RST"
     exit 1
   fi
