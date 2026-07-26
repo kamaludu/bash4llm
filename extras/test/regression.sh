@@ -10,7 +10,6 @@
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
-
 set -euo pipefail
 
 verify_host_prerequisites() {
