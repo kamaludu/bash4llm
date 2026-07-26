@@ -16,12 +16,12 @@ set -euo pipefail
 verify_host_prerequisites() {
   local missing=0
   if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-    printf 'test: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
+    printf 'compatibility.sh: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
     exit 15
   fi
   for cmd in bash jq mktemp stat awk sed grep find cut tr sort head tail wc date chmod cp mv rm; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      printf 'test: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
+      printf 'compatibility.sh: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
       missing=1
     fi
   done
@@ -56,23 +56,6 @@ parse_cli_args() {
 }
 parse_cli_args "$@"
 
-assert_test() {
-  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
-  TOTAL=$((TOTAL + 1))
-  if [ "$expected_rc" -eq "$actual_rc" ]; then
-    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
-    PASS=$((PASS + 1))
-  else
-    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
-    FAIL=$((FAIL + 1))
-    FAILED_LOGS+=("$desc [Expected: $expected_rc, Got: $actual_rc] ${hint:+— Hint: $hint}")
-    if [ "$FAIL_FAST" -eq 1 ]; then
-      printf '\n%s[FAIL-FAST] Halting Level 2 execution on first test failure.%s\n\n' "$C_BRED" "$C_RST" >&2
-      exit 1
-    fi
-  fi
-}
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=""
 TARGET_BIN=""
@@ -105,6 +88,41 @@ TEST_SANDBOX="$(mktemp -d "${TEST_SANDBOX_PARENT}/sandbox.compat.XXXXXX")"
 cleanup_sandbox() { rm -rf "$TEST_SANDBOX" 2>/dev/null || true; rmdir "$TEST_SANDBOX_PARENT" 2>/dev/null || true; }
 trap cleanup_sandbox EXIT INT TERM
 
+CMD_LOG="${TEST_SANDBOX}/last_cmd.log"
+
+print_failed_output() {
+  if [ -f "$CMD_LOG" ] && [ -s "$CMD_LOG" ]; then
+    printf '  %s--- bash4llm output ---%s\n' "$C_CYAN" "$C_RST"
+    local lines
+    lines="$(wc -l < "$CMD_LOG" | tr -d ' ')"
+    if [ "$lines" -gt 50 ]; then
+      printf '  [Output truncated to last 50 lines of %s total]\n' "$lines"
+      tail -n 50 "$CMD_LOG" | sed 's/^/  /'
+    else
+      sed 's/^/  /' "$CMD_LOG"
+    fi
+    printf '  %s-------------------------%s\n' "$C_CYAN" "$C_RST"
+  fi
+}
+
+assert_test() {
+  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
+  TOTAL=$((TOTAL + 1))
+  if [ "$expected_rc" -eq "$actual_rc" ]; then
+    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
+    PASS=$((PASS + 1))
+  else
+    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
+    FAIL=$((FAIL + 1))
+    FAILED_LOGS+=("$desc [Expected: $expected_rc, Got: $actual_rc] ${hint:+— Hint: $hint}")
+    print_failed_output
+    if [ "$FAIL_FAST" -eq 1 ]; then
+      printf '\n%s[FAIL-FAST] Halting Level 2 execution on first test failure.%s\n\n' "$C_BRED" "$C_RST" >&2
+      exit 1
+    fi
+  fi
+}
+
 export BASH4LLM_DIR="${TEST_SANDBOX}/bash4llm.d"
 export BASH4LLM_SKIP_NETWORK=1
 export GROQ_API_KEY="dummy_compat_key"
@@ -119,7 +137,7 @@ set +e
 (
   unset GROQ_API_KEY BASH4LLM_API_KEY PROVIDER_API_ENV_groq
   export BASH4LLM_REQUIRE_VAULT=0
-  "$TARGET_BIN" "Non-interactive test prompt" </dev/null >/dev/null 2>&1
+  "$TARGET_BIN" "Non-interactive test prompt" </dev/null > "$CMD_LOG" 2>&1
 )
 rc_10=$?
 set -e
@@ -127,7 +145,7 @@ assert_test "Canonical Exit Code 10: Missing API Key Contract" 10 $rc_10 "Check 
 
 # 2. Canonical Exit Code 11: Bad/Unsupported Multimodal Model
 set +e
-"$TARGET_BIN" -m "whisper-large-v3" --dry-run "Test audio model" >/dev/null 2>&1
+"$TARGET_BIN" -m "whisper-large-v3" --dry-run "Test audio model" > "$CMD_LOG" 2>&1
 rc_11=$?
 set -e
 assert_test "Canonical Exit Code 11: Bad / Multimodal Model Contract" 11 $rc_11 "Check validate_model_core filter."
@@ -138,11 +156,10 @@ set +e
   export BASH4LLM_SKIP_NETWORK=0
   export BASH4LLM_API_URL="https://127.0.0.1:65534/nonexistent"
   export GROQ_API_KEY="dummy_key_for_curl_fail_test"
-  "$TARGET_BIN" --stream "Streaming network failure prompt" >/dev/null 2>&1
+  "$TARGET_BIN" --stream "Streaming network failure prompt" > "$CMD_LOG" 2>&1
 )
 rc_12=$?
 set -e
-# Normalize native cURL socket connection failure exit codes (7 or 28) to canonical exit code 12
 if [ "$rc_12" -eq 7 ] || [ "$rc_12" -eq 28 ]; then
   rc_12=12
 fi
@@ -150,7 +167,7 @@ assert_test "Canonical Exit Code 12: Network Call Failure Contract" 12 $rc_12 "C
 
 # 4. Canonical Exit Code 14: Missing Prompt Contract
 set +e
-"$TARGET_BIN" </dev/null >/dev/null 2>&1
+"$TARGET_BIN" </dev/null > "$CMD_LOG" 2>&1
 rc_14=$?
 set -e
 assert_test "Canonical Exit Code 14: Missing Prompt Contract" 14 $rc_14 "Check empty prompt validation."
@@ -159,7 +176,7 @@ assert_test "Canonical Exit Code 14: Missing Prompt Contract" 14 $rc_14 "Check e
 set +e
 (
   export BASH4LLM_DIR="/tmp"
-  "$TARGET_BIN" --version >/dev/null 2>&1
+  "$TARGET_BIN" --version > "$CMD_LOG" 2>&1
 )
 rc_15=$?
 set -e
@@ -169,30 +186,33 @@ assert_test "Canonical Exit Code 15: System / Temp Directory Rejection Contract"
 bin_file="${TEST_SANDBOX}/binary_input.bin"
 printf '\x00\x01\x02UNSAFE_BINARY_DATA' > "$bin_file"
 set +e
-"$TARGET_BIN" -f "$bin_file" --dry-run >/dev/null 2>&1
+"$TARGET_BIN" -f "$bin_file" --dry-run > "$CMD_LOG" 2>&1
 rc_17=$?
 set -e
 assert_test "Canonical Exit Code 17: Security Policy Violation Contract" 17 $rc_17 "Check validate_file_input binary guard."
 
 # 7. Output Schemas Verification
 set +e
-"$TARGET_BIN" --json --dry-run "Format Test" >/dev/null 2>&1
+"$TARGET_BIN" --json --dry-run "Format Test" > "$CMD_LOG" 2>&1
 rc_json=$?
-"$TARGET_BIN" --pretty --dry-run "Pretty Test" >/dev/null 2>&1
-rc_pretty=$?
-"$TARGET_BIN" --raw --dry-run "Raw Test" >/dev/null 2>&1
-rc_raw=$?
-"$TARGET_BIN" --text --dry-run "Text Test" >/dev/null 2>&1
-rc_text=$?
-set -e
 assert_test "Output Schema Contract: --json option" 0 $rc_json
+
+"$TARGET_BIN" --pretty --dry-run "Pretty Test" > "$CMD_LOG" 2>&1
+rc_pretty=$?
 assert_test "Output Schema Contract: --pretty option" 0 $rc_pretty
+
+"$TARGET_BIN" --raw --dry-run "Raw Test" > "$CMD_LOG" 2>&1
+rc_raw=$?
 assert_test "Output Schema Contract: --raw option" 0 $rc_raw
+
+"$TARGET_BIN" --text --dry-run "Text Test" > "$CMD_LOG" 2>&1
+rc_text=$?
 assert_test "Output Schema Contract: --text option" 0 $rc_text
+set -e
 
 # 8. Default Model Persistence Contract
 set +e
-"$TARGET_BIN" --provider groq --set-default "llama-3.3-70b-versatile" >/dev/null 2>&1
+"$TARGET_BIN" --provider groq --set-default "llama-3.3-70b-versatile" > "$CMD_LOG" 2>&1
 rc_setdef=$?
 set -e
 assert_test "Default model persistence contract (--set-default)" 0 $rc_setdef
