@@ -96,7 +96,7 @@ if [ -z "$TARGET_BIN" ] || [ ! -x "$TARGET_BIN" ]; then
   exit 15
 fi
 
-# [TST-1] Absolute Workspace Isolation with Write Permissions Fallback
+# [TST-1] Absolute Workspace Isolation with Write Permission Fallback
 if [ -n "${ROOT_DIR:-}" ] && [ -w "$ROOT_DIR" ]; then
   TEST_SANDBOX_PARENT="${ROOT_DIR}/.test_tmp"
 else
