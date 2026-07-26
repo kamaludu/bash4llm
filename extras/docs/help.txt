@@ -87,7 +87,7 @@ Diagnostics & Inspection:
 
 Maintenance & Testing:
   --install-extras [dir] Install or update extras components (alias: --install-extra)
-  --run-all-tests        Execute master automated test suite (alias: --run-all-test)
+  --test                 Execute master automated test suite (alias: --run-all-test, --run-all-tests)
   --bootstrap-only       Execute environment bootstrap and exit (no API calls)
   --dry-run              Build payload and display diagnostics, skipping network call
   --quiet                Suppress non-essential informational messages
