@@ -176,9 +176,9 @@ fi
 assert_test "$workers parallel process workers atomic NDJSON append lock stress" 0 $rc_conc
 rm -f "$conc_ndjson" 2>/dev/null || true
 
-printf '\n%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 5 Concurrency Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
-printf '%s-------------------------------------------------------%s\n' "$C_BOLD" "$C_RST"
+printf '%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 
 if [ "$FAIL" -eq 0 ]; then
   exit 0
