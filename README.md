@@ -81,6 +81,8 @@ cd bash4llm
 
 Al primo avvio senza variabile d'ambiente impostata, lo script chiederà l'inserimento interattivo della chiave API (input nascosto a schermo).
 
+**Installazione degli Extras opzionali:**
+
 ```sh
 # 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
 ./bash4llm --install-extras ../repo-bash4llm/extras/
