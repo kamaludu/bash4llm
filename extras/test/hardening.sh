@@ -16,12 +16,12 @@ set -euo pipefail
 verify_host_prerequisites() {
   local missing=0
   if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-    printf 'test: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
+    printf 'hardening.sh: [FATAL ERROR] Bash 4.0 or superior is required.\n' >&2
     exit 15
   fi
   for cmd in bash jq mktemp stat awk sed grep find cut tr sort head tail wc date chmod cp mv rm; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      printf 'test: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
+      printf 'hardening.sh: [FATAL ERROR] Required system utility missing in PATH: %s\n' "$cmd" >&2
       missing=1
     fi
   done
@@ -64,29 +64,6 @@ parse_cli_args() {
 }
 parse_cli_args "$@"
 
-assert_test() {
-  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
-  TOTAL=$((TOTAL + 1))
-  if [ "$expected_rc" -eq "$actual_rc" ]; then
-    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
-    PASS=$((PASS + 1))
-  else
-    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
-    FAIL=$((FAIL + 1))
-    FAILED_LOGS+=("$desc [Expected: $expected_rc, Got: $actual_rc] ${hint:+— Hint: $hint}")
-    if [ "$FAIL_FAST" -eq 1 ]; then
-      printf '\n%s[FAIL-FAST] Halting Level 4 execution on first test failure.%s\n\n' "$C_BRED" "$C_RST" >&2
-      exit 1
-    fi
-  fi
-}
-
-skip_test() {
-  local desc="${1:-}" reason="${2:-}"
-  TOTAL=$((TOTAL + 1))
-  printf '  [%sSKIP%s] %s (%s)\n' "$C_BYELLOW" "$C_RST" "$desc" "$reason"
-}
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=""
 TARGET_BIN=""
@@ -126,6 +103,47 @@ TEST_SANDBOX="$(mktemp -d "${TEST_SANDBOX_PARENT}/sandbox.hard.XXXXXX")"
 cleanup_sandbox() { rm -rf "$TEST_SANDBOX" 2>/dev/null || true; rmdir "$TEST_SANDBOX_PARENT" 2>/dev/null || true; }
 trap cleanup_sandbox EXIT INT TERM
 
+CMD_LOG="${TEST_SANDBOX}/last_cmd.log"
+
+print_failed_output() {
+  if [ -f "$CMD_LOG" ] && [ -s "$CMD_LOG" ]; then
+    printf '  %s--- bash4llm output ---%s\n' "$C_CYAN" "$C_RST"
+    local lines
+    lines="$(wc -l < "$CMD_LOG" | tr -d ' ')"
+    if [ "$lines" -gt 50 ]; then
+      printf '  [Output truncated to last 50 lines of %s total]\n' "$lines"
+      tail -n 50 "$CMD_LOG" | sed 's/^/  /'
+    else
+      sed 's/^/  /' "$CMD_LOG"
+    fi
+    printf '  %s-------------------------%s\n' "$C_CYAN" "$C_RST"
+  fi
+}
+
+assert_test() {
+  local desc="${1:-}" expected_rc="${2:-0}" actual_rc="${3:-0}" hint="${4:-}"
+  TOTAL=$((TOTAL + 1))
+  if [ "$expected_rc" -eq "$actual_rc" ]; then
+    printf '  [%sPASS%s] %s\n' "$C_BGREEN" "$C_RST" "$desc"
+    PASS=$((PASS + 1))
+  else
+    printf '  [%sFAIL%s] %s (Expected: %d, Got: %d)\n' "$C_BRED" "$C_RST" "$desc" "$expected_rc" "$actual_rc"
+    FAIL=$((FAIL + 1))
+    FAILED_LOGS+=("$desc [Expected: $expected_rc, Got: $actual_rc] ${hint:+— Hint: $hint}")
+    print_failed_output
+    if [ "$FAIL_FAST" -eq 1 ]; then
+      printf '\n%s[FAIL-FAST] Halting Level 4 execution on first test failure.%s\n\n' "$C_BRED" "$C_RST" >&2
+      exit 1
+    fi
+  fi
+}
+
+skip_test() {
+  local desc="${1:-}" reason="${2:-}"
+  TOTAL=$((TOTAL + 1))
+  printf '  [%sSKIP%s] %s (%s)\n' "$C_BYELLOW" "$C_RST" "$desc" "$reason"
+}
+
 export BASH4LLM_DIR="${TEST_SANDBOX}/bash4llm.d"
 if [ -n "$EFFECTIVE_EXTRAS_DIR" ]; then export BASH4LLM_EXTRAS_DIR="$EFFECTIVE_EXTRAS_DIR"; fi
 export BASH4LLM_SKIP_NETWORK=1
@@ -138,7 +156,7 @@ printf '\n%b[LEVEL 4] Hardening Test Suite (Security Boundaries & Invariants)%b\
 
 # [INV-1] No Secret Exposure in argv
 set +e
-bash -c ". \"$TARGET_BIN\" --bootstrap-only 2>/dev/null; type _exec_curl_secure >/dev/null 2>&1" 2>/dev/null
+bash -c ". \"$TARGET_BIN\" --bootstrap-only 2>/dev/null; type _exec_curl_secure >/dev/null 2>&1" > "$CMD_LOG" 2>&1
 rc_inv1=$?
 set -e
 assert_test "[INV-1] Authoritative secure HTTP engine active (_exec_curl_secure)" 0 $rc_inv1
@@ -162,7 +180,7 @@ printf '#!/usr/bin/env bash\necho "malicious"\n' > "$tamper_mod"
 printf "0000000000000000000000000000000000000000000000000000000000000000  providers/tampered_prov.sh\n" > "${tamper_dir}/manifest.sha256"
 
 set +e
-BASH4LLM_EXTRAS_DIR="$tamper_dir" "$TARGET_BIN" --provider tampered_prov --bootstrap-only >/dev/null 2>&1
+BASH4LLM_EXTRAS_DIR="$tamper_dir" "$TARGET_BIN" --provider tampered_prov --bootstrap-only > "$CMD_LOG" 2>&1
 rc_inv4=$?
 set -e
 assert_test "[INV-4] Module Tampering Enforcement (Exit Code 17)" 17 $rc_inv4
@@ -170,7 +188,7 @@ assert_test "[INV-4] Module Tampering Enforcement (Exit Code 17)" 17 $rc_inv4
 # [INV-5] Cryptographic PII Thread Anonymization on Disk
 pii_raw_thread="john.doe.private.email@domain.com"
 set +e
-"$TARGET_BIN" --thread "$pii_raw_thread" --init-thread >/dev/null 2>&1
+"$TARGET_BIN" --thread "$pii_raw_thread" --init-thread > "$CMD_LOG" 2>&1
 set -e
 pii_hash="$(calc_sha256 "$pii_raw_thread")"
 pii_file="${BASH4LLM_DIR}/history/threads/${pii_hash}.ndjson"
@@ -184,7 +202,7 @@ fi
 binary_file="${TEST_SANDBOX}/unsafe_binary.bin"
 printf '\x00\x01\x02\x03UNSAFE_BINARY_DATA\x00' > "$binary_file"
 set +e
-"$TARGET_BIN" -f "$binary_file" --dry-run >/dev/null 2>&1
+"$TARGET_BIN" -f "$binary_file" --dry-run > "$CMD_LOG" 2>&1
 rc_bin=$?
 set -e
 assert_test "Binary file input rejection filter (Exit Code 17)" 17 $rc_bin
@@ -199,10 +217,10 @@ assert_test "Path traversal fuzzing mitigation in --thread" 0 $rc_trav
 export BASH4LLM_RATE_LIMIT=3
 rate_thread="hardening_rate_limit_thread"
 set +e
-"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 1" >/dev/null 2>&1
-"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 2" >/dev/null 2>&1
-"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 3" >/dev/null 2>&1
-"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 4 - Exceeded" >/dev/null 2>&1
+"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 1" > "$CMD_LOG" 2>&1
+"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 2" > "$CMD_LOG" 2>&1
+"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 3" > "$CMD_LOG" 2>&1
+"$TARGET_BIN" --thread "$rate_thread" --dry-run "Rate req 4 - Exceeded" > "$CMD_LOG" 2>&1
 rc_rate=$?
 set -e
 assert_test "Sliding window rate limiter enforcement (Exit Code 17)" 17 $rc_rate
@@ -210,7 +228,7 @@ unset BASH4LLM_RATE_LIMIT
 
 # Function Immutability Guard Locking
 set +e
-bash -c ". \"$TARGET_BIN\" --bootstrap-only 2>/dev/null; _exec_curl_secure() { echo 'hijacked'; }" 2>/dev/null
+bash -c ". \"$TARGET_BIN\" --bootstrap-only 2>/dev/null; _exec_curl_secure() { echo 'hijacked'; }" > "$CMD_LOG" 2>&1
 rc_guard=$?
 set -e
 if [ "$rc_guard" -ne 0 ]; then rc_guard_test=0; else rc_guard_test=1; fi
