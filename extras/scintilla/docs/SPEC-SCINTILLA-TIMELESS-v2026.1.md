@@ -286,12 +286,16 @@ La funzione `scintilla_policy_eval()` è pura e deterministica:
 
 #### Gerarchia Rigida di Precedenza Decisionale:
 Configurabile via `SCINTILLA_POLICY_PRECEDENCE` (Default di sicurezza):
+```sh
 $$\text{DENY} > \text{ESCALATE} > \text{NEEDS\_HUMAN\_REVIEW} > \text{ALLOW}$$
+```
 
 ### 4.4 Policy Enforcement Point (PEP) Guardian
-> **INVARIANTE ARCHITETTURALE ASSOLUTA (SANDWICH TOPOLOGY):**  
-> $$\text{Application} \longrightarrow \text{PEP} \longrightarrow \text{Provider Adapter} \longrightarrow \text{LLM}$$  
-> **Ogni adattatore provider DEVE tassativamente ricevere i payload in uscita esclusivamente attraverso il Policy Enforcement Point (PEP). Il trasferimento diretto di dati al layer di rete bypassando il PEP è strutturalmente proibito.**
+**INVARIANTE ARCHITETTURALE ASSOLUTA (SANDWICH TOPOLOGY):**  
+```sh
+$$\text{Application} \longrightarrow \text{PEP} \longrightarrow \text{Provider Adapter} \longrightarrow \text{LLM}$$  
+```
+**Ogni adattatore provider DEVE tassativamente ricevere i payload in uscita esclusivamente attraverso il Policy Enforcement Point (PEP). Il trasferimento diretto di dati al layer di rete bypassando il PEP è strutturalmente proibito.**
 
 #### Invarianti e Confini del PEP:
 1. **Filtering su Chiavi Strutturate:** Il PEP esegue il mascheramento/redazione **esclusivamente basandosi sulle CHIAVI strutturate dei dati JSON** mappate nella `sensitivity_map`.
