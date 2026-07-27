@@ -1,10 +1,10 @@
-# 🎆 SCINTILLA ENGINE CANONICAL SPECIFICATION v2026.1
+# 🎆 SCINTILLA CORE CANONICAL SPECIFICATION v2026.1
 
 ## TIMELESS NORMATIVE EDITION
 
 ### Engine Deterministico per la Gestione di Percorsi di Emancipazione Personale
 **Stato:** Specifica Normativa di Riferimento (Normative Reference Specification)  
-**Autorità:** Authoritative Specification / Single Source of Truth per Scintilla Engine  
+**Autorità:** Authoritative Specification / Single Source of Truth per SCINTILLA CORE  
 **Data di Rilascio:** 27 Luglio 2026  
 **Nota di Decoupling:** *L'architettura definita in questa specifica è senza tempo (Timeless Normative Architecture); l'implementazione di riferimento si basa su Bash4LLM⁺ Core v2.8.0, Bash 4.0+, utilità POSIX e `jq`.*
 
@@ -24,7 +24,7 @@
  └──────────────────────────────────────────────────────────────────────────────────┘
                                          VS
  ┌──────────────────────────────────────────────────────────────────────────────────┐
- │                          SCINTILLA ENGINE (EMANCIPAZIONE)                        │
+ │                          SCINTILLA CORE (EMANCIPAZIONE)                        │
  │ "So che ti senti sopraffatto. Stasera pensiamo solo a trovare un posto sicuro     │
  │  dove dormire. Domani mattina faremo un piccolo passo insieme per il documento. │
  │  Non sei solo, ti guiderò io punto per punto."                                  │
