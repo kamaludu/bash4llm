@@ -1,3 +1,4 @@
+[![scintilla 120](../img/scintilla-120.png "Logo bash4llm")](#)
 # 🎆 SCINTILLA CORE CANONICAL SPECIFICATION v2026.1
 
 ## TIMELESS NORMATIVE EDITION
