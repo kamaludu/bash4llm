@@ -142,11 +142,17 @@ La qualità dell'evidenza originaria e lo stato del ciclo di vita temporale sono
 ### 3.4 Semantica di Revoca e Valutazione Pigra Continuativa delle Scadenze
 * **Revoca:** Quando uno stato o un documento viene revocato (`status: "revoked"`), il valore storico di `proof_level` rimane memorizzato per audit, ma il valutatore del Grafo e il Policy Core trattano il nodo come avente **forza attiva effettiva pari a 0**.
 * **Continuative Lazy Expiry Evaluation:** Ad **ogni valutazione di stato, lettura o esecuzione di policy**, l'Core valuta la scadenza in memoria:
+```sh
   $$\text{Se } \text{now\_utc} > \text{expires\_at} \implies \text{status} \leftarrow \text{"expired"}$$
+```
 
 ### 3.5 Tempo Autorevole e Resilienza Offline
 * **Sorgente del Tempo:** Orologio di sistema POSIX espresso in formato **UTC ISO-8601** (`date -u +%Y-%m-%dT%H:%M:%SZ`).
-* **Time Skew Invariant:** Se viene rilevato un salto temporale all'indietro dovuto al riavvio dell'orologio RTC di un dispositivo offline ($\text{now\_utc} < \text{last\_updated\_utc}$), l'Core registra un avviso in `events.ndjson` e preserva l'integrità dello stato senza arrestarsi.
+* **Time Skew Invariant:** Se viene rilevato un salto temporale all'indietro dovuto al riavvio dell'orologio RTC di un dispositivo offline 
+```sh
+$\text{now\_utc} < \text{last\_updated\_utc}$
+```
+il'Core registra un avviso in `events.ndjson` e preserva l'integrità dello stato senza arrestarsi.
 
 ### 3.6 Schema dello Stato del Caso (`case_state.json`)
 Ubicazione su disco: `bash4llm.d/cases/<case_id>/case_state.json` (Permessi `0600`).
@@ -233,8 +239,10 @@ I percorsi sono definiti da file JSON dichiarativi in `extras/scintilla/graph/`:
 ```
 
 #### Costruzione Matematica del Grafo:
+```sh
 $$\text{Sia } V = \{\text{nodi del grafo}\}. \quad \text{Per ogni } v \in V, \text{ i suoi requisiti } \text{requires\_all}(v) \text{ e } \text{requires\_any}(v) \text{ vengono risolti sui nodi } u \in V \text{ che li forniscono in } \text{provides}(u).$$
 $$\text{Si definisce l'insieme degli archi orientati } E = \{(u, v) \mid u \text{ soddisfa una dipendenza propedeutica di } v\}.$$
+```
 
 #### Regole Normative Topologiche:
 1. **DAG Invariant:** Il Grafo delle Dipendenze Risolto $G=(V,E)$ MUST essere un **Grafo Diretto Aciclico (DAG)**. La presenza di un ciclo fa fallire la validazione con **Exit Code 23 (`ERR_GRAPH_CYCLE_DETECTED`)**.
@@ -481,11 +489,15 @@ scintilla_canonicalize_json() {
 ```
 
 #### Genesis Seed ($N=1$):
+```sh
 $$\text{Genesis\_Seed} = \text{\_core\_sha256}(\text{case\_id})$$
+```
 
 #### Record Successivi ($N > 1$):
 La concatenazione avviene sulla sequenza di byte UTF-8:
+```sh
 $$\text{decision\_checksum}_N = \text{\_core\_sha256}(\text{decision\_checksum}_{N-1} + \text{canonical\_json}(\text{Payload}_N))$$
+```
 
 ### 7.3 Interfaccia CLI di Verifica e Recovery
 * **Verification:** `bash4llm --case ID --verify-decision-chain`  
@@ -499,7 +511,7 @@ $$\text{decision\_checksum}_N = \text{\_core\_sha256}(\text{decision\_checksum}_
 
 ### 8.1 Consistency Model & Bijection Invariant
 > **CONSISTENCY MODEL:**  
-> **Scintilla garantisce transizioni di stato Single-Writer Serializable. In qualsiasi istante fisico $t$, esiste al massimo un solo file `case_state.json` committato su disco. Ogni stato valido committato $S_k$ corrisponde biiettivamente ($1:1$) a una e una sola riga del Decision Log $D_k$ tale che $D_k.\text{state\_checksum\_after} = \text{\_core\_sha256}(S_k)$.**
+> **Scintilla garantisce transizioni di stato Single-Writer Serializable. In qualsiasi istante fisico `$t$`, esiste al massimo un solo file `case_state.json` committato su disco. Ogni stato valido committato `$S_k$` corrisponde biiettivamente (`$1:1$`) a una e una sola riga del Decision Log `$D_k$` tale che `$D_k.\text{state\_checksum\_after} = \text{\_core\_sha256}(S_k)$`.**
 
 ### 8.2 Protocollo Transazionale Two-Phase Commit & Roll-Forward Recovery
 
@@ -512,7 +524,7 @@ $$\text{decision\_checksum}_N = \text{\_core\_sha256}(\text{decision\_checksum}_
 > **Il checksum `state_checksum_after` registrato nel record di `decisions.ndjson` DEVE tassativamente essere calcolato sull'esatta sequenza di byte presente nel buffer temporaneo (`case_state.json.tmp`) che verrà successivamente spostata atomicamente come `case_state.json`.**
 
 #### Algoritmo di Recovery all'Avvio (`Roll-Forward`):
-All'avvio, l'Core verifica se $\text{\_core\_sha256}(\text{case\_state.json}) \stackrel{?}{=} \text{state\_checksum\_after}$ dell'ultima riga di `decisions.ndjson`:
+All'avvio, l'Core verifica se `$\text{\_core\_sha256}(\text{case\_state.json}) \stackrel{?}{=} \text{state\_checksum\_after}$` dell'ultima riga di `decisions.ndjson`:
 * **Crash prima della Fase 2:** `case_state.json.tmp` esiste, ma `decisions.ndjson` NON ha il record. $\rightarrow$ Viene rimosso `case_state.json.tmp`.
 * **Crash tra Fase 2 e Fase 3:** `decisions.ndjson` contiene `state_checksum_after`, ma `case_state.json` ha ancora il vecchio hash. `case_state.json.tmp` esiste e il suo hash equivale a `state_checksum_after`. $\rightarrow$ **Roll-Forward Automatico:** L'Core esegue `mv -f case_state.json.tmp case_state.json` prima di elaborare qualsiasi operazione.
 
