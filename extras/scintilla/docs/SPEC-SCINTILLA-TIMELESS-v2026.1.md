@@ -2,7 +2,7 @@
 
 ## TIMELESS NORMATIVE EDITION
 
-### Engine Deterministico per la Gestione di Percorsi di Emancipazione Personale
+### Core Deterministico per la Gestione di Percorsi di Emancipazione Personale
 **Stato:** Specifica Normativa di Riferimento (Normative Reference Specification)  
 **Autorità:** Authoritative Specification / Single Source of Truth per SCINTILLA CORE  
 **Data di Rilascio:** 27 Luglio 2026  
@@ -76,7 +76,7 @@ SCINTILLA DOMAIN MODEL ARCHITECTURE
 │
 ├── Domain Logging (Dual-Log System)
 │   ├── events.ndjson (Registro dei fatti neutri di sistema/utente - raw_sha256)
-│   └── decisions.ndjson (Registro delle decisioni del Policy Engine - Chain Hash)
+│   └── decisions.ndjson (Registro delle decisioni del Policy Core - Chain Hash)
 │
 └── Thread (Log di Esecuzione Conversazionale - Gestito da Bash4LLM Core)
     └── history/threads/<case_id>.ndjson (Traccia conversazionale grezza)
@@ -140,13 +140,13 @@ La qualità dell'evidenza originaria e lo stato del ciclo di vita temporale sono
 *Esempio Ortogonale:* Un contratto di lavoro scaduto mantiene `proof_level: 3` (verificato da umano nel passato) ma acquisisce `status: "expired"`.
 
 ### 3.4 Semantica di Revoca e Valutazione Pigra Continuativa delle Scadenze
-* **Revoca:** Quando uno stato o un documento viene revocato (`status: "revoked"`), il valore storico di `proof_level` rimane memorizzato per audit, ma il valutatore del Grafo e il Policy Engine trattano il nodo come avente **forza attiva effettiva pari a 0**.
-* **Continuative Lazy Expiry Evaluation:** Ad **ogni valutazione di stato, lettura o esecuzione di policy**, l'Engine valuta la scadenza in memoria:
+* **Revoca:** Quando uno stato o un documento viene revocato (`status: "revoked"`), il valore storico di `proof_level` rimane memorizzato per audit, ma il valutatore del Grafo e il Policy Core trattano il nodo come avente **forza attiva effettiva pari a 0**.
+* **Continuative Lazy Expiry Evaluation:** Ad **ogni valutazione di stato, lettura o esecuzione di policy**, l'Core valuta la scadenza in memoria:
   $$\text{Se } \text{now\_utc} > \text{expires\_at} \implies \text{status} \leftarrow \text{"expired"}$$
 
 ### 3.5 Tempo Autorevole e Resilienza Offline
 * **Sorgente del Tempo:** Orologio di sistema POSIX espresso in formato **UTC ISO-8601** (`date -u +%Y-%m-%dT%H:%M:%SZ`).
-* **Time Skew Invariant:** Se viene rilevato un salto temporale all'indietro dovuto al riavvio dell'orologio RTC di un dispositivo offline ($\text{now\_utc} < \text{last\_updated\_utc}$), l'Engine registra un avviso in `events.ndjson` e preserva l'integrità dello stato senza arrestarsi.
+* **Time Skew Invariant:** Se viene rilevato un salto temporale all'indietro dovuto al riavvio dell'orologio RTC di un dispositivo offline ($\text{now\_utc} < \text{last\_updated\_utc}$), l'Core registra un avviso in `events.ndjson` e preserva l'integrità dello stato senza arrestarsi.
 
 ### 3.6 Schema dello Stato del Caso (`case_state.json`)
 Ubicazione su disco: `bash4llm.d/cases/<case_id>/case_state.json` (Permessi `0600`).
@@ -278,7 +278,7 @@ Le regole di policy risiedono in `extras/scintilla/policies/{privacy,legal,minor
 
 *Requisito Normativo di Testing:* Ogni suite di test riferita in `test_suite_ref` DEVE contenere tassativamente: 1) **Positive Tests** (`ALLOW`), 2) **Negative Tests** (`DENY`/`REVIEW`), 3) **Boundary Tests** (valori limite).
 
-### 4.3 Pure Policy Engine (Trasparenza Referenziale & Precedenza)
+### 4.3 Pure Policy Core (Trasparenza Referenziale & Precedenza)
 La funzione `scintilla_policy_eval()` è pura e deterministica:
 * **Contratto Matematico:**
   $$\text{Policy}(\text{CaseState}, \text{Hypothesis}, \text{Policies}) \longrightarrow \{\text{Decision}, \text{MatchedRules}, \text{AppliedMasks}, \text{Reason}\}$$
@@ -333,7 +333,7 @@ L'LLM opera completamente all'esterno dello stato del caso. L'elaborazione segue
 ```text
  ┌─────────────┐     ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌────────────────┐
  │ 1. Output   │ ──> │ 2. SML Parser   │ ──> │ 3. Reasoning     │ ──> │ 4. Pure Policy  │ ──> │ 5. Runtime     │
- │    LLM      │     │    & Sanitizer  │     │    Kernel (Bash) │     │    Engine       │     │    Commit      │
+ │    LLM      │     │    & Sanitizer  │     │    Kernel (Bash) │     │    Core       │     │    Commit      │
  └─────────────┘     └─────────────────┘     └──────────────────┘     └─────────────────┘     └────────────────┘
                                                        │                                              │
                                                        ▼                                              ▼
@@ -357,8 +357,8 @@ EVIDENCE_TYPE: <USER_DECLARATION|OPERATOR_CONFIRMATION|DOCUMENT|SYSTEM_EVENT>
 1. **Unknown Fields:** Eventuali campi sconosciuti generati dall'LLM **DEVONO essere ignorati** senza sollevare errori (*Forward Compatibility*).
 2. **Missing Mandatory Fields:** L'assenza di anche solo un campo obbligatorio (`SML_VERSION`, `LISTEN_SUMMARY`, `NEXT_STEP`, `PROPOSED_TRANSITION`, `EVIDENCE`, `EVIDENCE_TYPE`) **DEVE sollevare `ERR_SML_PARSE_FAILED` (Exit Code 20)**.
 
-### 5.2 Il Reasoning Kernel e Immutabilità dell'Ipotesi
-Il Reasoning Kernel (`extras/scintilla/kernel.sh`) trasforma l'SML nell'oggetto `hypothesis.json`.
+### 5.2 Il Transition Kernel e Immutabilità dell'Ipotesi
+Il Transition Kernel (`extras/scintilla/kernel.sh`) trasforma l'SML nell'oggetto `hypothesis.json`.
 
 > **INVARIANTE DI AUDIT:** L'oggetto `hypothesis.json` generato dal Kernel è **rigidamente immutabile**. Una volta creato, non viene mai modificato durante le fasi successive di valutazione e commit.
 
@@ -417,7 +417,7 @@ Il ciclo di vita di un'interazione rispetta la seguente macchina a stati formale
 ```
 
 ### Formula Matematica della Transizione:
-$$\text{Transition}(S_{t}, \text{Event}_e) \xrightarrow{\text{Reasoning Kernel}} \text{Hypothesis}_h \xrightarrow{\text{Pure Policy}} \text{Decision}_d \xrightarrow{\text{Runtime}} S_{t+1}$$
+$$\text{Transition}(S_{t}, \text{Event}_e) \xrightarrow{\text{Transition Kernel}} \text{Hypothesis}_h \xrightarrow{\text{Pure Policy}} \text{Decision}_d \xrightarrow{\text{Runtime}} S_{t+1}$$
 
 ---
 
@@ -448,13 +448,13 @@ I log risiedono in `bash4llm.d/cases/<case_id>/` (Permessi `0600`):
      "session_id": "sess_20260726_001",
      "correlation_id": "c0a80101-4f8a-4b2a-9e12-8f9a0b1c2d3e",
      "turn_sequence": 14,
-     "engine_version": "2026.1",
+     "core_version": "2026.1",
      "policy_version": "1.0.4",
      "policy_sha256": "f4k5l6m7n8o9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5",
      "sml_version": "1.0",
      "graph_version": "2026.1.0",
      "graph_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-     "actor": { "id": "scintilla_engine", "role": "runtime" },
+     "actor": { "id": "scintilla_core", "role": "runtime" },
      "state_checksum_before": "e3b0c44298fc1c149afbf4c8996fb924...",
      "state_checksum_after": "d4e5f6a1b2c34567890123456789abcd...",
      "prev_decision_checksum": "8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c...",
@@ -508,9 +508,9 @@ $$\text{decision\_checksum}_N = \text{\_core\_sha256}(\text{decision\_checksum}_
 > **Il checksum `state_checksum_after` registrato nel record di `decisions.ndjson` DEVE tassativamente essere calcolato sull'esatta sequenza di byte presente nel buffer temporaneo (`case_state.json.tmp`) che verrà successivamente spostata atomicamente come `case_state.json`.**
 
 #### Algoritmo di Recovery all'Avvio (`Roll-Forward`):
-All'avvio, l'Engine verifica se $\text{\_core\_sha256}(\text{case\_state.json}) \stackrel{?}{=} \text{state\_checksum\_after}$ dell'ultima riga di `decisions.ndjson`:
+All'avvio, l'Core verifica se $\text{\_core\_sha256}(\text{case\_state.json}) \stackrel{?}{=} \text{state\_checksum\_after}$ dell'ultima riga di `decisions.ndjson`:
 * **Crash prima della Fase 2:** `case_state.json.tmp` esiste, ma `decisions.ndjson` NON ha il record. $\rightarrow$ Viene rimosso `case_state.json.tmp`.
-* **Crash tra Fase 2 e Fase 3:** `decisions.ndjson` contiene `state_checksum_after`, ma `case_state.json` ha ancora il vecchio hash. `case_state.json.tmp` esiste e il suo hash equivale a `state_checksum_after`. $\rightarrow$ **Roll-Forward Automatico:** L'Engine esegue `mv -f case_state.json.tmp case_state.json` prima di elaborare qualsiasi operazione.
+* **Crash tra Fase 2 e Fase 3:** `decisions.ndjson` contiene `state_checksum_after`, ma `case_state.json` ha ancora il vecchio hash. `case_state.json.tmp` esiste e il suo hash equivale a `state_checksum_after`. $\rightarrow$ **Roll-Forward Automatico:** L'Core esegue `mv -f case_state.json.tmp case_state.json` prima di elaborare qualsiasi operazione.
 
 ### 8.3 Concorrenza, Timeout e Serializzazione Append
 * **Kernel Append Serialization:** Ogni operazione di aggiunta registro su `decisions.ndjson` è serializzata dal kernel dell'OS quando il file è aperto con flag `O_APPEND` su **filesystem locali POSIX-compliant** (`>>`).
@@ -565,12 +565,12 @@ bash4llm --case ID --override-accept <node_id> \
 | `13` | `ERR_INFRASTRUCTURE_IO` | Core | Errore I/O, disco pieno, permessi o lock timeout expired. |
 | `15` | `BASH4LLM_ERR_TMP` | Core | Impossibile allocare file/directory temporanee. |
 | `17` | `BASH4LLM_ERR_SEC` | Core | Violazione di sicurezza, corruzione della chain hash o manomissione. |
-| **`20`** | **`ERR_SML_PARSE_FAILED`** | Engine | Output SML generato dall'LLM non conforme al formato o campi mancanti. |
-| **`21`** | **`ERR_EVIDENCE_MISSING`** | Engine | Evidenza dichiarata assente o non valida per la transizione. |
-| **`22`** | **`ERR_KB_NOT_FOUND`** | Engine | Dato richiesto non trovato nella KB locale (in modalità offline). |
-| **`23`** | **`ERR_GRAPH_CYCLE_DETECTED`** | Engine | **Fail-Fast:** Rilevato un ciclo nel Grafo delle Capacità. |
-| **`24`** | **`ERR_SCHEMA_MISMATCH`** | Engine | **Segnale Non-Letale:** Richiesta revisione operatore per aggiornamento adattatore. |
-| **`25`** | **`ERR_CONFIGURATION_MALFORMED`** | Engine | **Config Error:** File di adattatore, grafo JSON o modulo di policy malformato. |
+| **`20`** | **`ERR_SML_PARSE_FAILED`** | Core | Output SML generato dall'LLM non conforme al formato o campi mancanti. |
+| **`21`** | **`ERR_EVIDENCE_MISSING`** | Core | Evidenza dichiarata assente o non valida per la transizione. |
+| **`22`** | **`ERR_KB_NOT_FOUND`** | Core | Dato richiesto non trovato nella KB locale (in modalità offline). |
+| **`23`** | **`ERR_GRAPH_CYCLE_DETECTED`** | Core | **Fail-Fast:** Rilevato un ciclo nel Grafo delle Capacità. |
+| **`24`** | **`ERR_SCHEMA_MISMATCH`** | Core | **Segnale Non-Letale:** Richiesta revisione operatore per aggiornamento adattatore. |
+| **`25`** | **`ERR_CONFIGURATION_MALFORMED`** | Core | **Config Error:** File di adattatore, grafo JSON o modulo di policy malformato. |
 
 ### 9.2 Parametri di Configurazione Default
 Definiti in `bash4llm.d/config` o sovrascrivibili via ambiente:
