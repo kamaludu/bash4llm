@@ -8,6 +8,24 @@
 * **Autorità Governance:** Single Source of Truth Normativa per il dominio SCINTILLA CORE. Versionata secondo l'Algebra delle Versioni (§6).  
 * **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
 
+  I termini normativi in lingua inglese sono utilizzati con il significato tecnico definito dalle RFC 2119 e RFC 8174.
+
+  Ai soli fini di facilitare la lettura nella presente edizione in linguaggio naturale, possono essere associati i seguenti equivalenti esplicativi in lingua italiana. Tali equivalenti non modificano né sostituiscono il significato normativo originale:
+
+  | Termine normativo | Equivalente esplicativo italiano |
+  |---|---|
+  | `MUST` / `REQUIRED` | Deve essere obbligatoriamente applicato |
+  | `MUST NOT` / `SHALL NOT` | Non deve essere applicato; è vietato |
+  | `SHALL` | Deve essere applicato secondo il requisito definito |
+  | `SHOULD` / `RECOMMENDED` | Dovrebbe essere applicato; è raccomandato |
+  | `SHOULD NOT` / `NOT RECOMMENDED` | Dovrebbe essere evitato; non è raccomandato |
+  | `MAY` | Può essere applicato; è facoltativo |
+  | `OPTIONAL` | Opzionale; non obbligatorio |
+
+  Gli equivalenti italiani hanno esclusivamente funzione descrittiva e interpretativa per il lettore. In caso di ambiguità, prevale sempre il significato normativo definito dalle RFC 2119 e RFC 8174.
+
+* **Riferimenti di Sezione:** Il simbolo `§` indica un riferimento interno a una sezione del documento. Ad esempio, `§6` significa "vedere la sezione 6", mentre `§9.2` significa "vedere la sezione 9.2".
+
 ---
 
 # PARTE I: SPECIFICA NORMATIVA ASTRATTA (CORE ABSTRACT SPECIFICATION)
