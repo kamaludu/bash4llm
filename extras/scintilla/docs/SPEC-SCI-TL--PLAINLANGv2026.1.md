@@ -74,6 +74,12 @@ La prova di autenticità (`proof`) rappresenta la firma digitale dell'attore mit
 
 ---
 
+$\mathcal{S}$ definisce quali stati possono esistere.
+$T$ definisce quali cambiamenti di stato possono essere registrati come transazioni valide.
+La funzione $\text{Apply}$ definisce come una transazione modifica uno stato corrente producendo un nuovo stato.
+
+---
+
 ### 1.2 Il Registro Immutabile (Ledger) come Struttura ad Append-Only
 Il registro immutabile delle decisioni (Ledger) è modellato come una sequenza ordinata e finita di transazioni dotata delle seguenti proprietà strutturali:
 
