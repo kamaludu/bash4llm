@@ -33,6 +33,12 @@ Lo Spazio degli Stati del sistema è definito come l'insieme di tutte le configu
 8. **Esito Decisionale (`O_decision`):** Il risultato dell'ultima valutazione effettuata dal motore di guida delle policy (Policy Guidance Engine). Può assumere esclusivamente uno dei seguenti quattro valori: `ALLOW` (consentito), `DENY` (negato), `RECALIBRATE` (richiesta ricalibrazione) oppure `NONE` (nessuna decisione emessa).
 9. **Stato del Playbook (`K_playbook`):** Lo stato corrente dell'esecutore del Playbook di Emancipazione (§5), rappresentato dalla tupla contenente l'identificatore del playbook attivo (o valore nullo), l'identificatore del nodo di azione corrente (o valore nullo) e l'insieme dei nodi già completati.
 
+---
+
+La tabella globale degli stati è una rappresentazione concreta; $\mathcal{S}$ è il modello matematico che definisce quali righe sono ammissibili.
+
+---
+
 #### 1.1.2 Assioma dello Stato Iniziale di Genesi
 Lo stato iniziale di genesi (denotato come stato zero) è la configurazione restituita dal sistema in assenza di transizioni pregresse. Tale stato `MUST` contenere tassativamente i seguenti valori di default:
 
