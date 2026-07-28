@@ -1,4 +1,4 @@
-# 🎆 SCINTILLA CORE CANONICAL SPECIFICATION
+# ✴ SCINTILLA CORE CANONICAL SPECIFICATION
 ## Standard Edition v2.0 Timeless (Canonical & Formally Defined)
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
