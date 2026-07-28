@@ -35,7 +35,8 @@ Lo Spazio degli Stati del sistema è definito come l'insieme di tutte le configu
 
 ---
 
-Lo Spazio Globale degli Stati può essere materializzato concretamente come una tabella, dove ogni riga rappresenta uno stato del sistema. $\mathcal{S}$ è il modello matematico che definisce quali configurazioni (righe) sono ammissibili.
+Lo Spazio Globale degli Stati può essere rappresentato concretamente mediante una tabella, dove ogni record rappresenta un elemento $s \in \mathcal{S}$ e i campi del record corrispondono alle componenti della tupla che definisce lo stato.
+$\mathcal{S}$ definisce formalmente quali configurazioni di stato sono ammissibili.
 
 ---
 
