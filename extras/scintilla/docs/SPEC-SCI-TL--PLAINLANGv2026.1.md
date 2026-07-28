@@ -90,6 +90,12 @@ Il registro immutabile delle decisioni (Ledger) è modellato come una sequenza o
 **Assioma di Immutabilità del Ledger:**  
 Se una sequenza di transazioni è ottenuta aggiungendo una nuova transazione in coda a una sequenza esistente, la sequenza originale costituisce un prefisso storico immutabile e inalterabile. Le transazioni già confermate non possono essere modificate, cancellate, sovrascritte o riordinate.
 
+---
+
+Il Ledger deve essere immutabile affinché la storia delle transazioni costituisca una sorgente di verità affidabile, verificabile e riproducibile, dalla quale sia sempre possibile ricostruire in modo deterministico lo stato corrente del sistema.
+
+---
+
 **Teorema di Estensione Monotonica:**  
 L'aggiunta di una transazione a un registro composto da un numero $N$ di elementi produce un nuovo registro composto esattamente da $N + 1$ elementi, all'interno del quale il registro precedente rimane preservato integralmente come prefisso.
 
