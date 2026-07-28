@@ -366,7 +366,9 @@ Un **Emancipation Playbook** è formalizzato come un grafo orientato composto da
 ### 6.1 Spazio delle Versioni
 Ogni componente versionabile di Scintilla Core appartiene allo spazio delle versioni ed è identificato da una tupla di tre numeri interi non negativi:
 
-$$\text{Versione} = \langle \text{versione\_principale}, \text{versione\_secondaria}, \text{versione\_di\_correzione} \rangle$$
+$$
+\text{Versione} = \langle \text{versione}\_{\text{principale}}, \text{versione}\_{\text{secondaria}}, \text{versione}\_{\text{di}\_{\text{correzione}}} \rangle
+$$
 
 ovvero in formato standard: `major.minor.patch`.
 
