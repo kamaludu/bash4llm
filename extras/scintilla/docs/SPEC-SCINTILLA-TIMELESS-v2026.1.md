@@ -889,7 +889,9 @@ Qualsiasi notazione contenente punti decimali (`1.0`), notazione scientifica (`1
 3. **Unicode Normalization:** Normalizzazione Normalization Form C (NFC).
 4. **Object Key Sorting:** Ordinamento ascendente secondo i code-unit UTF-16.
 5. **Set Semantics Array Registry:** Ordinamento ascendente dei byte UTF-8 della serializzazione per gli insiemi matematici registrati:
-   $$\text{SetSemanticsRegistry} = \left[ \text{"completed\_nodes"}, \ \text{"permissions"}, \ \text{"prerequisites"}, \ \text{"roles"}, \ \text{"scopes"} \right]$$
+```math
+\text{SetSemanticsRegistry} = \left[ \text{"completed\_nodes"}, \ \text{"permissions"}, \ \text{"prerequisites"}, \ \text{"roles"}, \ \text{"scopes"} \right]
+```
 
 ---
 
