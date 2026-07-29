@@ -1,3 +1,5 @@
+[spec](SPEC-SCI-TL--NATLANGv2026.1.md)
+
 # ✴ SCINTILLA - CORE CANONICAL SPECIFICATION
 ## Standard Edition v4.2 Timeless
 
