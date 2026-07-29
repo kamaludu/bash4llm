@@ -1,10 +1,10 @@
 # ✴ SCINTILLA - SPECIFICA CANONICA IN LINGUAGGIO NATURALE
-## Standard Edition v4.2.1-FIXED (Edizione Accessibile Umano-Centrica)
+## Standard Edition v4.2.1 (Edizione Accessibile Umano-Centrica)
 
 **Documento Canonico Spiegato in Linguaggio Chiaro per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato del Documento:** Specifica Normativa Canonica Integrale in Linguaggio Naturale (Equivalente al 100% alla Specifica Formale - Single Source of Truth)
-* **Edizione:** v4.2.1-FIXED Standard Edition (Centrata sull'Agency Umana e Matematicamente Coerente)
+* **Edizione:** v4.2.1 Standard Edition (Centrata sull'Agency Umana e Matematicamente Coerente)
 * **Destinatari:** Chiunque sia dotato di istruzione secondaria (diploma), senza necessità di competenze pregresse in informatica, crittografia, matematica formale o diritto.
 * **Terminologia Normativa:** In tutto il documento le parole in maiuscolo e inglese seguono lo standard internazionale RFC 2119 / RFC 8174:
   * `MUST` / `SHALL` (**DEVE**): Indica un obbligo assoluto ed inderogabile.
@@ -419,4 +419,4 @@ Per far sì che l'impronta digitale (Hash SHA-256) di un documento sia sempre id
 ---
 
 ## Stato della Certificazione
-La presente specifica **SCINTILLA CORE v4.2.1-FIXED (Edizione Human-Readable)** rappresenta la traduzione fedele, completa ed esente da ambiguità della Specifica Canonica Formale. Garantisce lo stato **SPEC-COMPLETE** ed è pronta per la pubblicazione, comprensione e verifica da parte di qualsiasi cittadino, operatore sociale o revisore.
+La presente specifica **SCINTILLA CORE v4.2.1 (Edizione Human-Readable)** rappresenta la traduzione fedele, completa ed esente da ambiguità della Specifica Canonica Formale. Garantisce lo stato **SPEC-COMPLETE** ed è pronta per la pubblicazione, comprensione e verifica da parte di qualsiasi cittadino, operatore sociale o revisore.
