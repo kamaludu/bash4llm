@@ -560,20 +560,21 @@ La dinamica globale del sistema Scintilla Core è formalizzata mediante lo schem
 
 ### 3.1 Matrice Normativa di Autorizzazione Evento-Attore
 Un evento $\sigma_C \in \Sigma \cup \Sigma_H$ contenuto in una transizione $t \in T$ emessa dall'attore $\alpha = \text{actor}(t)$ è valido se e solo se la coppia $(\sigma_C, \text{type}(\alpha))$ appartiene alla seguente matrice di autorizzazione:
-
-$$\text{Authorized}(\sigma_C, \text{type}(\alpha)) \iff \begin{cases}
+```math
+\text{Authorized}(\sigma_C, \text{type}(\alpha)) \iff \begin{cases}
 \text{True} & \text{se } \sigma_C \in \Sigma_H \land \text{type}(\alpha) \in \{\text{USER}, \text{OPERATOR}, \text{SYSTEM}\} \\
 \text{True} & \text{se } \sigma_C \in \{\sigma_0, \sigma_1, \sigma_2, \sigma_3, \sigma_4, \sigma_5\} \land \text{type}(\alpha) = \text{SYSTEM} \\
 \text{True} & \text{se } \sigma_C \in \{\text{EV\_OVERRIDE}, \text{EV\_REPAIR}\} \land \text{type}(\alpha) = \text{OPERATOR} \\
 \text{False} & \text{in tutti gli altri casi (compreso qualsiasi tentativo con } \text{type}(\alpha) = \text{LLM})
-\end{cases}$$
+\end{cases}
+```
 
 ---
 
 ### 3.2 Mappatura Normativa delle Guardie ($\text{EvaluateGuards}$)
 La funzione pura di valutazione $\text{EvaluateGuards}: \mathcal{S} \times T \to \{ \text{PASS}, \text{FAIL} \}$ valuta la transizione $t$ rispetto allo stato $S$:
-
-$$\text{EvaluateGuards}(S, t) = \begin{cases}
+```math
+\text{EvaluateGuards}(S, t) = \begin{cases}
 \text{PASS} & \text{se } \sigma_C = \text{EV\_SUCCESS} \land \text{IsHashChainValid}(S) \land \text{IsMonotonicFence}(S) \land \text{ValidLease}(S) \\
 \text{PASS} & \text{se } \sigma_C = \text{EV\_ABANDON} \land \text{IsHashChainValid}(S) \land \text{ValidLease}(S) \\
 \text{PASS} & \text{se } \sigma_C = \text{EV\_SML\_FAIL} \land \text{IsHashChainValid}(S) \\
@@ -583,31 +584,41 @@ $$\text{EvaluateGuards}(S, t) = \begin{cases}
 \text{PASS} & \text{se } \sigma_C = \text{EV\_OVERRIDE} \land \text{AuthenticatedOperator}(\alpha) \land \text{ValidProof}(p) \\
 \text{PASS} & \text{se } \sigma_C = \text{EV\_REPAIR} \land \text{AuthenticatedOperator}(\alpha) \land \text{ValidRepairPatch}(p) \\
 \text{FAIL} & \text{in qualsiasi altro caso}
-\end{cases}$$
+\end{cases}
+```
 
 ---
 
 ### 3.3 Meta-Regole SOS della Sicurezza di Runtime ($M$)
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q' = \delta_M(q, \sigma_C, T_{\text{JSON}}) \quad \text{EvaluateGuards}(S, t) = \text{PASS}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q', q_H, \text{Apply}(S, t) \rangle} \quad [\text{SOS-META-SAFETY}]
+```
 
-$$\frac{\sigma_C = \text{event}(t) \in \Sigma \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q' = \delta_M(q, \sigma_C, T_{\text{JSON}}) \quad \text{EvaluateGuards}(S, t) = \text{PASS}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q', q_H, \text{Apply}(S, t) \rangle} \quad [\text{SOS-META-SAFETY}]$$
-
-$$\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{ValidateEnvironment}(S, t, E) = \text{FAIL} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL})}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle \text{VALIDATION\_ERROR}, q_H, S \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]$$
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{ValidateEnvironment}(S, t, E) = \text{FAIL} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL})}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle \text{VALIDATION\_ERROR}, q_H, S \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
+```
 
 ---
 
 ### 3.4 Meta-Regole SOS del Percorso Umano ($\mathcal{H}$)
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \delta_H(q_H, \sigma_C) \quad \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H', \text{Apply}(S, t) \rangle} \quad [\text{SOS-META-HUMAN}]
+```
 
-$$\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \delta_H(q_H, \sigma_C) \quad \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H', \text{Apply}(S, t) \rangle} \quad [\text{SOS-META-HUMAN}]$$
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad (\neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \mathcal{R}_{\text{exec}}(S, t) \in \{\text{DENY}, \text{RECALIBRATE}\})}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, \delta_H(q_H, \text{HEV\_RECALIBRATION\_REQ}), S \rangle} \quad [\text{SOS-META-HUMAN-DENY}]
+```
 
-$$\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad (\neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \mathcal{R}_{\text{exec}}(S, t) \in \{\text{DENY}, \text{RECALIBRATE}\})}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, \delta_H(q_H, \text{HEV\_RECALIBRATION\_REQ}), S \rangle} \quad [\text{SOS-META-HUMAN-DENY}]$$
-
-$$\frac{q_H = \text{HUMAN\_PAUSED} \quad (t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad \sigma_H = \text{HEV\_RECALIBRATION\_REQ}}{\langle q, \text{HUMAN\_PAUSED}, \sigma_H, S, E \rangle \to_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{Apply}(S, t_{\text{timeout}}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]$$
+```math
+\frac{q_H = \text{HUMAN\_PAUSED} \quad (t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad \sigma_H = \text{HEV\_RECALIBRATION\_REQ}}{\langle q, \text{HUMAN\_PAUSED}, \sigma_H, S, E \rangle \to_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{Apply}(S, t_{\text{timeout}}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
+```
 
 ---
 
 ### 3.5 Meta-Regola SOS di Congelamento da Lockdown (Lockdown Freeze)
-
-$$\frac{\sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-LOCKDOWN-FREEZE}]$$
+```math
+\frac{\sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-LOCKDOWN-FREEZE}]
+```
 
 ---
 
