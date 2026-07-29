@@ -1,3 +1,5 @@
+[spec](SPEC-SCINTILLA-TIMELESS-v2026.1.md)
+
 # ✴ SCINTILLA - SPECIFICA CANONICA IN LINGUAGGIO NATURALE
 ## Standard Edition v4.2.1 (Edizione Accessibile Umano-Centrica)
 
