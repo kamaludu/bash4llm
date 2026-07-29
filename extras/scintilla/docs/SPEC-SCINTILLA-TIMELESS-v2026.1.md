@@ -268,14 +268,15 @@ K_{\text{pubkey\_registry}}
 
 #### 1.2.2 Predicato di Validazione Ambientale $\text{ValidateEnvironment}$
 Il predicato impuro di validazione d'ambiente $\text{ValidateEnvironment}: \mathcal{S} \times T \times E \to \{ \text{PASS}, \text{FAIL} \}$ valuta la transazione $t$ rispetto allo stato $S$ e all'ambiente $E$:
-
-$$\text{ValidateEnvironment}(S, t, E) = \begin{cases}
+```math
+\text{ValidateEnvironment}(S, t, E) = \begin{cases}
 \text{PASS} & \text{se } \text{VerifySignature}(t.\text{proof}, t.\text{TransactionBody}, E.K_{\text{pubkey\_registry}}) = \text{TRUE} \\
 & \quad \land \ |t.\text{timestamp} - E.t_{\text{wall}}| \le \Delta t_{\text{max}} \\
 & \quad \land \ E.\text{LeaseManager}.\text{IsTokenValid}(S.\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}}) = \text{TRUE} \\
 & \quad \land \ E.\text{I/O}_{\text{status}} = \text{HEALTHY} \\
 \text{FAIL} & \text{in qualsiasi altro caso}
-\end{cases}$$
+\end{cases}
+```
 
 ---
 
