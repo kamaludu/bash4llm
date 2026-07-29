@@ -14,10 +14,8 @@
 
 ---
 
----
 **NOTA INFORMATIVA: COS'È L'AGENCY (AGENTIVITÀ UMANA)?**
 Con il termine **Human Agency** (Capacità di Agire Umana o Agentività) si intende la capacità concreta e consapevole di una persona di prendere decisioni autonome, compiere azioni intenzionali e guidare la propria vita, anziché subire passivamente gli eventi o le decisioni prese da altri.
----
 
 ---
 
@@ -36,10 +34,8 @@ L'architettura del sistema separa in modo rigido e non negoziabile tre ambiti:
 
 ---
 
----
 **NOTA INFORMATIVA: COS'È UN LLM (LARGE LANGUAGE MODEL)?**
 Un *Large Language Model* (Modello Linguistico di Grandi Dimensioni) è un tipo di Intelligenza Artificiale capace di comprendere e generare testo in linguaggio umano con grande fluidità, pazienza ed empatia apparente. Poiché lavora su basi probabilistiche, è bravissimo a spiegare, tradurre e semplificare, ma può commettere errori di fatto o "allucinazioni". Per questo SCINTILLA CORE lo racchiude all'interno di una gabbia di regole matematiche rigide (il Core Deterministico) che gli impedisce di prendere decisioni autonome o fornire informazioni legali errate.
----
 
 ---
 
@@ -122,10 +118,8 @@ L'Assistente Linguistico (LLM) è uno strumento fantastico per dialogare, spiega
 
 ---
 
----
 **NOTA INFORMATIVA: RIASSUNTO DEI PRINCIPI ETICI**
 SCINTILLA CORE è progettato per dare forza (agency) alle persone e non per controllarle. Aiuta a capire cosa fare domani mattina senza mai sostituirsi alla volontà dell'utente, garantendo dignità, privacy assoluta e rifiuto di qualsiasi giudizio morale.
----
 
 ---
 
@@ -168,11 +162,9 @@ Ogni singola azione o scambio nel sistema costituisce una **Transizione** immuta
 
 ---
 
----
 **NOTA INFORMATIVA: COS'È LA PRIVACY CRITTOGRAFICA E IL CRYPTO-SHREDDING?**
 I dati personali dell'utente (nome, storia, fragilità) **non vengono mai scritti in chiaro** sul registro immutabile del sistema. Vengono cifrati usando una chiave crittografica segreta e unica. 
 Se l'utente decide di cancellare i propri dati (Diritto all'Oblio), il sistema distrugge la chiave crittografica (*Crypto-Shredding*). Senza la chiave, i dati registrati diventano istantaneamente un ammasso incomprensibile e irrecuperabile di caratteri casuali, garantendo la cancellazione totale e definitiva senza dover distruggere la catena storica del registro.
----
 
 ---
 
@@ -197,9 +189,9 @@ Per evitare che problemi di rete, orologi sfasati o guasti del server alterino l
 Tutte le decisioni e le transizioni vengono memorizzate in un registro informatico permanente chiamato **Ledger**.
 
 ---
+
 **NOTA INFORMATIVA: COS'È UN LEDGER APPEND-ONLY?**
 Un *Ledger Append-Only* è un registro di sola scrittura, analogo ad un libro contabile mastro scritto a inchiostro indelebile. Le pagine non possono essere strappate, cancellate o modificate. È possibile soltanto aggiungere nuove pagine in fondo. Se si commette un errore o si cambia decisione, non si cancella il passato, ma si scrive una nuova registrazione che corregge la precedente.
----
 
 ---
 
@@ -230,10 +222,8 @@ La gerarchia di chi ha ragione varia radicalmente a seconda della materia:
 
 ---
 
----
 **NOTA INFORMATIVA: LA DOPPIA AUTORITÀ IN SINTESI**
 Se si parla di leggi o burocrazia, i documenti ufficiali vincono sulle opinioni. Se si parla della propria vita, delle proprie emozioni e dei propri obiettivi, l'utente ha sempre ragione e nessuno può contraddirlo.
----
 
 ---
 
