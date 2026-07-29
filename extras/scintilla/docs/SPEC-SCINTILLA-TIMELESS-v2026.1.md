@@ -308,18 +308,28 @@ Dove $\text{Apply}: (\mathcal{S} \cup \{\bot\}) \times T \to \mathcal{S} \cup \{
    $$\forall I \in \{\text{INV-GLOBAL-SEQ-01}, \dots, \text{INV-HUMAN-DEPENDENCY-01}\}, \quad (I(S) \land \text{Valid}(t)) \implies I(\text{Apply}(S, t))$$
 
 #### 1.4.2 Persistenza dei Security Events e Risoluzione dell'Integrità del Replay
-Quando un tentativo di transizione $t_{\text{prop}}$ viene inviato al sistema e la validazione ambientale fallisce ($\text{ValidateEnvironment}(P(L), t_{\text{prop}}, E) = \text{FAIL}$):
+Quando un tentativo di transizione $t_{\text{prop}}$ viene inviato al sistema e la validazione ambientale fallisce ( $\text{ValidateEnvironment}(P(L), t_{\text{prop}}, E) = \text{FAIL}$ ):
 1. La proposta non valida $t_{\text{prop}}$ viene scartata senza mutare il caso utente.
-2. Il runtime genera immediatamente una transizione di sistema formale ed esplicita $t_{\text{sec}} = \langle \text{TransactionBody}_{\text{sec}}, \text{proof}_{\text{sec}} \rangle \in T$ recante un evento di sicurezza riconosciuto $\sigma_{\text{sec}} \in \{\text{EV\_SML\_FAIL}, \text{EV\_HASH\_CORRUPT}, \text{EV\_LEASE\_EXP}, \text{EV\_TIMEOUT}\}$.
+2. Il runtime genera immediatamente una transizione di sistema formale ed esplicita:
+```math
+t_{\text{sec}} = \langle \text{TransactionBody}_{\text{sec}}, \text{proof}_{\text{sec}} \rangle \in T
+```
+recante un evento di sicurezza riconosciuto:
+```math
+\sigma_{\text{sec}} \in \{\text{EV\_SML\_FAIL}, \text{EV\_HASH\_CORRUPT}, \text{EV\_LEASE\_EXP}, \text{EV\_TIMEOUT}\}
+```
 3. La transizione $t_{\text{sec}}$ viene concatenata al Ledger: $L' = L \mathbin{\Vert} \langle t_{\text{sec}} \rangle$.
 4. La valutazione pura di $t_{\text{sec}}$ sullo stato produce deterministicamente lo stato di lockdown:
-
-$$\text{Apply}(P(L), t_{\text{sec}}) = S_{\text{lockdown}} := \left\langle \text{case}_{\text{id}}, \ q=\text{SECURITY\_LOCKDOWN}, \ q_H, \ \mathcal{P}_{\text{active}}, \ \mathcal{M}_{\text{prov}}, \ \mathcal{F}_{\text{lease}}, \ \mathcal{Q}_{\text{consent}}, \ \mathcal{O}_{\text{decision}}, \ \mathcal{K}_{\text{playbook}}, \ \mathcal{A}_{\text{index}}, \ \mathcal{H}_{\text{bound}} \right\rangle$$
+```math
+\text{Apply}(P(L), t_{\text{sec}}) = S_{\text{lockdown}} := \left\langle \text{case}_{\text{id}}, \ q=\text{SECURITY\_LOCKDOWN}, \ q_H, \ \mathcal{P}_{\text{active}}, \ \mathcal{M}_{\text{prov}}, \ \mathcal{F}_{\text{lease}}, \ \mathcal{Q}_{\text{consent}}, \ \mathcal{O}_{\text{decision}}, \ \mathcal{K}_{\text{playbook}}, \ \mathcal{A}_{\text{index}}, \ \mathcal{H}_{\text{bound}} \right\rangle
+```
 
 In virtù di questa regola, **ogni mutazione dello stato di runtime (compreso il lockdown) corrisponde ad una transizione immutabile presente nel Ledger**, garantendo l'uguaglianza assoluta $P(L) = \text{Replay}(L)$.
 
-**Claim di Dimostrazione Richiesto (Teorema del Replay Deterministico):**  
-$$\forall L \in \mathcal{L} \text{ tale che } \text{Replay}(L) \neq \bot, \quad P(L) = \text{Replay}(L)$$
+**Claim di Dimostrazione Richiesto (Teorema del Replay Deterministico):** 
+```math
+\forall L \in \mathcal{L} \text{ tale che } \text{Replay}(L) \neq \bot, \quad P(L) = \text{Replay}(L)
+```
 
 ---
 
