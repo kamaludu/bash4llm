@@ -1067,8 +1067,17 @@ AG \left( q = \text{SECURITY\_LOCKDOWN} \implies EF (q = \text{NORMAL} \lor q = 
 **SC-JCS-1 è un profilo di canonizzazione derivato e NON-COMPATIBILE a livello di hash con lo standard RFC 8785 JCS**.
 
 #### 10.2.1 Sottoinsieme $J_{\text{SC}}$ e Strict Signed Safe Integer Range
-Un documento JSON $j \in \text{JSON}_{\text{RFC8259}}$ appartiene al sottoinsieme $J_{\text{SC}}$ se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
+Un documento JSON 
+```math
+j \in \text{JSON}_{\text{RFC8259}}
+```
 
+appartiene al sottoinsieme 
+```math
+J_{\text{SC}}
+```
+
+se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
 ```math
 I_{\text{safe}} = \left[ -(2^{53} - 1), \ +(2^{53} - 1) \right] = \left[ -9007199254740991, \ +9007199254740991 \right]
 ```
