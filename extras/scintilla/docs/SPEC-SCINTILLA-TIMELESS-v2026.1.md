@@ -710,7 +710,11 @@ Per evitare che una mappa di orientamento si trasformi in una procedura burocrat
 
 ### 5.3 Invarianti di Esecuzione e Tracking dello Stato Playbook ($\mathcal{K}_{\text{playbook}}$)
 1. **`INV-PLAYBOOK-GRAPH-01` (Aclicienza Locale sui Nodi Bloccanti):** Il sotto-grafo dei nodi tipizzati `REQUIRED_FOR_SYSTEM_STATE` `MUST` essere un Grafo Diretto Aclicico (DAG). La rilevazione di cicli bloccanti causa l'immediato scarto con **Runtime Error Code 83 (`ERR_GRAPH_CYCLE_DETECTED`)**.
-2. **`INV-PLAYBOOK-STEP-02` (Durata Parametrizzata):** La durata stimata di una micro-azione non può superare il valore definito dal parametro $\theta_{\text{max\_duration}} \in \Theta$.
+2. **`INV-PLAYBOOK-STEP-02` (Durata Parametrizzata):** La durata stimata di una micro-azione non può superare il valore definito dal parametro
+```math
+$\theta_{\text{max\_duration}} \in \Theta$.
+```
+   
 3. **`INV-PLAYBOOK-STATE-03` (Tracciamento dello Stato di Avanzamento):** Ogni avanzamento nel grafo $G_P$ `MUST` aggiornare la componente $\mathcal{K}_{\text{playbook}}$ nello stato $\mathcal{S}$, registrando la relativa Data Provenance ($D_P$).
 
 ---
@@ -798,21 +802,39 @@ $$\text{Fairness} \iff \text{FAIR}_{\text{USER}} \land \text{FAIR}_{\text{SYSTEM
 
 #### Proprietà LTL (Linear Temporal Logic)
 * **LTL Safety 1 (Safety Gate / Policy Guidance Corrected):**
-  $$\square \left( \text{IsDecisionOutcomeAllowed}(S) \implies \text{IsSafetyGateAllowed}(S) \right)$$
+```math
+\square \left( \text{IsDecisionOutcomeAllowed}(S) \implies \text{IsSafetyGateAllowed}(S) \right)
+```
+   
 * **LTL Safety 2 (Fencing & Lease Recovery):**
-  $$\square \left( \neg \text{IsMonotonicFence}(S) \implies X(q = \text{RECOVERABLE\_FAILURE}) \right)$$
+```math
+\square \left( \neg \text{IsMonotonicFence}(S) \implies X(q = \text{RECOVERABLE\_FAILURE}) \right)
+```
+   
 * **LTL Safety 3 (Hash Chain Integrity):**
-  $$\square \left( \neg \text{IsHashChainValid}(S) \implies X(q = \text{SECURITY\_LOCKDOWN}) \right)$$
+```math
+\square \left( \neg \text{IsHashChainValid}(S) \implies X(q = \text{SECURITY\_LOCKDOWN}) \right)
+```
+   
 * **LTL Safety 4 (Unidirectional Automata Decoupling):**
-  $$\square \left( \text{State}(\mathcal{H}) = q_H \implies \text{DirectMutation}(M) = \text{FALSE} \right)$$
-
+```math
+\square \left( \text{State}(\mathcal{H}) = q_H \implies \text{DirectMutation}(M) = \text{FALSE} \right)
+```
+   
 #### Proprietà CTL (Computation Tree Logic)
 * **CTL System Agency Guarantee (Accessibilità del Progresso di Sistema):**
-  $$\text{Fairness} \implies AG \left( \text{UserEngaged} \implies EF (\text{SystemProgress}) \right)$$
-  *(dove $\text{SystemProgress} \iff \text{StepCompleted} \lor \text{Recalibrated} \lor \text{AGI\_Increased}$)*
-
+```math
+\text{Fairness} \implies AG \left( \text{UserEngaged} \implies EF (\text{SystemProgress}) \right)
+```
+dove: 
+```math
+\text{SystemProgress} \iff \text{StepCompleted} \lor \text{Recalibrated} \lor \text{AGI\_Increased}
+```
+   
 * **CTL Trap-Free Safety (Garante di Recuperabilità dal Lockdown):**
-  $$AG \left( q = \text{SECURITY\_LOCKDOWN} \implies EF (q = \text{NORMAL} \lor q = \text{SAFE\_READ\_ONLY\_MODE}) \right)$$
+```math
+AG \left( q = \text{SECURITY\_LOCKDOWN} \implies EF (q = \text{NORMAL} \lor q = \text{SAFE\_READ\_ONLY\_MODE}) \right)
+```
 
 ---
 
