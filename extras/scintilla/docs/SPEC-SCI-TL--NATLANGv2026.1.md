@@ -400,7 +400,7 @@ Per far sì che l'impronta digitale (Hash SHA-256) di un documento sia sempre id
 
 ---
 
-### GLOSSARIO ESSENZIALE DEI TERMINI TECNICI
+## GLOSSARIO ESSENZIALE DEI TERMINI TECNICI
 
 * **AGI (Agency Gain Index):** L'indice matematico che misura quanto una persona sta guadagnando in autonomia e chiarezza d'azione.
 * **Append-Only:** Modalità di scrittura in cui è possibile solo aggiungere nuovi dati in fondo, senza mai poter cancellare o modificare il passato.
