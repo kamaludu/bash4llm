@@ -1,3 +1,5 @@
+[![sign](https://img.shields.io/badge/✴&nbsp;SCINTILLA-yellow?style=for-the-badge)](#)
+
 # ✴ SCINTILLA - SPECIFICA CANONICA IN LINGUAGGIO NATURALE
 ## Standard Edition v4.2.1-FIXED (Edizione Accessibile Umano-Centrica)
 
