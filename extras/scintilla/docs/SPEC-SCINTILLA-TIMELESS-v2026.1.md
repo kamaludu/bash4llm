@@ -455,15 +455,25 @@ Per definire in modo rigoroso le responsabilità operative ed etiche, ogni trans
 
 ### 2.2 Runtime Safety State Machine $M$ (Sicurezza e Integrità di Sistema)
 L'operatività di sicurezza di runtime è modellata come un Automa a Stati Finiti Deterministico Totale $M$:
-
-$$M := \langle Q, \Sigma, T_{\text{JSON}}, \delta_M, q_0, F_{\text{oper}} \rangle$$
-
+```math
+M := \langle Q, \Sigma, T_{\text{JSON}}, \delta_M, q_0, F_{\text{oper}} \rangle
+```
+   
 1. **Insieme degli Stati Canonici $Q$ ($|Q|=7$):**
-   $$Q = \{ \text{NORMAL } (q_0), \text{REQUIRE\_RECALIBRATION } (q_1), \text{VALIDATION\_ERROR } (q_2), \text{RECOVERABLE\_FAILURE } (q_3), \text{OPERATOR\_REQUIRED } (q_4), \text{SECURITY\_LOCKDOWN } (q_5), \text{SAFE\_READ\_ONLY\_MODE } (q_6) \}$$
+```math
+Q = \{ \text{NORMAL } (q_0), \text{REQUIRE\_RECALIBRATION } (q_1), \text{VALIDATION\_ERROR } (q_2), \text{RECOVERABLE\_FAILURE } (q_3), \text{OPERATOR\_REQUIRED } (q_4), \text{SECURITY\_LOCKDOWN } (q_5), \text{SAFE\_READ\_ONLY\_MODE } (q_6) \}
+```
+   
 2. **Stato Iniziale:** $q_0 = \text{NORMAL}$.
-3. **Insieme degli Stati Operativamente Stabili $F_{\text{oper}}$:** $F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}$.
-4. **Alfabeto degli Eventi di Sistema $\Sigma$ ($|\Sigma|=8$):**
-   $$\Sigma = \{ \text{EV\_SUCCESS } (\sigma_0), \text{EV\_ABANDON } (\sigma_1), \text{EV\_SML\_FAIL } (\sigma_2), \text{EV\_LEASE\_EXP } (\sigma_3), \text{EV\_HASH\_CORRUPT } (\sigma_4), \text{EV\_TIMEOUT } (\sigma_5), \text{EV\_OVERRIDE } (\sigma_6), \text{EV\_REPAIR } (\sigma_7) \}$$
+3. **Insieme degli Stati Operativamente Stabili**
+```math
+F_{\text{oper}}$:** $F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
+```
+   
+5. **Alfabeto degli Eventi di Sistema $\Sigma$ ($|\Sigma|=8$):**
+```math
+\Sigma = \{ \text{EV\_SUCCESS } (\sigma_0), \text{EV\_ABANDON } (\sigma_1), \text{EV\_SML\_FAIL } (\sigma_2), \text{EV\_LEASE\_EXP } (\sigma_3), \text{EV\_HASH\_CORRUPT } (\sigma_4), \text{EV\_TIMEOUT } (\sigma_5), \text{EV\_OVERRIDE } (\sigma_6), \text{EV\_REPAIR } (\sigma_7) \}
+```
 
 #### 2.2.1 Mappatura Formale della Funzione Totale di Transizione $\delta_M$
 La funzione pura di transizione $\delta_M: Q \times \Sigma \times \mathcal{T}_{\text{JSON}} \to Q$ è derivata in modo deterministico dal contratto canonico JSON $T_{\text{JSON}}$ (§10.3) mediante la funzione normativamente definita $\text{firstMatch}$:
@@ -475,29 +485,55 @@ $$\delta_M(q, \sigma, T_{\text{JSON}}) := \text{firstMatch}(T_{\text{JSON}}, q, 
 ### 2.3 Human Journey State Machine $\mathcal{H}$ (Percorso di Emancipazione Personale) (`OBI-009`)
 
 L'evoluzione del percorso umano dell'utente è modellata da un automa di dominio autonomo $\mathcal{H}$, esteso per includere formalmente gli stati di pausa, ripensamento e scelta autonoma dell'utente:
-
-$$\mathcal{H} := \langle Q_H, \Sigma_H, \delta_H, q_{H0}, F_H \rangle$$
-
+```math
+\mathcal{H} := \langle Q_H, \Sigma_H, \delta_H, q_{H0}, F_H \rangle
+```
+   
 1. **Insieme degli Stati del Percorso Umano $Q_H$ ($|Q_H|=11$):**
-   $$Q_H = \{ \text{UNASSESSED } (h_0), \text{INITIAL\_ASSESSMENT } (h_1), \text{STABILIZATION } (h_2), \text{DOCUMENT\_RECOVERY } (h_3), \text{EMPLOYMENT\_READINESS } (h_4), \text{FINANCIAL\_AUTONOMY } (h_5), \text{SUSTAINED\_INDEPENDENCE } (h_6), \text{HUMAN\_PAUSED } (h_7), \text{HUMAN\_RECALIBRATION\_REQUIRED } (h_8), \text{HUMAN\_GOAL\_CHANGED } (h_9), \text{HUMAN\_DECLINED\_ASSISTANCE } (h_{10}) \}$$
+```math
+Q_H = \{ \text{UNASSESSED } (h_0), \text{INITIAL\_ASSESSMENT } (h_1), \text{STABILIZATION } (h_2), \text{DOCUMENT\_RECOVERY } (h_3), \text{EMPLOYMENT\_READINESS } (h_4), \text{FINANCIAL\_AUTONOMY } (h_5), \text{SUSTAINED\_INDEPENDENCE } (h_6), \text{HUMAN\_PAUSED } (h_7), \text{HUMAN\_RECALIBRATION\_REQUIRED } (h_8), \text{HUMAN\_GOAL\_CHANGED } (h_9), \text{HUMAN\_DECLINED\_ASSISTANCE } (h_{10}) \}
+```
+-
 2. **Stato Iniziale:** $q_{H0} = \text{UNASSESSED}$.
-3. **Insieme degli Stati Target / Terminali $F_H$:** $F_H = \{ \text{SUSTAINED\_INDEPENDENCE}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}$.
+3. **Insieme degli Stati Target / Terminali $F_H$:** 
+```math
+F_H = \{ \text{SUSTAINED\_INDEPENDENCE}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}
+```
+   
 4. **Alfabeto degli Eventi Umani $\Sigma_H$ ($|\Sigma_H|=12$):**
-   $$\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL} \}$$
+```math
+\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL} \}
+```
 
 #### 2.3.1 Assioma di Chiusura per Stazionarietà (Stuttering Step Axiom)
 La funzione di transizione $\delta_H: Q_H \times \Sigma_H \to Q_H$ è una **funzione totale**. Per qualsiasi coppia $(q_H, \sigma_H) \in Q_H \times \Sigma_H$ non mappata esplicitamente, vale la regola di chiusura:
-
-$$\forall (q_H, \sigma_H) \notin \text{Domain}(\delta_{H,\text{explicit}}), \quad \delta_H(q_H, \sigma_H) = q_H$$
+```math
+\forall (q_H, \sigma_H) \notin \text{Domain}(\delta_{H,\text{explicit}}), \quad \delta_H(q_H, \sigma_H) = q_H
+```
 
 #### 2.3.2 Regola di Timeout ed Inattività Umana (`HEV_TIMEOUT_INACTIVITY`)
-Quando l'automa del percorso umano $\mathcal{H}$ si trova nello stato $h_7 = \text{HUMAN\_PAUSED}$, il tempo di permanenza nello stato è monitorato rispetto al parametro di policy $\theta_{\text{inactivity\_timeout}} \in \Theta$.
-
+Quando l'automa del percorso umano $\mathcal{H}$ si trova nello stato 
+```math
+h_7 = \text{HUMAN\_PAUSED}$
+```
+il tempo di permanenza nello stato è monitorato rispetto al parametro di policy 
+```math
+\theta_{\text{inactivity\_timeout}} \in \Theta
+```
+   
 Se la durata della pausa supera la soglia consentita:
-$$(t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}}$$
-
-Il runtime genera automaticamente l'evento di sistema $\sigma_H = \text{HEV\_RECALIBRATION\_REQ}$, determinando la transizione di stato:
-$$\delta_H(\text{HUMAN\_PAUSED}, \text{HEV\_RECALIBRATION\_REQ}) = \text{HUMAN\_RECALIBRATION\_REQUIRED}$$
+```math
+(t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}}
+```
+   
+Il runtime genera automaticamente l'evento di sistema 
+```math
+\sigma_H = \text{HEV\_RECALIBRATION\_REQ}
+```
+determinando la transizione di stato:
+```math
+\delta_H(\text{HUMAN\_PAUSED}, \text{HEV\_RECALIBRATION\_REQ}) = \text{HUMAN\_RECALIBRATION\_REQUIRED}
+```
 
 ---
 
