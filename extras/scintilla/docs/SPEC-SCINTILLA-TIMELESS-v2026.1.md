@@ -152,7 +152,7 @@ Tuttavia, in conformità con il Modello dei Confini di Supervisione Umana (HOBM,
 #### 1.1.1 Spazio degli Stati $\mathcal{S}$
 Lo Spazio degli Stati $\mathcal{S}$ è il prodotto cartesiano dei domini di stato fondamentali del sistema:
 ```math
-\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}}
+\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}} \times \mathcal{M}_{\text{metrics}}
 ```
 
 Dove:
@@ -164,26 +164,34 @@ Dove:
 ```math
 \mathcal{M}_{\text{prov}}: \mathcal{K}_{\text{data}} \to D_P
 ```
+
 * Lo stato del lock di concorrenza:
 ```math
 \mathcal{F}_{\text{lease}} := \langle \text{fencing}_{\text{token}}, \text{lease}_{\text{expiry}} \rangle \in \mathbb{N} \times \mathcal{T}
 ```
+
 * $\mathcal{Q}_{\text{consent}}$: Lo stato corrente del registro delle manifestazioni di consenso granulare dell'utente.
 * $\mathcal{O}_{\text{decision}} \in \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE}, \text{NONE} \}$: L'esito dell'ultima valutazione decisionale del Policy Guidance Engine.
 * Lo stato dell'esecutore del Playbook (§5):
 ```math
 \mathcal{K}_{\text{playbook}} := \langle \text{playbook}_{\text{id}}, \text{current}_{\text{node}_{\text{id}}}, \text{completed}_{\text{nodes}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
 ```
+
 * $\mathcal{A}_{\text{index}} \in [0.0, 1.0]$: Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7).
 * Il livello corrente di supervisione secondo l'Human Oversight Boundary Model (HOBM, §1.8):
 ```math
 \mathcal{H}_{\text{bound}} \in \{ \text{AUTOMATED\_SUPPORT}, \text{ASSISTED\_DECISION}, \text{HUMAN\_REVIEW\_REQUIRED}, \text{PROFESSIONAL\_INTERVENTION\_REQUIRED} \}
 ```
 
+* I contatori per le metriche dinamiche dell'AGI (§1.7):
+```math
+\mathcal{M}_{\text{metrics}} := \langle \text{rephrase\_count}, \text{ambiguity\_count}, \text{interaction\_count} \rangle \in \mathbb{N}^3
+```
+
 #### 1.1.2 Assioma del Genesis State $s_0$
 Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ `MUST` contenere tassativamente i seguenti valori predefiniti:
 ```math
-s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT} \right\rangle
+s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0 \rangle \right\rangle
 ```
 
 Dove $t_0 \in \mathcal{T}$ rappresenta l'istante temporale canonico di origine del sistema (§10.1).
@@ -209,22 +217,49 @@ In conformità ai requisiti di riproducibilità e content-addressing (`OBI-002`)
 * $\text{actor} \in \mathcal{I}_{\text{actor}}$: Identificatore dell'attore mittente.
 * $\text{event} \in \Sigma \cup \Sigma_H$: Evento di transizione dell'automa.
 * $\text{payload} \in \mathcal{V}$: Contenuto informativo specifico della mutazione.
-* Impronta content-addressed del predicato di policy attivo: $\text{policy}_{\text{binding}_{\text{hash}}} \in \mathcal{D}$.
+* Impronta content-addressed del predicato di policy attivo: 
+```math
+\text{policy}_{\text{binding}_{\text{hash}}} \in \mathcal{D}
+```
+
 * $\text{schema}_{\text{hash}} \in \mathcal{D}$: Impronta content-addressed dello schema dati applicativo.
-* Impronta dello stato delle autorizzazioni dell'attore: $\text{authorization}_{\text{snapshot}_{\text{hash}}} \in \mathcal{D}$.
-* Impronta della configurazione del profilo di runtime: $\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}$.
+* Impronta dello stato delle autorizzazioni dell'attore: 
+```math
+\text{authorization}_{\text{snapshot}_{\text{hash}}} \in \mathcal{D}
+```
+
+* Impronta della configurazione del profilo di runtime: 
+```math
+$\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}
+```
+
 * $\text{specification}_{\text{id}} \in \mathcal{I}$: Identificatore canonico dello standard (`SCINTILLA-CORE-v4.2-TIMELESS`).
 * $\text{proof} \in \mathcal{S}_{\text{sig}}$: Firma digitale dell'attore calcolata su $\text{Canon}(\text{TransactionBody})$.
 
 #### 1.1.3.1 Invariante di Oblio Crittografico e Audit Trail (`INV-PRIVACY-SHREDDING-01`)
 Qualsiasi dato identificativo personale (PII) o sensibile contenuto nel campo `payload` $\mathcal{V}$ di una transazione $t \in T$ **`MUST NOT` essere memorizzato in chiaro nel Ledger immutabile**.
 
-1. Il payload sensibile $v \in \mathcal{V}$ `MUST` essere memorizzato cifrato tramite la chiave simmetrica effimera del caso utente $K_{\text{case}}$:
+1. Il payload sensibile $v \in \mathcal{V}$ `MUST` essere memorizzato cifrato tramite una chiave derivata per singolo elemento
 ```math
-\text{Payload}_{\text{encrypted}} = E_{K_{\text{case}}}(v)
+K_{\text{item}} = \text{HKDF}(K_{\text{case}}, \text{item\_id})$, derivata dalla chiave radice effimera del caso utente $K_{\text{case}}
 ```
-2. Nel corpo della transazione viene registrata la tupla $\langle \text{Payload}_{\text{encrypted}}, H(v) \rangle$, preservando l'integrità dell'hash chain SHA-256 $H_N$.
-3. L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, ovvero la distruzione irreversibile della chiave $K_{\text{case}}$. La distruzione di $K_{\text{case}}$ rende il payload matematicamente inintelligibile e privo di valore informativo, senza spezzare o alterare la catena di hash $H_N$ del Ledger.
+
+```math
+\text{Payload}_{\text{encrypted}} = E_{K_{\text{item}}}(v)
+```
+
+L'oblio parziale di un singolo dato avviene mediante la distruzione della chiave specifica $K_{\text{item}}$. L'oblio totale del caso utente avviene mediante la distruzione irreversibile della chiave radice $K_{\text{case}}$ e del salt $S_{\text{case}}$.
+
+2. Per impedire attacchi a forza bruta o Rainbow Tables sugli hash dei dati PII a bassa entropia presenti sul Ledger immutabile, l'impronta crittografica $H_{\text{salted}}$ `MUST` essere generata concatenando al dato un salt effimero casuale a 256 bit $S_{\text{case}} \in \mathcal{B}^{32}$ associato al caso utente:
+```math
+H_{\text{salted}}(v) = H(v \mathbin{\Vert} S_{\text{case}})
+```
+   Nel corpo della transazione viene registrata la tupla:
+```math
+$\langle \text{Payload}_{\text{encrypted}}, H_{\text{salted}}(v) \rangle
+```
+
+3. L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, definito come la distruzione irreversibile e simultanea sia della chiave di cifratura $K_{\text{case}}$ sia del salt $S_{\text{case}}$. La distruzione coordinata di $\langle K_{\text{case}}, S_{\text{case}} \rangle$ rende il payload un testo cifrato irrecuperabile e l'hash $H_{\text{salted}}(v)$ matematicamente non invertibile né verificabile, preservando l'integrità della catena di hash $H_N$ del Ledger senza esporre dati personali.
 4. **Regola di Registrazione dell'Evento di Oblio ($t_{\text{shred}}$):** L'atto di distruzione della chiave $K_{\text{case}}$ `MUST` generare ed appendere al Ledger una transazione formale di sistema $t_{\text{shred}} \in T$ recante l'evento `EV_CRYPTO_SHRED_EXECUTED`. Tale transazione certifica in modo immutabile l'istante temporale e la revoca del consenso che hanno determinato la distruzione irreversibile della chiave, senza esporre alcun dato PII.
 
 #### 1.1.4 Invarianti Globali di Sicurezza e Integrità
@@ -325,29 +360,43 @@ Dove $\text{Apply}: (\mathcal{S} \cup \{\bot\}) \times T \to \mathcal{S} \cup \{
 \forall I \in \{\text{INV-GLOBAL-SEQ-01}, \dots, \text{INV-HUMAN-DEPENDENCY-01}\}, \quad (I(S) \land \text{Valid}(t)) \implies I(\text{Apply}(S, t))
 ```
 
-#### 1.4.2 Persistenza dei Security Events e Risoluzione dell'Integrità del Replay
-Quando un tentativo di transizione $t_{\text{prop}}$ viene inviato al sistema e la validazione ambientale fallisce ( $\text{ValidateEnvironment}(P(L), t_{\text{prop}}, E) = \text{FAIL}$ ):
+#### 1.4.2 Persistenza Esaustiva dei Security ed Error Events e Risoluzione dell'Integrità del Replay
+
+Quando un tentativo di transizione $t_{\text{prop}}$ viene inviato al sistema e la validazione fallisce ($\text{ValidateEnvironment}(P(L), t_{\text{prop}}, E) = \text{FAIL} \lor \text{EvaluateGuards}(P(L), t_{\text{prop}}) = \text{FAIL}$):
 1. La proposta non valida $t_{\text{prop}}$ viene scartata senza mutare il caso utente.
-2. Il runtime genera immediatamente una transizione di sistema formale ed esplicita:
+2. Per gli errori di validazione non causati da corruzione strutturale del supporto di memorizzazione, il runtime `MUST` generare ed appendere immediatamente al Ledger una transizione formale di sistema $t_{\text{err}} \in T$:
 ```math
-t_{\text{sec}} = \langle \text{TransactionBody}_{\text{sec}}, \text{proof}_{\text{sec}} \rangle \in T
+t_{\text{err}} = \left\langle \text{TransactionBody}(\text{actor}=\text{SYSTEM}, \text{event}=\sigma_{\text{err}}, \text{payload}=\text{ErrorContext}), \ \text{proof}_{\text{sys}} \right\rangle
 ```
-   recante un evento di sicurezza riconosciuto:
+   recante l'evento corrispondente: 
 ```math
-\sigma_{\text{sec}} \in \{\text{EV\_SML\_FAIL}, \text{EV\_HASH\_CORRUPT}, \text{EV\_LEASE\_EXP}, \text{EV\_TIMEOUT}\}
+\sigma_{\text{err}} \in \{\text{EV\_SML\_FAIL}, \text{EV\_LEASE\_EXP}, \text{EV\_TIMEOUT}\}
 ```
-3. La transizione $t_{\text{sec}}$ viene concatenata al Ledger: $L' = L \mathbin{\Vert} \langle t_{\text{sec}} \rangle$.
-4. La valutazione pura di $t_{\text{sec}}$ sullo stato produce deterministicamente lo stato di lockdown:
+   **Eccezione per Corruzione del Ledger 
 ```math
-\text{Apply}(P(L), t_{\text{sec}}) = S_{\text{lockdown}} := \left\langle \text{case}_{\text{id}}, \ q=\text{SECURITY\_LOCKDOWN}, \ q_H, \ \mathcal{P}_{\text{active}}, \ \mathcal{M}_{\text{prov}}, \ \mathcal{F}_{\text{lease}}, \ \mathcal{Q}_{\text{consent}}, \ \mathcal{O}_{\text{decision}}, \ \mathcal{K}_{\text{playbook}}, \ \mathcal{A}_{\text{index}}, \ \mathcal{H}_{\text{bound}} \right\rangle
+\text{EV\_HASH\_CORRUPT}
 ```
-
-**Claim di Dimostrazione Richiesto (Teorema del Replay Deterministico):**
+** Qualora il fallimento sia causato dalla corruzione fisica o manomissione della catena di hash sul Ledger, la transizione $t_{\text{err}}$ `MUST NOT` essere appesa alla catena invalida, bensì registrata in uno storage diagnostico sidecar non volatile, provocando l'immediata transizione dello stato di sicurezza a 
 ```math
-\forall L \in \mathcal{L} \text{ tale che } \text{Replay}(L) \neq \bot, \quad P(L) = \text{Replay}(L)
+q = \text{SECURITY\_LOCKDOWN}
 ```
 
-In virtù di questa regola, **ogni mutazione dello stato di runtime (compreso il lockdown) corrisponde ad una transizione immutabile presente nel Ledger**, garantendo l'uguaglianza assoluta $P(L) = \text{Replay}(L)$.
+3. Per gli errori standard, la concatenazione di $t_{\text{err}}$ al Ledger:
+```math
+L' = L \mathbin{\Vert} \langle t_{\text{err}} \rangle
+```
+
+assicura che la valutazione pura di $\text{Apply}(P(L), t_{\text{err}})$ produca deterministicamente lo stato proiettato di errore:
+```math
+q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\}
+```
+
+**Teorema della Totalità del Replay Deterministico:**
+```math
+\forall L \in \mathcal{L}, \quad P(L) = \text{Replay}(L) \neq \bot
+```
+
+In virtù di questa regola, **ogni mutazione dello stato di runtime corrisponde ad una transizione immutabile presente nel Ledger** (o nel registro diagnostico sidecar in caso di corruzione del supporto), garantendo l'uguaglianza assoluta tra proiezione e riesecuzione.
 
 ---
 
@@ -360,7 +409,15 @@ D_P := \langle v, \kappa, \alpha, t, \phi, \psi, \omega \rangle
 ```
 
 * $v \in \mathcal{V}$: Il valore informativo.
-* $\kappa \in \mathcal{K}_{\text{prov}}$: Categoria di provenienza ($\mathcal{K}_{\text{prov}} = \mathcal{K}_{\text{epistemic}} \cup \mathcal{K}_{\text{personal}}$).
+* 
+```
+\kappa \in \mathcal{K}_{\text{prov}} 
+```
+Categoria di provenienza: 
+```math
+\mathcal{K}_{\text{prov}} = \mathcal{K}_{\text{epistemic}} \cup \mathcal{K}_{\text{personal}}
+```
+
 * $\alpha \in \mathcal{I}_{\text{actor}}$: Identificatore dell'attore asseritore.
 * $t \in \mathcal{T}$: Istante temporale di asserzione.
 * $\phi \in [0.0, 1.0]$: Punteggio numerico di confidenza.
@@ -435,13 +492,26 @@ Con il vincolo di normalizzazione:
 ```
 
 Dove:
-* $\text{ClarityScore}(S) \in [0.0, 1.0]$: Misura la capacità dell'utente di identificare chiaramente il prossimo micro-passo operativo senza percezione di sovraccarico cognitivo.
+* $\text{ClarityScore}(S) \in [0.0, 1.0]$ (Punteggio di Ergonomia Cognitiva e Chiarezza Percepita):
+  Misura la capacità dell'interazione di procedere senza che l'utente incontri ostacoli di comprensione o necessiti di continue riformulazioni. È formalizzato come la funzione bounded:
+```math
+\text{ClarityScore}(S) := 1.0 - \min\left(1.0, \ \frac{\text{RephraseRequests}(S) + \text{AmbiguityEvents}(S)}{\text{TotalUserInteractions}(S) + 1}\right)
+```
+
 * $\text{ActionExecutionRatio}(S) \in [0.0, 1.0]$: Il rapporto regolarizzato tra i micro-passi liberamente confermati ed eseguiti dall'utente rispetto alle intenzioni formulate:
 ```math
 \text{ActionExecutionRatio}(S) := \begin{cases} 1.0 & \text{se } \text{TotalProposedActions}(S) = 0 \\ \frac{\text{CompletedUserSteps}(S)}{\text{TotalProposedActions}(S)} & \text{se } \text{TotalProposedActions}(S) > 0 \end{cases}
 ```
+
 * Assioma di Calibrazione di Genesi: $\text{AGI}(s_0) = 0.0$.
-* $\text{DependencyReductionScore}(S) \in [0.0, 1.0]$: L'aumento progressivo dell'autonomia dell'utente rispetto al supporto del sistema.
+* $\text{DependencyReductionScore}(S) \in [0.0, 1.0]$ (Punteggio di Autonomia e Svincolo dal Sistema):
+  Misura il grado di iniziativa autonoma dell'utente rispetto al supporto diretto del sistema o dell'operatore umano. È formalizzato dal rapporto regolarizzato:
+```math
+\text{DependencyReductionScore}(S) := \begin{cases} 
+0.0 & \text{se } \text{TotalCompletedSteps}(S) = 0 \\
+\frac{\text{AutonomousUserSteps}(S) + 0.5 \cdot \text{AssistedSteps}(S)}{\text{TotalCompletedSteps}(S)} & \text{se } \text{TotalCompletedSteps}(S) > 0 
+\end{cases}
+```
 
 ---
 
@@ -499,17 +569,35 @@ F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
 ```
 
 #### 2.2.1 Mappatura Formale della Funzione Totale di Transizione $\delta_M$ e Portabilità dei Dati
-La funzione pura di transizione $\delta_M: Q \times \Sigma \times \mathcal{T}_{\text{JSON}} \to Q$ è derivata in modo deterministico dal contratto canonico JSON $T_{\text{JSON}}$ (§10.3) mediante la funzione normativamente definita $\text{firstMatch}$:
-
+La funzione pura di transizione: 
+```math
+$\delta_M: Q \times \Sigma \times \mathcal{T}_{\text{JSON}} \to Q
+```
+è derivata in modo deterministico dal contratto canonico JSON $T_{\text{JSON}}$ (§10.3) mediante la funzione normativamente definita $\text{firstMatch}$:
 ```math
 \delta_M(q, \sigma, T_{\text{JSON}}) := \text{firstMatch}(T_{\text{JSON}}, q, \sigma)
 ```
 
-**Invariante di Portabilità in Read-Only (`INV-READONLY-PORTABILITY-01`):**  
+#### 2.2.1.1 Operatore di Risoluzione Deterministica $\text{firstMatch}$ e Precedenza Wildcard
+La funzione deterministica $\text{firstMatch}(T_{\text{JSON}}, q, \sigma)$ valuta l'insieme delle regole di transizione definite nel contratto JSON $T_{\text{JSON}}$ applicando la seguente **Gerarchia di Precedenza Assoluta**:
+
+```math
+\text{firstMatch}(T_{\text{JSON}}, q, \sigma) := \begin{cases}
+q_{\text{target}} & \text{se } \exists \ r \in T_{\text{JSON}} \text{ t.c. } r.\text{from} = q \land r.\text{event} = \sigma \quad (\text{Exact Match}) \\
+q_{\text{wildcard}} & \text{se } \nexists \ \text{Exact Match} \land \exists \ r \in T_{\text{JSON}} \text{ t.c. } r.\text{from} = q \land r.\text{event} = \text{"*"} \quad (\text{Wildcard Match}) \\
+q & \text{se } \nexists \ \text{Match} \quad (\text{Stuttering Step Default})
+\end{cases}
+```
+
+**Regola di Invarianza dal Parsing:** L'esito della valutazione di $\text{firstMatch}$ `MUST` dipendere unicamente dalla gerarchia matematica sopra definita e `MUST NOT` essere influenzato dall'ordine strutturale di elencazione delle righe all'interno del file JSON.
+
+**Invariante di Portabilità in Read-Only (`INV-READONLY-PORTABILITY-01`):**
+
 Quando l'automa $M$ si trova nello stato:
 ```math
 q_6 = \text{SAFE\_READ\_ONLY\_MODE}
 ```
+
 il runtime `MUST` mantenere attiva ed accessibile la funzione di sola lettura dello stato proiettato $P(L)$, garantendo all'utente la facoltà inalienabile di consultare ed esportare l'intera storia del proprio percorso personale e dei dati visibili non cifrati.
 
 ---
@@ -627,7 +715,7 @@ La funzione pura di valutazione $\text{EvaluateGuards}: \mathcal{S} \times T \to
 ```
 
 ```math
-\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{ValidateEnvironment}(S, t, E) = \text{FAIL} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL})}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle \text{VALIDATION\_ERROR}, q_H, S \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{ValidateEnvironment}(S, t, E) = \text{FAIL} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL}) \quad t_{\text{err}} = \text{BuildErrorTx}(\sigma_C)}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle \text{VALIDATION\_ERROR}, q_H, \text{Apply}(S, t_{\text{err}}) \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
 ```
 
 ---
@@ -697,15 +785,27 @@ Il `PolicyBundle` $\mathcal{P}$ è formalizzato come la tupla algebrica:
 L'operatore di composizione algebrica $\oplus$ produce il bundle composito $\mathcal{P}_{\text{comp}} = \mathcal{P}_1 \oplus \mathcal{P}_2$ mediante la funzione esplicita $\text{ComposePolicy}$:
 
 ```math
-\text{ComposePolicy}(\mathcal{P}_1, \mathcal{P}_2) := \left\langle \text{PolicyID}_{\text{comp}}, \text{CompositePolicyVersion}, \Theta_1 \cup \Theta_2, \mathcal{R}_{\text{exec, comp}}, \text{Sig}_{\text{comp}} \right\rangle
+\text{ComposePolicy}(\mathcal{P}_1, \mathcal{P}_2) := \left\langle \text{PolicyID}_{\text{comp}}, \text{CompositePolicyVersion}, \text{CompositePolicyDigest}, \Theta_1 \cup \Theta_2, \mathcal{R}_{\text{exec, comp}}, \text{Sig}_{\text{comp}} \right\rangle
 ```
 
 Dove:
-* $\text{PolicyID}_{\text{comp}} = H(\text{sort}(\text{PolicyID}_1, \text{PolicyID}_2))$
-* **Versione Composita Commutativa via Hash (`OBI-006`):**
 ```math
-\text{CompositePolicyVersion} = H\left( \text{sort}(\text{PolicyID}_1, \text{PolicyID}_2) \mathbin{\Vert} \text{sort}(\text{Version}_1, \text{Version}_2) \right)
+\text{PolicyID}_{\text{comp}} = H(\text{sort}(\text{PolicyID}_1, \text{PolicyID}_2))
 ```
+
+* **Impronta Crittografica Composita (`OBI-006`):**
+```math
+\text{CompositePolicyDigest} = H\left( \text{sort}(\text{PolicyID}_1, \text{PolicyID}_2) \mathbin{\Vert} \text{sort}(\text{Version}_1, \text{Version}_2) \right) \in \mathcal{D}
+```
+
+* **Versione Composita Compatibile col Dominio $V$:**
+  La versione del bundle composito $\text{CompositePolicyVersion} \in V$ è derivata componendo le tuple SemVer $v_1 = \langle M_1, m_1, p_1 \rangle$ e $v_2 = \langle M_2, m_2, p_2 \rangle$ tramite l'operatore di estremo superiore:
+```math
+\text{CompositePolicyVersion} := \left\langle \max(M_1, M_2), \ \max(m_1, m_2), \ \max(p_1, p_2) \right\rangle \in V
+```
+
+  Tale formalizzazione preserva l'appartenenza allo Spazio delle Versioni $V := \mathbb{N} \times \mathbb{N} \times \mathbb{N}$ (§6.1) e garantisce la valutabilità della relazione di compatibilità retroattiva $\preceq_{\text{compat}}$ (§6.2).
+
 * La funzione di valutazione composita $\mathcal{R}_{\text{exec, comp}}(S, t)$ è governata dalla regola disgiunta `DENY-OVERRIDES`:
 
 ```math
@@ -814,7 +914,15 @@ H_0 = \mathbf{0}_{\mathcal{D}} \quad (\text{Digest nullo di Genesi})
 H_N = H\left( \text{Canon}(\text{TransactionBody}_N) \right)
 ```
 
-Dove $H: \mathcal{B}^* \to \mathcal{D}$ è la funzione di hash astratta (SHA-256) e $\text{TransactionBody}_N$ contiene $H_{N-1}$ come valore del campo `prev_hash`.
+Dove 
+```sh
+H: \mathcal{B}^* \to \mathcal{D}
+```
+è la funzione di hash astratta (SHA-256) e 
+```math
+\text{TransactionBody}_N
+```
+contiene $H_{N-1}$ come valore del campo `prev_hash`.
 
 ---
 
@@ -843,6 +951,7 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 #### Sotto-insieme Validazione, Parsing e Flussi (80–89)
 * **Runtime Error Code 80 (`ERR_SML_PARSE_FAILED`):** Errore di validazione sintattica dell'input SML v2.0 rispetto alla grammatica EBNF (§C.1).
 * **Runtime Error Code 81 (`ERR_HUMAN_INACTIVITY_TIMEOUT`):** Scadenza della soglia temporale di inattività nello stato $h_7$ (`HUMAN_PAUSED`).
+* **Runtime Error Code 82 (`ERR_PLAYBOOK_NODE_NOT_FOUND`):** Tentativo di avanzamento verso un identificatore di nodo non esistente nel grafo del Playbook active ($G_P$).
 * **Runtime Error Code 83 (`ERR_GRAPH_CYCLE_DETECTED`):** Rilevazione di un ciclo illegale sui nodi bloccanti all'interno di un Emancipation Playbook Graph ($G_P$).
 * **Runtime Error Code 84 (`ERR_SCHEMA_MISMATCH`):** Incompatibilità di versione dello schema dati non coperta da un `MigrationManifest` valido.
 * **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`):** Errore di formattazione o presenza di numeri fuori dall'intervallo consentito (*Strict Signed Safe Integer Range*).
@@ -964,17 +1073,21 @@ Un documento JSON $j \in \text{JSON}_{\text{RFC8259}}$ appartiene al sottoinsiem
 I_{\text{safe}} = \left[ -(2^{53} - 1), \ +(2^{53} - 1) \right] = \left[ -9007199254740991, \ +9007199254740991 \right]
 ```
 
-Qualsiasi notazione contenente punti decimali (`1.0`), notazione scientifica (`1e10`), `NaN` o `Infinity` `MUST` essere rifiutata con **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`)**.
+Qualsiasi notazione contenente notazione scientifica (`1e10`), `NaN` o `Infinity` `MUST` essere rifiutata con **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`)**.
+**Regola dei Valori in Virgola Mobile $[0.0, 1.0]$:** I campi numerici rappresentanti probabilità, punteggi di confidenza ($\phi$) o indici AGI $[0.0, 1.0]$ `MUST` essere normalizzati in formato JSON come numeri interi a punto fisso scalati di un fattore $10^4$ (Basis Points, intervallo $[0, 10000]$) oppure serializzati in conformità rigorosa alle regole di rappresentazione dei numeri dello standard RFC 8785 (JCS).
 
 #### 10.2.2 Algoritmo di Serializzazione Canonica SC-JCS-1
 1. **Whitespace Elimination:** Rimuovere tutti i caratteri di spaziatura esterni alle stringhe.
 2. **String Escaping & Literal Primitives Rule:** Escape unicamente per U+0000..U+001F, `"`, e `\`.
 3. **Unicode Normalization:** Normalizzazione Normalization Form C (NFC).
 4. **Object Key Sorting:** Ordinamento ascendente secondo i code-unit UTF-16.
-5. **Set Semantics Array Registry:** Ordinamento ascendente dei byte UTF-8 della serializzazione per gli insiemi matematici registrati:
+5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry`:
 ```math
 \text{SetSemanticsRegistry} = \left[ \text{"completed\_nodes"}, \ \text{"permissions"}, \ \text{"prerequisites"}, \ \text{"roles"}, \ \text{"scopes"} \right]
 ```
+   L'ordinamento degli elementi dell'array `MUST` essere eseguito con una strategia **Ricorsiva Bottom-Up (Deep Canonicalization)**:
+   * **Passo 5.a:** Ogni elemento dell'array (sia esso una primitiva o un oggetto JSON complesso nidificato) `MUST` essere prima serializzato autonomamente in una sequenza di byte canonica SC-JCS-1 applicando ricorsivamente le regole 1-4.
+   * **Passo 5.b:** Gli elementi dell'array così serializzati `MUST` essere ordinati in modo ascendente sulla base del confronto lexicografico byte-per-byte delle loro rappresentazioni UTF-8 canoniche.
 
 ---
 
@@ -1004,16 +1117,20 @@ Qualsiasi notazione contenente punti decimali (`1.0`), notazione scientifica (`1
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_TIMEOUT", "to": "VALIDATION_ERROR"},
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_REPAIR", "to": "NORMAL"},
+    {"from": "VALIDATION_ERROR", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "VALIDATION_ERROR", "event": "EV_SUCCESS", "to": "NORMAL"},
     {"from": "VALIDATION_ERROR", "event": "*", "to": "VALIDATION_ERROR"},
+    {"from": "RECOVERABLE_FAILURE", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "RECOVERABLE_FAILURE", "event": "EV_SUCCESS", "to": "NORMAL"},
     {"from": "RECOVERABLE_FAILURE", "event": "EV_TIMEOUT", "to": "OPERATOR_REQUIRED"},
     {"from": "RECOVERABLE_FAILURE", "event": "*", "to": "RECOVERABLE_FAILURE"},
+    {"from": "OPERATOR_REQUIRED", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "OPERATOR_REQUIRED", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "OPERATOR_REQUIRED", "event": "*", "to": "OPERATOR_REQUIRED"},
     {"from": "SECURITY_LOCKDOWN", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "SECURITY_LOCKDOWN", "event": "EV_TIMEOUT", "to": "SAFE_READ_ONLY_MODE"},
     {"from": "SECURITY_LOCKDOWN", "event": "*", "to": "SECURITY_LOCKDOWN"},
+    {"from": "SAFE_READ_ONLY_MODE", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "SAFE_READ_ONLY_MODE", "event": "EV_REPAIR", "to": "NORMAL"},
     {"from": "SAFE_READ_ONLY_MODE", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "SAFE_READ_ONLY_MODE", "event": "*", "to": "SAFE_READ_ONLY_MODE"}
@@ -1149,4 +1266,4 @@ SCINTILLA CORE distingue formalmente i seguenti livelli di maturità:
 ### 12.3 Regola di Dichiarazione della Certificazione
 Nessuna implementazione o documento derivato `SHALL` dichiarare SCINTILLA CORE come "formalmente verificato" o "matematicamente provato" in assenza dei corrispondenti artefatti verificati definiti ai livelli VERIF e VERIF-PROOF. La conformità alla presente specifica garantisce esclusivamente lo stato:
 
-**SPEC-COMPLETE — Canonical Specification v4.2 Timeless (GitHub Edition)**
+**SPEC-COMPLETE — Canonical Specification v4.2 Timeless**
