@@ -10,6 +10,10 @@
 
 ---
 
+***Human Agency (Agentività Umana, Capacità di Agire Umana)***: La capacità intenzionale e concreta dell'individuo di esercitare il controllo causale sulle proprie azioni, decisioni e traiettorie di vita, supportata dalla consapevolezza della propria efficacia.
+
+---
+
 # PREAMBOLO E PRINCIPIO FONDAMENTALE DI GARANZIA
 
 SCINTILLA CORE è un sistema operativo deterministico e umano-centrico per la gestione di **Percorsi di Emancipazione Personale** (es. uscita dall'instabilità abitativa, recupero documenti d'identità, autonomia finanziaria e lavorativa).
@@ -29,7 +33,7 @@ L'architettura separa in modo strutturale e non negoziabile:
 
 ---
 
-### 0.1 MISSIONE FONDATIVA E INVARIANTE SUPREMO DI AGENZIA
+### 0.1 MISSIONE FONDATIVA E INVARIANTE SUPREMO DI AGENCY
 
 Il dominio SCINTILLA CORE è strutturato ed ingegnerizzato attorno ad una singola missione di valore sociale ed etico: **aumentare la capacità concreta di una persona fragile o vulnerabile di trasformare una situazione di instabilità o crisi in un percorso strutturato di emancipazione e autonomia**.
 
@@ -40,8 +44,8 @@ $$\mathbf{INV-SUPREME-AGENCY-01}$$
 
 > **"SCINTILLA CORE ha la missione di creare un automa di garanzia ed un assistente digitale capaci di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi ed organizzativi che impediscono il passaggio dall'intenzione all'azione, senza mai sostituirsi alla loro volontà e senza mai supportare azioni incompatibili con la dignità umana, la sicurezza ed i diritti altrui."**
 
-#### 0.1.2 Formalizzazione del Concetto di Agenzia Responsabile
-Il sistema definisce l'**Agenzia Umana** non come un mero esercizio di arbitrio o consumo di opzioni, bensì come **Agenzia Operativa Responsabile** ($\text{Agency}_{\text{resp}}$), formalizzata dalla tupla algebrica:
+#### 0.1.2 Formalizzazione del Concetto di Agency Responsabile
+Il sistema definisce l'**Agency Umana** non come un mero esercizio di arbitrio o consumo di opzioni, bensì come **Agency Operativa Responsabile** ($\text{Agency}_{\text{resp}}$), formalizzata dalla tupla algebrica:
 
 $$\text{Agency}_{\text{resp}} := \langle \text{CapacitàDiAzione}, \text{ComprensioneContesto}, \text{ValutazioneAlternative}, \text{Pianificazione}, \text{Perseveranza}, \text{PercezioneDiControllo} \rangle$$
 
@@ -145,7 +149,7 @@ Dove:
 * $\mathcal{Q}_{\text{consent}}$: Lo stato corrente del registro delle manifestazioni di consenso granulare dell'utente.
 * $\mathcal{O}_{\text{decision}} \in \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE}, \text{NONE} \}$: L'esito dell'ultima valutazione decisionale del Policy Guidance Engine.
 * $\mathcal{K}_{\text{playbook}} := \langle \text{playbook}_{\text{id}}, \text{current}_{\text{node}_{\text{id}}}, \text{completed}_{\text{nodes}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})$: Lo stato dell'esecutore del Playbook (§5).
-* $\mathcal{A}_{\text{index}} \in [0.0, 1.0]$: Lo stato corrente dell'Indice di Guadagno di Agenzia ($\text{AGI}$, §1.7).
+* $\mathcal{A}_{\text{index}} \in [0.0, 1.0]$: Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7).
 * $\mathcal{H}_{\text{bound}} \in \{ \text{AUTOMATED\_SUPPORT}, \text{ASSISTED\_DECISION}, \text{HUMAN\_REVIEW\_REQUIRED}, \text{PROFESSIONAL\_INTERVENTION\_REQUIRED} \}$: Il livello corrente di supervisione secondo l'Human Oversight Boundary Model (HOBM, §1.8).
 
 #### 1.1.2 Assioma del Genesis State $s_0$
@@ -196,7 +200,7 @@ Ogni stato $S \in \mathcal{S}$ e transazione $t \in T$ `MUST` soddisfare rigoros
 3. **`INV-GLOBAL-POLICY-03` (Integrità Content-Addressed Binding):**  
    $$\forall N \ge 1, \quad H(\text{ExecutablePolicy}(\mathcal{P}_{\text{active}})) = \text{policy}_{\text{binding}_{\text{hash}_N}}$$
 
-#### 1.1.5 Invarianti di Protezione dell'Agenzia Umana e Trasparenza
+#### 1.1.5 Invarianti di Protezione dell'Agency Umana e Trasparenza
 1. **`INV-HUMAN-AGENCY-01` (Supporto senza Sostituzione):**  
    $$\forall S \in \mathcal{S}, \quad \text{SystemAction}(S) \neq \text{UserDecision}(S)$$
    Il sistema `SHALL` supportare e strutturare il processo decisionale dell'utente, ma `SHALL NOT` sostituire le scelte autonome dell'utente con azioni automatizzate.
@@ -319,9 +323,9 @@ Al fine di tutelare gli utenti in condizioni di fragilità psicologica, sociale 
 
 ---
 
-### 1.7 Indice di Guadagno di Agenzia ($\text{AGI}$) con Pesi Dinamici
+### 1.7 Indice di Guadagno di Agency ($\text{AGI}$) con Pesi Dinamici
 
-L'**Indice di Guadagno di Agenzia** ($\text{AGI} \in [0.0, 1.0]$) è formalizzato come una funzione di valutazione i cui pesi $\mathbf{w}(q_H)$ variano dinamicamente in funzione dello stato corrente del percorso umano $q_H \in Q_H$:
+L'**Indice di Guadagno di Agency** ($\text{AGI} \in [0.0, 1.0]$) è formalizzato come una funzione di valutazione i cui pesi $\mathbf{w}(q_H)$ variano dinamicamente in funzione dello stato corrente del percorso umano $q_H \in Q_H$:
 
 $$\text{AGI}(S) := w_1(q_H) \cdot \text{ClarityScore}(S) + w_2(q_H) \cdot \text{ActionExecutionRatio}(S) + w_3(q_H) \cdot \text{DependencyReductionScore}(S)$$
 
