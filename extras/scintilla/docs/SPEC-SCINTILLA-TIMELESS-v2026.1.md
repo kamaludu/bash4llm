@@ -790,10 +790,16 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 
 #### Predicati Atomici di Stato
 Sia $S \in \mathcal{S}$ lo stato algebrico corrente. Sono definiti i seguenti predicati booleani puri:
-* $\text{IsSafetyGateAllowed}(S) \iff \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}$
-* $\text{IsDecisionOutcomeAllowed}(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}$
-* $\text{IsHashChainValid}(S) \iff H(\text{Canon}(\text{TransactionBody}_N)) = H_N$
-* $\text{IsMonotonicFence}(S) \iff \text{fencing}_{\text{token}_N} > \text{fencing}_{\text{token}_{N-1}}$
+
+$\text{IsSafetyGateAllowed}(S) \iff \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}$  
+
+$\text{IsDecisionOutcomeAllowed}(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}$  
+
+$\text{IsHashChainValid}(S) \iff H(\text{Canon}(\text{TransactionBody}_N)) = H_N$  
+
+```math
+\text{IsMonotonicFence}(S) \iff \text{fencing}_{\text{token}_N} > \text{fencing}_{\text{token}_{N-1}}
+```
 
 #### Assunzioni di Equità Ambientale e dell'Utente (Fairness Assumptions)
 $$\text{FAIR}_{\text{USER}} \iff \square \diamondsuit (\text{UserEngaged}) \land \neg \text{ConsentRevoked}$$
