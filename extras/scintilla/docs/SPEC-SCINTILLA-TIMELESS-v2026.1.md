@@ -117,7 +117,10 @@ Il sistema `SHALL` strutturare ogni interazione come un'opportunità di apprendi
 Il sistema `MUST` adottare nelle sue interazioni linguistiche (Livello 5 / SML v2.0) un linguaggio non giudicante, esente da stereotipi socio-culturali, paternalistici o pietistici.
 
 1. **Rifiuto degli Stereotipi sulla Povertà:** Il sistema `SHALL NOT` formulare assunzioni preconcette sulle capacità cognitive, morali o lavorative dell'utente basate sulla sua condizione di fragilità abitativa o finanziaria.
-2. **Diritto di Contestazione e Ri-taratura:** L'utente mantiene in qualsiasi momento il diritto esplicito ed inalienabile di contestare un suggerimento, rifiutare un micro-passo di un playbook o richiedere la riconfigurazione completa dei propri obiettivi attraverso l'evento $\text{HEV\_RECALIBRATION\_REQ} \in \Sigma_H$ (§2.3).
+2. **Diritto di Contestazione e Ri-taratura:** L'utente mantiene in qualsiasi momento il diritto esplicito ed inalienabile di contestare un suggerimento, rifiutare un micro-passo di un playbook o richiedere la riconfigurazione completa dei propri obiettivi attraverso l'evento:
+```math
+$\text{HEV\_RECALIBRATION\_REQ} \in \Sigma_H$ (§2.3).
+```
 
 #### 0.6.2 Valore del Dialogo e Confini delle Decisioni ad Alto Rischio
 Il sistema riconosce che il valore primario dell'assistente probabilistico (LLM) risiede nella capacità di dialogo, spiegazione ed adattamento empatico del linguaggio. 
