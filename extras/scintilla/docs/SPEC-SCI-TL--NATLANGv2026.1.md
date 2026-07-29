@@ -21,7 +21,7 @@ Con il termine **Human Agency** (Capacità di Agire Umana o Agentività) si inte
 
 # PREAMBOLO E PRINCIPIO FONDAMENTALE DI GARANZIA
 
-SCINTILLA CORE è un sistema operativo digitale, deterministico e centrato sulla persona, progettato per accompagnare individui che vivono situazioni di grave vulnerabilità (come l'assenza di una dimora, la perdita dei documenti d'identità, la disoccupazione o la fragilità finanziaria) lungo un **Percorso di Emancipazione Personale**.
+SCINTILLA CORE è un sistema operativo digitale, deterministico e centrato sulla persona, progettato per accompagnare individui che vivono situazioni di grave vulnerabilità (come l'assenza di una dimora, la perdita dei documenti d'identità, la disoccupazione, la fragilità finanziaria) lungo un **Percorso di Emancipazione Personale**.
 
 ### Il Principio Assoluto dell'Architettura
 SCINTILLA CORE non è un "algoritmo che decide della vita delle persone", ma un **automa di garanzia**. La sua funzione fondamentale è assicurare che l'intelligenza artificiale conversazionale (un Assistente Linguistico Probabilistico di livello avanzato, chiamato LLM) rimanga in ogni momento subordinata e sottomessa alla volontà, al consenso, alla comprensione e alle decisioni autonome dell'utente fragile.
