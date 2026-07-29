@@ -401,19 +401,23 @@ Con il vincolo di normalizzazione:
 $$\forall q_H \in Q_H, \quad w_1(q_H) + w_2(q_H) + w_3(q_H) = 1.0$$
 
 #### Mappatura Normativa del Vettore dei Pesi $\mathbf{w}(q_H)$:
-
-$$\mathbf{w}(q_H) := \begin{cases}
+```math
+\mathbf{w}(q_H) := \begin{cases}
 \langle 0.60, \ 0.30, \ 0.10 \rangle & \text{se } q_H \in \{ \text{UNASSESSED}, \text{INITIAL\_ASSESSMENT}, \text{STABILIZATION} \} \quad (\text{Priorità Riduzione Carico Cognitivo}) \\
 \langle 0.30, \ 0.50, \ 0.20 \rangle & \text{se } q_H \in \{ \text{DOCUMENT\_RECOVERY}, \text{EMPLOYMENT\_READINESS} \} \quad (\text{Priorità Esecuzione Micro-Passi}) \\
 \langle 0.20, \ 0.30, \ 0.50 \rangle & \text{se } q_H \in \{ \text{FINANCIAL\_AUTONOMY}, \text{SUSTAINED\_INDEPENDENCE} \} \quad (\text{Priorità Autonomia e Indipendenza}) \\
 \langle 0.40, \ 0.20, \ 0.40 \rangle & \text{se } q_H \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{HUMAN\_GOAL\_CHANGED} \} \quad (\text{Priorità Ri-orientamento})
-\end{cases}$$
-
+\end{cases}
+```
+  
 Dove:
 * $\text{ClarityScore}(S) \in [0.0, 1.0]$: Misura la capacità dell'utente di identificare chiaramente il prossimo micro-passo operativo senza percezione di sovraccarico cognitivo.
 * $\text{ActionExecutionRatio}(S) \in [0.0, 1.0]$: Il rapporto regolarizzato tra i micro-passi liberamente confermati ed eseguiti dall'utente rispetto alle intenzioni formulate:
-  $$\text{ActionExecutionRatio}(S) := \begin{cases} 1.0 & \text{se } \text{TotalProposedActions}(S) = 0 \\ \frac{\text{CompletedUserSteps}(S)}{\text{TotalProposedActions}(S)} & \text{se } \text{TotalProposedActions}(S) > 0 \end{cases}$$
-  $$\text{AGI}(s_0) = 0.0 \quad (\text{Assioma di Calibrazione di Genesi})$$
+```math
+text{ActionExecutionRatio}(S) := \begin{cases} 1.0 & \text{se } \text{TotalProposedActions}(S) = 0 \\ \frac{\text{CompletedUserSteps}(S)}{\text{TotalProposedActions}(S)} & \text{se } \text{TotalProposedActions}(S) > 0 \end{cases}$$
+  $$\text{AGI}(s_0) = 0.0 \quad (\text{Assioma di Calibrazione di Genesi})
+```
+  
 * $\text{DependencyReductionScore}(S) \in [0.0, 1.0]$: L'aumento progressivo dell'autonomia dell'utente rispetto al supporto del sistema.
 
 ---
