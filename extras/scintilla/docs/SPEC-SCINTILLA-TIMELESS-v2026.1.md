@@ -540,14 +540,15 @@ determinando la transizione di stato:
 ### 2.4 Equazione Matematica del Sistema Reattivo Composito $S_C = Q \times Q_H$
 
 Il sistema reattivo globale di Scintilla Core è modellato dallo spazio di stato composito $S_C = Q \times Q_H$. La funzione di transizione strutturale pura dell'automa composito $\delta_C: (Q \times Q_H) \times (\Sigma \cup \Sigma_H) \to (Q \times Q_H)$ è definita dall'equazione a casi:
-
-$$\delta_C((q, q_H), \sigma_C) = \begin{cases} 
+```math
+\delta_C((q, q_H), \sigma_C) = \begin{cases} 
 (\delta_M(q, \sigma_C, T_{\text{JSON}}), q_H) & \text{se } \sigma_C \in \Sigma \\
 (q, \delta_H(q_H, \sigma_C)) & \text{se } \sigma_C \in \Sigma_H \land q \in F_{\text{oper}} \\
 (q, \delta_H(q_H, \sigma_C)) & \text{se } \sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \notin F_{\text{oper}} \quad (\text{Human Sovereignty Exception}) \\
 (q, q_H) & \text{se } \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \notin F_{\text{oper}} \quad (\text{Lockdown Freeze Axiom})
-\end{cases}$$
-
+\end{cases}
+```
+   
 1. **`INV-DECOUPLING-01` (Disaccoppiamento Unidirezionale):** L'automa del percorso umano $\mathcal{H}$ genera unicamente ipotetiche transizioni di guida. L'automa $\mathcal{H}$ **`SHALL NOT` possedere alcuna autorità diretta di mutazione sullo stato del Runtime Safety State Machine $M$**.
 2. **Eccezione di Sovranità Umana in Lockdown:** Se lo stato del runtime $q \notin F_{\text{oper}}$, le sole transizioni dell'automa umano ammesse per la registrazione immediata nel Ledger sono quelle di revoca del consenso o sospensione (`HEV_PAUSE_REQUESTED`, `HEV_DECLINE_ALL`).
 
