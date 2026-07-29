@@ -216,18 +216,26 @@ $$\text{TransactionBody} := \left\langle \text{tx}_{\text{id}}, \text{case}_{\te
 Qualsiasi dato identificativo personale (PII) o sensibile contenuto nel campo `payload` $\mathcal{V}$ di una transazione $t \in T$ **`MUST NOT` essere memorizzato in chiaro nel Ledger immutabile**.
 
 1. Il payload sensibile $v \in \mathcal{V}$ `MUST` essere memorizzato cifrato tramite la chiave simmetrica effimera del caso utente $K_{\text{case}}$:
-   $$\text{Payload}_{\text{encrypted}} = E_{K_{\text{case}}}(v)$$
+```math
+\text{Payload}_{\text{encrypted}} = E_{K_{\text{case}}}(v)
+```
 2. Nel corpo della transazione viene registrata la tupla $\langle \text{Payload}_{\text{encrypted}}, H(v) \rangle$, preservando l'integrità dell'hash chain SHA-256 $H_N$.
 3. L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, ovvero la distruzione irreversibile della chiave $K_{\text{case}}$. La distruzione di $K_{\text{case}}$ rende il payload matematicamente inintelligibile e privo di valore informativo, senza spezzare o alterare la catena di hash $H_N$ del Ledger.
 
 #### 1.1.4 Invarianti Globali di Sicurezza e Integrità
 Ogni stato $S \in \mathcal{S}$ e transazione $t \in T$ `MUST` soddisfare rigorosamente i seguenti invarianti sistemici:
 1. **`INV-GLOBAL-SEQ-01` (Sequenza Monotona Stretta):**  
-   $$\forall N > 1, \quad \text{seq}_N > \text{seq}_{N-1}$$
+```math
+\forall N > 1, \quad \text{seq}_N > \text{seq}_{N-1}
+```
 2. **`INV-GLOBAL-CASE-02` (Immutabilità Identificatore Caso):**  
-   $$\forall N > 1, \quad \text{case}_{\text{id}_N} = \text{case}_{\text{id}_{N-1}} = \text{case}_{\text{id}_0}$$
+```math
+\forall N > 1, \quad \text{case}_{\text{id}_N} = \text{case}_{\text{id}_{N-1}} = \text{case}_{\text{id}_0}
+```
 3. **`INV-GLOBAL-POLICY-03` (Integrità Content-Addressed Binding):**  
-   $$\forall N \ge 1, \quad H(\text{ExecutablePolicy}(\mathcal{P}_{\text{active}})) = \text{policy}_{\text{binding}_{\text{hash}_N}}$$
+```math
+\forall N \ge 1, \quad H(\text{ExecutablePolicy}(\mathcal{P}_{\text{active}})) = \text{policy}_{\text{binding}_{\text{hash}_N}}
+```
 
 #### 1.1.5 Invarianti di Protezione dell'Agency Umana e Trasparenza
 1. **`INV-HUMAN-AGENCY-01` (Supporto senza Sostituzione):**  
