@@ -400,8 +400,7 @@ Per far sì che l'impronta digitale (Hash SHA-256) di un documento sia sempre id
 
 ---
 
----
-**GLOSSARIO ESSENZIALE DEI TERMINI TECNICI**
+### GLOSSARIO ESSENZIALE DEI TERMINI TECNICI
 
 * **AGI (Agency Gain Index):** L'indice matematico che misura quanto una persona sta guadagnando in autonomia e chiarezza d'azione.
 * **Append-Only:** Modalità di scrittura in cui è possibile solo aggiungere nuovi dati in fondo, senza mai poter cancellare o modificare il passato.
@@ -416,7 +415,6 @@ Per far sì che l'impronta digitale (Hash SHA-256) di un documento sia sempre id
 * **Replay Deterministico:** La capacità di ricostruire esattamente lo stato corrente del sistema rieseguendo la catena di transizioni dal momento zero ad oggi.
 * **RFC 2119 / RFC 8174:** Gli standard internazionali che definiscono il significato esatto di parole d'obbligo come `MUST` (DEVE) e `SHOULD` (DOVREBBE).
 * **UUIDv7:** Identificativo unico universale che include al suo interno la data e l'ora esatta di generazione per ordinare le transizioni nel tempo.
----
 
 ---
 
