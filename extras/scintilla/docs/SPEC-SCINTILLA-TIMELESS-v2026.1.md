@@ -345,17 +345,33 @@ $$D_P := \langle v, \kappa, \alpha, t, \phi, \psi, \omega \rangle$$
 * $t \in \mathcal{T}$: Istante temporale di asserzione.
 * $\phi \in [0.0, 1.0]$: Punteggio numerico di confidenza.
 * $\psi \in \{ \text{UNVERIFIED}, \text{PENDING}, \text{VERIFIED}, \text{REJECTED} \}$: Stato di verifica oggettiva.
-* $\omega \in \{ \text{FACTUAL\_ADMINISTRATIVE}, \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL}, \text{TECHNICAL\_SYSTEM} \}$: Dominio dell'asserzione.
+* Dominio dell'asserzione:
+```math
+\omega \in \{ \text{FACTUAL\_ADMINISTRATIVE}, \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL}, \text{TECHNICAL\_SYSTEM} \}
+```
 
 #### 1.5.1 Modello di Doppia Autorità (Dual Authority Model)
 In conformità a `OBI-007`, l'ordine di autorità informativa varia in base al dominio dell'asserzione $\omega$:
 
-1. **Dominio dei Fatti Amministrativi e Legali ($\omega = \text{FACTUAL\_ADMINISTRATIVE}$):**
-   $$\text{LLM\_INFERENCE} \prec \text{USER\_DECLARATION} \prec \text{EXTERNAL\_SOURCE} \prec \text{OPERATOR\_CONFIRMED} \prec \text{SYSTEM\_VERIFIED}$$
+```math
+\omega = \text{FACTUAL\_ADMINISTRATIVE}$
+```
+**Dominio dei Fatti Amministrativi e Legali:**
+  
+```math
+\text{LLM\_INFERENCE} \prec \text{USER\_DECLARATION} \prec \text{EXTERNAL\_SOURCE} \prec \text{OPERATOR\_CONFIRMED} \prec \text{SYSTEM\_VERIFIED}
+```
    *(Esempio: La verifica del possesso di un documento d'identità o dell'iscrizione all'anagrafe vede la fonte esterna verificata prevalere sulla dichiarazione dell'utente).*
 
-2. **Dominio Soggettivo, Emotivo e degli Obiettivi Personali ($\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}$):**
-   $$\text{LLM\_INFERENCE} \prec \text{EXTERNAL\_SOURCE} \prec \text{SYSTEM\_VERIFIED} \prec \text{OPERATOR\_CONFIRMED} \prec \text{USER\_DECLARATION}$$
+
+```math
+\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}$)
+```
+**Dominio Soggettivo, Emotivo e degli Obiettivi Personali:**
+  
+```math
+\text{LLM\_INFERENCE} \prec \text{EXTERNAL\_SOURCE} \prec \text{SYSTEM\_VERIFIED} \prec \text{OPERATOR\_CONFIRMED} \prec \text{USER\_DECLARATION}
+```
    *(Esempio: La percezione di sicurezza, la stanchezza emotiva o la scelta dei propri scopi di vita vedono la dichiarazione dell'utente come autorità suprema ed inoppugnabile).*
 
 ---
