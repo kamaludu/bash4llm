@@ -117,7 +117,10 @@ Il sistema `SHALL` strutturare ogni interazione come un'opportunità di apprendi
 Il sistema `MUST` adottare nelle sue interazioni linguistiche (Livello 5 / SML v2.0) un linguaggio non giudicante, esente da stereotipi socio-culturali, paternalistici o pietistici.
 
 1. **Rifiuto degli Stereotipi sulla Povertà:** Il sistema `SHALL NOT` formulare assunzioni preconcette sulle capacità cognitive, morali o lavorative dell'utente basate sulla sua condizione di fragilità abitativa o finanziaria.
-2. **Diritto di Contestazione e Ri-taratura:** L'utente mantiene in qualsiasi momento il diritto esplicito ed inalienabile di contestare un suggerimento, rifiutare un micro-passo di un playbook o richiedere la riconfigurazione completa dei propri obiettivi attraverso l'evento $\text{HEV\_RECALIBRATION\_REQ} \in \Sigma_H$ (§2.3).
+2. **Diritto di Contestazione e Ri-taratura:** L'utente mantiene in qualsiasi momento il diritto esplicito ed inalienabile di contestare un suggerimento, rifiutare un micro-passo di un playbook o richiedere la riconfigurazione completa dei propri obiettivi attraverso l'evento (§2.3):
+```math
+\text{HEV\_RECALIBRATION\_REQ} \in \Sigma_H
+```
 
 #### 0.6.2 Valore del Dialogo e Confini delle Decisioni ad Alto Rischio
 Il sistema riconosce che il valore primario dell'assistente probabilistico (LLM) risiede nella capacità di dialogo, spiegazione ed adattamento empatico del linguaggio. 
@@ -136,26 +139,40 @@ Tuttavia, in conformità con il Modello dei Confini di Supervisione Umana (HOBM,
 
 #### 1.1.1 Spazio degli Stati $\mathcal{S}$
 Lo Spazio degli Stati $\mathcal{S}$ è il prodotto cartesiano dei domini di stato fondamentali del sistema:
-
-$$\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}}$$
+```math
+\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}}
+```
 
 Dove:
 * $\mathcal{I}_{\text{case}} \subset \mathcal{I}$: Identificatore unico del caso utente.
 * $Q$: Stato corrente della Runtime Safety State Machine (§2.2).
 * $Q_H$: Stato corrente della Human Journey State Machine (§2.3).
 * $\mathcal{P}_{\text{active}}$: Il bundle di policy attivo (§4.2).
-* $\mathcal{M}_{\text{prov}}: \mathcal{K}_{\text{data}} \to D_P$: La mappa dello stato informativo arricchito con Data Provenance e Doppia Autorità (§1.5).
-* $\mathcal{F}_{\text{lease}} := \langle \text{fencing}_{\text{token}}, \text{lease}_{\text{expiry}} \rangle \in \mathbb{N} \times \mathcal{T}$: Lo stato del lock di concorrenza.
+* La mappa dello stato informativo arricchito con Data Provenance e Doppia Autorità (§1.5):
+```math
+\mathcal{M}_{\text{prov}}: \mathcal{K}_{\text{data}} \to D_P
+```
+* Lo stato del lock di concorrenza:
+```math
+\mathcal{F}_{\text{lease}} := \langle \text{fencing}_{\text{token}}, \text{lease}_{\text{expiry}} \rangle \in \mathbb{N} \times \mathcal{T}
+```
 * $\mathcal{Q}_{\text{consent}}$: Lo stato corrente del registro delle manifestazioni di consenso granulare dell'utente.
 * $\mathcal{O}_{\text{decision}} \in \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE}, \text{NONE} \}$: L'esito dell'ultima valutazione decisionale del Policy Guidance Engine.
-* $\mathcal{K}_{\text{playbook}} := \langle \text{playbook}_{\text{id}}, \text{current}_{\text{node}_{\text{id}}}, \text{completed}_{\text{nodes}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})$: Lo stato dell'esecutore del Playbook (§5).
+* Lo stato dell'esecutore del Playbook (§5):
+```math
+\mathcal{K}_{\text{playbook}} := \langle \text{playbook}_{\text{id}}, \text{current}_{\text{node}_{\text{id}}}, \text{completed}_{\text{nodes}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
+```
 * $\mathcal{A}_{\text{index}} \in [0.0, 1.0]$: Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7).
-* $\mathcal{H}_{\text{bound}} \in \{ \text{AUTOMATED\_SUPPORT}, \text{ASSISTED\_DECISION}, \text{HUMAN\_REVIEW\_REQUIRED}, \text{PROFESSIONAL\_INTERVENTION\_REQUIRED} \}$: Il livello corrente di supervisione secondo l'Human Oversight Boundary Model (HOBM, §1.8).
+* Il livello corrente di supervisione secondo l'Human Oversight Boundary Model (HOBM, §1.8):
+```math
+\mathcal{H}_{\text{bound}} \in \{ \text{AUTOMATED\_SUPPORT}, \text{ASSISTED\_DECISION}, \text{HUMAN\_REVIEW\_REQUIRED}, \text{PROFESSIONAL\_INTERVENTION\_REQUIRED} \}
+```
 
 #### 1.1.2 Assioma del Genesis State $s_0$
 Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ `MUST` contenere tassativamente i seguenti valori predefiniti:
-
-$$s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT} \right\rangle$$
+```math
+s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT} \right\rangle
+```
 
 Dove $t_0 \in \mathcal{T}$ rappresenta l'istante temporale canonico di origine del sistema (§10.1).
 
@@ -171,16 +188,28 @@ $$\text{TransactionBody} := \left\langle \text{tx}_{\text{id}}, \text{case}_{\te
 * $\text{tx}_{\text{id}} \in \mathcal{I}$: Identificatore unico della transazione (UUIDv7).
 * $\text{case}_{\text{id}} \in \mathcal{I}$: Identificatore del caso utente associato.
 * $\text{seq}_{\text{num}} \in \mathbb{N}^+$: Numero di sequenza monotonico della transazione.
-* $\text{prev}_{\text{hash}} \in \mathcal{D}$: Impronta crittografica della transazione precedente ($H_{N-1}$).
+* Impronta crittografica della transazione precedente ($H_{N-1}$):
+```math
+\text{prev}_{\text{hash}} \in \mathcal{D}
+```
 * $\text{timestamp} \in \mathcal{T}$: Istante temporale di generazione.
 * $\text{actor} \in \mathcal{I}_{\text{actor}}$: Identificatore dell'attore mittente.
 * $\text{event} \in \Sigma \cup \Sigma_H$: Evento di transizione dell'automa.
 * $\text{payload} \in \mathcal{V}$: Contenuto informativo specifico della mutazione.
-* $\text{policy}_{\text{binding}_{\text{hash}}} \in \mathcal{D}$: Impronta content-addressed del predicato di policy attivo.
+* Impronta content-addressed del predicato di policy attivo:
+```math
+\text{policy}_{\text{binding}_{\text{hash}}} \in \mathcal{D}
+```
 * $\text{schema}_{\text{hash}} \in \mathcal{D}$: Impronta content-addressed dello schema dati applicativo.
-* $\text{authorization}_{\text{snapshot}_{\text{hash}}} \in \mathcal{D}$: Impronta dello stato delle autorizzazioni dell'attore.
-* $\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}$: Impronta della configurazione del profilo di runtime.
-* $\text{specification}_{\text{id}} \in \mathcal{I}$: Identificatore canonico dello standard (`SCINTILLA-CORE-v4.0-TIMELESS`).
+* Impronta dello stato delle autorizzazioni dell'attore:
+```math
+\text{authorization}_{\text{snapshot}_{\text{hash}}} \in \mathcal{D}
+```
+* Impronta della configurazione del profilo di runtime:
+```math
+\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}
+```
+* $\text{specification}_{\text{id}} \in \mathcal{I}$: Identificatore canonico dello standard (`SCINTILLA-CORE-v4.1-TIMELESS`).
 * $\text{proof} \in \mathcal{S}_{\text{sig}}$: Firma digitale dell'attore calcolata su $\text{Canon}(\text{TransactionBody})$.
 
 #### 1.1.3.1 Invariante di Oblio Crittografico dei Dati Sensibili (`INV-PRIVACY-SHREDDING-01`)
@@ -217,11 +246,15 @@ Per garantire sia il determinismo matematico assoluto della funzione di transizi
 
 #### 1.2.1 Spazio Ambientale $E$
 Lo Spazio Ambientale $E$ raccoglie i fattori di contesto fisici, temporali ed infrastrutturali non contenuti nello stato algebrico $S$:
-
-$$E := \langle t_{\text{wall}}, K_{\text{pubkey\_registry}}, \text{LeaseManager}, \text{I/O}_{\text{status}} \rangle$$
+```math
+E := \langle t_{\text{wall}}, K_{\text{pubkey\_registry}}, \text{LeaseManager}, \text{I/O}_{\text{status}} \rangle
+```
 
 * $t_{\text{wall}} \in \mathcal{T}$: L'ora di sistema dell'ambiente esecutivo (Wall Clock).
-* $K_{\text{pubkey\_registry}}$: Il registro esterno delle chiavi pubbliche e dei certificati di revoca.
+* Il registro esterno delle chiavi pubbliche e dei certificati di revoca:
+```math
+K_{\text{pubkey\_registry}}
+``` 
 * $\text{LeaseManager}$: Il coordinatore infrastrutturale dei lock e dei token di recinzione.
 * $\text{I/O}_{\text{status}}$: Lo stato di integrità dei canali di comunicazione fisica.
 
