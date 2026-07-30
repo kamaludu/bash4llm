@@ -495,7 +495,15 @@ Al fine di tutelare gli utenti in condizioni di fragilità psicologica, sociale 
 L'**Indice di Guadagno di Agency** ($\text{AGI} \in [0.0, 1.0]$) misura l'efficacia del sistema nell'aumentare la capacità operativa dell'utente. 
 
 #### 1.7.1 Assioma di Invarianza Epistemica per Stati Non-Attivi (`AXIOM-AGI-INVARIANCE`)
-Quando l'utente sospende il percorso ($h_7 = \text{HUMAN\_PAUSED}$) o esercita la facoltà di rifiutare l'assistenza ($h_{10} = \text{HUMAN\_DECLINED\_ASSISTANCE}$), il sistema perde la capacità di osservazione dinamica dell'utente. Per evitare sia penalizzazioni ingiuste ($\text{AGI} \to 0.0$) sia false attestazioni di successo ($\text{AGI} := 1.0$), il sistema `MUST` congelare il valore dell'indice al valore calcolato nell'ultimo stato attivo misurato:
+Quando l'utente sospende il percorso:
+```math
+h_7 = \text{HUMAN\_PAUSED}
+```
+ o esercita la facoltà di rifiutare l'assistenza:
+```math
+h_{10} = \text{HUMAN\_DECLINED\_ASSISTANCE}
+```
+il sistema perde la capacità di osservazione dinamica dell'utente. Per evitare sia penalizzazioni ingiuste ($\text{AGI} \to 0.0$) sia false attestazioni di successo ($\text{AGI} := 1.0$), il sistema `MUST` congelare il valore dell'indice al valore calcolato nell'ultimo stato attivo misurato:
 
 ```math
 \forall S_N \in \mathcal{S}, \quad \text{AGI}(S_N) := \begin{cases}
