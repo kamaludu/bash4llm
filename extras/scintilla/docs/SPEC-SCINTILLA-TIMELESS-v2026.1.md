@@ -174,7 +174,7 @@ Dove:
 * $\mathcal{O}_{\text{decision}} \in \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE}, \text{NONE} \}$: L'esito dell'ultima valutazione decisionale del Policy Guidance Engine.
 * Lo stato dell'esecutore del Playbook (§5): 
 ```math
-\mathcal{K}_{\text{playbook}} := \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I}
+\mathcal{K}_{\text{playbook}} := \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
 ```
 * Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7), espresso in Basis Points interi:
 ```math
@@ -1256,9 +1256,28 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 {
   "automaton_id": "SCINTILLA_RUNTIME_SAFETY_AUTOMATON",
   "specification_version": "4.3.0-TIMELESS",
-  "states": ["NORMAL", "REQUIRE_RECALIBRATION", "VALIDATION_ERROR", "RECOVERABLE_FAILURE", "OPERATOR_REQUIRED", "SECURITY_LOCKDOWN", "SAFE_READ_ONLY_MODE"],
+  "states": [
+    "NORMAL",
+    "REQUIRE_RECALIBRATION",
+    "VALIDATION_ERROR",
+    "RECOVERABLE_FAILURE",
+    "OPERATOR_REQUIRED",
+    "SECURITY_LOCKDOWN",
+    "SAFE_READ_ONLY_MODE"
+  ],
   "initial_state": "NORMAL",
-  "events": ["EV_SUCCESS", "EV_ABANDON", "EV_SML_FAIL", "EV_LEASE_EXP", "EV_HASH_CORRUPT", "EV_TIMEOUT", "EV_OVERRIDE", "EV_REPAIR"],
+  "events": [
+    "EV_SUCCESS",
+    "EV_ABANDON",
+    "EV_SML_FAIL",
+    "EV_LEASE_EXP",
+    "EV_HASH_CORRUPT",
+    "EV_TIMEOUT",
+    "EV_OVERRIDE",
+    "EV_REPAIR",
+    "EV_ITEM_PRIVACY_REVOKED",
+    "EV_CRYPTO_SHRED_EXECUTED"
+  ],
   "transitions": [
     {"from": "NORMAL", "event": "EV_SUCCESS", "to": "NORMAL"},
     {"from": "NORMAL", "event": "EV_ABANDON", "to": "REQUIRE_RECALIBRATION"},
@@ -1268,6 +1287,9 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
     {"from": "NORMAL", "event": "EV_TIMEOUT", "to": "VALIDATION_ERROR"},
     {"from": "NORMAL", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "NORMAL", "event": "EV_REPAIR", "to": "NORMAL"},
+    {"from": "NORMAL", "event": "EV_ITEM_PRIVACY_REVOKED", "to": "NORMAL"},
+    {"from": "NORMAL", "event": "EV_CRYPTO_SHRED_EXECUTED", "to": "NORMAL"},
+    
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_SUCCESS", "to": "NORMAL"},
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_ABANDON", "to": "REQUIRE_RECALIBRATION"},
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_SML_FAIL", "to": "VALIDATION_ERROR"},
@@ -1276,19 +1298,27 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_TIMEOUT", "to": "VALIDATION_ERROR"},
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "REQUIRE_RECALIBRATION", "event": "EV_REPAIR", "to": "NORMAL"},
+    {"from": "REQUIRE_RECALIBRATION", "event": "EV_ITEM_PRIVACY_REVOKED", "to": "REQUIRE_RECALIBRATION"},
+    {"from": "REQUIRE_RECALIBRATION", "event": "EV_CRYPTO_SHRED_EXECUTED", "to": "REQUIRE_RECALIBRATION"},
+
     {"from": "VALIDATION_ERROR", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "VALIDATION_ERROR", "event": "EV_SUCCESS", "to": "NORMAL"},
     {"from": "VALIDATION_ERROR", "event": "*", "to": "VALIDATION_ERROR"},
+
     {"from": "RECOVERABLE_FAILURE", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "RECOVERABLE_FAILURE", "event": "EV_SUCCESS", "to": "NORMAL"},
     {"from": "RECOVERABLE_FAILURE", "event": "EV_TIMEOUT", "to": "OPERATOR_REQUIRED"},
     {"from": "RECOVERABLE_FAILURE", "event": "*", "to": "RECOVERABLE_FAILURE"},
+
     {"from": "OPERATOR_REQUIRED", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "OPERATOR_REQUIRED", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "OPERATOR_REQUIRED", "event": "*", "to": "OPERATOR_REQUIRED"},
+
     {"from": "SECURITY_LOCKDOWN", "event": "EV_OVERRIDE", "to": "NORMAL"},
+    {"from": "SECURITY_LOCKDOWN", "event": "EV_REPAIR", "to": "NORMAL"},
     {"from": "SECURITY_LOCKDOWN", "event": "EV_TIMEOUT", "to": "SAFE_READ_ONLY_MODE"},
     {"from": "SECURITY_LOCKDOWN", "event": "*", "to": "SECURITY_LOCKDOWN"},
+
     {"from": "SAFE_READ_ONLY_MODE", "event": "EV_HASH_CORRUPT", "to": "SECURITY_LOCKDOWN"},
     {"from": "SAFE_READ_ONLY_MODE", "event": "EV_REPAIR", "to": "NORMAL"},
     {"from": "SAFE_READ_ONLY_MODE", "event": "EV_OVERRIDE", "to": "NORMAL"},
@@ -1380,6 +1410,24 @@ export interface SMLDocumentParsed {
     | "DOCUMENT" 
     | "SYSTEM_EVENT" 
     | "OPERATOR_CONFIRMATION";
+}
+
+export interface CompetenceRecord {
+  skill_id: string;
+  proficiency_level_bp: BasisPoints; // Basis Points [0, 10000]
+  acquired_timestamp_utc: string;
+}
+
+export interface CredentialVaultRecord {
+  document_id: string;
+  content_hash: string; // Digest SHA-256 del documento cifrato
+  verification_status: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
+}
+
+export interface ArtifactDraftRecord {
+  artifact_id: string;
+  payload_draft: string;
+  approval_status: "DRAFT" | "POLICY_VERIFIED" | "HUMAN_APPROVED";
 }
 ```
 
