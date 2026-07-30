@@ -1150,7 +1150,7 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 ```json
 {
   "automaton_id": "SCINTILLA_RUNTIME_SAFETY_AUTOMATON",
-  "specification_version": "4.2.0-TIMELESS",
+  "specification_version": "4.3.0-TIMELESS",
   "states": ["NORMAL", "REQUIRE_RECALIBRATION", "VALIDATION_ERROR", "RECOVERABLE_FAILURE", "OPERATOR_REQUIRED", "SECURITY_LOCKDOWN", "SAFE_READ_ONLY_MODE"],
   "initial_state": "NORMAL",
   "events": ["EV_SUCCESS", "EV_ABANDON", "EV_SML_FAIL", "EV_LEASE_EXP", "EV_HASH_CORRUPT", "EV_TIMEOUT", "EV_OVERRIDE", "EV_REPAIR"],
