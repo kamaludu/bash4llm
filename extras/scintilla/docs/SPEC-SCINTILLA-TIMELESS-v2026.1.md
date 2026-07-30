@@ -154,7 +154,7 @@ Tuttavia, in conformità con il Modello dei Confini di Supervisione Umana (HOBM,
 #### 1.1.1 Spazio degli Stati $\mathcal{S}$
 Lo Spazio degli Stati $\mathcal{S}$ è il prodotto cartesiano dei domini di stato fondamentali del sistema:
 ```math
-\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}} \times \mathcal{M}_{\text{metrics}} \times (\mathcal{T} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
+\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}} \times \mathcal{M}_{\text{metrics}} \times (\mathcal{T} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I}) \times \mathcal{K}_{\text{competence}} \times \mathcal{V}_{\text{vault}} \times \mathcal{D}_{\text{drafts}}
 ```
 
 Dove:
@@ -162,42 +162,57 @@ Dove:
 * $Q$: Stato corrente della Runtime Safety State Machine (§2.2).
 * $Q_H$: Stato corrente della Human Journey State Machine (§2.3).
 * $\mathcal{P}_{\text{active}}$: Il bundle di policy attivo (§4.2).
-* La mappa dello stato informativo arricchito con Data Provenance e Doppia Autorità (§1.5):
+* La mappa dello stato informativo arricchito con Data Provenance e Doppia Autorità (§1.5): 
 ```math
 \mathcal{M}_{\text{prov}}: \mathcal{K}_{\text{data}} \to D_P
 ```
-* Lo stato del lock di concorrenza:
+* Lo stato del lock di concorrenza: 
 ```math
 \mathcal{F}_{\text{lease}} := \langle \text{fencing}_{\text{token}}, \text{lease}_{\text{expiry}} \rangle \in \mathbb{N} \times \mathcal{T}
 ```
 * $\mathcal{Q}_{\text{consent}}$: Lo stato corrente del registro delle manifestazioni di consenso granulare dell'utente.
 * $\mathcal{O}_{\text{decision}} \in \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE}, \text{NONE} \}$: L'esito dell'ultima valutazione decisionale del Policy Guidance Engine.
-* Lo stato dell'esecutore del Playbook (§5):
+* Lo stato dell'esecutore del Playbook (§5): 
 ```math
-\mathcal{K}_{\text{playbook}} := \langle \text{playbook}_{\text{id}}, \text{current}_{\text{node}_{\text{id}}}, \text{completed}_{\text{nodes}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
+\mathcal{K}_{\text{playbook}} := \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I}
 ```
-* $\mathcal{A}_{\text{index}} \in [0.0, 1.0]$: Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7).
-* Il livello corrente di supervisione secondo l'Human Oversight Boundary Model (HOBM, §1.8):
+* Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7), espresso in Basis Points interi:
+```math
+\mathcal{A}_{\text{index}} \in [0, 10000]
+```
+* Il livello corrente di supervisione HOBM (§1.8): 
 ```math
 \mathcal{H}_{\text{bound}} \in \{ \text{AUTOMATED\_SUPPORT}, \text{ASSISTED\_DECISION}, \text{HUMAN\_REVIEW\_REQUIRED}, \text{PROFESSIONAL\_INTERVENTION\_REQUIRED} \}
 ```
-* I contatori per le metriche dinamiche dell'AGI (§1.7):
+* I contatori per le metriche dinamiche dell'AGI (§1.7): 
 ```math
-\mathcal{M}_{\text{metrics}} := \langle \text{rephrase\_count}, \text{ambiguity\_count}, \text{interaction\_count} \rangle \in \mathbb{N}^3
+\mathcal{M}_{\text{metrics}} := \langle c_{\text{rephrase}}, c_{\text{ambiguity}}, c_{\text{interaction}}, c_{\text{overwhelm}} \rangle \in \mathbb{N}^4
 ```
-* Timestamp di entrata nello stato $h_7$ (`HUMAN_PAUSED`), necessario al calcolo deterministico dei timer di inattività (§2.3.2):
+* Timestamp di entrata nello stato $h_7$ (`HUMAN_PAUSED`): 
 ```math
 t_{\text{pause\_start}} \in \mathcal{T} \cup \{\text{null}\}
 ```
-* L'insieme degli identificatori di elementi informativi soggetti a revoca/oblio parziale (§1.1.3.1):
+* L'insieme degli identificatori di elementi informativi soggetti a revoca/oblio parziale: 
 ```math
 \mathcal{Q}_{\text{revoked\_items}} \subseteq \mathcal{I}
+```
+* **`Palestra delle Competenze` ($\mathcal{K}_{\text{competence}}$):** Il registro delle abilità, alfabetizzazioni e autonomie operative progressivamente acquisite e consolidate dall'utente:
+```math
+\mathcal{K}_{\text{competence}} \in \mathcal{P}(\mathcal{I}_{\text{skill}} \times [0, 10000])
+```
+* **`Credential & Document Vault` ($\mathcal{V}_{\text{vault}}$):** Il sotto-stato per la custodia cifrata dei riferimenti alle credenziali, diritti e attestati di identità verificati:
+```math
+\mathcal{V}_{\text{vault}} \in \mathcal{P}(\mathcal{I}_{\text{doc}} \times \mathcal{D}_{\text{hash}} \times \psi)
+```
+* **`Buffer degli Artefatti Operativi` ($\mathcal{D}_{\text{drafts}}$):** Il registro dello stato di co-creazione e revisione degli artefatti documentali prodotti con il supporto dell'LLM:
+```math
+\mathcal{D}_{\text{drafts}} \in \mathcal{P}(\mathcal{I}_{\text{artifact}} \times \mathcal{V}_{\text{payload}} \times \{ \text{DRAFT}, \text{POLICY\_VERIFIED}, \text{HUMAN\_APPROVED} \})
 ```
 
 #### 1.1.2 Assioma del Genesis State $s_0$
 Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ `MUST` contenere tassativamente i seguenti valori predefiniti:
 ```math
-s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0 \rangle, \ t_{\text{pause\_start}}=\text{null}, \ \mathcal{Q}_{\text{revoked\_items}}=\emptyset \right\rangle
+s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0, 0 \rangle, \ t_{\text{pause\_start}}=\text{null}, \ \mathcal{Q}_{\text{revoked\_items}}=\emptyset, \ \mathcal{K}_{\text{competence}}=\emptyset, \ \mathcal{V}_{\text{vault}}=\emptyset, \ \mathcal{D}_{\text{drafts}}=\emptyset \right\rangle
 ```
 
 #### 1.1.3 Spazio delle Transazioni $T$ e Corpo della Transazione Content-Addressed
@@ -537,16 +552,16 @@ Con il vincolo di normalizzazione del vettore dei pesi:
 #### 1.7.2.1 Definizioni Matematiche Deterministiche delle Sotto-Funzioni di Punteggio
 Le sotto-funzioni di punteggio utilizzate nel calcolo dell'AGI sono funzioni pure defined unicamente dallo stato algebrico $S \in \mathcal{S}$:
 
-1. **Punteggio di Chiarezza Cognitiva ($\text{ClarityScore}: \mathcal{S} \to [0.0, 1.0]$):**  
-   Valuta la fluidità della comprensione dell'utente riducendo il punteggio in presenza di frequenti richieste di riformulazione o ambiguità rilevate in:
+1. **Punteggio di Chiarezza Cognitiva e Stabilità Emotiva:**
 ```math
-\mathcal{M}_{\text{metrics}} = \langle c_{\text{rephrase}}, c_{\text{ambiguity}}, c_{\text{interaction}} \rangle
+\text{ClarityScore}: \mathcal{S} \to [0.0, 1.0]
 ```
-
+  
+   Valuta la fluidità della comprensione e la stabilità emotiva dell'utente, penalizzando il punteggio in presenza di frequenti richieste di riformulazione, ambiguità o stati rilevati di sopraffazione emotiva ($c_{\text{overwhelm}}$):
 ```math
 \text{ClarityScore}(S) := \begin{cases}
 1.0 & \text{se } c_{\text{interaction}} = 0 \\
-\max\left(0.0, \ 1.0 - \frac{c_{\text{rephrase}} + c_{\text{ambiguity}}}{\max(1, c_{\text{interaction}})}\right) & \text{se } c_{\text{interaction}} > 0
+\max\left(0.0, \ 1.0 - \frac{c_{\text{rephrase}} + c_{\text{ambiguity}} + (2 \cdot c_{\text{overwhelm}})}{\max(1, c_{\text{interaction}})}\right) & \text{se } c_{\text{interaction}} > 0
 \end{cases}
 ```
 
@@ -563,25 +578,22 @@ Le sotto-funzioni di punteggio utilizzate nel calcolo dell'AGI sono funzioni pur
 \end{cases}
 ```
 
-3. **Punteggio di Riduzione della Dipendenza ($\text{DependencyReductionScore}: \mathcal{S} \to [0.0, 1.0]$):**  
-   Misura la percentuale di micro-azioni che l'utente ha completato in prima persona (`USER`) senza delegare l'esecuzione ad azioni automatizzate o all'operatore umano:
+3. **Punteggio di Riduzione della Dipendenza ed Agency Relazionale ($\text{DependencyReductionScore}: \mathcal{S} \to [0.0, 1.0]$):**  
+   Misura la capacità dell'utente di guidare il proprio percorso. Onde evitare modelli iper-individualistici, il sistema riconosce la **Co-progettazione Assistita** (`OPERATOR_CO_DESIGN`) non come dipendenza passiva, bensì come esercizio di **Agency Relazionale Responsabile**:
 ```math
 \text{DependencyReductionScore}(S) := \begin{cases}
 0.0 & \text{se } |V_{\text{completed}}| = 0 \\
-\frac{|\{ v \in V_{\text{completed}} \mid \text{ActorTypeOf}(v, S) = \text{USER} \}|}{|V_{\text{completed}}|} & \text{se } |V_{\text{completed}}| > 0
+\frac{|\{ v \in V_{\text{completed}} \mid \text{IsEmpoweredAction}(v, S) \}|}{|V_{\text{completed}}|} & \text{se } |V_{\text{completed}}| > 0
 \end{cases}
 ```
-   dove la funzione pura di lookup dell'attore asseritore:
+
+   Dove il predicato di azione emancipante $\text{IsEmpoweredAction}(v, S)$ è definito come:
 ```math
-\text{ActorTypeOf}: \mathcal{I} \times \mathcal{S} \to \mathcal{I}_{\text{actor}}
-```
- estrae l'identificatore dell'attore dal registro di provenienza:
-```math
-\mathcal{M}_{\text{prov}}
-```
- presente nello stato $S$:
-```math
-\text{ActorTypeOf}(v, S) := \mathcal{M}_{\text{prov}}(v).\alpha
+\text{IsEmpoweredAction}(v, S) \iff \begin{cases}
+\text{TRUE} & \text{se } \text{ActorTypeOf}(v, S) = \text{USER} \\
+\text{TRUE} & \text{se } \text{ActorTypeOf}(v, S) = \text{OPERATOR} \land v.\text{action\_type} \in \{ \text{USER\_CONFIRMED\_STEP}, \text{REQUIRED\_FOR\_SYSTEM\_STATE} \} \land v \in \mathcal{Q}_{\text{consent}} \\
+\text{FALSE} & \text{in tutti gli altri casi (es. azioni automatizzate trasparenti senza validazione dell'utente)}
+\end{cases}
 ```
 
 ---
@@ -680,20 +692,31 @@ L'evoluzione del percorso umano dell'utente è modellata da un automa di dominio
 \mathcal{H} := \langle Q_H, \Sigma_H, \delta_H, q_{H0}, F_H \rangle
 ```
    
-1. **Insieme degli Stati del Percorso Umano $Q_H$ ($|Q_H|=11$):**
+1. **Insieme degli Stati del Percorso Umano $Q_H$ ($|Q_H|=12$):**
 ```math
-Q_H = \{ \text{UNASSESSED } (h_0), \text{INITIAL\_ASSESSMENT } (h_1), \text{STABILIZATION } (h_2), \text{DOCUMENT\_RECOVERY } (h_3), \text{EMPLOYMENT\_READINESS } (h_4), \text{FINANCIAL\_AUTONOMY } (h_5), \text{SUSTAINED\_INDEPENDENCE } (h_6), \text{HUMAN\_PAUSED } (h_7), \text{HUMAN\_RECALIBRATION\_REQUIRED } (h_8), \text{HUMAN\_GOAL\_CHANGED } (h_9), \text{HUMAN\_DECLINED\_ASSISTANCE } (h_{10}) \}
+Q_H = \{ \text{UNASSESSED } (h_0), \text{INITIAL\_ASSESSMENT } (h_1), \text{STABILIZATION } (h_2), \text{DOCUMENT\_RECOVERY } (h_3), \text{EMPLOYMENT\_READINESS } (h_4), \text{FINANCIAL\_AUTONOMY } (h_5), \text{SUSTAINED\_INDEPENDENCE } (h_6), \text{HUMAN\_PAUSED } (h_7), \text{HUMAN\_RECALIBRATION\_REQUIRED } (h_8), \text{HUMAN\_GOAL\_CHANGED } (h_9), \text{HUMAN\_DECLINED\_ASSISTANCE } (h_{10}), \text{PREVENTIVE\_STANDBY } (h_{11}) \}
 ```
 
 2. **Stato Iniziale:** $q_{H0} = \text{UNASSESSED}$.
-3. **Insieme degli Stati Target / Terminali $F_H$:** 
+
+3. **Insieme degli Stati Target / Terminali $F_H$:**  
+   L'unico stato strettamente terminale (uscita definitiva dal sistema su richiesta dell'utente) è:
 ```math
-F_H = \{ \text{SUSTAINED\_INDEPENDENCE}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}
+F_H = \{ \text{HUMAN\_DECLINED\_ASSISTANCE} \}
 ```
-   
-4. **Alfabeto degli Eventi Umani $\Sigma_H$ ($|\Sigma_H|=13$):**
+   *Nota: Lo stato:*
 ```math
-\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM} \}
+h_6 = \text{SUSTAINED\_INDEPENDENCE}
+```
+*viene rifattorizzato come stato di equilibrio dinamico ad alta autonomia, abilitando la transizione verso:*
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+*senza reset del percorso.*
+
+4. **Alfabeto degli Eventi Umani $\Sigma_H$ ($|\Sigma_H|=14$):**
+```math
+\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM}, \text{HEV\_PREVENTIVE\_SUPPORT\_REQ} \}
 ```
 
 #### 2.3.1 Assioma di Chiusura per Stazionarietà (Stuttering Step Axiom)
@@ -742,18 +765,31 @@ e forza il Playbook Engine (§5) ad isolare e presentare all'utente un **singolo
 
 ### 2.4 Equazione Matematica del Sistema Reattivo Composito $S_C = Q \times Q_H$
 
-Il sistema reattivo globale di Scintilla Core è modellato dallo spazio di stato composito $S_C = Q \times Q_H$. La funzione di transizione strutturale pura dell'automa composito $\delta_C: (Q \times Q_H) \times (\Sigma \cup \Sigma_H) \to (Q \times Q_H)$ è definita dall'equazione a casi:
+Il sistema reattivo globale di Scintilla Core è modellato dallo spazio di stato composito $S_C = Q \times Q_H$. La funzione di transizione strutturale pura dell'automa composito:
+```math
+\delta_C: (Q \times Q_H) \times (\Sigma \cup \Sigma_H) \to (Q \times Q_H)
+```
+ è definita dall'equazione a casi:
 ```math
 \delta_C((q, q_H), \sigma_C) = \begin{cases} 
 (\delta_M(q, \sigma_C, T_{\text{JSON}}), q_H) & \text{se } \sigma_C \in \Sigma \\
 (q, \delta_H(q_H, \sigma_C)) & \text{se } \sigma_C \in \Sigma_H \land q \in F_{\text{oper}} \\
-(q, \delta_H(q_H, \sigma_C)) & \text{se } \sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \notin F_{\text{oper}} \quad (\text{Human Sovereignty Exception}) \\
-(q, q_H) & \text{se } \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \notin F_{\text{oper}} \quad (\text{Lockdown Freeze Axiom})
+(q, \delta_H(q_H, \sigma_C)) & \text{se } \sigma_C \in \Sigma_H \land q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\} \quad (\text{Technical Error Agency Preservation}) \\
+(q, \delta_H(q_H, \sigma_C)) & \text{se } \sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\} \quad (\text{Human Sovereignty Exception}) \\
+(q, q_H) & \text{se } \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\} \quad (\text{Security Lockdown Freeze})
 \end{cases}
 ```
-   
-1. **`INV-DECOUPLING-01` (Disaccoppiamento Unidirezionale):** L'automa del percorso umano $\mathcal{H}$ genera unicamente ipotetiche transizioni di guida. L'automa $\mathcal{H}$ **`SHALL NOT` possedere alcuna autorità diretta di mutazione sullo stato del Runtime Safety State Machine $M$**.
-2. **Eccezione di Sovranità Umana in Lockdown:** Se lo stato del runtime $q \notin F_{\text{oper}}$, le sole transizioni dell'automa umano ammesse per la registrazione immediata nel Ledger sono quelle di revoca del consenso o sospensione (`HEV_PAUSE_REQUESTED`, `HEV_DECLINE_ALL`).
+
+1. **`INV-DECOUPLING-01` (Disaccoppiamento Unidirectionale & Protezione dell'Agency):** L'automa del percorso umano $\mathcal{H}$ non può mutare lo stato di runtime $M$. Viceversa, **errori tecnici o di parsing software del sistema:
+```math
+q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\}
+```
+ `SHALL NOT` paralizzare l'evoluzione dello stato concettuale dell'utente ($\mathcal{H}$)**.
+2. **Eccezione di Sovranità Umana in Lockdown:** Se lo stato del runtime si trova in blocco critico di sicurezza:
+```math
+q = \text{SECURITY\_LOCKDOWN}
+```
+ le sole transizioni dell'automa umano ammesse per la registrazione immediata nel Ledger sono quelle di revoca del consenso o sospensione (`HEV_PAUSE_REQUESTED`, `HEV_DECLINE_ALL`).
 
 ---
 
@@ -813,6 +849,17 @@ La funzione pura di valutazione $\text{EvaluateGuards}: \mathcal{S} \times T \to
 \frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{ValidateEnvironment}(S, t, E) = \text{FAIL} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL}) \quad t_{\text{err}} = \text{BuildErrorTx}(\sigma_C)}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle \text{VALIDATION\_ERROR}, q_H, \text{Apply}(S, t_{\text{err}}) \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
 ```
 
+#### 3.3.1 Meta-Regola SOS di Riparazione Deterministica via Compensazione (Compensative State Repair)
+```math
+\frac{\sigma_C = \text{EV\_REPAIR} \quad q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \quad \text{type}(\alpha) = \text{OPERATOR} \quad \text{ValidRepairPatch}(p)}{\langle q, q_H, \text{EV\_REPAIR}, S, E \rangle \to_{\text{Sys}} \langle \text{NORMAL}, q_H, \text{ApplyCompensativeRepair}(S, p) \rangle} \quad [\text{SOS-COMPENSATIVE-REPAIR}]
+```
+
+Dove 
+```math
+\text{ApplyCompensativeRepair}(S, p)
+```
+ è la funzione pura che genera ed appende al Ledger una transazione di compensazione $t_{\text{repair}} \in T$, ripristinando l'integrità della proiezione dello stato $P(L)$ **senza mai riscrivere o alterare la sequenza delle transizioni storiche precedenti**.
+
 ---
 
 ### 3.4 Meta-Regole SOS del Percorso Umano ($\mathcal{H}$)
@@ -840,14 +887,14 @@ t_{\text{timeout}} := \left\langle \text{TransactionBody}(\text{actor}=\text{SYS
 \frac{\sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, \delta_H(q_H, \sigma_C), \text{Apply}(S, t) \rangle} \quad [\text{SOS-HUMAN-SOVEREIGNTY-LOCKDOWN}]
 ```
 
-### 3.6 Meta-Regola SOS di Congelamento da Lockdown (Lockdown Freeze Standard)
+#### 3.6 Meta-Regola SOS di Preservazione dell'Agency su Errore Tecnico (Technical Error Agency Preservation)
 ```math
-\frac{\sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-LOCKDOWN-FREEZE}]
+\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \delta_H(q_H, \sigma_C)}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H', \text{Apply}(S, t) \rangle} \quad [\text{SOS-TECH-ERROR-AGENCY}]
 ```
 
-### 3.7 Meta-Regola SOS di Congelamento degli Stati Terminali (Terminal State Freeze)
+#### 3.7 Meta-Regola SOS di Congelamento da Lockdown Critico (Security Lockdown Freeze)
 ```math
-\frac{q_H \in F_H \quad \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_GOAL\_UPDATE} \}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-TERMINAL-FREEZE}]
+\frac{\sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-LOCKDOWN-FREEZE}]
 ```
 
 ---
