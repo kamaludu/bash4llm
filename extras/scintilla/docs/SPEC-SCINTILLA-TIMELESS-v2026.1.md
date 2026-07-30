@@ -154,7 +154,7 @@ Tuttavia, in conformità con il Modello dei Confini di Supervisione Umana (HOBM,
 #### 1.1.1 Spazio degli Stati $\mathcal{S}$
 Lo Spazio degli Stati $\mathcal{S}$ è il prodotto cartesiano dei domini di stato fondamentali del sistema:
 ```math
-\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}} \times \mathcal{M}_{\text{metrics}}
+\mathcal{S} \subseteq \mathcal{I}_{\text{case}} \times Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{M}_{\text{prov}} \times \mathcal{F}_{\text{lease}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{O}_{\text{decision}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{A}_{\text{index}} \times \mathcal{H}_{\text{bound}} \times \mathcal{M}_{\text{metrics}} \times (\mathcal{T} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
 ```
 
 Dove:
@@ -166,37 +166,39 @@ Dove:
 ```math
 \mathcal{M}_{\text{prov}}: \mathcal{K}_{\text{data}} \to D_P
 ```
-
 * Lo stato del lock di concorrenza:
 ```math
 \mathcal{F}_{\text{lease}} := \langle \text{fencing}_{\text{token}}, \text{lease}_{\text{expiry}} \rangle \in \mathbb{N} \times \mathcal{T}
 ```
-
 * $\mathcal{Q}_{\text{consent}}$: Lo stato corrente del registro delle manifestazioni di consenso granulare dell'utente.
 * $\mathcal{O}_{\text{decision}} \in \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE}, \text{NONE} \}$: L'esito dell'ultima valutazione decisionale del Policy Guidance Engine.
 * Lo stato dell'esecutore del Playbook (§5):
 ```math
 \mathcal{K}_{\text{playbook}} := \langle \text{playbook}_{\text{id}}, \text{current}_{\text{node}_{\text{id}}}, \text{completed}_{\text{nodes}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
 ```
-
 * $\mathcal{A}_{\text{index}} \in [0.0, 1.0]$: Lo stato corrente dell'Indice di Guadagno di Agency ($\text{AGI}$, §1.7).
 * Il livello corrente di supervisione secondo l'Human Oversight Boundary Model (HOBM, §1.8):
 ```math
 \mathcal{H}_{\text{bound}} \in \{ \text{AUTOMATED\_SUPPORT}, \text{ASSISTED\_DECISION}, \text{HUMAN\_REVIEW\_REQUIRED}, \text{PROFESSIONAL\_INTERVENTION\_REQUIRED} \}
 ```
-
 * I contatori per le metriche dinamiche dell'AGI (§1.7):
 ```math
 \mathcal{M}_{\text{metrics}} := \langle \text{rephrase\_count}, \text{ambiguity\_count}, \text{interaction\_count} \rangle \in \mathbb{N}^3
+```
+* Timestamp di entrata nello stato $h_7$ (`HUMAN_PAUSED`), necessario al calcolo deterministico dei timer di inattività (§2.3.2):
+```math
+$t_{\text{pause\_start}} \in \mathcal{T} \cup \{\text{null}\}
+```
+* L'insieme degli identificatori di elementi informativi soggetti a revoca/oblio parziale (§1.1.3.1):
+```math
+\mathcal{Q}_{\text{revoked\_items}} \subseteq \mathcal{I}
 ```
 
 #### 1.1.2 Assioma del Genesis State $s_0$
 Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ `MUST` contenere tassativamente i seguenti valori predefiniti:
 ```math
-s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0 \rangle \right\rangle
+s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{A}_{\text{index}}=0.0, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0 \rangle, \ t_{\text{pause\_start}}=\text{null}, \ \mathcal{Q}_{\text{revoked\_items}}=\emptyset \right\rangle
 ```
-
-Dove $t_0 \in \mathcal{T}$ rappresenta l'istante temporale canonico di origine del sistema (§10.1).
 
 #### 1.1.3 Spazio delle Transazioni $T$ e Corpo della Transazione Content-Addressed
 Lo Spazio delle Transazioni $T$ è l'insieme di tutti i record di mutazione atomici ed immutabili commitabili nel sistema. Una transazione $t \in T$ è formalizzata come la tupla algebrica:
@@ -241,19 +243,27 @@ In conformità ai requisiti di riproducibilità e content-addressing (`OBI-002`)
 #### 1.1.3.1 Invariante di Oblio Crittografico e Audit Trail (`INV-PRIVACY-SHREDDING-01`)
 Qualsiasi dato identificativo personale (PII) o sensibile contenuto nel campo `payload` $\mathcal{V}$ di una transazione $t \in T$ **`MUST NOT` essere memorizzato in chiaro nel Ledger immutabile**.
 
-1. Il payload sensibile $v \in \mathcal{V}$ `MUST` essere memorizzato cifrato tramite una chiave derivata per singolo elemento
+1. Il payload sensibile $v \in \mathcal{V}$ associato all'identificatore `item_id` `MUST` essere memorizzato cifrato tramite una chiave derivata deterministica:
 ```math
 K_{\text{item}} = \text{HKDF}(K_{\text{case}}, \text{item\_id})
 ```
- derivata dalla chiave radice effimera del caso utente $K_{\text{case}}$
-
+derivata dalla chiave radice effimera del caso utente $K_{\text{case}}$ gestita dal KMS:
 ```math
 \text{Payload}_{\text{encrypted}} = E_{K_{\text{item}}}(v)
 ```
 
-L'oblio parziale di un singolo dato avviene mediante la distruzione della chiave specifica $K_{\text{item}}$. L'oblio totale del caso utente avviene mediante la distruzione irreversibile della chiave radice $K_{\text{case}}$ e del salt $S_{\text{case}}$.
+2. **Meccanismo di Oblio Parziale (Item-Level Shredding):** L'oblio parziale di un singolo elemento informativo `item_id` `MUST` essere eseguito appendendo al Ledger una transazione recante l'evento `EV_ITEM_PRIVACY_REVOKED`. L'applicazione della transazione aggiunge deterministicamente l'identificatore al registro di revoca nello stato:
+```math
+\mathcal{Q}_{\text{revoked\_items}}' = \mathcal{Q}_{\text{revoked\_items}} \cup \{\text{item\_id}\}
+```
+In sede di proiezione o lettura dello stato, qualsiasi elemento il cui $\text{item\_id} \in \mathcal{Q}_{\text{revoked\_items}}$ `MUST` restituire il valore nullo $\bot$ e il runtime `MUST NOT` tentare la decifratura del corrispondente $\text{Payload}_{\text{encrypted}}$, garantendo l'oblio funzionale immediato senza compromettere la struttura delle chiavi derivate.
 
-2. Per impedire attacchi a forza bruta o Rainbow Tables sugli hash dei dati PII a bassa entropia presenti sul Ledger immutabile, l'impronta crittografica $H_{\text{salted}}$ `MUST` essere generata concatenando al dato un salt effimero casuale a 256 bit $S_{\text{case}} \in \mathcal{B}^{32}$ associato al caso utente:
+3. **Meccanismo di Oblio Totale (Case-Level Crypto-Shredding):** L'oblio totale ed irreversibile dell'intero caso utente `SHALL` essere eseguito mediante **Crypto-Shredding Radice**, formalizzato come la distruzione irreversibile e atomica della tupla nel subsistema isolato di Livello 1 (`KMS_KeyStore`):
+```math
+\langle K_{\text{case}}, S_{\text{case}} \rangle \to \bot
+```
+
+4. Per impedire attacchi a forza bruta o Rainbow Tables sugli hash dei dati PII a bassa entropia presenti sul Ledger immutabile, l'impronta crittografica $H_{\text{salted}}$ `MUST` essere generata concatenando al dato un salt effimero casuale a 256 bit $S_{\text{case}} \in \mathcal{B}^{32}$ associato al caso utente:
 ```math
 H_{\text{salted}}(v) = H(v \mathbin{\Vert} S_{\text{case}})
 ```
@@ -261,30 +271,10 @@ H_{\text{salted}}(v) = H(v \mathbin{\Vert} S_{\text{case}})
 ```math
 \langle \text{Payload}_{\text{encrypted}}, H_{\text{salted}}(v) \rangle
 ```
+   La distruzione coordinata di $\langle K_{\text{case}}, S_{\text{case}} \rangle$ rende il payload cifrato $\text{Payload}_{\text{encrypted}}$ irreversibilmente incomprensibile e l'hash $H_{\text{salted}}(v)$ matematicamente non verificabile a partire dal dato in chiaro, preservando intatta la catena di checksum $H_N$ del Ledger senza esporre PII.
+   Qualsiasi fallimento di comunicazione o indisponibilità del subsistema `KMS_KeyStore` durante le operazioni di cifratura o distruzione `MUST` interrompere la transazione e restituire il **Runtime Error Code 87 (`ERR_KMS_UNAVAILABLE`)**.
 
-3. **Crypto-Shredding e Architettura KMS:** L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, formalizzato come la distruzione irreversibile e atomica della tupla
-
-```math
-\langle K_{\text{case}}, S_{\text{case}} \rangle
-```
-
-gestita dal subsistema isolato di Livello 1 (`KMS_KeyStore`). 
-   * La distruzione coordinata di
-
-```math
-\langle K_{\text{case}}, S_{\text{case}} \rangle
-```
-
- rende il payload cifrato  
-
-```math
-\text{Payload}_{\text{encrypted}}
-```
-
- irreversibilmente incomprensibile e l'hash $H_{\text{salted}}(v)$ matematicamente non verificabile a partire dal dato in chiaro, preservando intatta la catena di checksum $H_N$ del Ledger senza esporre PII.
-   * Qualsiasi fallimento di comunicazione o indisponibilità del subsistema `KMS_KeyStore` durante le operazioni di cifratura o distruzione `MUST` interrompere la transazione e restituire il **Runtime Error Code 87 (`ERR_KMS_UNAVAILABLE`)**.
-
-4. **Regola di Registrazione dell'Evento di Oblio ($t_{\text{shred}}$):** L'atto di distruzione della chiave $K_{\text{case}}$ `MUST` generare ed appendere al Ledger una transazione formale di sistema $t_{\text{shred}} \in T$ recante l'evento `EV_CRYPTO_SHRED_EXECUTED`. Tale transazione certifica in modo immutabile l'istante temporale e la revoca del consenso che hanno determinato la distruzione irreversibile della chiave, senza esporre alcun dato PII.
+5. **Regola di Registrazione dell'Evento di Oblio ($t_{\text{shred}}$):** L'atto di distruzione della chiave $K_{\text{case}}$ `MUST` generare ed appendere al Ledger una transazione formale di sistema $t_{\text{shred}} \in T$ recante l'evento `EV_CRYPTO_SHRED_EXECUTED`. Tale transazione certifica in modo immutabile l'istante temporale e la revoca del consenso che hanno determinato la distruzione irreversibile della chiave, senza esporre alcun dato PII.
 
 #### 1.1.4 Invarianti Globali di Sicurezza e Integrità
 Ogni stato $S \in \mathcal{S}$ e transazione $t \in T$ `MUST` soddisfare rigorosamente i seguenti invarianti sistemici:
@@ -433,18 +423,13 @@ D_P := \langle v, \kappa, \alpha, t, \phi, \psi, \omega \rangle
 ```
 
 * $v \in \mathcal{V}$: Il valore informativo.
-* 
+* Categoria formale di provenienza $\kappa \in \mathcal{K}_{\text{prov}}$, dove lo spazio delle fonti è normativamente definito dall'insieme discreto:
 ```math
-\kappa \in \mathcal{K}_{\text{prov}} 
+\mathcal{K}_{\text{prov}} := \{ \text{USER\_DECLARATION}, \text{LLM\_INFERENCE}, \text{SYSTEM\_VERIFIED}, \text{OPERATOR\_CONFIRMED}, \text{EXTERNAL\_SOURCE} \}
 ```
-Categoria di provenienza: 
-```math
-\mathcal{K}_{\text{prov}} = \mathcal{K}_{\text{epistemic}} \cup \mathcal{K}_{\text{personal}}
-```
-
 * $\alpha \in \mathcal{I}_{\text{actor}}$: Identificatore dell'attore asseritore.
 * $t \in \mathcal{T}$: Istante temporale di asserzione.
-* $\phi \in [0.0, 1.0]$: Punteggio numerico di confidenza.
+* $\phi \in [0.0, 1.0]$: Punteggio numerico di confidenza (espresso in Basis Points $[0, 10000]$ nella serializzazione canonica §10.2.1).
 * $\psi \in \{ \text{UNVERIFIED}, \text{PENDING}, \text{VERIFIED}, \text{REJECTED} \}$: Stato di verifica oggettiva.
 * Dominio dell'asserzione:
 ```math
@@ -454,21 +439,13 @@ Categoria di provenienza:
 #### 1.5.1 Modello di Doppia Autorità (Dual Authority Model)
 In conformità a `OBI-007`, l'ordine di autorità informativa varia in base al dominio dell'asserzione $\omega$:
 
-1. **Dominio dei Fatti Amministrativi e Legali:**
-```math
-\omega = \text{FACTUAL\_ADMINISTRATIVE}
-```
-
+1. **Dominio dei Fatti Amministrativi e Legali ($\omega = \text{FACTUAL\_ADMINISTRATIVE}$):**
 ```math
 \text{LLM\_INFERENCE} \prec \text{USER\_DECLARATION} \prec \text{EXTERNAL\_SOURCE} \prec \text{OPERATOR\_CONFIRMED} \prec \text{SYSTEM\_VERIFIED}
 ```
    *(Esempio: La verifica del possesso di un documento d'identità vede la fonte esterna o verificata prevalere sulla dichiarazione).*
 
-2. **Dominio Soggettivo, Emotivo e degli Obiettivi Personali:
-```math
-\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}
-```
-
+2. **Dominio Soggettivo, Emotivo e degli Obiettivi Personali ($\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}$):**
 ```math
 \text{LLM\_INFERENCE} \prec \text{EXTERNAL\_SOURCE} \prec \text{SYSTEM\_VERIFIED} \prec \text{OPERATOR\_CONFIRMED} \prec \text{USER\_DECLARATION}
 ```
@@ -525,18 +502,39 @@ Con il vincolo di normalizzazione del vettore dei pesi:
 \forall q_H \in Q_H \setminus \{h_7, h_{10}\}, \quad w_1(q_H) + w_2(q_H) + w_3(q_H) = 1.0
 ```
 
-#### Mappatura Normativa del Vettore dei Pesi $\mathbf{w}(q_H)$:
+#### 1.7.2.1 Definizioni Matematiche Deterministiche delle Sotto-Funzioni di Punteggio
+Le sotto-funzioni di punteggio utilizzate nel calcolo dell'AGI sono funzioni pure defined unicamente dallo stato algebrico $S \in \mathcal{S}$:
+
+1. **Punteggio di Chiarezza Cognitiva ($\text{ClarityScore}: \mathcal{S} \to [0.0, 1.0]$):**  
+   Valuta la fluidità della comprensione dell'utente riducendo il punteggio in presenza di frequenti richieste di riformulazione o ambiguità rilevate in $\mathcal{M}_{\text{metrics}} = \langle c_{\text{rephrase}}, c_{\text{ambiguity}}, c_{\text{interaction}} \rangle$:
 ```math
-\mathbf{w}(q_H) := \begin{cases}
-\langle 0.60, \ 0.30, \ 0.10 \rangle & \text{se } q_H \in \{ \text{UNASSESSED}, \text{INITIAL\_ASSESSMENT}, \text{STABILIZATION} \} \\
-\langle 0.30, \ 0.50, \ 0.20 \rangle & \text{se } q_H \in \{ \text{DOCUMENT\_RECOVERY}, \text{EMPLOYMENT\_READINESS} \} \\
-\langle 0.20, \ 0.30, \ 0.50 \rangle & \text{se } q_H \in \{ \text{FINANCIAL\_AUTONOMY}, \text{SUSTAINED\_INDEPENDENCE} \} \\
-\langle 0.40, \ 0.20, \ 0.40 \rangle & \text{se } q_H \in \{ \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{HUMAN\_GOAL\_CHANGED} \} \\
-\text{FROZEN} & \text{se } q_H \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \} \quad (\text{Mantenimento } \text{AGI}_{N-1})
+\text{ClarityScore}(S) := \begin{cases}
+1.0 & \text{se } c_{\text{interaction}} = 0 \\
+\max\left(0.0, \ 1.0 - \frac{c_{\text{rephrase}} + c_{\text{ambiguity}}}{\max(1, c_{\text{interaction}})}\right) & \text{se } c_{\text{interaction}} > 0
 \end{cases}
 ```
 
-* Assioma di Calibrazione di Genesi: $\text{AGI}(s_0) = 0.0$.
+2. **Rapporto di Esecuzione delle Azioni ($\text{ActionExecutionRatio}: \mathcal{S} \to [0.0, 1.0]$):**  
+   Valuta il tasso di avanzamento concreto dell'utente all'interno del Playbook attivo $\mathcal{K}_{\text{playbook}} = \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle$ rispetto al totale dei nodi raggiungibili $|V_P|$ nel grafo $G_P$:
+```math
+\text{ActionExecutionRatio}(S) := \begin{cases}
+0.0 & \text{se } \text{pb}_{\text{id}} = \text{null} \lor |V_P| = 0 \\
+\frac{|V_{\text{completed}} \cap V_P|}{|V_P|} & \text{se } \text{pb}_{\text{id}} \neq \text{null} \land |V_P| > 0
+\end{cases}
+```
+
+3. **Punteggio di Riduzione della Dipendenza ($\text{DependencyReductionScore}: \mathcal{S} \to [0.0, 1.0]$):**  
+   Misura la percentuale di micro-azioni che l'utente ha completato in prima persona (`USER`) senza delegare l'esecuzione ad azioni automatizzate o all'operatore umano:
+```math
+\text{DependencyReductionScore}(S) := \begin{cases}
+0.0 & \text{se } |V_{\text{completed}}| = 0 \\
+\frac{|\{ v \in V_{\text{completed}} \mid \text{ActorTypeOf}(v, S) = \text{USER} \}|}{|V_{\text{completed}}|} & \text{se } |V_{\text{completed}}| > 0
+\end{cases}
+```
+   dove la funzione pura di lookup dell'attore asseritore $\text{ActorTypeOf}: \mathcal{I} \times \mathcal{S} \to \mathcal{I}_{\text{actor}}$ estrae l'identificatore dell'attore dal registro di provenienza $\mathcal{M}_{\text{prov}}$ presente nello stato $S$:
+```math
+\text{ActorTypeOf}(v, S) := \mathcal{M}_{\text{prov}}(v).\alpha
+```
 
 ---
 
@@ -588,9 +586,9 @@ Q = \{ \text{NORMAL } (q_0), \text{REQUIRE\_RECALIBRATION } (q_1), \text{VALIDAT
 F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
 ```
    
-4. **Alfabeto degli Eventi di Sistema $\Sigma$ ($|\Sigma|=8$):**
+4. **Alfabeto degli Eventi di Sistema $\Sigma$ ($|\Sigma|=10$):**
 ```math
-\Sigma = \{ \text{EV\_SUCCESS } (\sigma_0), \text{EV\_ABANDON } (\sigma_1), \text{EV\_SML\_FAIL } (\sigma_2), \text{EV\_LEASE\_EXP } (\sigma_3), \text{EV\_HASH\_CORRUPT } (\sigma_4), \text{EV\_TIMEOUT } (\sigma_5), \text{EV\_OVERRIDE } (\sigma_6), \text{EV\_REPAIR } (\sigma_7) \}
+\Sigma = \{ \text{EV\_SUCCESS } (\sigma_0), \text{EV\_ABANDON } (\sigma_1), \text{EV\_SML\_FAIL } (\sigma_2), \text{EV\_LEASE\_EXP } (\sigma_3), \text{EV\_HASH\_CORRUPT } (\sigma_4), \text{EV\_TIMEOUT } (\sigma_5), \text{EV\_OVERRIDE } (\sigma_6), \text{EV\_REPAIR } (\sigma_7), \text{EV\_ITEM\_PRIVACY\_REVOKED } (\sigma_8), \text{EV\_CRYPTO\_SHRED\_EXECUTED } (\sigma_9) \}
 ```
 
 #### 2.2.1 Mappatura Formale della Funzione Totale di Transizione $\delta_M$ e Portabilità dei Dati
@@ -713,14 +711,26 @@ Il sistema reattivo globale di Scintilla Core è modellato dallo spazio di stato
 
 ## 3. SEMANTICA OPERAZIONALE FORMALE ESAUSTIVA (SMALL-STEP SOS)
 
-La dinamica globale del sistema Scintilla Core è formalizzata mediante lo schema di Meta-Regole di **Small-Step Structural Operational Semantics (SOS)** definita sulla configurazione generica $\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q', q_H', S' \rangle$.
+La dinamica globale del sistema Scintilla Core è formalizzata mediante lo schema di Meta-Regole di **Small-Step Structural Operational Semantics (SOS)** definita sulla configurazione generica:
+```math
+\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q', q_H', S' \rangle
+```
 
 ### 3.1 Matrice Normativa di Autorizzazione Evento-Attore
-Un evento $\sigma_C \in \Sigma \cup \Sigma_H$ contenuto in una transizione $t \in T$ emessa dall'attore $\alpha = \text{actor}(t)$ è valido se e solo se la coppia $(\sigma_C, \text{type}(\alpha))$ appartiene alla seguente matrice di autorizzazione:
+Un evento: 
+```math
+$\sigma_C \in \Sigma \cup \Sigma_H
+```
+contenuto in una transizione $t \in T$ emessa dall'attore $\alpha = \text{actor}(t)$ è valido se e solo se la coppia:
+```math
+(\sigma_C, \text{type}(\alpha))
+```
+appartiene alla seguente matrice di autorizzazione:
 ```math
 \text{Authorized}(\sigma_C, \text{type}(\alpha)) \iff \begin{cases}
 \text{True} & \text{se } \sigma_C \in \Sigma_H \land \text{type}(\alpha) \in \{\text{USER}, \text{OPERATOR}, \text{SYSTEM}\} \\
-\text{True} & \text{se } \sigma_C \in \{\sigma_0, \sigma_1, \sigma_2, \sigma_3, \sigma_4, \sigma_5\} \land \text{type}(\alpha) = \text{SYSTEM} \\
+\text{True} & \text{se } \sigma_C \in \{\sigma_0, \sigma_1, \sigma_2, \sigma_3, \sigma_4, \sigma_5, \sigma_9\} \land \text{type}(\alpha) = \text{SYSTEM} \\
+\text{True} & \text{se } \sigma_C = \sigma_8 \land \text{type}(\alpha) \in \{\text{USER}, \text{OPERATOR}\} \\
 \text{True} & \text{se } \sigma_C \in \{\text{EV\_OVERRIDE}, \text{EV\_REPAIR}\} \land \text{type}(\alpha) = \text{OPERATOR} \\
 \text{False} & \text{in tutti gli altri casi (compreso qualsiasi tentativo con } \text{type}(\alpha) = \text{LLM})
 \end{cases}
@@ -1226,25 +1236,31 @@ export type ProvenanceDomain =
   | "PERSONAL_GOAL" 
   | "TECHNICAL_SYSTEM";
 
+/**
+ * BasisPoints: Tipo numerico intero compreso nell'intervallo chiuso [0, 10000].
+ * Rappresenta valori di probabilità, confidenza o indici scalati di un fattore 10^4
+ * per conformità alla regola di serializzazione canonica SC-JCS-1 (§10.2.1).
+ * Conversione Dominio -> Wire: WireValue = Math.round(DomainFloat * 10000)
+ */
+export type BasisPoints = number; // Strict Integer Range [0, 10000]
+
 export interface DataProvenanceRecord {
   provenance_id: string;            
   source_category: "USER_DECLARATION" | "LLM_INFERENCE" | "SYSTEM_VERIFIED" | "OPERATOR_CONFIRMED" | "EXTERNAL_SOURCE";
   asserted_by_actor_id: string;     
   timestamp_utc: string;            
-  confidence_score: number;         // [0.0, 1.0]
+  confidence_score_bp: BasisPoints; // Basis Points [0, 10000] (0.00% - 100.00%)
   verifiability_status: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
   assertion_domain: ProvenanceDomain;
 }
 
 export interface AgencyGainIndexRecord {
-  clarity_score: number;            // [0.0, 1.0]
-  action_execution_ratio: number;   // [0.0, 1.0]
-  dependency_reduction_score: number; // [0.0, 1.0]
-  computed_agi: number;             // [0.0, 1.0]
+  clarity_score_bp: BasisPoints;            // Basis Points [0, 10000]
+  action_execution_ratio_bp: BasisPoints;   // Basis Points [0, 10000]
+  dependency_reduction_score_bp: BasisPoints; // Basis Points [0, 10000]
+  computed_agi_bp: BasisPoints;             // Basis Points [0, 10000]
 }
-```
 
-```typescript
 export interface SMLDocumentParsed {
   sml_version: "2.0";
   listen_summary: string;
