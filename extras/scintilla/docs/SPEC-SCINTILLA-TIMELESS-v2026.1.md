@@ -954,7 +954,7 @@ H_N = H\left( \text{Canon}(\text{TransactionBody}_N) \right)
 ```
 
 Dove 
-```sh
+```math
 H: \mathcal{B}^* \to \mathcal{D}
 ```
 è la funzione di hash astratta (SHA-256) e 
