@@ -1111,7 +1111,7 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 ### 9.1 Modello di Sistema Distribuito, Consistenza e Concorrenza
 1. **Modello di Consistenza del Ledger:** Il registro $L \in \mathcal{L}$ garantisce la **Strict Linearizability (Consistenza Esterna)** per singolo `case_id`.
 2. **Protocollo di Lock e Fencing Token:** La gestione delle scritture concorrenti si avvale di un meccanismo di lease a tempo. Ogni mutazione `MUST` verificare e incrementare in modo strettamente monotonico il `fencing_token` $N \in \mathbb{N}^+$.
-3. **Tolleranza al Disallineamento Temporale (Clock Skew):** L'intervallo di tolleranza massima tra l'orologio locale ed il tempo di riferimento $t \in \mathcal{T}$ è vincolato dal parametro $\Delta t_{\text{max}} \in \Theta$.
+3. **Tolleranza al Disallineamento Temporale (Clock Skew):** L'intervallo di tolleranza massima tra l'orologio locale ed il tempo di riferimento $t \in \mathcal{T}$ è vincolato dal parametro $\Delta t_{\text{max}} \in \Theta$
 
 ---
 
@@ -1136,7 +1136,7 @@ Sia $S \in \mathcal{S}$ lo stato corrente. La mappa $L(S)$ determina l'appartene
 ```math
 \in L(S) \iff \mathcal{R}_{\text{exec}}(S_{\text{snap}}, t_{\text{prop}}) = \text{ALLOW}
 ```
-* dove:*
+ dove:
 ```math
 \langle S_{\text{snap}}, t_{\text{prop}} \rangle = \pi_{\text{tx\_buffer}}(S)
 ```
