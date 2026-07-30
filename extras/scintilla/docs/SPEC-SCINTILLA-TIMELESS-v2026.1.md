@@ -596,7 +596,7 @@ F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
 #### 2.2.1 Mappatura Formale della Funzione Totale di Transizione $\delta_M$ e Portabilità dei Dati
 La funzione pura di transizione: 
 ```math
-$\delta_M: Q \times \Sigma \times \mathcal{T}_{\text{JSON}} \to Q
+\delta_M: Q \times \Sigma \times \mathcal{T}_{\text{JSON}} \to Q
 ```
 è derivata in modo deterministico dal contratto canonico JSON $T_{\text{JSON}}$ (§10.3) mediante la funzione normativamente definita $\text{firstMatch}$:
 ```math
