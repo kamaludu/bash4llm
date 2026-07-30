@@ -243,8 +243,9 @@ Qualsiasi dato identificativo personale (PII) o sensibile contenuto nel campo `p
 
 1. Il payload sensibile $v \in \mathcal{V}$ `MUST` essere memorizzato cifrato tramite una chiave derivata per singolo elemento
 ```math
-K_{\text{item}} = \text{HKDF}(K_{\text{case}}, \text{item\_id})$, derivata dalla chiave radice effimera del caso utente $K_{\text{case}}
+K_{\text{item}} = \text{HKDF}(K_{\text{case}}, \text{item\_id})
 ```
+ derivata dalla chiave radice effimera del caso utente $K_{\text{case}}
 
 ```math
 \text{Payload}_{\text{encrypted}} = E_{K_{\text{item}}}(v)
