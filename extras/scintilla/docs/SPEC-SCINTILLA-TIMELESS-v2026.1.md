@@ -1311,8 +1311,16 @@ CRLF                 ::= "\r\n" | "\n" ;
 
 Il Policy Guidance Engine (Livello 2) applica una verifica semantica vincolante sugli oggetti `SMLDocumentParsed` prima di ammettere qualsiasi proposta di transizione:
 
-1. **Filtro contro Allucinazioni Amministrative/Legali:** Se l'oggetto SML contiene asserzioni categorizzate nel dominio $\omega = \text{FACTUAL\_ADMINISTRATIVE}$ (es. diritti a sussidi, scadenze di legge), l'asserzione `MUST` essere ancorata ad un nodo di Playbook o fonte esterna con stato di verifica $\psi = \text{VERIFIED}$.
-2. **Azione di Violazione:** Qualora il Livello 5 generi un'asserzione amministrativa prescrittiva priva di riscontro verificato, il parser di Livello 4 `MUST` scartare l'input e generare l'evento di errore $\sigma_2 = \text{EV\_SML\_FAIL}$, imponendo al runtime la riconfigurazione dell'output in forma di *Opzione Esplorativa* (§4.4).
+1. **Filtro contro Allucinazioni Amministrative/Legali:** Se l'oggetto SML contiene asserzioni categorizzate nel dominio:
+```math
+\omega = \text{FACTUAL\_ADMINISTRATIVE}
+```
+ (es. diritti a sussidi, scadenze di legge), l'asserzione `MUST` essere ancorata ad un nodo di Playbook o fonte esterna con stato di verifica $\psi = \text{VERIFIED}$.
+2. **Azione di Violazione:** Qualora il Livello 5 generi un'asserzione amministrativa prescrittiva priva di riscontro verificato, il parser di Livello 4 `MUST` scartare l'input e generare l'evento di errore:
+```math
+\sigma_2 = \text{EV\_SML\_FAIL}
+```
+ imponendo al runtime la riconfigurazione dell'output in forma di *Opzione Esplorativa* (§4.4).
 
 ---
 
