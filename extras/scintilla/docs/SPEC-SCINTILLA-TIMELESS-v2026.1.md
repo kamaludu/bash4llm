@@ -232,7 +232,7 @@ In conformità ai requisiti di riproducibilità e content-addressing (`OBI-002`)
 
 * Impronta della configurazione del profilo di runtime: 
 ```math
-$\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}
+\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}
 ```
 
 * $\text{specification}_{\text{id}} \in \mathcal{I}$: Identificatore canonico dello standard (`SCINTILLA-CORE-v4.3-TIMELESS`).
