@@ -245,7 +245,7 @@ Qualsiasi dato identificativo personale (PII) o sensibile contenuto nel campo `p
 ```math
 K_{\text{item}} = \text{HKDF}(K_{\text{case}}, \text{item\_id})
 ```
- derivata dalla chiave radice effimera del caso utente $K_{\text{case}}
+ derivata dalla chiave radice effimera del caso utente $K_{\text{case}}$
 
 ```math
 \text{Payload}_{\text{encrypted}} = E_{K_{\text{item}}}(v)
