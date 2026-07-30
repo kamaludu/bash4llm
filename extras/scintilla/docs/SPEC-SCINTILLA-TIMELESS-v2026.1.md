@@ -258,7 +258,7 @@ H_{\text{salted}}(v) = H(v \mathbin{\Vert} S_{\text{case}})
 ```
    Nel corpo della transazione viene registrata la tupla:
 ```math
-$\langle \text{Payload}_{\text{encrypted}}, H_{\text{salted}}(v) \rangle
+\langle \text{Payload}_{\text{encrypted}}, H_{\text{salted}}(v) \rangle
 ```
 
 3. **Crypto-Shredding e Architettura KMS:** L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, formalizzato come la distruzione irreversibile e atomica della tupla
