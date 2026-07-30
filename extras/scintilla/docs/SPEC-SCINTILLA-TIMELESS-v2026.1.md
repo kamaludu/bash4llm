@@ -1115,69 +1115,127 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 
 ---
 
-### 9.2 Logica Temporale Normativa (Formule LTL e CTL)
+### 9.2 Modello di Transizione di Kripke e Logica Temporale (FO-LTL / CTL)
 
-#### Predicati Atomici di Stato
-Sia $S \in \mathcal{S}$ lo stato algebrico corrente. Sono definiti i seguenti predicati booleani puri:
+#### 9.2.1 Formalizzazione della Struttura di Kripke $M_K$
+La semantica temporale di Scintilla Core è descritta dalla Struttura di Kripke con vincoli di fairness:
+```math
+M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
+```
+* $\mathcal{S}$: Spazio degli Stati algebrico puro (§1.1.1).
+* $s_0 \in \mathcal{S}$: Stato di Genesi (§1.1.2).
+* $\to_{\text{Sys}} \subseteq \mathcal{S} \times \mathcal{S}$: Relazione di transizione generata dalle meta-regole SOS (§3).
+* $AP$: Insieme finito dei simboli di Proposizione Atomica Booleana (esprimenti proprietà sullo stato $S$).
+* $L: \mathcal{S} \to \mathcal{P}(AP)$: La Funzione di Etichettatura (Labeling Function) che assegna a ciascun stato $S \in \mathcal{S}$ l'insieme delle proposizioni atomiche $p \in AP$ vere in $S$.
+* $F \subseteq \mathcal{P}(\mathcal{S})$: Insieme dei vincoli di Fairness (Debole/Forte) definiti sulle tracce ammissibili $\text{Path}_F(M_K)$.
 
-```math
-\text{IsSafetyGateAllowed}(S) \iff \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}
-```
-```math
-\text{IsDecisionOutcomeAllowed}(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}
-```
-```math
-\text{IsHashChainValid}(S) \iff H(\text{Canon}(\text{TransactionBody}_N)) = H_N
-```
-```math
-\text{IsMonotonicFence}(S) \iff \text{fencing}_{\text{token}_N} > \text{fencing}_{\text{token}_{N-1}}
-```
+#### 9.2.2 Mappatura della Labeling Function $L: \mathcal{S} \to \mathcal{P}(AP)$ tramite Proiezioni $\pi$
+Sia $S \in \mathcal{S}$ lo stato corrente. La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni $\pi(S)$:
 
-#### Assunzioni di Equità Ambientale e dell'Utente (Fairness Assumptions)
+1. **`SafetyGateAllowed` :**
 ```math
-\text{FAIR}_{\text{USER}} \iff \square \diamondsuit (\text{UserEngaged}) \land \neg \text{ConsentRevoked}
+\in L(S) \iff \mathcal{R}_{\text{exec}}(S_{\text{snap}}, t_{\text{prop}}) = \text{ALLOW}
 ```
+* dove:*
 ```math
-\text{FAIR}_{\text{SYSTEM}} \iff \square \diamondsuit (\text{SystemAvailable}) \land \text{ResourcesExist}
-```
-```math
-\text{Fairness} \iff \text{FAIR}_{\text{USER}} \land \text{FAIR}_{\text{SYSTEM}}
+\langle S_{\text{snap}}, t_{\text{prop}} \rangle = \pi_{\text{tx\_buffer}}(S)
 ```
 
-#### Proprietà LTL (Linear Temporal Logic)
+2. **`DecisionOutcomeAllowed` $\in L(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}$**
+3. **`HashChainValid`:**
+```math
+\in L(S) \iff H(\text{Canon}(\pi_{\text{last\_tx\_body}}(S))) = \pi_{\text{last\_tx\_hash}}(S)
+```
+
+4. **`MonotonicFence`:**
+```math
+\in L(S) \iff \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_N} > \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_{N-1}}
+```
+5. **`StateIsRecoverableFailure`:**
+```math
+\in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}
+```
+
+6. **`StateIsSecurityLockdown`:** 
+```math
+\in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}
+```
+7. **`StateIsValidationError`:**
+```math
+\in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}
+```
+
+8. **`StateIsNormal` $\in L(S) \iff \pi_Q(S) = \text{NORMAL}$**
+9. **`StateIsReadOnly`:**
+```math
+\in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}
+```
+
+10. **`JourneyProgressive`:**
+```math
+\in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}
+```
+
+11. **`ItemRevoked`:**
+```math
+_{i} \in L(S) \iff i \in \pi_{\text{revocation}}(S)
+```
+
+12. **`KeyIsShredded`$_{c} \in L(S) \iff \text{LookupKey}(c, S) = \bot$**
+13. **`UserEngaged` $\in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}$**
+14. **`NonTerminalHumanState` $\in L(S) \iff \pi_{Q_H}(S) \notin F_H$**
+15. **`HumanState`:**
+```math
+_{h_i} \in L(S) \iff \pi_{Q_H}(S) = h_i
+```
+
+16. **`NoDirectMutationM`:**
+```math
+\in L(S) \iff (\text{event}(t) \in \Sigma_H \implies \pi_Q(\text{Apply}(S, t)) = \pi_Q(S))
+```
+
+#### 9.2.3 Formule Temporali First-Order LTL (FO-LTL)
+*(Nota: L'uso di quantificatori descrive il modello algebrico in First-Order LTL. La riduzione a LTL proposizionale avviene per istanziazione sui domini finiti di $AP$)*:
+
 * **LTL Safety 1 (Safety Gate / Policy Guidance Corrected):**
 ```math
-\square \left( \text{IsDecisionOutcomeAllowed}(S) \implies \text{IsSafetyGateAllowed}(S) \right)
+\square \left( \text{DecisionOutcomeAllowed} \implies \text{SafetyGateAllowed} \right)
 ```
-   
 * **LTL Safety 2 (Fencing & Lease Recovery):**
 ```math
-\square \left( \neg \text{IsMonotonicFence}(S) \implies X(q = \text{RECOVERABLE\_FAILURE}) \right)
+\square \left( \neg \text{MonotonicFence} \implies X(\text{StateIsRecoverableFailure}) \right)
 ```
-   
 * **LTL Safety 3 (Hash Chain Integrity):**
 ```math
-\square \left( \neg \text{IsHashChainValid}(S) \implies X(q = \text{SECURITY\_LOCKDOWN}) \right)
+\square \left( \neg \text{HashChainValid} \implies X(\text{StateIsSecurityLockdown}) \right)
 ```
-   
 * **LTL Safety 4 (Unidirectional Automata Decoupling):**
 ```math
-\square \left( \text{State}(\mathcal{H}) = q_H \implies \text{DirectMutation}(M) = \text{FALSE} \right)
+\square \left( \text{HumanState}_{h_i} \implies \text{NoDirectMutationM} \right)
 ```
-   
-#### Proprietà CTL (Computation Tree Logic)
+* **LTL Liveness 5 (Recuperabilità del Progresso dopo Errore Tecnico):**
+```math
+\square \left( (\text{StateIsValidationError} \lor \text{StateIsRecoverableFailure}) \implies \diamondsuit \text{JourneyProgressive} \right)
+```
+* **LTL Safety 6 (Invarianza dell'Oblio Crittografico in FO-LTL):**
+```math
+\forall c \in \mathcal{I}_{\text{case}}, \quad \square \left( \text{event} = \text{EV\_CRYPTO\_SHRED\_EXECUTED}(c) \implies \square \text{KeyIsShredded}_c \right)
+```
+
+#### 9.2.4 Proprietà CTL (Computation Tree Logic)
+*(Valutate sugli stati raggiungibili di $M_K$ sotto il vincolo $F$)*:
+
 * **CTL System Agency Guarantee (Accessibilità del Progresso di Sistema):**
 ```math
-\text{Fairness} \implies AG \left( \text{UserEngaged} \implies EF (\text{SystemProgress}) \right)
+AG \left( \text{UserEngaged} \implies EF (\text{JourneyProgressive}) \right)
 ```
-  dove: 
-```math
-\text{SystemProgress} \iff \text{StepCompleted} \lor \text{Recalibrated} \lor \text{AGI\_Increased}
-```
-   
 * **CTL Trap-Free Safety (Garante di Recuperabilità dal Lockdown):**
 ```math
-AG \left( q = \text{SECURITY\_LOCKDOWN} \implies EF (q = \text{NORMAL} \lor q = \text{SAFE\_READ\_ONLY\_MODE}) \right)
+AG \left( \text{StateIsSecurityLockdown} \implies EF (\text{StateIsNormal} \lor \text{StateIsReadOnly}) \right)
+```
+* **CTL Non-Terminal Successor Guarantee (Presenza di Transizioni Abilitate su Nodi Non-Terminali):**
+```math
+AG \left( \text{NonTerminalHumanState} \implies EX(\text{True}) \right)
 ```
 
 ---
@@ -1189,11 +1247,42 @@ AG \left( q = \text{SECURITY\_LOCKDOWN} \implies EF (q = \text{NORMAL} \lor q = 
 ## 10. STANDARD REFERENCE PROFILE 1 (JSON / SC-JCS-1 / SHA-256 / Ed25519)
 
 ### 10.1 Binding delle Primitive Crittografiche, Identificatori e Mapping dei Campi
+
+* **Alfabeto degli Octet ($\mathcal{B}$):** Lo spazio dei byte:
+```math
+\mathcal{B} := \{0,1\}^8
+```
+
+* **Tipo dei Digest a 256 bit ($\mathcal{D}_{256}$):** Definizione del tipo dei bitstring a 256 bit (32 octet):
+```math
+\mathcal{D}_{256} := \mathcal{B}^{32} = \{0,1\}^{256}
+```
+
+* **Registro del Consenso ($\mathcal{Q}_{\text{consent}}$):**
+```math
+\mathcal{Q}_{\text{consent}} \in \mathcal{P}(\text{ConsentRecord})
+```
+
+Dove ogni tupla è tipizzata con domini espliciti come:
+
+```math
+\text{ConsentRecord} :=
+\left\langle
+\text{scope}_{\text{id}} \in \mathcal{I},
+\text{issuer}_{\text{actor}} \in \mathcal{I}_{\text{actor}},
+\text{granted}_{\text{at}} \in \mathcal{T},
+\text{expires}_{\text{at}} \in \mathcal{T} \cup \{\infty\},
+\text{revoked} \in \mathbb{B},
+\text{policy}_{\text{binding}_{\text{hash}}} \in \mathcal{D}_{256}
+\right\rangle
+```
+
 * **Mappatura Identificatori ($\mathcal{I}$):** Stringhe `UUIDv7` conformi a RFC 9562.
 * **Mappatura Tempo ($\mathcal{T}$):** Stringhe formattate secondo ISO 8601 / RFC 3339 UTC Z con precisione ai millisecondi.
 * **Mappatura Istante Temporale di Genesi ($t_0$):** `"1970-01-01T00:00:00.000Z"`.
 * **Mappatura Hash ($H$):** Algoritmo **SHA-256** (digest di 32 byte / 64 caratteri esadecimali).
 * **Mappatura Firma ($\text{Sig}$):** Algoritmo **Ed25519** (PureEd25519 su curva Ed25519).
+
 * **Mapping 1-a-1 Esaustivo dei Campi di $\text{TransactionBody}$ (§1.1.3):**
   1. `tx_id` $\longrightarrow$ `"tx_id"`
   2. `case_id` $\longrightarrow$ `"case_id"`
@@ -1242,8 +1331,16 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 4. **Object Key Sorting:** Ordinamento ascendente secondo i code-unit UTF-16.
 5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry`:
 ```math
-\text{SetSemanticsRegistry} = \left[ \text{"completed\_nodes"}, \ \text{"permissions"}, \ \text{"prerequisites"}, \ \text{"roles"}, \ \text{"scopes"} \right]
+\text{SetSemanticsRegistry} =
+[
+\texttt{completed\_nodes},
+\texttt{permissions},
+\texttt{prerequisites},
+\texttt{roles},
+\texttt{scopes}
+]
 ```
+
    L'ordinamento degli elementi dell'array `MUST` essere eseguito con una strategia **Ricorsiva Bottom-Up (Deep Canonicalization)**:
    * **Passo 5.a:** Ogni elemento dell'array (sia esso una primitiva o un oggetto JSON complesso nidificato) `MUST` essere prima serializzato autonomamente in una sequenza di byte canonica SC-JCS-1 applicando ricorsivamente le regole 1-4.
    * **Passo 5.b:** Gli elementi dell'array così serializzati `MUST` essere ordinati in modo ascendente sulla base del confronto lexicografico byte-per-byte delle loro rappresentazioni UTF-8 canoniche.
@@ -1551,14 +1648,15 @@ Tale stato certifica che la struttura normativa, l'algebra degli stati, la gramm
 
 ---
 
-### 12.2 Separazione tra Specifica, Verifica e Certificazione
+### 12.2 Architettura a Livelli di Formalizzazione e Traduzione Backend
+Scintilla Core distingue la Specifica Canonica dalle sue traduzioni esecutive per strumenti di verifica:
 
-SCINTILLA CORE distingue formalmente i seguenti livelli di maturità:
-
-1. **Livello SPEC (Specifica Canonica):** Stato **SPEC-COMPLETE** (raggiunto dal presente documento v4.3).
-2. **Livello VERIF (Verifica Formale degli Artefatti):** Richiede la modellazione formale eseguibile (TLA+, NuSMV) e la verifica dell'assenza di deadlock. Stato: **PENDING VERIFICATION ARTIFACTS**.
-3. **Livello VERIF-PROOF (Dimostrazione Meccanizzata):** Richiede la produzione di prove formali mediante theorem proving assistito (Lean 4, Coq) per tutti i *Proof Claims* dichiarati nella specifica. Stato: **PENDING PROOF ARTIFACTS**.
-4. **Livello CERT (Certificazione di Implementazione):** Richiede un'implementazione software sottoposta a verifica con test runner e test vector ufficiali. Stato: **PENDING IMPLEMENTATION CERTIFICATION**.
+1. **Core Specification Layer (Livello Normativo Canonico):** La presente specifica in linguaggio naturale e notazione algebrica/SOS (Capitoli 1–9).
+2. **Kripke Temporal Logic Layer (Livello di Logica Temporale):** Il sistema di transizione $M_K$ e la Labeling Function $L: \mathcal{S} \to \mathcal{P}(AP)$ (§9.2).
+3. **Backend Encoding Layer (Livello di Traduzione Esportabile):** Linee guida (Annexes) per la traduzione verso:
+   * **Model Checkers Simbolici (NuSMV / Cadence SMV):** Traduzione del modello $M_K$ con riduzione proposizionale delle formule LTL/CTL.
+   * **Action-Based Temporal Specifications (TLA+ / TLC):** Traduzione delle meta-regole SOS in relazioni `Next` e vincoli di fairness (`WF`/`SF`).
+   * **Theorem Provers Interattivi (Lean 4 / Coq):** Definizione induttiva dello stato $\mathcal{S}$ e prova formale dei lemmi di invarianza.
 
 ---
 
