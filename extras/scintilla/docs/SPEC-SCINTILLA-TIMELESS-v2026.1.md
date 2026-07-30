@@ -1337,13 +1337,15 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry`:
 
 ```json
-SetSemanticsRegistry = [
-  "completed_nodes",
-  "permissions",
-  "prerequisites",
-  "roles",
-  "scopes"
-]
+{
+  "SetSemanticsRegistry": [
+    "completed_nodes",
+    "permissions",
+    "prerequisites",
+    "roles",
+    "scopes"
+  ]
+}
 ```
 
    L'ordinamento degli elementi dell'array `MUST` essere eseguito con una strategia **Ricorsiva Bottom-Up (Deep Canonicalization)**:
