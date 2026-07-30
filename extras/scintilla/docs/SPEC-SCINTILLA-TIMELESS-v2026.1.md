@@ -343,7 +343,7 @@ Ogni stato $S \in \mathcal{S}$ e transazione $t \in T$ `MUST` soddisfare rigoros
 
 ---
 
-### 1.2 Spazio Ambientale $E$ e Separazione Pura: $\text{ValidateEnvironment}$ vs $\text{Apply}$ (`OBI-001`)
+### 1.2 Spazio Ambientale E e Separazione Pura: ValidateEnvironment vs Apply (OBI-001)
 
 Per garantire sia il determinismo matematico assoluto della funzione di transizione di stato, sia la validazione rigorosa rispetto al contesto esecutivo esterno, il runtime separa formalmente la verifica d'ambiente dalla mutazione algebrica dello stato.
 
@@ -376,7 +376,8 @@ Il predicato impuro di validazione d'ambiente $\text{ValidateEnvironment}: \math
 
 ---
 
-### 1.3 Il Ledger come Monoide Libero $\mathcal{L}$ e Content-Addressing delle Dipendenze (`OBI-002`)
+### 1.3 Il Ledger come Monoide Libero L e Content-Addressing delle Dipendenze (OBI-002)
+
 Il registro immutabile delle decisioni (Ledger) è formalizzato come un Monoide Libero $\mathcal{L} := \langle T^*, \mathbin{\Vert}, \epsilon \rangle$:
 * $T^*$: L'insieme di tutti i record di mutazione immutabili.
 * $\mathbin{\Vert}$: L'operazione binaria di concatenazione associativa di transazioni (Append-Only).
@@ -389,7 +390,7 @@ Il registro immutabile delle decisioni (Ledger) è formalizzato come un Monoide 
 
 ---
 
-### 1.4 La Funzione di Proiezione dello Stato $P: \mathcal{L} \to \mathcal{S}$ e la Persistence dei Security Events
+### 1.4 La Funzione di Proiezione dello Stato P: L -> S e la Persistence dei Security Events
 
 La relazione tra la storia immutabile delle transazioni $L \in \mathcal{L}$ e lo stato proiettato corrente $S \in \mathcal{S}$ è governata dalla funzione pura $P$:
 
@@ -500,7 +501,7 @@ In conformità a `OBI-007`, l'ordine di autorità informativa varia in base al d
 
 ---
 
-### 1.6 Modello di Minaccia Formale, Confini di Fiducia e Modello di Rischio Psicologico $R_{\text{human}}$ (`OBI-004`)
+### 1.6 Modello di Minaccia Formale, Confini di Fiducia e Modello di Rischio Psicologico R_human (OBI-004)
 
 #### 1.6.1 Modello dell'Avversario ($\mathcal{A}$)
 Il sistema formalizza la propria sicurezza rispetto ad un avversario razionale $\mathcal{A}$ in grado di iniettare prompt malevoli nel Livello 5 (LLM), inviare transizioni non autorizzate, tentare attacchi di replay o manipolare fonti esterne. $\mathcal{A}$ `SHALL NOT` invertire primitive crittografiche (SHA-256, Ed25519) né alterare il Ledger $L$.
@@ -629,7 +630,8 @@ Per definire in modo rigoroso le responsabilità operative ed etiche, ogni trans
 
 ---
 
-### 2.2 Runtime Safety State Machine $M$ (Sicurezza e Integrità di Sistema)
+### 2.2 Runtime Safety State Machine M (Sicurezza e Integrità di Sistema)
+
 L'operatività di sicurezza di runtime è modellata come un Automa a Stati Finiti Deterministico Totale $M$:
 ```math
 M := \langle Q, \Sigma, T_{\text{JSON}}, \delta_M, q_0, F_{\text{oper}} \rangle
@@ -685,7 +687,7 @@ il runtime `MUST` mantenere attiva ed accessibile la funzione di sola lettura de
 
 ---
 
-### 2.3 Human Journey State Machine $\mathcal{H}$ (Percorso di Emancipazione Personale) (`OBI-009`)
+### 2.3 Human Journey State Machine H (Percorso di Emancipazione Personale) (OBI-009)
 
 L'evoluzione del percorso umano dell'utente è modellata da un automa di dominio autonomo $\mathcal{H}$, esteso per includere formalmente gli stati di pausa, ripensamento e scelta autonoma dell'utente:
 ```math
@@ -763,7 +765,7 @@ e forza il Playbook Engine (§5) ad isolare e presentare all'utente un **singolo
 
 ---
 
-### 2.4 Equazione Matematica del Sistema Reattivo Composito $S_C = Q \times Q_H$
+### 2.4 Equazione Matematica del Sistema Reattivo Composito S_C = Q x Q_H
 
 Il sistema reattivo globale di Scintilla Core è modellato dallo spazio di stato composito $S_C = Q \times Q_H$. La funzione di transizione strutturale pura dell'automa composito:
 ```math
@@ -987,7 +989,8 @@ L'intervento di un operatore umano (`OPERATOR`) costituisce un meccanismo di gar
 
 ## 5. EMANCIPATION PLAYBOOK ENGINE
 
-### 5.1 Struttura del Grafo del Playbook $G_P$
+### 5.1 Struttura del Grafo del Playbook G_P
+
 Un **Emancipation Playbook** è formalizzato come un grafo orientato $G_P = (V_P, E_P, C_P)$:
 * $V_P$: Insieme dei Nodi di Micro-Azione ($v \in V_P$).
 * $E_P \subseteq V_P \times V_P$: Archi diretti rappresentanti la sequenza logica di progressione.
@@ -1117,7 +1120,7 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 
 ### 9.2 Modello di Transizione di Kripke e Logica Temporale (FO-LTL / CTL)
 
-#### 9.2.1 Formalizzazione della Struttura di Kripke $M_K$
+#### 9.2.1 Formalizzazione della Struttura di Kripke M_K
 La semantica temporale di Scintilla Core è descritta dalla Struttura di Kripke con vincoli di fairness:
 ```math
 M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
@@ -1317,7 +1320,7 @@ Dove ogni tupla è tipizzata con domini espliciti come:
 ### 10.2 Il Profilo di Canonizzazione JSON SC-JCS-1
 **SC-JCS-1 è un profilo di canonizzazione derivato e NON-COMPATIBILE a livello di hash con lo standard RFC 8785 JCS**.
 
-#### 10.2.1 Sottoinsieme $J_{\text{SC}}$ e Strict Signed Safe Integer Range
+#### 10.2.1 Sottoinsieme J_SC e Strict Signed Safe Integer Range
 Un documento JSON $j \in \text{JSON}_{\text{RFC8259}}$ appartiene al sottoinsieme $J_{\text{SC}}$ se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
 
 ```math
@@ -1354,7 +1357,7 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 
 ---
 
-### 10.3 Machine-Readable $\delta_M$ JSON Definition Contract
+### 10.3 Machine-Readable delta_M JSON Definition Contract
 
 ```json
 {
@@ -1539,7 +1542,7 @@ export interface ArtifactDraftRecord {
 
 ## ANNEX B: EMANCIPATION PLAYBOOK GRAPH SPECIFICATION & TYPESCRIPT MAPPING (INFORMATIVE)
 
-### B.1 Struttura Dati Formale del Grafo del Playbook ($G_P$)
+### B.1 Struttura Dati Formale del Grafo del Playbook (G_P)
 
 Per conformità all'Invariante `INV-PLAYBOOK-GRAPH-01` (§5.3), un Playbook di Emancipazione serializzato `MUST` rispettare il seguente contratto di interfaccia TypeScript:
 
