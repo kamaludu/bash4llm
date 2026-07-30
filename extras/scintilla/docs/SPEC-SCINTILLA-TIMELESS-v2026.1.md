@@ -187,7 +187,7 @@ Dove:
 ```
 * Timestamp di entrata nello stato $h_7$ (`HUMAN_PAUSED`), necessario al calcolo deterministico dei timer di inattività (§2.3.2):
 ```math
-$t_{\text{pause\_start}} \in \mathcal{T} \cup \{\text{null}\}
+t_{\text{pause\_start}} \in \mathcal{T} \cup \{\text{null}\}
 ```
 * L'insieme degli identificatori di elementi informativi soggetti a revoca/oblio parziale (§1.1.3.1):
 ```math
@@ -256,7 +256,19 @@ derivata dalla chiave radice effimera del caso utente $K_{\text{case}}$ gestita 
 ```math
 \mathcal{Q}_{\text{revoked\_items}}' = \mathcal{Q}_{\text{revoked\_items}} \cup \{\text{item\_id}\}
 ```
-In sede di proiezione o lettura dello stato, qualsiasi elemento il cui $\text{item\_id} \in \mathcal{Q}_{\text{revoked\_items}}$ `MUST` restituire il valore nullo $\bot$ e il runtime `MUST NOT` tentare la decifratura del corrispondente $\text{Payload}_{\text{encrypted}}$, garantendo l'oblio funzionale immediato senza compromettere la struttura delle chiavi derivate.
+In sede di proiezione o lettura dello stato, qualsiasi elemento il cui:
+```math
+\text{item\_id} \in \mathcal{Q}_{\text{revoked\_items}}
+```
+ `MUST` restituire il valore nullo:
+```math
+\bot
+```
+ e il runtime `MUST NOT` tentare la decifratura del corrispondente:
+```math
+\text{Payload}_{\text{encrypted}}
+```
+ garantendo l'oblio funzionale immediato senza compromettere la struttura delle chiavi derivate.
 
 3. **Meccanismo di Oblio Totale (Case-Level Crypto-Shredding):** L'oblio totale ed irreversibile dell'intero caso utente `SHALL` essere eseguito mediante **Crypto-Shredding Radice**, formalizzato come la distruzione irreversibile e atomica della tupla nel subsistema isolato di Livello 1 (`KMS_KeyStore`):
 ```math
@@ -271,7 +283,19 @@ H_{\text{salted}}(v) = H(v \mathbin{\Vert} S_{\text{case}})
 ```math
 \langle \text{Payload}_{\text{encrypted}}, H_{\text{salted}}(v) \rangle
 ```
-   La distruzione coordinata di $\langle K_{\text{case}}, S_{\text{case}} \rangle$ rende il payload cifrato $\text{Payload}_{\text{encrypted}}$ irreversibilmente incomprensibile e l'hash $H_{\text{salted}}(v)$ matematicamente non verificabile a partire dal dato in chiaro, preservando intatta la catena di checksum $H_N$ del Ledger senza esporre PII.
+   La distruzione coordinata di:
+```math
+\langle K_{\text{case}}, S_{\text{case}} \rangle
+```
+ rende il payload cifrato:
+```math
+\text{Payload}_{\text{encrypted}}
+```
+ irreversibilmente incomprensibile e l'hash:
+```math
+H_{\text{salted}}(v)
+```
+ matematicamente non verificabile a partire dal dato in chiaro, preservando intatta la catena di checksum $H_N$ del Ledger senza esporre PII.
    Qualsiasi fallimento di comunicazione o indisponibilità del subsistema `KMS_KeyStore` durante le operazioni di cifratura o distruzione `MUST` interrompere la transazione e restituire il **Runtime Error Code 87 (`ERR_KMS_UNAVAILABLE`)**.
 
 5. **Regola di Registrazione dell'Evento di Oblio ($t_{\text{shred}}$):** L'atto di distruzione della chiave $K_{\text{case}}$ `MUST` generare ed appendere al Ledger una transazione formale di sistema $t_{\text{shred}} \in T$ recante l'evento `EV_CRYPTO_SHRED_EXECUTED`. Tale transazione certifica in modo immutabile l'istante temporale e la revoca del consenso che hanno determinato la distruzione irreversibile della chiave, senza esporre alcun dato PII.
@@ -441,7 +465,7 @@ In conformità a `OBI-007`, l'ordine di autorità informativa varia in base al d
 
 1. **Dominio dei Fatti Amministrativi e Legali:**
 ```math
-\omega = \text{FACTUAL\_ADMINISTRATIVE}$)
+\omega = \text{FACTUAL\_ADMINISTRATIVE}
 ```
 
 ```math
@@ -451,7 +475,7 @@ In conformità a `OBI-007`, l'ordine di autorità informativa varia in base al d
 
 2. **Dominio Soggettivo, Emotivo e degli Obiettivi Personali:**
 ```math
-\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}$)
+\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}
 ```
 
 ```math
@@ -514,7 +538,11 @@ Con il vincolo di normalizzazione del vettore dei pesi:
 Le sotto-funzioni di punteggio utilizzate nel calcolo dell'AGI sono funzioni pure defined unicamente dallo stato algebrico $S \in \mathcal{S}$:
 
 1. **Punteggio di Chiarezza Cognitiva ($\text{ClarityScore}: \mathcal{S} \to [0.0, 1.0]$):**  
-   Valuta la fluidità della comprensione dell'utente riducendo il punteggio in presenza di frequenti richieste di riformulazione o ambiguità rilevate in $\mathcal{M}_{\text{metrics}} = \langle c_{\text{rephrase}}, c_{\text{ambiguity}}, c_{\text{interaction}} \rangle$:
+   Valuta la fluidità della comprensione dell'utente riducendo il punteggio in presenza di frequenti richieste di riformulazione o ambiguità rilevate in:
+```math
+\mathcal{M}_{\text{metrics}} = \langle c_{\text{rephrase}}, c_{\text{ambiguity}}, c_{\text{interaction}} \rangle
+```
+
 ```math
 \text{ClarityScore}(S) := \begin{cases}
 1.0 & \text{se } c_{\text{interaction}} = 0 \\
@@ -523,7 +551,11 @@ Le sotto-funzioni di punteggio utilizzate nel calcolo dell'AGI sono funzioni pur
 ```
 
 2. **Rapporto di Esecuzione delle Azioni ($\text{ActionExecutionRatio}: \mathcal{S} \to [0.0, 1.0]$):**  
-   Valuta il tasso di avanzamento concreto dell'utente all'interno del Playbook attivo $\mathcal{K}_{\text{playbook}} = \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle$ rispetto al totale dei nodi raggiungibili $|V_P|$ nel grafo $G_P$:
+   Valuta il tasso di avanzamento concreto dell'utente all'interno del Playbook attivo:
+```math
+\mathcal{K}_{\text{playbook}} = \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle
+```
+ rispetto al totale dei nodi raggiungibili $|V_P|$ nel grafo $G_P$:
 ```math
 \text{ActionExecutionRatio}(S) := \begin{cases}
 0.0 & \text{se } \text{pb}_{\text{id}} = \text{null} \lor |V_P| = 0 \\
@@ -539,7 +571,15 @@ Le sotto-funzioni di punteggio utilizzate nel calcolo dell'AGI sono funzioni pur
 \frac{|\{ v \in V_{\text{completed}} \mid \text{ActorTypeOf}(v, S) = \text{USER} \}|}{|V_{\text{completed}}|} & \text{se } |V_{\text{completed}}| > 0
 \end{cases}
 ```
-   dove la funzione pura di lookup dell'attore asseritore $\text{ActorTypeOf}: \mathcal{I} \times \mathcal{S} \to \mathcal{I}_{\text{actor}}$ estrae l'identificatore dell'attore dal registro di provenienza $\mathcal{M}_{\text{prov}}$ presente nello stato $S$:
+   dove la funzione pura di lookup dell'attore asseritore:
+```math
+\text{ActorTypeOf}: \mathcal{I} \times \mathcal{S} \to \mathcal{I}_{\text{actor}}
+```
+ estrae l'identificatore dell'attore dal registro di provenienza:
+```math
+\mathcal{M}_{\text{prov}}
+```
+ presente nello stato $S$:
 ```math
 \text{ActorTypeOf}(v, S) := \mathcal{M}_{\text{prov}}(v).\alpha
 ```
@@ -727,7 +767,7 @@ La dinamica globale del sistema Scintilla Core è formalizzata mediante lo schem
 ### 3.1 Matrice Normativa di Autorizzazione Evento-Attore
 Un evento: 
 ```math
-$\sigma_C \in \Sigma \cup \Sigma_H
+\sigma_C \in \Sigma \cup \Sigma_H
 ```
 contenuto in una transizione $t \in T$ emessa dall'attore $\alpha = \text{actor}(t)$ è valido se e solo se la coppia:
 ```math
