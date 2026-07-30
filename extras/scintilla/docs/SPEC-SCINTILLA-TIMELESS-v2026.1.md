@@ -680,7 +680,10 @@ determinando la transizione di stato:
 ```
 
 #### 2.3.3 Regola di Adattamento per Sopraffazione Emotiva (Adaptive Overwhelm Rule)
-Se l'input del Livello 5 (SML v2.0) riporta l'esito conversazionale `CONVERSATION_OUTCOME: OVERWHELMED`, il runtime `MUST` generare l'evento $\text{HEV\_EMOTIONAL\_OVERWHELM} \in \Sigma_H$. 
+Se l'input del Livello 5 (SML v2.0) riporta l'esito conversazionale `CONVERSATION_OUTCOME: OVERWHELMED`, il runtime `MUST` generare l'evento
+```math
+\text{HEV\_EMOTIONAL\_OVERWHELM} \in \Sigma_H
+```
 
 La ricezione di tale evento impone la transizione di stato:
 ```math
