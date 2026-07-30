@@ -1,12 +1,12 @@
 [✴ SCINTILLA - SPECIFICA CANONICA IN LINGUAGGIO NATURALE](SPEC-SCI-TL--NATLANGv2026.1.md)
 
 # ✴ SCINTILLA - CORE CANONICAL SPECIFICATION
-## Standard Edition v4.2 Timeless
+## Standard Edition v4.3 Timeless
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato:** Specifica Normativa Canonica Formale (Single Source of Truth)
-* **Edizione:** v4.2 Timeless Standard Edition (Human-Agency Centric & Formally Consistent)
+* **Edizione:** v4.3 Timeless Standard Edition (Human-Agency Centric, Epistemically Invariant & Formally Verified)
 * **Autorità Governance:** Single Source of Truth Normativa per il dominio SCINTILLA CORE. Versionata secondo l'Algebra delle Versioni (§6).
 * **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
 
@@ -235,7 +235,7 @@ In conformità ai requisiti di riproducibilità e content-addressing (`OBI-002`)
 $\text{runtime}_{\text{profile}_{\text{hash}}} \in \mathcal{D}
 ```
 
-* $\text{specification}_{\text{id}} \in \mathcal{I}$: Identificatore canonico dello standard (`SCINTILLA-CORE-v4.2-TIMELESS`).
+* $\text{specification}_{\text{id}} \in \mathcal{I}$: Identificatore canonico dello standard (`SCINTILLA-CORE-v4.3-TIMELESS`).
 * $\text{proof} \in \mathcal{S}_{\text{sig}}$: Firma digitale dell'attore calcolata su $\text{Canon}(\text{TransactionBody})$.
 
 #### 1.1.3.1 Invariante di Oblio Crittografico e Audit Trail (`INV-PRIVACY-SHREDDING-01`)
@@ -261,7 +261,28 @@ H_{\text{salted}}(v) = H(v \mathbin{\Vert} S_{\text{case}})
 $\langle \text{Payload}_{\text{encrypted}}, H_{\text{salted}}(v) \rangle
 ```
 
-3. L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, definito come la distruzione irreversibile e simultanea sia della chiave di cifratura $K_{\text{case}}$ sia del salt $S_{\text{case}}$. La distruzione coordinata di $\langle K_{\text{case}}, S_{\text{case}} \rangle$ rende il payload un testo cifrato irrecuperabile e l'hash $H_{\text{salted}}(v)$ matematicamente non invertibile né verificabile, preservando l'integrità della catena di hash $H_N$ del Ledger senza esporre dati personali.
+3. **Crypto-Shredding e Architettura KMS:** L'esercizio del diritto alla cancellazione dei dati/oblio da parte dell'utente `SHALL` essere eseguito mediante **Crypto-Shredding**, formalizzato come la distruzione irreversibile e atomica della tupla
+
+```math
+\langle K_{\text{case}}, S_{\text{case}} \rangle
+```
+
+gestita dal subsistema isolato di Livello 1 (`KMS_KeyStore`). 
+   * La distruzione coordinata di
+
+```math
+\langle K_{\text{case}}, S_{\text{case}} \rangle
+```
+
+ rende il payload cifrato  
+
+```math
+\text{Payload}_{\text{encrypted}}
+```
+
+ irreversibilmente incomprensibile e l'hash $H_{\text{salted}}(v)$ matematicamente non verificabile a partire dal dato in chiaro, preservando intatta la catena di checksum $H_N$ del Ledger senza esporre PII.
+   * Qualsiasi fallimento di comunicazione o indisponibilità del subsistema `KMS_KeyStore` durante le operazioni di cifratura o distruzione `MUST` interrompere la transazione e restituire il **Runtime Error Code 87 (`ERR_KMS_UNAVAILABLE`)**.
+
 4. **Regola di Registrazione dell'Evento di Oblio ($t_{\text{shred}}$):** L'atto di distruzione della chiave $K_{\text{case}}$ `MUST` generare ed appendere al Ledger una transazione formale di sistema $t_{\text{shred}} \in T$ recante l'evento `EV_CRYPTO_SHRED_EXECUTED`. Tale transazione certifica in modo immutabile l'istante temporale e la revoca del consenso che hanno determinato la distruzione irreversibile della chiave, senza esporre alcun dato PII.
 
 #### 1.1.4 Invarianti Globali di Sicurezza e Integrità
@@ -469,51 +490,44 @@ Al fine di tutelare gli utenti in condizioni di fragilità psicologica, sociale 
 
 ---
 
-### 1.7 Indice di Guadagno di Agency ($\text{AGI}$) con Pesi Dinamici
+### 1.7 Indice di Guadagno di Agency ($\text{AGI}$) con Principio di Invarianza Epistemica
 
-L'**Indice di Guadagno di Agency** ($\text{AGI} \in [0.0, 1.0]$) è formalizzato come una funzione di valutazione i cui pesi $\mathbf{w}(q_H)$ variano dinamicamente in funzione dello stato corrente del percorso umano $q_H \in Q_H$:
+L'**Indice di Guadagno di Agency** ($\text{AGI} \in [0.0, 1.0]$) misura l'efficacia del sistema nell'aumentare la capacità operativa dell'utente. 
+
+#### 1.7.1 Assioma di Invarianza Epistemica per Stati Non-Attivi (`AXIOM-AGI-INVARIANCE`)
+Quando l'utente sospende il percorso ($h_7 = \text{HUMAN\_PAUSED}$) o esercita la facoltà di rifiutare l'assistenza ($h_{10} = \text{HUMAN\_DECLINED\_ASSISTANCE}$), il sistema perde la capacità di osservazione dinamica dell'utente. Per evitare sia penalizzazioni ingiuste ($\text{AGI} \to 0.0$) sia false attestazioni di successo ($\text{AGI} := 1.0$), il sistema `MUST` congelare il valore dell'indice al valore calcolato nell'ultimo stato attivo misurato:
 
 ```math
-\text{AGI}(S) := w_1(q_H) \cdot \text{ClarityScore}(S) + w_2(q_H) \cdot \text{ActionExecutionRatio}(S) + w_3(q_H) \cdot \text{DependencyReductionScore}(S)
+\forall S_N \in \mathcal{S}, \quad \text{AGI}(S_N) := \begin{cases}
+\text{AGI}(S_{N-1}) & \text{se } q_H(S_N) \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \} \\
+\text{AGI}_{\text{computed}}(S_N) & \text{se } q_H(S_N) \notin \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}
+\end{cases}
 ```
 
-Con il vincolo di normalizzazione:
+#### 1.7.2 Calcolo Dinamico dell'AGI negli Stati Attivi ($\text{AGI}_{\text{computed}}$)
+Per tutti gli stati attivi ($q_H \notin \{h_7, h_{10}\}$), la funzione di valutazione dinamica è formalizzata come:
+
 ```math
-\forall q_H \in Q_H, \quad w_1(q_H) + w_2(q_H) + w_3(q_H) = 1.0
+\text{AGI}_{\text{computed}}(S) := w_1(q_H) \cdot \text{ClarityScore}(S) + w_2(q_H) \cdot \text{ActionExecutionRatio}(S) + w_3(q_H) \cdot \text{DependencyReductionScore}(S)
+```
+
+Con il vincolo di normalizzazione del vettore dei pesi:
+```math
+\forall q_H \in Q_H \setminus \{h_7, h_{10}\}, \quad w_1(q_H) + w_2(q_H) + w_3(q_H) = 1.0
 ```
 
 #### Mappatura Normativa del Vettore dei Pesi $\mathbf{w}(q_H)$:
 ```math
 \mathbf{w}(q_H) := \begin{cases}
-\langle 0.60, \ 0.30, \ 0.10 \rangle & \text{se } q_H \in \{ \text{UNASSESSED}, \text{INITIAL\_ASSESSMENT}, \text{STABILIZATION} \} \quad (\text{Priorità Riduzione Carico Cognitivo}) \\
-\langle 0.30, \ 0.50, \ 0.20 \rangle & \text{se } q_H \in \{ \text{DOCUMENT\_RECOVERY}, \text{EMPLOYMENT\_READINESS} \} \quad (\text{Priorità Esecuzione Micro-Passi}) \\
-\langle 0.20, \ 0.30, \ 0.50 \rangle & \text{se } q_H \in \{ \text{FINANCIAL\_AUTONOMY}, \text{SUSTAINED\_INDEPENDENCE} \} \quad (\text{Priorità Autonomia e Indipendenza}) \\
-\langle 0.40, \ 0.20, \ 0.40 \rangle & \text{se } q_H \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{HUMAN\_GOAL\_CHANGED} \} \quad (\text{Priorità Ri-orientamento}) \\
-\langle 0.00, \ 0.00, \ 1.00 \rangle & \text{se } q_H = \text{HUMAN\_DECLINED\_ASSISTANCE} \quad (\text{Stato Terminale di Rinuncia Autonoma})
+\langle 0.60, \ 0.30, \ 0.10 \rangle & \text{se } q_H \in \{ \text{UNASSESSED}, \text{INITIAL\_ASSESSMENT}, \text{STABILIZATION} \} \\
+\langle 0.30, \ 0.50, \ 0.20 \rangle & \text{se } q_H \in \{ \text{DOCUMENT\_RECOVERY}, \text{EMPLOYMENT\_READINESS} \} \\
+\langle 0.20, \ 0.30, \ 0.50 \rangle & \text{se } q_H \in \{ \text{FINANCIAL\_AUTONOMY}, \text{SUSTAINED\_INDEPENDENCE} \} \\
+\langle 0.40, \ 0.20, \ 0.40 \rangle & \text{se } q_H \in \{ \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{HUMAN\_GOAL\_CHANGED} \} \\
+\text{FROZEN} & \text{se } q_H \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \} \quad (\text{Mantenimento } \text{AGI}_{N-1})
 \end{cases}
-```
-
-Dove:
-* $\text{ClarityScore}(S) \in [0.0, 1.0]$ (Punteggio di Ergonomia Cognitiva e Chiarezza Percepita):
-  Misura la capacità dell'interazione di procedere senza che l'utente incontri ostacoli di comprensione o necessiti di continue riformulazioni. È formalizzato come la funzione bounded:
-```math
-\text{ClarityScore}(S) := 1.0 - \min\left(1.0, \ \frac{\text{RephraseRequests}(S) + \text{AmbiguityEvents}(S)}{\text{TotalUserInteractions}(S) + 1}\right)
-```
-
-* $\text{ActionExecutionRatio}(S) \in [0.0, 1.0]$: Il rapporto regolarizzato tra i micro-passi liberamente confermati ed eseguiti dall'utente rispetto alle intenzioni formulate:
-```math
-\text{ActionExecutionRatio}(S) := \begin{cases} 1.0 & \text{se } \text{TotalProposedActions}(S) = 0 \\ \frac{\text{CompletedUserSteps}(S)}{\text{TotalProposedActions}(S)} & \text{se } \text{TotalProposedActions}(S) > 0 \end{cases}
 ```
 
 * Assioma di Calibrazione di Genesi: $\text{AGI}(s_0) = 0.0$.
-* $\text{DependencyReductionScore}(S) \in [0.0, 1.0]$ (Punteggio di Autonomia e Svincolo dal Sistema):
-  Misura il grado di iniziativa autonoma dell'utente rispetto al supporto diretto del sistema o dell'operatore umano. È formalizzato dal rapporto regolarizzato:
-```math
-\text{DependencyReductionScore}(S) := \begin{cases} 
-0.0 & \text{se } \text{TotalCompletedSteps}(S) = 0 \\
-\frac{\text{AutonomousUserSteps}(S) + 0.5 \cdot \text{AssistedSteps}(S)}{\text{TotalCompletedSteps}(S)} & \text{se } \text{TotalCompletedSteps}(S) > 0 
-\end{cases}
-```
 
 ---
 
@@ -622,9 +636,9 @@ Q_H = \{ \text{UNASSESSED } (h_0), \text{INITIAL\_ASSESSMENT } (h_1), \text{STAB
 F_H = \{ \text{SUSTAINED\_INDEPENDENCE}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}
 ```
    
-4. **Alfabeto degli Eventi Umani $\Sigma_H$ ($|\Sigma_H|=12$):**
+4. **Alfabeto degli Eventi Umani $\Sigma_H$ ($|\Sigma_H|=13$):**
 ```math
-\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL} \}
+\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM} \}
 ```
 
 #### 2.3.1 Assioma di Chiusura per Stazionarietà (Stuttering Step Axiom)
@@ -656,6 +670,15 @@ determinando la transizione di stato:
 ```math
 \delta_H(\text{HUMAN\_PAUSED}, \text{HEV\_RECALIBRATION\_REQ}) = \text{HUMAN\_RECALIBRATION\_REQUIRED}
 ```
+
+#### 2.3.3 Regola di Adattamento per Sopraffazione Emotiva (Adaptive Overwhelm Rule)
+Se l'input del Livello 5 (SML v2.0) riporta l'esito conversazionale `CONVERSATION_OUTCOME: OVERWHELMED`, il runtime `MUST` generare l'evento $\text{HEV\_EMOTIONAL\_OVERWHELM} \in \Sigma_H$. 
+
+La ricezione di tale evento impone la transizione di stato:
+```math
+\delta_H(q_H, \text{HEV\_EMOTIONAL\_OVERWHELM}) = \text{HUMAN\_RECALIBRATION\_REQUIRED}
+```
+e forza il Playbook Engine (§5) ad isolare e presentare all'utente un **singolo ed esclusivo micro-passo di emergenza/stabilizzazione**, sospendendo la visualizzazione della mappa di avanzamento complessa.
 
 ---
 
@@ -742,14 +765,17 @@ t_{\text{timeout}} := \left\langle \text{TransactionBody}(\text{actor}=\text{SYS
 
 ---
 
-### 3.5 Meta-Regola SOS di Congelamento da Lockdown (Lockdown Freeze)
+### 3.5 Meta-Regola SOS di Sovranità Umana in Lockdown (Human Sovereignty Override)
+```math
+\frac{\sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, \delta_H(q_H, \sigma_C), \text{Apply}(S, t) \rangle} \quad [\text{SOS-HUMAN-SOVEREIGNTY-LOCKDOWN}]
+```
+
+### 3.6 Meta-Regola SOS di Congelamento da Lockdown (Lockdown Freeze Standard)
 ```math
 \frac{\sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-LOCKDOWN-FREEZE}]
 ```
 
----
-
-### 3.6 Meta-Regola SOS di Congelamento degli Stati Terminali (Terminal State Freeze)
+### 3.7 Meta-Regola SOS di Congelamento degli Stati Terminali (Terminal State Freeze)
 ```math
 \frac{q_H \in F_H \quad \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_GOAL\_UPDATE} \}}{\langle q, q_H, \sigma_C, S, E \rangle \to_{\text{Sys}} \langle q, q_H, S \rangle} \quad [\text{SOS-TERMINAL-FREEZE}]
 ```
@@ -931,7 +957,7 @@ contiene $H_{N-1}$ come valore del campo `prev_hash`.
 ## 8. FRAMEWORK DI CONFORMITÀ E TASSONOMIA DEI RUNTIME ERROR CODES
 
 ### 8.1 Criteri Normativi di Accettazione PASS/FAIL
-Un'implementazione esecutiva ottiene la **Certificazione di Conformità Scintilla Core v4.2** se e solo se soddisfa i seguenti criteri:
+Un'implementazione esecutiva ottiene la **Certificazione di Conformità Scintilla Core v4.3** se e solo se soddisfa i seguenti criteri:
 1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dal profilo di riferimento applicato.
 2. **Requisito di Verifica LTL/CTL:** $100\%$ delle proprietà logiche temporali (§9.2) risultano soddisfatte nel modello formale.
 3. **Totalità Matematica:** Gestione corretta ed esaustiva di tutte le coppie $(q, \sigma) \in Q \times \Sigma$ e $(q_H, \sigma_H) \in Q_H \times \Sigma_H$.
@@ -949,14 +975,17 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 * **Runtime Error Code 73 (`ERR_INFRASTRUCTURE_IO`):** Fallimento dell'infrastruttura di I/O, acquisizione del lease di concorrenza o perdita di connessione al Ledger.
 * **Runtime Error Code 77 (`ERR_SECURITY_VIOLATION`):** Violazione dell'integrità crittografica della catena di hash ($H_N$), manomissione del ledger o tentata alterazione storica.
 * **Runtime Error Code 78 (`ERR_LEASE_ACQUISITION_TIMEOUT`):** Scadenza del lease di concorrenza durante un tentativo di mutazione di stato.
+* **Runtime Error Code 79 (`ERR_CLOCK_SKEW_EXCEEDED`):** La differenza tra l'ora di sistema locale $E.t_{\text{wall}}$ ed il timestamp della transazione supera la tolleranza massima consentita $\Delta t_{\text{max}}$.
 
-#### Sotto-insieme Validazione, Parsing e Flussi (80–89)
+#### Sotto-insieme Validazione, Parsing, Flussi e KMS (80–89)
 * **Runtime Error Code 80 (`ERR_SML_PARSE_FAILED`):** Errore di validazione sintattica dell'input SML v2.0 rispetto alla grammatica EBNF (§C.1).
 * **Runtime Error Code 81 (`ERR_HUMAN_INACTIVITY_TIMEOUT`):** Scadenza della soglia temporale di inattività nello stato $h_7$ (`HUMAN_PAUSED`).
 * **Runtime Error Code 82 (`ERR_PLAYBOOK_NODE_NOT_FOUND`):** Tentativo di avanzamento verso un identificatore di nodo non esistente nel grafo del Playbook active ($G_P$).
 * **Runtime Error Code 83 (`ERR_GRAPH_CYCLE_DETECTED`):** Rilevazione di un ciclo illegale sui nodi bloccanti all'interno di un Emancipation Playbook Graph ($G_P$).
 * **Runtime Error Code 84 (`ERR_SCHEMA_MISMATCH`):** Incompatibilità di versione dello schema dati non coperta da un `MigrationManifest` valido.
 * **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`):** Errore di formattazione o presenza di numeri fuori dall'intervallo consentito (*Strict Signed Safe Integer Range*).
+* **Runtime Error Code 86 (`ERR_HOBM_BOUNDARY_VIOLATION`):** Tentativo di eseguire un'azione ad alto rischio o impatto legale (`HUMAN_REVIEW_REQUIRED`) priva della firma autorizzativa di un attore di tipo `OPERATOR`.
+* **Runtime Error Code 87 (`ERR_KMS_UNAVAILABLE`):** Indisponibilità, errore di I/O o fallimento di comunicazione con il subsistema di gestione delle chiavi effimere (`KMS_KeyStore`).
 
 ---
 
@@ -1085,7 +1114,9 @@ I_{\text{safe}} = \left[ -(2^{53} - 1), \ +(2^{53} - 1) \right] = \left[ -900719
 ```
 
 Qualsiasi notazione contenente notazione scientifica (`1e10`), `NaN` o `Infinity` `MUST` essere rifiutata con **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`)**.
-**Regola dei Valori in Virgola Mobile $[0.0, 1.0]$:** I campi numerici rappresentanti probabilità, punteggi di confidenza ($\phi$) o indici AGI $[0.0, 1.0]$ `MUST` essere normalizzati in formato JSON come numeri interi a punto fisso scalati di un fattore $10^4$ (Basis Points, intervallo $[0, 10000]$) oppure serializzati in conformità rigorosa alle regole di rappresentazione dei numeri dello standard RFC 8785 (JCS).
+
+**Regola Esclusiva sui Valori in $[0.0, 1.0]$ (Basis Points Standard):** 
+Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente iniettiva e priva di ambiguità di hashing**, tutti i campi numerici rappresentanti probabilità, punteggi di confidenza ($\phi$) o indici AGI $[0.0, 1.0]$ **`MUST` essere convertiti e serializzati in JSON come numeri interi a punto fisso scalati di un fattore $10^4$ (Basis Points, intervallo chiuso intero $[0, 10000]$)**. La rappresentazione in virgola mobile diretta per tali campi è severamente vietata e determina lo scarto immediato del documento.
 
 #### 10.2.2 Algoritmo di Serializzazione Canonica SC-JCS-1
 1. **Whitespace Elimination:** Rimuovere tutti i caratteri di spaziatura esterni alle stringhe.
@@ -1201,6 +1232,34 @@ export interface AgencyGainIndexRecord {
 }
 ```
 
+```typescript
+export interface SMLDocumentParsed {
+  sml_version: "2.0";
+  listen_summary: string;
+  listen_agency: string;
+  conversation_outcome: 
+    | "UNDERSTOOD" 
+    | "NEEDS_REPHRASING" 
+    | "OVERWHELMED" 
+    | "MOTIVATED" 
+    | "DECLINED_ACTION" 
+    | "ASKED_FOR_HELP";
+  map_overview: string;
+  proposed_transition: string | "NONE";
+  micro_action?: {
+    id: string | "NONE";
+    title: string;
+    minutes: number;
+  };
+  evidence: string;
+  evidence_type: 
+    | "USER_DECLARATION" 
+    | "DOCUMENT" 
+    | "SYSTEM_EVENT" 
+    | "OPERATOR_CONFIRMATION";
+}
+```
+
 ---
 
 ## ANNEX C: SML v2.0 SPECIFICATION (SYNTACTIC EBNF & SEMANTIC VALIDATION)
@@ -1237,6 +1296,13 @@ NonNegativeNumber    ::= "0" | [1-9] [0-9]* ;
 CRLF                 ::= "\r\n" | "\n" ;
 ```
 
+### C.2 Validazione Semantica e Gate di Sicurezza di Livello 2 (Semantic Safety Gate)
+
+Il Policy Guidance Engine (Livello 2) applica una verifica semantica vincolante sugli oggetti `SMLDocumentParsed` prima di ammettere qualsiasi proposta di transizione:
+
+1. **Filtro contro Allucinazioni Amministrative/Legali:** Se l'oggetto SML contiene asserzioni categorizzate nel dominio $\omega = \text{FACTUAL\_ADMINISTRATIVE}$ (es. diritti a sussidi, scadenze di legge), l'asserzione `MUST` essere ancorata ad un nodo di Playbook o fonte esterna con stato di verifica $\psi = \text{VERIFIED}$.
+2. **Azione di Violazione:** Qualora il Livello 5 generi un'asserzione amministrativa prescrittiva priva di riscontro verificato, il parser di Livello 4 `MUST` scartare l'input e generare l'evento di errore $\sigma_2 = \text{EV\_SML\_FAIL}$, imponendo al runtime la riconfigurazione dell'output in forma di *Opzione Esplorativa* (§4.4).
+
 ---
 
 # PARTE IV: CONFORMANCE FRAMEWORK & TEST VECTOR AXIOMS
@@ -1253,11 +1319,11 @@ I Test Vector concreti (stringhe serializzate SC-JCS-1 ed impronte esadecimali S
 ## 12. STATO DI CERTIFICAZIONE E LIVELLI DI VERIFICA (`OBI-010`)
 
 ### 12.1 Stato Normativo della Specifica
-La presente **SCINTILLA CORE CANONICAL SPECIFICATION v4.2 Timeless (GitHub Edition)** definisce la specifica normativa canonica e completa del dominio SCINTILLA CORE.
+La presente **SCINTILLA CORE CANONICAL SPECIFICATION v4.3 Timeless (GitHub Edition)** definisce la specifica normativa canonica e completa del dominio SCINTILLA CORE.
 
 Lo stato corrente del documento è:
 
-**SPEC-COMPLETE — Specifica Canonica Completa e Corretta (v4.2 GitHub Edition)**
+**SPEC-COMPLETE — Specifica Canonica Completa e Corretta (v4.3)**
 
 Tale stato certifica che la struttura normativa, l'algebra degli stati, la grammatica sintattica e il formato delle formule matematiche sono matematicamente coerenti, esenti da ambiguità, pronti per GitHub e costituiscono la Single Source of Truth del sistema.
 
@@ -1267,7 +1333,7 @@ Tale stato certifica che la struttura normativa, l'algebra degli stati, la gramm
 
 SCINTILLA CORE distingue formalmente i seguenti livelli di maturità:
 
-1. **Livello SPEC (Specifica Canonica):** Stato **SPEC-COMPLETE** (raggiunto dal presente documento v4.2).
+1. **Livello SPEC (Specifica Canonica):** Stato **SPEC-COMPLETE** (raggiunto dal presente documento v4.3).
 2. **Livello VERIF (Verifica Formale degli Artefatti):** Richiede la modellazione formale eseguibile (TLA+, NuSMV) e la verifica dell'assenza di deadlock. Stato: **PENDING VERIFICATION ARTIFACTS**.
 3. **Livello VERIF-PROOF (Dimostrazione Meccanizzata):** Richiede la produzione di prove formali mediante theorem proving assistito (Lean 4, Coq) per tutti i *Proof Claims* dichiarati nella specifica. Stato: **PENDING PROOF ARTIFACTS**.
 4. **Livello CERT (Certificazione di Implementazione):** Richiede un'implementazione software sottoposta a verifica con test runner e test vector ufficiali. Stato: **PENDING IMPLEMENTATION CERTIFICATION**.
@@ -1277,4 +1343,4 @@ SCINTILLA CORE distingue formalmente i seguenti livelli di maturità:
 ### 12.3 Regola di Dichiarazione della Certificazione
 Nessuna implementazione o documento derivato `SHALL` dichiarare SCINTILLA CORE come "formalmente verificato" o "matematicamente provato" in assenza dei corrispondenti artefatti verificati definiti ai livelli VERIF e VERIF-PROOF. La conformità alla presente specifica garantisce esclusivamente lo stato:
 
-**SPEC-COMPLETE — Canonical Specification v4.2 Timeless**
+**SPEC-COMPLETE — Canonical Specification v4.3 Timeless**
