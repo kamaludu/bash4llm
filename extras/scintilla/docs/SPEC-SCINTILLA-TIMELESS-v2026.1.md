@@ -439,13 +439,21 @@ D_P := \langle v, \kappa, \alpha, t, \phi, \psi, \omega \rangle
 #### 1.5.1 Modello di Doppia Autorità (Dual Authority Model)
 In conformità a `OBI-007`, l'ordine di autorità informativa varia in base al dominio dell'asserzione $\omega$:
 
-1. **Dominio dei Fatti Amministrativi e Legali ($\omega = \text{FACTUAL\_ADMINISTRATIVE}$):**
+1. **Dominio dei Fatti Amministrativi e Legali:**
+```math
+\omega = \text{FACTUAL\_ADMINISTRATIVE}$)
+```
+
 ```math
 \text{LLM\_INFERENCE} \prec \text{USER\_DECLARATION} \prec \text{EXTERNAL\_SOURCE} \prec \text{OPERATOR\_CONFIRMED} \prec \text{SYSTEM\_VERIFIED}
 ```
    *(Esempio: La verifica del possesso di un documento d'identità vede la fonte esterna o verificata prevalere sulla dichiarazione).*
 
-2. **Dominio Soggettivo, Emotivo e degli Obiettivi Personali ($\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}$):**
+2. **Dominio Soggettivo, Emotivo e degli Obiettivi Personali:**
+```math
+\omega \in \{ \text{SUBJECTIVE\_EMOTIONAL}, \text{PERSONAL\_GOAL} \}$)
+```
+
 ```math
 \text{LLM\_INFERENCE} \prec \text{EXTERNAL\_SOURCE} \prec \text{SYSTEM\_VERIFIED} \prec \text{OPERATOR\_CONFIRMED} \prec \text{USER\_DECLARATION}
 ```
