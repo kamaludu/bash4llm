@@ -907,7 +907,7 @@ Per evitare che una mappa di orientamento si trasformi in una procedura burocrat
 \theta_{\text{max\_duration}} \in \Theta
 ```
    
-4. **`INV-PLAYBOOK-STATE-03` (Tracciamento dello Stato di Avanzamento):** Ogni avanzamento nel grafo $G_P$ `MUST` aggiornare la componente $\mathcal{K}_{\text{playbook}}$ nello stato $\mathcal{S}$, registrando la relativa Data Provenance ($D_P$).
+3. **`INV-PLAYBOOK-STATE-03` (Tracciamento dello Stato di Avanzamento):** Ogni avanzamento nel grafo $G_P$ `MUST` aggiornare la componente $\mathcal{K}_{\text{playbook}}$ nello stato $\mathcal{S}$, registrando la relativa Data Provenance ($D_P$).
 
 ---
 
