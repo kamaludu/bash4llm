@@ -1298,6 +1298,49 @@ export interface SMLDocumentParsed {
 
 ---
 
+## ANNEX B: EMANCIPATION PLAYBOOK GRAPH SPECIFICATION & TYPESCRIPT MAPPING (INFORMATIVE)
+
+### B.1 Struttura Dati Formale del Grafo del Playbook ($G_P$)
+
+Per conformità all'Invariante `INV-PLAYBOOK-GRAPH-01` (§5.3), un Playbook di Emancipazione serializzato `MUST` rispettare il seguente contratto di interfaccia TypeScript:
+
+```typescript
+export interface PlaybookCondition {
+  condition_id: string;
+  expression_pure: string; // Predicato booleano puro valutato sullo stato S
+  error_message_fallback: string;
+}
+
+export interface PlaybookNode {
+  node_id: string;
+  title: string;
+  description: string;
+  action_type: PlaybookNodeActionType; // 'INFORMATION' | 'OPTIONAL_STEP' | 'USER_CONFIRMED_STEP' | 'REQUIRED_FOR_SYSTEM_STATE'
+  estimated_duration_minutes: number;
+  prerequisites: string[]; // Array ordinato di node_id richiesti
+  conditions?: PlaybookCondition[];
+}
+
+export interface PlaybookEdge {
+  from_node_id: string;
+  to_node_id: string;
+}
+
+export interface EmancipationPlaybookGraph {
+  playbook_id: string;
+  version: string;
+  target_human_state: string; // Stato target in Q_H (es. 'DOCUMENT_RECOVERY')
+  nodes: PlaybookNode[];
+  edges: PlaybookEdge[];
+}
+```
+
+### B.2 Validazione di Aclicienza sui Nodi Bloccanti
+
+In fase di caricamento di un oggetto `EmancipationPlaybookGraph`, il Playbook Engine (Livello 2) `MUST` verificare che il sotto-insieme dei nodi con `action_type === 'REQUIRED_FOR_SYSTEM_STATE'` non contenga cicli orientati. Qualsiasi rilevazione di ciclo determina il rifiuto del caricamento con **Runtime Error Code 83 (`ERR_GRAPH_CYCLE_DETECTED`)**.
+
+---
+
 ## ANNEX C: SML v2.0 SPECIFICATION (SYNTACTIC EBNF & SEMANTIC VALIDATION)
 
 ### C.1 Grammatica EBNF Formale Puramente Sintattica
