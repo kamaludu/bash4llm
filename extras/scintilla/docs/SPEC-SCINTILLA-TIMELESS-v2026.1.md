@@ -1262,6 +1262,10 @@ AG \left( \text{NonTerminalHumanState} \implies EX(\text{True}) \right)
 
 ---
 
+# PARTE II: PROFILE ARCHITECTURE & CONCRETE REFERENCE PROFILES
+
+---
+
 ## 10. STANDARD REFERENCE PROFILE 1 (JSON / SC-JCS-1 / SHA-256 / Ed25519)
 
 ### 10.1 Binding delle Primitive Crittografiche, Identificatori e Mapping dei Campi
@@ -1284,15 +1288,7 @@ AG \left( \text{NonTerminalHumanState} \implies EX(\text{True}) \right)
 Dove ogni tupla è tipizzata con domini espliciti come:
 
 ```math
-\text{ConsentRecord} :=
-\left\langle
-\text{scope}_{\text{id}} \in \mathcal{I},
-\text{issuer}_{\text{actor}} \in \mathcal{I}_{\text{actor}},
-\text{granted}_{\text{at}} \in \mathcal{T},
-\text{expires}_{\text{at}} \in \mathcal{T} \cup \{\infty\},
-\text{revoked} \in \mathbb{B},
-\text{policy}_{\text{binding}_{\text{hash}}} \in \mathcal{D}_{256}
-\right\rangle
+\text{ConsentRecord} := \left\langle \text{scope\_id} \in \mathcal{I}, \ \text{issuer\_actor} \in \mathcal{I}_{\text{actor}}, \ \text{granted\_at} \in \mathcal{T}, \ \text{expires\_at} \in \mathcal{T} \cup \{\infty\}, \ \text{revoked} \in \mathbb{B}, \ \text{policy\_binding\_hash} \in \mathcal{D}_{256} \right\rangle
 ```
 
 * **Mappatura Identificatori ($\mathcal{I}$):** Stringhe `UUIDv7` conformi a RFC 9562.
@@ -1341,13 +1337,13 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry`:
 
 ```math
-\text{SetSemanticsRegistry} = \left[ \text{"completed\_nodes"}, \text{"permissions"}, \text{"prerequisites"}, \text{"roles"}, \text{"scopes"} \right]
+\text{SetSemanticsRegistry} = \left[ \text{completed\_nodes}, \ \text{permissions}, \ \text{prerequisites}, \ \text{roles}, \ \text{scopes} \right]
 ```
 
    L'ordinamento degli elementi dell'array `MUST` essere eseguito con una strategia **Ricorsiva Bottom-Up (Deep Canonicalization)**:
    * **Passo 5.a:** Ogni elemento dell'array (sia esso una primitiva o un oggetto JSON complesso nidificato) `MUST` essere prima serializzato autonomamente in una sequenza di byte canonica SC-JCS-1 applicando ricorsivamente le regole 1-4.
    * **Passo 5.b:** Gli elementi dell'array così serializzati `MUST` essere ordinati in modo ascendente sulla base del confronto lexicografico byte-per-byte delle loro rappresentazioni UTF-8 canoniche.
-   
+
 ---
 
 ### 10.3 Machine-Readable $\delta_M$ JSON Definition Contract
