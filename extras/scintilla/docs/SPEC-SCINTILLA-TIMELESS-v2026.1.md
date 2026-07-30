@@ -1111,7 +1111,7 @@ Quando il runtime esegue come processo autonomo di sistema operativo, tale ident
 ### 9.1 Modello di Sistema Distribuito, Consistenza e Concorrenza
 1. **Modello di Consistenza del Ledger:** Il registro $L \in \mathcal{L}$ garantisce la **Strict Linearizability (Consistenza Esterna)** per singolo `case_id`.
 2. **Protocollo di Lock e Fencing Token:** La gestione delle scritture concorrenti si avvale di un meccanismo di lease a tempo. Ogni mutazione `MUST` verificare e incrementare in modo strettamente monotonico il `fencing_token` $N \in \mathbb{N}^+$.
-3. **Tolleranza al Disallineamento Temporale (Clock Skew):** L'intervallo di tolleranza massima tra l'orologio locale ed il tempo di riferimento $t \in \mathcal{T}$ è vincolato dal parametro $\Delta t_{\text{max}} \in \Theta$
+3. **Tolleranza al Disallineamento Temporale (Clock Skew):** L'intervallo di tolleranza massima tra l'orologio locale ed il tempo di riferimento $t \in \mathcal{T}$ è vincolato dal parametro $\Delta t_{\text{max}} \in \Theta$.
 
 ---
 
@@ -1132,66 +1132,84 @@ M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
 #### 9.2.2 Mappatura della Labeling Function $L: \mathcal{S} \to \mathcal{P}(AP)$ tramite Proiezioni $\pi$
 Sia $S \in \mathcal{S}$ lo stato corrente. La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni $\pi(S)$:
 
-1. **`SafetyGateAllowed` :**
+1. **`SafetyGateAllowed`:**  
 ```math
-\in L(S) \iff \mathcal{R}_{\text{exec}}(S_{\text{snap}}, t_{\text{prop}}) = \text{ALLOW}
-```
- dove:
-```math
-\langle S_{\text{snap}}, t_{\text{prop}} \rangle = \pi_{\text{tx\_buffer}}(S)
+\text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S_{\text{snap}}, t_{\text{prop}}) = \text{ALLOW} \quad \text{dove } \langle S_{\text{snap}}, t_{\text{prop}} \rangle = \pi_{\text{tx\_buffer}}(S)
 ```
 
-2. **`DecisionOutcomeAllowed` $\in L(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}$**
-3. **`HashChainValid`:**
+2. **`DecisionOutcomeAllowed`:**  
 ```math
-\in L(S) \iff H(\text{Canon}(\pi_{\text{last\_tx\_body}}(S))) = \pi_{\text{last\_tx\_hash}}(S)
+\text{DecisionOutcomeAllowed} \in L(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}
 ```
 
-4. **`MonotonicFence`:**
+3. **`HashChainValid`:**  
 ```math
-\in L(S) \iff \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_N} > \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_{N-1}}
-```
-5. **`StateIsRecoverableFailure`:**
-```math
-\in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}
+\text{HashChainValid} \in L(S) \iff H(\text{Canon}(\pi_{\text{last\_tx\_body}}(S))) = \pi_{\text{last\_tx\_hash}}(S)
 ```
 
-6. **`StateIsSecurityLockdown`:** 
+4. **`MonotonicFence`:**  
 ```math
-\in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}
-```
-7. **`StateIsValidationError`:**
-```math
-\in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}
+\text{MonotonicFence} \in L(S) \iff \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_N} > \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_{N-1}}
 ```
 
-8. **`StateIsNormal` $\in L(S) \iff \pi_Q(S) = \text{NORMAL}$**
-9. **`StateIsReadOnly`:**
+5. **`StateIsRecoverableFailure`:**  
 ```math
-\in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}
+\text{StateIsRecoverableFailure} \in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}
 ```
 
-10. **`JourneyProgressive`:**
+6. **`StateIsSecurityLockdown`:**  
 ```math
-\in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}
+\text{StateIsSecurityLockdown} \in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}
 ```
 
-11. **`ItemRevoked`:**
+7. **`StateIsValidationError`:**  
 ```math
-_{i} \in L(S) \iff i \in \pi_{\text{revocation}}(S)
+\text{StateIsValidationError} \in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}
 ```
 
-12. **`KeyIsShredded`$_{c} \in L(S) \iff \text{LookupKey}(c, S) = \bot$**
-13. **`UserEngaged` $\in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}$**
-14. **`NonTerminalHumanState` $\in L(S) \iff \pi_{Q_H}(S) \notin F_H$**
-15. **`HumanState`:**
+8. **`StateIsNormal`:**  
 ```math
-_{h_i} \in L(S) \iff \pi_{Q_H}(S) = h_i
+\text{StateIsNormal} \in L(S) \iff \pi_Q(S) = \text{NORMAL}
 ```
 
-16. **`NoDirectMutationM`:**
+9. **`StateIsReadOnly`:**  
 ```math
-\in L(S) \iff (\text{event}(t) \in \Sigma_H \implies \pi_Q(\text{Apply}(S, t)) = \pi_Q(S))
+\text{StateIsReadOnly} \in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}
+```
+
+10. **`JourneyProgressive`:**  
+```math
+\text{JourneyProgressive} \in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}
+```
+
+11. **`ItemRevoked`:**  
+```math
+\text{ItemRevoked}_i \in L(S) \iff i \in \pi_{\text{revocation}}(S)
+```
+
+12. **`KeyIsShredded`:**  
+```math
+\text{KeyIsShredded}_c \in L(S) \iff \text{LookupKey}(c, S) = \bot
+```
+
+13. **`UserEngaged`:**  
+```math
+\text{UserEngaged} \in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}
+```
+
+14. **`NonTerminalHumanState`:**  
+```math
+\text{NonTerminalHumanState} \in L(S) \iff \pi_{Q_H}(S) \notin F_H
+```
+
+15. **`HumanState`:**  
+```math
+\text{HumanState}_{h_i} \in L(S) \iff \pi_{Q_H}(S) = h_i
+```
+
+16. **`NoDirectMutationM`:**  
+```math
+\text{NoDirectMutationM} \in L(S) \iff (\text{event}(t) \in \Sigma_H \implies \pi_Q(\text{Apply}(S, t)) = \pi_Q(S))
 ```
 
 #### 9.2.3 Formule Temporali First-Order LTL (FO-LTL)
@@ -1304,24 +1322,15 @@ Dove ogni tupla è tipizzata con domini espliciti come:
 **SC-JCS-1 è un profilo di canonizzazione derivato e NON-COMPATIBILE a livello di hash con lo standard RFC 8785 JCS**.
 
 #### 10.2.1 Sottoinsieme $J_{\text{SC}}$ e Strict Signed Safe Integer Range
-Un documento JSON 
-```math
-j \in \text{JSON}_{\text{RFC8259}}
-```
+Un documento JSON $j \in \text{JSON}_{\text{RFC8259}}$ appartiene al sottoinsieme $J_{\text{SC}}$ se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
 
-appartiene al sottoinsieme 
-```math
-J_{\text{SC}}
-```
-
-se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
 ```math
 I_{\text{safe}} = \left[ -(2^{53} - 1), \ +(2^{53} - 1) \right] = \left[ -9007199254740991, \ +9007199254740991 \right]
 ```
 
 Qualsiasi notazione contenente notazione scientifica (`1e10`), `NaN` o `Infinity` `MUST` essere rifiutata con **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`)**.
 
-**Regola Esclusiva sui Valori in $[0.0, 1.0]$ (Basis Points Standard):** 
+**Regola Esclusiva sui Valori in $[0.0, 1.0]$ (Basis Points Standard):**  
 Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente iniettiva e priva di ambiguità di hashing**, tutti i campi numerici rappresentanti probabilità, punteggi di confidenza ($\phi$) o indici AGI $[0.0, 1.0]$ **`MUST` essere convertiti e serializzati in JSON come numeri interi a punto fisso scalati di un fattore $10^4$ (Basis Points, intervallo chiuso intero $[0, 10000]$)**. La rappresentazione in virgola mobile diretta per tali campi è severamente vietata e determina lo scarto immediato del documento.
 
 #### 10.2.2 Algoritmo di Serializzazione Canonica SC-JCS-1
@@ -1330,21 +1339,15 @@ Per garantire una funzione di canonizzazione $\text{Canon}$ **rigorosamente inie
 3. **Unicode Normalization:** Normalizzazione Normalization Form C (NFC).
 4. **Object Key Sorting:** Ordinamento ascendente secondo i code-unit UTF-16.
 5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry`:
+
 ```math
-\text{SetSemanticsRegistry} =
-[
-\texttt{completed\_nodes},
-\texttt{permissions},
-\texttt{prerequisites},
-\texttt{roles},
-\texttt{scopes}
-]
+\text{SetSemanticsRegistry} = \left[ \text{"completed\_nodes"}, \text{"permissions"}, \text{"prerequisites"}, \text{"roles"}, \text{"scopes"} \right]
 ```
 
    L'ordinamento degli elementi dell'array `MUST` essere eseguito con una strategia **Ricorsiva Bottom-Up (Deep Canonicalization)**:
    * **Passo 5.a:** Ogni elemento dell'array (sia esso una primitiva o un oggetto JSON complesso nidificato) `MUST` essere prima serializzato autonomamente in una sequenza di byte canonica SC-JCS-1 applicando ricorsivamente le regole 1-4.
    * **Passo 5.b:** Gli elementi dell'array così serializzati `MUST` essere ordinati in modo ascendente sulla base del confronto lexicografico byte-per-byte delle loro rappresentazioni UTF-8 canoniche.
-
+   
 ---
 
 ### 10.3 Machine-Readable $\delta_M$ JSON Definition Contract
