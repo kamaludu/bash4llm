@@ -433,7 +433,7 @@ D_P := \langle v, \kappa, \alpha, t, \phi, \psi, \omega \rangle
 
 * $v \in \mathcal{V}$: Il valore informativo.
 * 
-```
+```math
 \kappa \in \mathcal{K}_{\text{prov}} 
 ```
 Categoria di provenienza: 
