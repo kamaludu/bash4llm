@@ -92,7 +92,7 @@ Il sistema `MUST` mantenere una distinzione formale assoluta tra l'**Identità d
 
 ---
 
-### 1.1 Formalizzazione dello Spazio degli Stati $\mathcal{S}$ e delle Proiezioni
+### 1.1 Formalizzazione dello Spazio degli Stati S e delle Proiezioni
 
 Lo Spazio degli Stati $\mathcal{S}$ è il sotto-spazio cartesiano dello stato primario valido di sistema.
 
@@ -117,7 +117,7 @@ Dove i domini componenti sono definiti come:
    \mathcal{S}_{\text{auxiliary}} := \mathcal{D}_{\text{drafts}}
 ```
 
-#### 1.1.2 Vista Derivata Pura Disaccoppiata $\mathcal{S}_{\text{derived}}$ (Layer A)
+#### 1.1.2 Vista Derivata Pura Disaccoppiata S_derived (Layer A)
 La componente di stato derivato $\mathcal{S}_{\text{derived}}$ non costituisce una dimensione indipendente dello spazio $\mathcal{S}$, bensì una vista calcolata mediante la funzione pura:
 
 ```math
@@ -144,7 +144,7 @@ La scomposizione dello stato astratto $S \in \mathcal{S}$ nelle sue componenti p
 
 ### 1.2 Interfaccia Osservabile Pubblica ed Equivalenza di Stato
 
-#### 1.2.1 Funzione di Osservazione Pubblica $\text{Obs}$ (Layer A)
+#### 1.2.1 Funzione di Osservazione Pubblica Obs (Layer A)
 La proiezione esterna dello stato verso le interfacce utente, API e viste pubbliche è governata dalla funzione pura di osservazione:
 
 ```math
@@ -154,7 +154,7 @@ La proiezione esterna dello stato verso le interfacce utente, API e viste pubbli
 \text{Obs}(S) := \pi_{\text{persistent}}(S) \setminus \{ \text{elementi cifrati o soggetti a } \mathcal{Q}_{\text{revoked\_items}} \}
 ```
 
-#### 1.2.2 Equivalenza di Stato Primario $\equiv_{\text{CoreState}}$ (Layer A)
+#### 1.2.2 Equivalenza di Stato Primario CoreState (Layer A)
 Due stati astratti $S_1, S_2 \in \mathcal{S}$ sono semanticamente equivalenti nello stato primario ($S_1 \equiv_{\text{CoreState}} S_2$) se e solo se le loro proiezioni di persistenza e controllo interno sono identiche:
 
 ```math
@@ -169,7 +169,7 @@ S_1 \equiv_{\text{CoreState}} S_2 \iff \pi_{\text{persistent}}(S_1) = \pi_{\text
 
 ---
 
-### 1.3 Assioma del Genesis State $s_0$ (Layer A)
+### 1.3 Assioma del Genesis State s0 (Layer A)
 
 Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ `MUST` contenere i seguenti valori predefiniti:
 
@@ -179,9 +179,9 @@ s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_
 
 ---
 
-### 1.4 Transazioni, Codifica e Ledger Immutabile $\mathcal{L}$
+### 1.4 Transazioni, Codifica e Ledger Immutabile L
 
-#### 1.4.1 Spazio delle Transazioni $T$ e Codifica $\text{EncodeTx}$ (Layer A)
+#### 1.4.1 Spazio delle Transazioni T e Codifica EncodeTx (Layer A)
 Una transazione $t \in T$ è formalizzata come la tupla: $t := \langle \text{TransactionBody}, \text{proof} \rangle$.
 La funzione pura di codifica per la persistenza è definita come:
 
@@ -192,7 +192,7 @@ La funzione pura di codifica per la persistenza è definita come:
 \text{TransactionBody} := \left\langle \text{tx}_{\text{id}}, \text{case}_{\text{id}}, \text{seq}_{\text{num}}, \text{prev}_{\text{hash}}, \text{timestamp}, \text{actor}, \text{event}, \text{payload}, \text{policy}_{\text{binding}_{\text{hash}}}, \text{schema}_{\text{hash}}, \text{authorization}_{\text{snapshot}_{\text{hash}}}, \text{runtime}_{\text{profile}_{\text{hash}}}, \text{specification}_{\text{id}} \right\rangle
 ```
 
-#### 1.4.2 Il Ledger come Monoide Libero $\mathcal{L}$ e Funzione $\text{Persist}$ (Layer A)
+#### 1.4.2 Il Ledger come Monoide Libero L e Funzione Persist (Layer A)
 Il registro immutabile delle decisioni (Ledger) è formalizzato come un Monoide Libero $\mathcal{L} := \langle T^*, \mathbin{\Vert}, \epsilon \rangle$.
 La funzione pura di persistenza è:
 
@@ -238,9 +238,9 @@ L'atto di distruzione `MUST` registrare sul Ledger la transazione formale $t_{\t
 
 ---
 
-### 1.6 Validazione Ambientale Impura vs Funzione Pura $\text{ApplyValidated}$
+### 1.6 Validazione Ambientale Impura vs Funzione Pura ApplyValidated
 
-#### 1.6.1 Predicato Impuro di Validazione Ambientale $\text{ValidateEnvironment}$ (Layer A & B2)
+#### 1.6.1 Predicato Impuro di Validazione Ambientale ValidateEnvironment (Layer A & B2)
 La validazione delle condizioni di contesto fisiche, temporali e crittografiche esterne allo stato algebrico è governata dal predicato impuro:
 
 ```math
@@ -261,14 +261,14 @@ La validazione delle condizioni di contesto fisiche, temporali e crittografiche 
 \end{cases}
 ```
 
-#### 1.6.2 Funzione Pura di Transizione di Stato $\text{ApplyValidated}$ (Layer A)
+#### 1.6.2 Funzione Pura di Transizione di Stato ApplyValidated (Layer A)
 La mutazione di stato è governata dalla funzione pura e deterministica $\text{ApplyValidated}$, priva di accesso all'ambiente $E$:
 
 ```math
 \text{ApplyValidated} : \mathcal{S} \times T \times \text{ValidationResult} \longrightarrow \mathcal{S}
 ```
 
-#### 1.6.3 Requisito Normativo di Totalità di $\text{ApplyValidated}$ (`REQ-APPLY-TOTALITY-POLICY`) (Layer B2)
+#### 1.6.3 Requisito Normativo di Totalità di ApplyValidated (REQ-APPLY-TOTALITY-POLICY) (Layer B2)
 Per scelta di architettura normativa, la funzione pura $\text{ApplyValidated}$ è resa una **funzione totale** su $\mathcal{S}$ ($\text{ApplyValidated}(S, t, v) \in \mathcal{S} \setminus \{\bot\}$) mediante la seguente specifica a casi:
 
 ```math
@@ -281,7 +281,7 @@ S & \text{se } t.\text{event} = \text{EV\_HASH\_CORRUPT} \quad (\text{Stuttering
 
 ---
 
-### 1.7 Indice Proxy Operativo di Guadagno di Agency ($\text{AGI}_{\text{proxy}}$)
+### 1.7 Indice Proxy Operativo di Guadagno di Agency (AGI_proxy)
 
 L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Points interi) misura gli indicatori comportamentali descrittivi di avanzamento dell'utente sul sistema.
 
@@ -299,7 +299,7 @@ L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Poi
 \end{cases}
 ```
 
-#### 1.7.3 Calcolo Deterministico in Aritmetica Intera ($\text{AGI}_{\text{computed}}$) (Layer A)
+#### 1.7.3 Calcolo Deterministico in Aritmetica Intera AGI_computed (Layer A)
 Per tutti gli stati attivi, $\text{AGI}_{\text{computed}}(S) \in [0, 10000]$ è calcolato unicamente in aritmetica intera con operatore di troncamento $\lfloor \dots \rfloor$:
 
 ```math
@@ -392,7 +392,7 @@ M := \langle Q, \Sigma, T_{\text{JSON}}, \delta_M, q_0, F_{\text{oper}} \rangle
    F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
 ```
 
-#### 2.2.1 Partizione dell'Alfabeto $\Sigma = \Sigma_{\text{business}} \uplus \Sigma_{\text{administrative}}$ (Layer B2)
+#### 2.2.1 Partizione dell'Alfabeto Sigma (Layer B2)
 L'alfabeto degli eventi di sistema $\Sigma$ ($|\Sigma|=10$) è partizionato in due sotto-insiemi matematicamente disgiunti:
 
 1. **Eventi di Business ($\Sigma_{\text{business}}$):** Eventi di mutazione operativa e di progresso del caso utente:
@@ -404,14 +404,14 @@ L'alfabeto degli eventi di sistema $\Sigma$ ($|\Sigma|=10$) è partizionato in d
    \Sigma_{\text{administrative}} := \{ \text{EV\_HASH\_CORRUPT } (\sigma_4), \text{EV\_ITEM\_PRIVACY\_REVOKED } (\sigma_8), \text{EV\_CRYPTO\_SHRED\_EXECUTED } (\sigma_9) \}
 ```
 
-#### 2.2.2 Gestione della Stasi Operativa e Diritti in `SAFE_READ_ONLY_MODE` ($q_6$) (Layer B2)
+#### 2.2.2 Gestione della Stasi Operativa e Diritti in SAFE_READ_ONLY_MODE (q6) (Layer B2)
 Quando l'automa $M$ si trova nello stato $q_6 = \text{SAFE\_READ\_ONLY\_MODE}$:
 1. Per tutti gli eventi di business $\sigma \in \Sigma_{\text{business}}$, la funzione $\delta_M$ impone uno stuttering step ($q_6 \to q_6$), precludendo qualsiasi mutazione dello stato operativo del caso.
 2. Per tutti gli eventi amministrativi e di privacy $\sigma \in \Sigma_{\text{administrative}}$, la funzione $\delta_M$ ammette l'elaborazione e la persistenza della transizione sul Ledger immutabile $\mathcal{L}$, garantendo l'esercizio inalienabile dei diritti di revoca del consenso ed oblio dell'utente anche in stato di stasi operativa.
 
 ---
 
-### 2.3 Human Journey State Machine $\mathcal{H}$ (Layer A & B2)
+### 2.3 Human Journey State Machine H (Layer A & B2)
 
 L'evoluzione concettuale del percorso umano dell'utente è modellata dall'automa a stati finiti di dominio $\mathcal{H}$:
 
@@ -433,14 +433,14 @@ L'evoluzione concettuale del percorso umano dell'utente è modellata dall'automa
    \Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM}, \text{HEV\_PREVENTIVE\_SUPPORT\_REQ} \}
 ```
 
-#### 2.3.1 Dinamica dello Stato $h_{11}$ (`PREVENTIVE_STANDBY`) (Layer B2)
+#### 2.3.1 Dinamica dello Stato h11 (PREVENTIVE_STANDBY) (Layer B2)
 Lo stato $h_{11} = \text{PREVENTIVE\_STANDBY}$ definisce una condizione di equilibrio ad alta autonomia ed azione preventiva:
 1. **Ingresso in $h_{11}$:** La transizione dallo stato di indipendenza $h_6$ (`SUSTAINED_INDEPENDENCE`) a $h_{11}$ si verifica su emissione dell'evento $\text{HEV\_PREVENTIVE\_SUPPORT\_REQ} \in \Sigma_H$.
 2. **Uscita per Ricalibrazione o Sopraffazione:** La ricezione degli eventi $\text{HEV\_EMOTIONAL\_OVERWHELM}$ o $\text{HEV\_RELAPSE\_REGRESS}$ forza il rientro diretto dallo stato $h_{11}$ allo stato di ricalibrazione $h_8$ (`HUMAN_RECALIBRATION_REQUIRED`), riattivando il supporto focalizzato del Playbook Engine senza resettare lo storico delle competenze acquisite in $\mathcal{K}_{\text{competence}}$.
 
 ---
 
-### 2.4 Equazione Matematica del Sistema Reattivo Composito $S_C = Q \times Q_H$ (Layer A)
+### 2.4 Equazione Matematica del Sistema Reattivo Composito S_C = Q x Q_H (Layer A)
 
 Il sistema reattivo globale di SCINTILLA CORE è modellato dallo spazio di stato composito $S_C = Q \times Q_H$. 
 
@@ -470,7 +470,7 @@ La funzione di transizione pura dell'automa composito:
 
 ---
 
-### 3.0 Mappa di Osservazione $\pi_{\text{SOS}}$ e Corrispondenza Relazione-Funzione
+### 3.0 Mappa di Osservazione pi_SOS e Corrispondenza Relazione-Funzione
 
 La Mappa di Osservazione Canonica $\pi_{\text{SOS}}$ estrae la tripla dello stato di valutazione della semantica operazionale:
 
@@ -522,7 +522,7 @@ Una transizione $t \in T$ con evento $\sigma_C = \text{event}(t)$ ed emessa dall
 
 ---
 
-### 3.2 Meta-Regole SOS della Sicurezza di Runtime ($M$) (Layer B3)
+### 3.2 Meta-Regole SOS della Sicurezza di Runtime (M) (Layer B3)
 
 ```math
 \frac{\sigma_C = \text{event}(t) \in \Sigma \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q' = \delta_M(q, \sigma_C, T_{\text{JSON}}) \quad \text{EvaluateGuards}(S, t) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-SAFETY}]
@@ -557,7 +557,7 @@ All'ottenimento o verifica oggettiva di un documento d'identità o attestato for
 
 ---
 
-### 3.4 Meta-Regole SOS del Percorso Umano ($\mathcal{H}$) e Sovranità (Layer B3)
+### 3.4 Meta-Regole SOS del Percorso Umano (H) e Sovranità (Layer B3)
 
 ```math
 \frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \delta_H(q_H, \sigma_C) \quad \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, q_H', \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-HUMAN}]
@@ -614,7 +614,7 @@ Un `PolicyBundle` $\mathcal{P}$ è formalizzato come la tupla algebrica:
 
 ---
 
-### 4.3 Composizione di Policy $\mathcal{P}_1 \oplus \mathcal{P}_2$ e Regola di Versione Composita (Layer A & B2)
+### 4.3 Composizione di Policy P1 + P2 e Regola di Versione Composita (Layer A & B2)
 
 L'operatore di composizione algebrica $\oplus$ produce il bundle composito $\mathcal{P}_{\text{comp}} = \mathcal{P}_1 \oplus \mathcal{P}_2$ mediante la funzione esplicita $\text{ComposePolicy}$:
 
@@ -649,7 +649,7 @@ L'operatore di composizione algebrica $\oplus$ produce il bundle composito $\mat
 
 ---
 
-### 4.4 Decodifica Deterministica Input SML v2.0 $\to$ Evento $\Sigma_H$ (Layer A & B2)
+### 4.4 Decodifica Deterministica Input SML v2.0 in Evento Sigma_H (Layer A & B2)
 
 Per eliminare l'ambiguità tra i suggerimenti linguistici generati dal Livello 5 (LLM) e gli eventi accettati dal runtime (Livello 3/1), il Livello 4 applica la funzione pura di decodifica deterministica $\text{MapSMLToFSMEvent}$.
 
@@ -700,7 +700,7 @@ L'intervento di un operatore umano (`OPERATOR`) costituisce un meccanismo di gar
 
 ---
 
-### 5.1 Struttura del Grafo del Playbook $G_P$ (Layer A)
+### 5.1 Struttura del Grafo del Playbook G_P (Layer A)
 
 Un **Emancipation Playbook** è formalizzato come un grafo orientato ed etichettato:
 
@@ -725,7 +725,7 @@ Ogni nodo $v \in V_P$ `MUST` appartenere ad una delle seguenti categorie formali
 
 ---
 
-### 5.3 Invarianti di Esecuzione e Tracking dello Stato Playbook ($\mathcal{K}_{\text{playbook}}$)
+### 5.3 Invarianti di Esecuzione e Tracking dello Stato Playbook K_playbook
 
 #### 5.3.1 Invariante di Aclicienza Locale sui Nodi Bloccanti (`INV-PLAYBOOK-GRAPH-01`) (Layer A & B2)
 Il sotto-grafo formato dai soli nodi tipizzati `REQUIRED_FOR_SYSTEM_STATE` `MUST` essere uno Strict Direct Acyclic Graph (DAG).
@@ -754,7 +754,7 @@ Ogni avanzamento nel grafo $G_P$ `MUST` aggiornare la componente $\mathcal{K}_{\
 
 ---
 
-### 6.1 Spazio delle Versioni $V$ (Layer A)
+### 6.1 Spazio delle Versioni V (Layer A)
 
 Ogni componente versionabile di SCINTILLA CORE appartiene allo spazio vettoriale discreto delle versioni:
 
@@ -765,7 +765,7 @@ rappresentato dalla tupla $v = \langle \text{major}, \text{minor}, \text{patch} 
 
 ---
 
-### 6.2 Relazione di Compatibilità Retroattiva $\preceq_{\text{compat}}$ (Layer A)
+### 6.2 Relazione di Compatibilità Retroattiva (Layer A)
 
 Siano $v_1 = \langle M_1, m_1, p_1 \rangle$ e $v_2 = \langle M_2, m_2, p_2 \rangle$ due versioni nello spazio $V$. 
 
@@ -782,7 +782,7 @@ v_1 \preceq_{\text{compat}} v_2 \iff (M_1 = M_2) \land \left( (m_1 < m_2) \lor (
 
 ---
 
-### 7.1 Spazio Normalizzato $\mathcal{S}_{\text{normalized}}$ e Canonizzazione $\text{Canon}$ (Layer A)
+### 7.1 Spazio Normalizzato S_normalized e Canonizzazione Canon (Layer A)
 
 Sia $\mathcal{S}_{\text{normalized}} \subseteq \mathcal{S}$ il sottoinsieme di stati conformi alle regole di normalizzazione del profilo di riferimento SC-JCS-1 (§10.2). 
 
@@ -869,7 +869,7 @@ Quando il runtime esegue come processo autonomo del sistema operativo, tale iden
 
 ### 9.2 Modello di Transizione di Kripke e Logica Temporale (Layer A)
 
-#### 9.2.1 Formalizzazione della Struttura di Kripke $M_K$
+#### 9.2.1 Formalizzazione della Struttura di Kripke M_K
 La semantica temporale di SCINTILLA CORE è descritta dalla Struttura di Kripke:
 
 ```math
@@ -883,7 +883,7 @@ M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
 * $L: \mathcal{S} \to \mathcal{P}(AP)$: La Funzione di Etichettatura (Labeling Function).
 * $F \subseteq \mathcal{P}(\mathcal{S})$: Insieme dei vincoli di Fairness definiti sulle tracce ammissibili.
 
-#### 9.2.2 Mappatura della Labeling Function $L: \mathcal{S} \to \mathcal{P}(AP)$ tramite Proiezioni $\pi$
+#### 9.2.2 Mappatura della Labeling Function L: S -> P(AP) tramite Proiezioni pi
 La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$:
 
 1. **`SafetyGateAllowed`:** $\text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S, t_{\text{prop}}) = \text{ALLOW}$.
@@ -942,7 +942,7 @@ $$\text{Lowering}_{\text{LTL}}(\forall c \in \mathcal{I}_{\text{case}}, \phi(c))
 
 ---
 
-### 10.2 Sottoinsieme $J_{\text{SC}}$ e Strict Signed Safe Integer Range
+### 10.2 Sottoinsieme J_SC e Strict Signed Safe Integer Range
 
 Un documento JSON $j \in \text{JSON}_{\text{RFC8259}}$ appartiene al sottoinsieme $J_{\text{SC}}$ se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
 
@@ -952,7 +952,7 @@ I_{\text{safe}} = \left[ -(2^{53} - 1), \ +(2^{53} - 1) \right] = \left[ -900719
 
 Qualsiasi notazione contenente virgola mobile, notazione scientifica (`1e10`), `NaN` o `Infinity` `MUST` essere rifiutata con **Runtime Error Code 85 (`ERR_CONFIGURATION_MALFORMED`)**.
 
-#### 10.2.1 Regola sui Valori Probabilistici ed Indici $[0, 10000]$ (Basis Points)
+#### 10.2.1 Regola sui Valori Probabilistici ed Indici in Basis Points [0, 10000]
 Tutti i campi numerici rappresentanti probabilità, punteggi di confidenza ($\phi$) o indici AGI $[0.0, 1.0]$ **`MUST` essere convertiti e serializzati in JSON come numeri interi a punto fisso scalati di un fattore $10^4$ (Basis Points, intervallo chiuso intero $[0, 10000]$)**.
 
 ---
@@ -1157,7 +1157,7 @@ export interface ArtifactDraftRecord {
 
 ## ANNEX B: EMANCIPATION PLAYBOOK GRAPH SPECIFICATION (LAYER B / LAYER C)
 
-### B.1 Struttura Dati Formale del Grafo del Playbook ($G_P$)
+### B.1 Struttura Dati Formale del Grafo del Playbook G_P
 
 Un Playbook di Emancipazione serializzato `MUST` rispettare la seguente interfaccia TypeScript per la validazione di schema:
 
@@ -1240,8 +1240,16 @@ CRLF                 ::= "\r\n" | "\n" ;
 
 Il Policy Guidance Engine (Livello 2) applica una verifica semantica vincolante sugli oggetti `SMLDocumentParsed` decodificati prima di ammettere qualsiasi proposta di transizione:
 
-1. **Filtro contro Allucinazioni Amministrative:** Se l'oggetto SML contiene asserzioni categorizzate nel dominio $\omega = \text{FACTUAL\_ADMINISTRATIVE}$ (es. diritti a sussidi, scadenze di legge), l'asserzione `MUST` essere ancorata ad un nodo di Playbook verificato o ad una fonte con stato $\psi = \text{VERIFIED}$.
-2. **Azione di Violazione:** Qualora il Livello 5 generi un'asserzione amministrativa prescrittiva priva di riscontro verificato, il parser di Livello 4 `MUST` scartare l'input e generare l'evento di errore $\sigma_2 = \text{EV\_SML\_FAIL}$, imponendo al runtime la riconfigurazione dell'output in forma di *Opzione Esplorativa* (§4.5).
+1. **Filtro contro Allucinazioni Amministrative:** Se l'oggetto SML contiene asserzioni categorizzate nel dominio:
+```math
+\omega = \text{FACTUAL\_ADMINISTRATIVE}
+```
+(es. diritti a sussidi, scadenze di legge), l'asserzione `MUST` essere ancorata ad un nodo di Playbook verificato o ad una fonte con stato $\psi = \text{VERIFIED}$.
+2. **Azione di Violazione:** Qualora il Livello 5 generi un'asserzione amministrativa prescrittiva priva di riscontro verificato, il parser di Livello 4 `MUST` scartare l'input e generare l'evento di errore:
+```math
+\sigma_2 = \text{EV\_SML\_FAIL}
+```
+imponendo al runtime la riconfigurazione dell'output in forma di *Opzione Esplorativa* (§4.5).
 
 ---
 
