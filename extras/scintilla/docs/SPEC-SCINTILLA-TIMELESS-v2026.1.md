@@ -602,7 +602,14 @@ All'ottenimento o verifica oggettiva di un documento d'identità o attestato for
 ```
 
 #### 3.4.1 Meta-Regola SOS di Timeout ed Inattività Umana (`[SOS-HUMAN-TIMEOUT]`)
-Quando l'automa del percorso umano si trova in $h_7 = \text{HUMAN\_PAUSED}$ ed il tempo di permanenza supera la soglia parametrizzata $\theta_{\text{inactivity\_timeout}} \in \Theta$:
+Quando l'automa del percorso umano si trova in:
+```math
+h_7 = \text{HUMAN\_PAUSED}
+```
+ed il tempo di permanenza supera la soglia parametrizzata:
+```math
+\theta_{\text{inactivity\_timeout}} \in \Theta
+```
 
 ```math
 \frac{q_H = \text{HUMAN\_PAUSED} \quad (E.t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad t_{\text{timeout}} = \text{BuildSystemTx}(\text{HEV\_RECALIBRATION\_REQ})}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t_{\text{timeout}}}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t_{\text{timeout}}, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
