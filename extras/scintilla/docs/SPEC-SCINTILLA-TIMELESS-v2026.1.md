@@ -165,7 +165,11 @@ S_1 \equiv_{\text{CoreState}} S_2 \iff \pi_{\text{persistent}}(S_1) = \pi_{\text
 ```math
 \mathbf{INVARIANT-AUXILIARY-IRRELEVANCE} := \forall S_1, S_2 \in \mathcal{S}, \quad S_1 \equiv_{\text{CoreState}} S_2 \implies \text{Obs}(S_1) = \text{Obs}(S_2)
 ```
-*(Dichiara che le variazioni nel buffer volatile $\mathcal{S}_{\text{auxiliary}}$ non alterano le proiezioni osservabili dei diritti, del percorso o dello stato storico dell'utente).*
+*(Dichiara che le variazioni nel buffer volatile:
+```math
+\mathcal{S}_{\text{auxiliary}}
+```
+non alterano le proiezioni osservabili dei diritti, del percorso o dello stato storico dell'utente).*
 
 ---
 
@@ -530,7 +534,11 @@ La Mappa di Osservazione Canonica $\pi_{\text{SOS}}$ estrae la tripla dello stat
 * **Ipotesi H1:** La relazione di transizione SOS $\to_{\text{Sys}}$ soddisfa l'Assioma di Determinismo (`AXIOM-SOS-DETERMINISM`).
 * **Ipotesi H2:** Il predicato di validazione d'ambiente restituisce l'esito $\text{ValidateEnvironment}(S, t, E) = \text{PASS}$.
 * **Ipotesi H3:** La funzione $\text{ApplyValidated}$ ammette come parametro d'ingresso il risultato della validazione.
-* **Tesi:** La transizione relazionale SOS $\pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \langle q', q_H', S_{\text{persistent}}' \rangle$ sussiste se e solo se lo stato successivo $S' = \text{ApplyValidated}(S, t, \text{PASS})$ soddisfa la coincidenza di proiezioni:
+* **Tesi:** La transizione relazionale SOS
+```math
+\pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \langle q', q_H', S_{\text{persistent}}' \rangle
+```
+sussiste se e solo se lo stato successivo $S' = \text{ApplyValidated}(S, t, \text{PASS})$ soddisfa la coincidenza di proiezioni:
 ```math
 S' = \text{ApplyValidated}(S, t, \text{PASS}) \quad \land \quad q' = \pi_Q(S') \quad \land \quad q_H' = \pi_{Q_H}(S') \quad \land \quad S_{\text{persistent}}' = \pi_{\text{persistent}}(S')
 ```
@@ -850,7 +858,15 @@ H_0 = \mathbf{0}_{\mathcal{D}_{256}} \quad (\text{Digest nullo di Genesi a 256 b
 H_N = H\left( \text{Canon}(\text{TransactionBody}_N) \right)
 ```
 
-Dove $H: \mathcal{B}^* \to \mathcal{D}_{256}$ è la funzione di hash astratta (SHA-256) e $\text{TransactionBody}_N$ contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
+Dove $H: \mathcal{B}^* \to \mathcal{D}_{256}$ è la funzione di hash astratta (SHA-256) e
+```math
+\text{TransactionBody}_N
+```
+contiene:
+```math
+H_{N-1}
+```
+come valore vincolato del campo `prev_hash`.
 
 ---
 
@@ -985,7 +1001,15 @@ $$\text{Lowering}_{\text{LTL}}(\forall c \in \mathcal{I}_{\text{case}}, \phi(c))
 
 ### 10.2 Sottoinsieme J_SC e Strict Signed Safe Integer Range
 
-Un documento JSON $j \in \text{JSON}_{\text{RFC8259}}$ appartiene al sottoinsieme $J_{\text{SC}}$ se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
+Un documento JSON 
+```math
+j \in \text{JSON}_{\text{RFC8259}}
+```
+appartiene al sottoinsieme 
+```math
+J_{\text{SC}}
+```
+se e solo se tutti i numeri presenti sono interi compresi nell'intervallo chiuso:
 
 ```math
 I_{\text{safe}} = \left[ -(2^{53} - 1), \ +(2^{53} - 1) \right] = \left[ -9007199254740991, \ +9007199254740991 \right]
