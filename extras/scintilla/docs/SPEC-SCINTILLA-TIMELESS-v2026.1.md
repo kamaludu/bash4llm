@@ -1,10 +1,10 @@
 # ✴ SCINTILLA CORE - CANONICAL SPECIFICATION
-## Candidate Canonical Standard Edition v4.5.1
+## Candidate Canonical Standard Edition v4.5.2
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato:** Specifica Normativa Canonica Formale (Single Source of Truth - Candidate Standard)
-* **Edizione:** v4.5.1 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
+* **Edizione:** v4.5.2 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
 * **Autorità Governance:** Single Source of Truth Normativa per il dominio SCINTILLA CORE.
 * **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
 * **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di divergenza o indecidibilità tra le descrizioni narrative in linguaggio naturale (Layer B) ed i contratti esecutivi machine-readable (Layer C / Capitolo 10), i contratti machine-readable di Layer C costituiscono l'autorità normativamente prevalente per l'esecuzione del runtime.
@@ -100,20 +100,15 @@ Il sistema `MUST` mantenere una distinzione formale assoluta tra l'**Identità d
 ### 1.1 Formalizzazione dello Spazio degli Stati e delle Proiezioni
 
 Lo Spazio degli Stati
-```math
-\mathcal{S}
-```
+$$\mathcal{S}$$
 è il sotto-spazio cartesiano dello stato primario valido di sistema.
 
 #### 1.1.1 Definizione del Sottospazio dello Stato Primario (Layer A)
 Lo stato primario del sistema
-```math
-\mathcal{S}
-```
+$$\mathcal{S}$$
 è formalizzato come l'insieme delle triple valide appartenenti al prodotto cartesiano dei domini di persistenza, controllo e buffer temporaneo:
-
 ```math
-\mathcal{S} := \left\{ (p, i, a) \in \mathcal{S}_{\text{persistent}} \times \mathcal{S}_{\text{internal}} \times \mathcal{S}_{\text{auxiliary}} \mid \text{ValidState}(p, i, a) = \text{TRUE} \right\}
+\mathcal{S} := \mathcal{S}_{\text{persistent}} \times \mathcal{S}_{\text{internal}} \times \mathcal{S}_{\text{auxiliary}}
 ```
 
 Dove i domini componenti sono definiti come:
@@ -121,14 +116,17 @@ Dove i domini componenti sono definiti come:
 ```math
 \mathcal{S}_{\text{persistent}} := \mathcal{I}_{\text{case}} \times \mathcal{M}_{\text{prov}} \times \mathcal{Q}_{\text{consent}} \times \mathcal{K}_{\text{playbook}} \times \mathcal{Q}_{\text{revoked\_items}} \times \mathcal{K}_{\text{competence}} \times \mathcal{V}_{\text{vault}}
 ```
+
 2. **Dominio Interno di Runtime e Sicurezza:**
 ```math
-\mathcal{S}_{\text{internal}} := Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{F}_{\text{lease}} \times \mathcal{H}_{\text{bound}} \times (\mathcal{T} \cup \{\text{null}\}) \times \mathcal{M}_{\text{metrics}}
+\mathcal{S}_{\text{internal}} := Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{F}_{\text{lease}} \times \mathcal{H}_{\text{bound}} \times (\mathcal{T} \cup \{\text{null}\}) \times \mathcal{M}_{\text{metrics}} \times \mathbb{N} \times \mathcal{D}_{256}
 ```
+
 3. **Dominio Ausiliario Volatile di Co-creazione:**
 ```math
 \mathcal{S}_{\text{auxiliary}} := \mathcal{D}_{\text{drafts}}
 ```
+
 
 #### 1.1.2 Vista Derivata Pura Disaccoppiata e Contatori di Interazione (Layer A)
 La componente di stato derivato
@@ -195,7 +193,12 @@ La proiezione esterna dello stato verso le interfacce utente, API e viste pubbli
 \text{Obs} : \mathcal{S} \longrightarrow \mathcal{O}
 ```
 ```math
-\text{Obs}(S) := \pi_{\text{persistent}}(S) \setminus \{ \text{elementi cifrati o soggetti a } \mathcal{Q}_{\text{revoked\_items}} \}
+\text{Obs}(S) := \left\langle \pi_{\text{persistent}}(S).\text{case}_{\text{id}}, \ \mathcal{M}_{\text{prov}}, \ \mathcal{Q}_{\text{consent}} \setminus \mathcal{R}, \ \mathcal{K}_{\text{playbook}}, \ \mathcal{Q}_{\text{revoked\_items}}, \ \mathcal{K}_{\text{competence}} \setminus \mathcal{R}, \ \mathcal{V}_{\text{vault}} \setminus \mathcal{R} \right\rangle
+```
+
+*dove* 
+```math
+\mathcal{R} = \{ e \mid \text{ResourceId}(e) \in \mathcal{Q}_{\text{revoked\_items}} \}
 ```
 
 #### 1.2.2 Equivalenza di Stato Primario CoreState (Layer A)
@@ -232,7 +235,7 @@ posizionata nello stato iniziale della componente di controllo interno:
 ```
 
 ```math
-s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0, 0 \rangle, \ t_{\text{pause\_start}}=\text{null}, \ \mathcal{Q}_{\text{revoked\_items}}=\emptyset, \ \mathcal{K}_{\text{competence}}=\emptyset, \ \mathcal{V}_{\text{vault}}=\emptyset, \ \mathcal{D}_{\text{drafts}}=\emptyset \right\rangle
+s_0 := \left\langle \text{case}_{\text{id}}=\text{null}, \ q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{H}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0, 0 \rangle, \ \text{seq\_num}=0, \ \text{last\_hash}=\mathbf{0}_{\mathcal{D}_{256}}, \ t_{\text{pause\_start}}=\text{null}, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{Q}_{\text{revoked\_items}}=\emptyset, \ \mathcal{K}_{\text{competence}}=\emptyset, \ \mathcal{V}_{\text{vault}}=\emptyset, \ \mathcal{D}_{\text{drafts}}=\emptyset \right\rangle
 ```
 
 *con vista derivata iniziale:*
@@ -274,6 +277,14 @@ l'involucro di esecuzione `MUST` registrare:
 \text{execution\_envelope} = \left\langle \text{"PROCESSED\_NO\_STATE\_EFFECT"}, \text{"HUMAN\_JOURNEY\_PAUSED"}, \text{false} \right\rangle
 ```
 
+```math
+\text{BuildSystemTx}(S, E, \sigma) := \left\langle \text{TransactionBody}(\text{case}_{\text{id}}=S.\text{case}_{\text{id}}, \text{seq}_{\text{num}}=S.\text{seq}_{\text{num}}+1, \text{prev}_{\text{hash}}=S.\text{last\_hash}, \text{timestamp}=E.t_{\text{wall}}, \text{event}=\sigma, \text{actor}=\text{SYSTEM}), \ \text{execution\_envelope}_{\text{default}}, \ \text{proof}_{\text{null}} \right\rangle
+```
+
+```math
+\text{BuildErrorTx}(S, E, \text{err}) := \left\langle \text{TransactionBody}(\text{case}_{\text{id}}=S.\text{case}_{\text{id}}, \text{seq}_{\text{num}}=S.\text{seq}_{\text{num}}+1, \text{prev}_{\text{hash}}=S.\text{last\_hash}, \text{timestamp}=E.t_{\text{wall}}, \text{event}=\text{EV\_SML\_FAIL}, \text{actor}=\text{SYSTEM}, \text{payload}=\text{err}), \ \text{execution\_envelope}_{\text{err}}, \ \text{proof}_{\text{null}} \right\rangle
+```
+
 #### 1.4.2 Il Ledger come Monoide Libero L e Funzione Persist (Layer A)
 Il registro immutabile delle decisioni (Ledger) è formalizzato come un Monoide Libero:
 ```math
@@ -311,11 +322,19 @@ La revoca di un singolo elemento informativo da parte dell'utente genera una tra
 ```math
 \mathcal{Q}_{\text{revoked\_items}}' = \mathcal{Q}_{\text{revoked\_items}} \cup \{\text{item\_id}\}
 ```
-In sede di proiezione dello stato o consultazione via API ($\text{Obs}$), qualsiasi elemento avente
 ```math
-\text{item\_id} \in \mathcal{Q}_{\text{revoked\_items}}
+\text{ResourceId}(e) := \begin{cases}
+e.\text{doc\_id} & \text{se } e \in \mathcal{V}_{\text{vault}} \\
+e.\text{consent\_id} & \text{se } e \in \mathcal{Q}_{\text{consent}} \\
+e.\text{skill\_id} & \text{se } e \in \mathcal{K}_{\text{competence}}
+\end{cases}
 ```
-`MUST` restituire il valore nullo $\bot$.  
+
+In sede di proiezione dello stato o consultazione via API ($\text{Obs}$), qualsiasi elemento $e$ tale che:
+```math
+\text{ResourceId}(e) \in \mathcal{Q}_{\text{revoked\_items}}
+```
+`MUST` restituire il valore nullo $\bot$.
 
 *Nota di Invarianza Strutturale:* La revoca logica parziale oscura la visibilità dei dati nella vista pubblica $\text{Obs}(S)$, ma **NON rimuove l'identificatore del nodo dall'insieme dei nodi completati** $V_{\text{completed}}$ in $\mathcal{K}_{\text{playbook}}$, preservando l'integrità del grafo e la deterministica riproducibilità dell'avanzamento.
 
@@ -344,16 +363,16 @@ La validazione delle condizioni di contesto fisiche, temporali e crittografiche 
 ```math
 \text{ValidateEnvironment}(S, t, E) = \begin{cases}
 \text{PASS} & \text{se } \text{VerifySignature}(t.\text{proof}, t.\text{TransactionBody}, E.K_{\text{pubkey\_registry}}) = \text{TRUE} \\
-& \quad \land \ |t.\text{timestamp} - E.t_{\text{wall}}| \le \Delta t_{\text{max}} \\
+& \quad \land \ |t.\text{timestamp} - E.t_{\text{wall}}| \le \Theta.\theta_{\text{max\_clock\_skew}} \\
 & \quad \land \ E.\text{LeaseManager}.\text{IsTokenValid}(S.\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}}) = \text{TRUE} \\
 \text{ERR\_SIG} & \text{se la firma crittografica è invalida} \\
-\text{ERR\_CLOCK} & \text{se } |t.\text{timestamp} - E.t_{\text{wall}}| > \Delta t_{\text{max}} \\
+\text{ERR\_CLOCK} & \text{se } |t.\text{timestamp} - E.t_{\text{wall}}| > \Theta.\theta_{\text{max\_clock\_skew}} \\
 \text{ERR\_LEASE} & \text{se il lease di concorrenza è scaduto o invalido}
 \end{cases}
 ```
 
 ```math
-\mathbf{REQ-CLUSTER-CLOCK-SYNC} := \max_{i,j} |t_{\text{wall}, i} - t_{\text{wall}, j}| \le \delta_{\text{clock}} \quad \text{con } \delta_{\text{clock}} < \frac{1}{2} \Delta t_{\text{max}}
+\mathbf{REQ-CLUSTER-CLOCK-SYNC} := \max_{i,j} |t_{\text{wall}, i} - t_{\text{wall}, j}| \le \delta_{\text{clock}} \quad \text{con } \delta_{\text{clock}} < \frac{1}{2} \Theta.\theta_{\text{max\_clock\_skew}}
 ```
 *(Impone che la sincronizzazione temporale tra i nodi esecutori sia limitata superiormente per prevenire rifiuti inconsistenti per clock skew).*
 
@@ -365,13 +384,13 @@ La mutazione di stato è governata dalla funzione pura e deterministica $\text{A
 ```
 
 #### 1.6.3 Requisito Normativo di Totalità di ApplyValidated (`REQ-APPLY-TOTALITY-POLICY`) (Layer B2)
-La funzione pura $\text{ApplyValidated}$ è una **funzione totale** su $\mathcal{S}$ definita dalla seguente specifica a casi:
+La funzione pura $\text{ApplyValidated}$ è una **funzione totale** su $\mathcal{S}$ definita dalla seguente specifica a casi con precedenza assoluta di lockdown per corruzione dell'hash:
 
 ```math
 \text{ApplyValidated}(S, t, \text{v\_res}) := \begin{cases}
-\delta_{\text{nominal}}(S, t) & \text{se } \text{v\_res} = \text{PASS} \land \text{EvaluateGuards}(S, t) = \text{PASS} \\
-S & \text{se } t.\text{event} = \text{EV\_HASH\_CORRUPT} \quad (\text{Stuttering Step su dati persistenti}) \\
-\delta_{\text{err}}(S, t, \text{v\_res}) & \text{se } \text{v\_res} \in \mathcal{E}_{\text{validation}} \lor \text{EvaluateGuards}(S, t) = \text{FAIL}
+S[ q \mapsto \text{SECURITY\_LOCKDOWN} ] & \text{se } t.\text{event} = \text{EV\_HASH\_CORRUPT} \\
+\delta_{\text{nominal}}(S, t) & \text{se } t.\text{event} \neq \text{EV\_HASH\_CORRUPT} \land \text{v\_res} = \text{PASS} \land \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW} \\
+\delta_{\text{err}}(S, t, \text{v\_res}) & \text{se } t.\text{event} \neq \text{EV\_HASH\_CORRUPT} \land (\text{v\_res} \in \mathcal{E}_{\text{validation}} \lor \mathcal{R}_{\text{exec}}(S, t) \neq \text{ALLOW})
 \end{cases}
 ```
 
@@ -380,6 +399,8 @@ S & \text{se } t.\text{event} = \text{EV\_HASH\_CORRUPT} \quad (\text{Stuttering
 ### 1.7 Indice Proxy Operativo di Guadagno di Agency (AGI_proxy)
 
 L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Points interi) misura gli indicatori comportamentali descrittivi di avanzamento dell'utente sul sistema.
+
+**Nota di Delimitazione Normativa:** L'algoritmo di calcolo di $\text{AGI}_{\text{proxy}}$ in aritmetica intera (§1.7.3) costituisce un requisito normativo deterministico vincolante per l'esecuzione del runtime. L'interpretazione di tale punteggio come misura dell'autonomia reale dell'utente costituisce un'ipotesi descrittiva extra-normativa.
 
 #### 1.7.1 Assunzione di Confine Epistemico ed Invariante di Isolamento Descrittivo (Layer B1)
 ```math
@@ -391,7 +412,7 @@ L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Poi
 \mathbf{INV-AGI-DESCRIPTIVE-ISOLATION}
 ```
 ```math
-\forall S \in \mathcal{S}, \forall t \in T, \quad \text{EvaluateGuards}(S, t) \text{ MUST NOT depend on } \text{AGI}_{\text{proxy}}(S)
+\forall S \in \mathcal{S}, \forall t \in T, \quad \mathcal{R}_{\text{exec}}(S, t) \text{ MUST NOT depend on } \text{AGI}_{\text{proxy}}(S)
 ```
 *(Stabilisce che l'indice descrittivo AGI MUST NOT essere utilizzato come condizione di guardia nelle decisioni di sicurezza dell'automa M o nei predicati esecutivi R_exec).*
 
@@ -433,7 +454,7 @@ I_{\text{safe}}
 ```math
 \text{ActionExecutionRatio}_{\text{bp}}(S) := \begin{cases}
 0 & \text{se } \text{pb}_{\text{id}} = \text{null} \lor |V_P| = 0 \\
-\left\lfloor \frac{|V_{\text{completed}} \cap V_P| \times 10000}{|V_P|} \right\rfloor & \text{se } \text{pb}_{\text{id}} \neq \text{null} \land |V_P| > 0
+\left\lfloor \frac{|\{ \text{id} \in V_{\text{completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \}| \times 10000}{|V_P|} \right\rfloor & \text{se } \text{pb}_{\text{id}} \neq \text{null} \land |V_P| > 0
 \end{cases}
 ```
 
@@ -441,9 +462,10 @@ I_{\text{safe}}
 ```math
 \text{DependencyReductionScore}_{\text{bp}}(S) := \begin{cases}
 0 & \text{se } |V_{\text{completed}}| = 0 \\
-\left\lfloor \frac{|\{ v \in V_{\text{completed}} \mid \text{IsEmpoweredAction}(v, S) \}| \times 10000}{|V_{\text{completed}}|} \right\rfloor & \text{se } |V_{\text{completed}}| > 0
+\left\lfloor \frac{|\{ \text{id} \in V_{\text{completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \land \text{IsEmpoweredAction}(v, S) \}| \times 10000}{|V_{\text{completed}}|} \right\rfloor & \text{se } |V_{\text{completed}}| > 0
 \end{cases}
 ```
+
 dove il predicato booleano puro $\text{IsEmpoweredAction}(v, S)$ è formalizzato come:
 ```math
 \text{IsEmpoweredAction}(v, S) \iff \left( v.\text{action\_type} \in \{\text{USER\_CONFIRMED\_STEP}, \text{REQUIRED\_FOR\_SYSTEM\_STATE}\} \land v.\text{gained\_skill} \neq \text{null} \right)
@@ -456,14 +478,17 @@ dove il predicato booleano puro $\text{IsEmpoweredAction}(v, S)$ è formalizzato
 Ogni implementazione esecutiva di SCINTILLA CORE `MUST` integrare un modulo crittografico conforme alla seguente interfaccia astratta:
 
 ```math
-\mathbf{CryptoProviderContract} := \langle \text{DeriveKey}, \text{EncryptPayload}, \text{DecryptPayload}, \text{ShredKey}, \text{VerifySignature} \rangle
+\mathbf{CryptoProviderContract} := \langle \text{DeriveKey}, \text{EncryptPayload}, \text{DecryptPayload}, \text{ShredKey}, \text{VerifySignature}, \text{LookupKey} \rangle
 ```
 
-1. $\text{DeriveKey}(K_{\text{parent}}, \text{context}) \to K_{\text{child}}$: Derivazione deterministica chiavi effimere tramite HKDF.
-2. $\text{EncryptPayload}(K_{\text{item}}, v) \to \text{Payload}_{\text{encrypted}}$: Cifratura autenticata AES-256-GCM.
+1. $\text{DeriveKey}(K_{\text{parent}}, \text{context}) \to K_{\text{child}}$: Derivazione deterministica chiavi effimere.
+2. $\text{EncryptPayload}(K_{\text{item}}, v) \to \text{Payload}_{\text{encrypted}}$: Cifratura autenticata simmetrica.
 3. $\text{DecryptPayload}(K_{\text{item}}, \text{Payload}_{\text{encrypted}}) \to v \mid \bot$: Decifratura ed autenticazione payload.
 4. $\text{ShredKey}(K_{\text{id}}) \to \text{TRUE}$: Distruzione del materiale di chiave ed elisione dei percorsi di recupero ($\text{NoRecovery}$).
-5. $\text{VerifySignature}(\text{proof}, \text{data}, K_{\text{pub}}) \to \mathbb{B}$: Verifica firma digitale Ed25519.
+5. $\text{VerifySignature}(\text{proof}, \text{data}, K_{\text{pub}}) \to \mathbb{B}$: Verifica firma digitale a chiave pubblica.
+6. $\text{LookupKey}(K_{\text{id}}) \to K_{\text{active}} \mid \bot$: Verifica presenza ed estrazione del materiale di chiave attivo.
+
+*Nota di Binding Normativo:* Il binding concreto degli algoritmi crittografici (AES-256-GCM, HKDF-SHA256, Ed25519) è definito unicamente nel Profilo Concreto di Riferimento SC-JCS-1 (Layer C / Capitolo 10).
 
 ---
 
@@ -497,7 +522,7 @@ L'architettura di SCINTILLA CORE è strutturata in 6 livelli funzionali ad isola
 L'operatività di sicurezza di runtime è modellata dall'automa **Deterministic Priority Finite State Machine (DP-FSM)** $M$:
 
 ```math
-M := \langle Q, \Sigma, T_{\text{JSON}}, \delta_M, q_0, F_{\text{oper}} \rangle
+M := \langle Q, \Sigma, T_{\delta}, \delta_M, q_0, F_{\text{oper}} \rangle
 ```
 
 1. **Insieme degli Stati Canonici $Q$ ($|Q|=7$):**
@@ -519,22 +544,26 @@ Un contratto di automa è valido ed eseguibile se e solo se soddisfa la precondi
 \mathbf{ValidFSMContract} \iff \left( \forall q \in Q, \forall \sigma \in \Sigma, \ |\delta_{\text{explicit}}(q, \sigma)| \le 1 \right) \ \land \ \left( \forall \sigma \in \Sigma, \ |\delta_{\text{wildcard}}(\sigma)| \le 1 \right)
 ```
 
-#### 2.2.2 Regola di Mascheramento delle Wildcard e Funzione Algebrica Resolve
+#### 2.2.2 Regola di Precedenza Wildcard e Funzione Algebrica Resolve
 ```math
 \mathbf{RULE-EXPLICIT-SHADOWS-WILDCARD}
 ```
-> **"The wildcard transition rule $\delta_{\text{wildcard}}(\sigma)$ SHALL NOT participate in transition resolution when an explicit transition $\delta_{\text{explicit}}(q, \sigma)$ exists for the given state $q$ and event $\sigma$."**
+**"The explicit transition rules SHALL strictly shadow wildcard transition rules according to the four-tier resolution order."**
 
-La risoluzione deterministica della transizione nell'automa DP-FSM è governata dalla funzione algebrica pura:
+La risoluzione deterministica della transizione negli automi DP-FSM è governata dalla funzione algebrica pura con gerarchia a 4 livelli:
 
 ```math
-\mathbf{Resolve}(q, \sigma) := \begin{cases}
-q & \text{se } q \in F_H \quad (\text{Terminal Trap Rule}) \\
-\delta_{\text{explicit}}(q, \sigma) & \text{se } \delta_{\text{explicit}}(q, \sigma) \neq \bot \land q \notin F_H \\
-\delta_{\text{wildcard}}(\sigma) & \text{se } \delta_{\text{explicit}}(q, \sigma) = \bot \land \delta_{\text{wildcard}}(\sigma) \neq \bot \land q \notin F_H \\
-q & \text{se } \delta_{\text{explicit}} = \bot \land \delta_{\text{wildcard}} = \bot \land q \notin F_H \quad (\text{Implicit Stuttering})
+\mathbf{Resolve}(q, \sigma, F_T) := \begin{cases}
+q & \text{se } q \in F_T \quad (\text{Terminal Trap Rule}) \\
+\delta(q, \sigma) & \text{se } \delta(q, \sigma) \text{ è definita su } (\text{Stato Esplicito } q, \text{Evento Esplicito } \sigma) \land q \notin F_T \\
+\delta(*, \sigma) & \text{se } \delta(*, \sigma) \text{ è definita su } (\text{Stato Wildcard } *, \text{Evento Esplicito } \sigma) \land q \notin F_T \\
+\delta(q, *) & \text{se } \delta(q, *) \text{ è definita su } (\text{Stato Esplicito } q, \text{Evento Wildcard } *) \land q \notin F_T \\
+\delta(*, *) & \text{se } \delta(*, *) \text{ è definita su } (\text{Stato Wildcard } *, \text{Evento Wildcard } *) \land q \notin F_T \\
+q & \text{altrimenti } (\text{Implicit Stuttering})
 \end{cases}
 ```
+
+dove $F_T$ rappresenta l'insieme degli stati terminali dell'automa di riferimento ($F_T = \emptyset$ per l'automa $M$, e $F_T = F_H$ per l'automa $\mathcal{H}$).
 
 #### 2.2.3 Partizione dell'Alfabeto Sigma (Layer B2)
 L'alfabeto degli eventi di sistema $\Sigma$ ($|\Sigma|=10$) è partizionato nei seguenti sotto-insiemi disgiunti:
@@ -572,18 +601,20 @@ L'evoluzione concettuale del percorso umano dell'utente è modellata dall'automa
 \mathcal{H} := \langle Q_H, \Sigma_H, \delta_H, q_{H0}, F_H \rangle
 ```
 
-1. **Insieme degli Stati del Percorso Umano $Q_H$ ($|Q_H|=12$):**
+1. **Insieme degli Stati del Percorso Umano** $Q_H$ ($|Q_H|=12$):
 ```math
 Q_H = \{ \text{UNASSESSED}, \text{INITIAL\_ASSESSMENT}, \text{STABILIZATION}, \text{DOCUMENT\_RECOVERY}, \text{EMPLOYMENT\_READINESS}, \text{FINANCIAL\_AUTONOMY}, \text{SUSTAINED\_INDEPENDENCE}, \text{HUMAN\_PAUSED}, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{HUMAN\_GOAL\_CHANGED}, \text{HUMAN\_DECLINED\_ASSISTANCE}, \text{PREVENTIVE\_STANDBY} \}
 ```
-2. **Stato Iniziale:** $q_{H0} = \text{UNASSESSED}$.
-3. **Insieme degli Stati Target / Terminali $F_H$:**
+
+2. **Stato Iniziale:** $q_{H0} = \text{UNASSESSED} = h_0$.
+3. **Insieme degli Stati Target / Terminali** $F_H$:
 ```math
-F_H = \{ \text{HUMAN\_DECLINED\_ASSISTANCE} \}
+F_H = \{ \text{HUMAN\_DECLINED\_ASSISTANCE} \} = \{ h_{10} \}
 ```
-4. **Alfabeto degli Eventi Umani $\Sigma_H$ ($|\Sigma_H|=14$):**
+
+4. **Alfabeto degli Eventi Umani** $\Sigma_H$ ($|\Sigma_H|=15$):
 ```math
-\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM}, \text{HEV\_PREVENTIVE\_SUPPORT\_REQ} \}
+\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM}, \text{HEV\_PREVENTIVE\_SUPPORT\_REQ}, \text{HEV\_STEP\_COMPLETED} \}
 ```
 
 #### 2.3.1 Dinamica dello Stato h11 (PREVENTIVE_STANDBY) (Layer B2)
@@ -617,10 +648,10 @@ La funzione di transizione pura dell'automa composito $\delta_C : (Q \times Q_H)
 
 ```math
 \delta_C((q, q_H), \sigma_C) = \begin{cases} 
-(\delta_M(q, \sigma_C, T_{\text{JSON}}), q_H) & \text{se } \sigma_C \in \Sigma \\
-(q, \mathbf{Resolve}(q_H, \sigma_C)) & \text{se } \sigma_C \in \Sigma_H \land q \in F_{\text{oper}} \\
-(q, \mathbf{Resolve}(q_H, \sigma_C)) & \text{se } \sigma_C \in \Sigma_H \land q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\} \\
-(q, \mathbf{Resolve}(q_H, \sigma_C)) & \text{se } \sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\} \\
+(\delta_M(q, \sigma_C, T_{\delta}), q_H) & \text{se } \sigma_C \in \Sigma \\
+(q, \mathbf{Resolve}(q_H, \sigma_C, F_H)) & \text{se } \sigma_C \in \Sigma_H \land q \in (F_{\text{oper}} \cup \{\text{REQUIRE\_RECALIBRATION}\}) \\
+(q, \mathbf{Resolve}(q_H, \sigma_C, F_H)) & \text{se } \sigma_C \in \Sigma_H \land q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\} \\
+(q, \mathbf{Resolve}(q_H, \sigma_C, F_H)) & \text{se } \sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\} \\
 (q, q_H) & \text{se } \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\}
 \end{cases}
 ```
@@ -710,16 +741,16 @@ Una transizione $t \in T$ con evento $\sigma_C = \text{event}(t)$ ed emessa dall
 ### 3.2 Meta-Regole SOS della Sicurezza di Runtime (M) (Layer B3)
 
 ```math
-\frac{\sigma_C = \text{event}(t) \in \Sigma \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q' = \mathbf{Resolve}(q, \sigma_C) \quad \text{EvaluateGuards}(S, t) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-SAFETY}]
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q' = \mathbf{Resolve}(q, \sigma_C, \emptyset) \quad \text{EvaluateGuards}(S, t) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-SAFETY}]
 ```
 
 ```math
-\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{v\_res} \in \mathcal{E}_{\text{validation}} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL}) \quad q' = \begin{cases} q & \text{se } q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \\ \text{VALIDATION\_ERROR} & \text{altrimenti} \end{cases}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, \text{BuildErrorTx}(\sigma_C), \text{v\_res}) \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{v\_res} \in \mathcal{E}_{\text{validation}} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL}) \quad q' = \begin{cases} q & \text{se } q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \\ \text{VALIDATION\_ERROR} & \text{altrimenti} \end{cases}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, \text{BuildErrorTx}(S, E, \sigma_C), \text{v\_res}) \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
 ```
 
 #### 3.2.1 Meta-Regole SOS di Ripristino ed Override da Operatore (Layer B3)
 ```math
-\frac{\sigma_C = \text{EV\_REPAIR} \quad q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \quad \text{type}(\alpha) = \text{OPERATOR} \quad \text{ValidRepairPatch}(p)}{\langle q, q_H, S \rangle \xrightarrow{\text{EV\_REPAIR}}_{\text{Sys}} \langle \text{NORMAL}, q_H, \text{ApplyCompensativeRepair}(S, p) \rangle} \quad [\text{SOS-COMPENSATIVE-REPAIR}]
+\frac{\sigma_C = \text{event}(t) = \text{EV\_REPAIR} \quad q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \quad \text{type}(\alpha) = \text{OPERATOR} \quad p = t.\text{payload} \quad \text{ValidRepairPatch}(p)}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle \text{NORMAL}, q_H, \text{ApplyCompensativeRepair}(S, p) \rangle} \quad [\text{SOS-COMPENSATIVE-REPAIR}]
 ```
 
 ```math
@@ -749,11 +780,11 @@ All'ottenimento o verifica oggettiva di un documento d'identità o attestato for
 ### 3.4 Meta-Regole SOS del Percorso Umano (H) e Sovranità (Layer B3)
 
 ```math
-\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \mathbf{Resolve}(q_H, \sigma_C) \quad \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, q_H', \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-HUMAN}]
+\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \mathbf{Resolve}(q_H, \sigma_C, F_H) \quad \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, q_H', \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-HUMAN}]
 ```
 
 ```math
-\frac{\sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \mathbf{Resolve}(q_H, \sigma_C), \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-SOVEREIGNTY-LOCKDOWN}]
+\frac{\sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \mathbf{Resolve}(q_H, \sigma_C, F_H), \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-SOVEREIGNTY-LOCKDOWN}]
 ```
 
 #### 3.4.1 Meta-Regola SOS di Stasi in Stato Pausa (`[SOS-HUMAN-PAUSED-STUTTER]`)
@@ -778,7 +809,7 @@ ed il tempo di permanenza supera la soglia parametrizzata:
 ```
 
 ```math
-\frac{q_H = \text{HUMAN\_PAUSED} \quad (E.t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad t_{\text{timeout}} = \text{BuildSystemTx}(\text{HEV\_RECALIBRATION\_REQ})}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t_{\text{timeout}}}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t_{\text{timeout}}, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
+\frac{q_H = \text{HUMAN\_PAUSED} \quad (E.t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad t_{\text{timeout}} = \text{BuildSystemTx}(S, E, \text{HEV\_RECALIBRATION\_REQ})}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t_{\text{timeout}}}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t_{\text{timeout}}, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
 ```
 
 #### 3.4.3 Meta-Regola SOS di Adattamento per Sopraffazione Emotiva (`[SOS-EMOTIONAL-OVERWHELM]`)
@@ -819,7 +850,11 @@ Un `PolicyBundle` $\mathcal{P}$ è formalizzato come la tupla algebrica:
 
 * $\text{PolicyID} \in \mathcal{I}$: Identificatore unico della policy (UUIDv7).
 * $\text{Version} \in V$: Versione della policy nello Spazio delle Versioni $V$ (§6.1).
-* $\Theta$: Lo spazio dei parametri di configurazione e soglie (es. $\theta_{\text{duration}}, \theta_{\text{confidence}}$).
+* $\Theta$: Lo spazio dei parametri di configurazione e soglie, es. 
+```math
+\theta_{\text{duration}}, \theta_{\text{confidence}}, \theta_{\text{max\_clock\_skew}}
+```
+
 * $\mathcal{R}_{\text{exec}}$: Predicato esecutivo puro valutato sullo stato e sulla transazione.
 * $\text{Sig}_\mathcal{P}$: La firma crittografica dell'autorità di policy emittente calcolata su $\text{Canon}(\mathcal{P})$.
 
@@ -1033,9 +1068,9 @@ H: \mathcal{B}^* \to \mathcal{D}_{256}
 ```
 è la funzione di hash astratta (SHA-256) e 
 ```math
-\text{TransactionBody}_N$ contiene $H_{N-1}
+\text{TransactionBody}_N
 ```
-come valore vincolato del campo `prev_hash`.
+contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
 
 ---
 
@@ -1048,7 +1083,7 @@ come valore vincolato del campo `prev_hash`.
 
 Un'implementazione esecutiva ottiene la certificazione di conformità se e solo se soddisfa i seguenti tre criteri normativi vincolanti:
 
-1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dalla suite di test normativi (`CONFORMANCE-TEST-SUITE-v4.5.1.JSON`).
+1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dalla suite di test normativi (`CONFORMANCE-TEST-SUITE-v4.5.2.JSON`).
 2. **Requisito di Verifica Temporale LTL/CTL:** Formalizzazione delle proprietà logiche temporali (§9.2) con superamento degli obblighi di proof/model checking.
 3. **Totalità Matematica della Transizione:** Gestione corretta ed esaustiva di tutte le transizioni ammissibili per gli automi $M$ ed $\mathcal{H}$ tramite la funzione $\mathbf{Resolve}$.
 
@@ -1091,8 +1126,9 @@ Quando il runtime esegue come processo autonomo del sistema operativo, tale iden
 2. **Protocollo di Lock e Fencing Token:** La gestione delle scritture concorrenti si avvale di un meccanismo di lease a tempo. Ogni mutazione `MUST` verificare ed incrementare in modo strettamente monotonico il `fencing_token` $N \in \mathbb{N}^+$.
 3. **Causalità Temporale e Sincronizzazione Cluster:** L'ordine causale delle transizioni è stabilito unicamente dal numero di sequenza $N_{\text{seq}}$ e dal `fencing_token`. L'orologio fisico $E.t_{\text{wall}}$ costituisce un attributo informativo di policy. La tolleranza al disallineamento temporale tra nodi di un cluster è vincolata dalla norma:
 ```math
-\mathbf{REQ-CLUSTER-CLOCK-SYNC} := \max_{i,j} |t_{\text{wall}, i} - t_{\text{wall}, j}| \le \delta_{\text{clock}} \quad \text{con } \delta_{\text{clock}} < \frac{1}{2} \Delta t_{\text{max}}
+\mathbf{REQ-CLUSTER-CLOCK-SYNC} := \max_{i,j} |t_{\text{wall}, i} - t_{\text{wall}, j}| \le \delta_{\text{clock}} \quad \text{con } \delta_{\text{clock}} < \frac{1}{2} \Theta.\theta_{\text{max\_clock\_skew}}
 ```
+
 4. **Delimitazione dell'Ambito di Infrastruttura Ex-Textu:** La presente specifica disciplina rigorosamente la consistenza logica (*Strict Linearizability*) ed i token di scherma monotonicamente crescenti per ogni `case_id`. Le strategie di deduplicazione di rete e di ripristino post-crash sono delegate ai profili infrastrutturali.
 
 ---
@@ -1113,23 +1149,27 @@ M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
 * $L: \mathcal{S} \to \mathcal{P}(AP)$: La Funzione di Etichettatura (Labeling Function).
 * $F \subseteq \mathcal{P}(\mathcal{S})$: Insieme dei vincoli di Fairness definita sulle tracce ammissibili.
 
-#### 9.2.2 Mappatura della Labeling Function tramite Proiezioni
-La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$:
+#### 9.2.2 Mappatura della Labeling Function e Predicati sulle Transizioni
+La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$, mentre i predicati di concorrenza e transizione sono formalizzati sulle coppie di stati adiacenti $(S_i, S_{i+1})$:
 
 1. **`SafetyGateAllowed`:**
 ```math
 \text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S, t_{\text{prop}}) = \text{ALLOW}
 ```
 
-2. **`DecisionOutcomeAllowed`:** $\text{DecisionOutcomeAllowed} \in L(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}$.
-3. **`HashChainValid`:** 
+2. **`DecisionOutcomeAllowed`:** 
 ```math
-\text{HashChainValid} \in L(S) \iff H(\text{Canon}(\pi_{\text{last\_tx}}(S))) = \pi_{\text{last\_hash}}(S)
+\text{DecisionOutcomeAllowed} \in L(S) \iff \text{Derive}(\pi_{\text{persistent}}(S), \pi_{\text{internal}}(S)).\mathcal{O}_{\text{decision}} = \text{ALLOW}
 ```
 
-4. **`MonotonicFence`:** 
+3. **`HashChainValid`:** 
 ```math
-\text{MonotonicFence} \in L(S) \iff \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_N} > \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_{N-1}}
+\text{HashChainValid} \in L(S) \iff H(\text{Canon}(t_{\text{prev}})) = \pi_{\text{persistent}}(S).\text{prev\_hash}
+```
+
+4. **`MonotonicFence` (Predicato su Transizione $\mathcal{S} \times \mathcal{S}$):** 
+```math
+\text{MonotonicFence}(S_i, S_{i+1}) \iff \pi_{\text{internal}}(S_{i+1}).\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}} > \pi_{\text{internal}}(S_i).\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}}
 ```
 
 5. **`StateIsRecoverableFailure`:** 
@@ -1148,15 +1188,20 @@ La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezi
 ```
 
 8. **`StateIsNormal`:** $\text{StateIsNormal} \in L(S) \iff \pi_Q(S) = \text{NORMAL}$.
+
 9. **`StateIsReadOnly`:** 
 ```math
 \text{StateIsReadOnly} \in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}
 ```
 
 10. **`JourneyProgressive`:** $\text{JourneyProgressive} \in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}$.
-11. **`KeyIsShredded`:** $\text{KeyIsShredded}_c \in L(S) \iff \text{LookupKey}(c, KMS) = \bot$.
+
+11. **`KeyIsShredded`:** $\text{KeyIsShredded}_c \in L(S) \iff \text{LookupKey}(K_c) = \bot$.
+
 12. **`UserEngaged`:** $\text{UserEngaged} \in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}$.
+
 13. **`NonTerminalHumanState`:** $\text{NonTerminalHumanState} \in L(S) \iff \pi_{Q_H}(S) \notin F_H$.
+
 14. **`HumanState`:** 
 ```math
 \text{HumanState}_{h_i} \in L(S) \iff \pi_{Q_H}(S) = h_i
@@ -1169,21 +1214,25 @@ La dinamica di sicurezza del modello è specificata dalle seguenti formule First
 ```math
 \square \left( \text{DecisionOutcomeAllowed} \implies \text{SafetyGateAllowed} \right)
 ```
+
 * **FO-LTL Safety 2 (Fencing & Lease Recovery):**
 ```math
-\square \left( \neg \text{MonotonicFence} \implies X(\text{StateIsRecoverableFailure}) \right)
+\square \left( \neg \text{MonotonicFence}(S_i, S_{i+1}) \implies X(\text{StateIsRecoverableFailure}) \right)
 ```
+
 * **FO-LTL Safety 3 (Hash Chain Integrity):**
 ```math
 \square \left( \neg \text{HashChainValid} \implies X(\text{StateIsSecurityLockdown}) \right)
 ```
+
 * **FO-LTL Liveness 4 (Recuperabilità del Progresso dopo Errore Tecnico):**
 ```math
 \square \left( (\text{StateIsValidationError} \lor \text{StateIsRecoverableFailure}) \implies \diamondsuit \text{JourneyProgressive} \right)
 ```
-* **FO-LTL Safety 5 (Invarianza dell'Oblio Crittografico):**
+
+* **FO-LTL Safety 5 (Invarianza dell'Oblio Crittografico su Transizione Etichettata):**
 ```math
-\forall c \in \mathcal{I}_{\text{case}}, \quad \square \left( \text{event} = \text{EV\_CRYPTO\_SHRED\_EXECUTED}(c) \implies \square \text{KeyIsShredded}_c \right)
+\forall c \in \mathcal{I}_{\text{case}}, \quad \square \left( \left( S \xrightarrow{t}_{\text{Sys}} S' \land t.\text{event} = \text{EV\_CRYPTO\_SHRED\_EXECUTED}(c) \right) \implies \square' \text{KeyIsShredded}_c(S') \right)
 ```
 
 #### 9.2.4 Riduzione e Mapping verso LTL Proposizionale per Model Checkers
@@ -1264,7 +1313,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica $
 ```json
 {
   "automaton_id": "SCINTILLA_RUNTIME_SAFETY_AUTOMATON",
-  "specification_version": "4.5.1-CANDIDATE",
+  "specification_version": "4.5.2-CANDIDATE",
   "states": [
     "NORMAL",
     "REQUIRE_RECALIBRATION",
@@ -1347,7 +1396,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
 ```json
 {
   "automaton_id": "SCINTILLA_HUMAN_JOURNEY_AUTOMATON",
-  "specification_version": "4.5.1-CANDIDATE",
+  "specification_version": "4.5.3-APPROVED",
   "states": [
     "UNASSESSED",
     "INITIAL_ASSESSMENT",
@@ -1364,6 +1413,23 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
   ],
   "initial_state": "UNASSESSED",
   "terminal_states": ["HUMAN_DECLINED_ASSISTANCE"],
+  "events": [
+    "HEV_ASSESS_START",
+    "HEV_STABILIZED",
+    "HEV_DOCS_OBTAINED",
+    "HEV_JOB_READY",
+    "HEV_FINANCE_OK",
+    "HEV_INDEPENDENCE_ACHIEVED",
+    "HEV_RELAPSE_REGRESS",
+    "HEV_RECALIBRATION_REQ",
+    "HEV_PAUSE_REQUESTED",
+    "HEV_RESUME_REQUESTED",
+    "HEV_GOAL_UPDATE",
+    "HEV_DECLINE_ALL",
+    "HEV_EMOTIONAL_OVERWHELM",
+    "HEV_PREVENTIVE_SUPPORT_REQ",
+    "HEV_STEP_COMPLETED"
+  ],
   "transitions": [
     {"from": "UNASSESSED", "event": "HEV_ASSESS_START", "to": "INITIAL_ASSESSMENT"},
     {"from": "INITIAL_ASSESSMENT", "event": "HEV_STABILIZED", "to": "STABILIZATION"},
@@ -1381,7 +1447,8 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
     {"from": "*", "event": "HEV_GOAL_UPDATE", "to": "HUMAN_GOAL_CHANGED"},
     {"from": "HUMAN_GOAL_CHANGED", "event": "HEV_ASSESS_START", "to": "INITIAL_ASSESSMENT"},
     {"from": "*", "event": "HEV_EMOTIONAL_OVERWHELM", "to": "HUMAN_RECALIBRATION_REQUIRED"},
-    {"from": "HUMAN_RECALIBRATION_REQUIRED", "event": "HEV_STABILIZED", "to": "STABILIZATION"}
+    {"from": "HUMAN_RECALIBRATION_REQUIRED", "event": "HEV_STABILIZED", "to": "STABILIZATION"},
+    {"from": "*", "event": "HEV_STEP_COMPLETED", "to": "*"}
   ]
 }
 ```
@@ -1395,7 +1462,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
 
 ### 11.1 Assiomatizzazione dei Test Vectors e Conformance Suite
 
-I Test Vector concreti per la certificazione di conformità dello Standard Reference Profile 1 sono formalmente definiti nell'artefatto normativo esterno: **`CONFORMANCE-TEST-SUITE-v4.5.1.JSON`**.
+I Test Vector concreti per la certificazione di conformità dello Standard Reference Profile 1 sono formalmente definiti nell'artefatto normativo esterno: **`CONFORMANCE-TEST-SUITE-v4.5.2.JSON`**.
 
 La suite di test comprende tre categorie di vettori:
 1. **Positive Path Vectors:** Oggetti JSON di input e relative stringhe di byte canonizzate SC-JCS-1 con digest SHA-256 attesi.
@@ -1411,11 +1478,11 @@ La suite di test comprende tre categorie di vettori:
 
 ### 12.1 Stato Normativo del Documento
 
-La presente **SCINTILLA CORE CANONICAL SPECIFICATION v4.5.1 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA CORE.
+La presente **SCINTILLA CORE CANONICAL SPECIFICATION v4.5.2 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA CORE.
 
 Lo stato corrente del documento è:
 
-**SPECIFICATION-AUDITED & FORMALIZATION-READY — Candidate Canonical Standard Edition (v4.5.1)**
+**SPECIFICATION-AUDITED & FORMALIZATION-READY — Candidate Canonical Standard Edition (v4.5.2)**
 
 La struttura formale è definita, esente da contraddizioni interne e pronta per la fase di formalizzazione via prover e sviluppo dell'implementazione di riferimento.
 
@@ -1428,7 +1495,7 @@ Ogni runtime conforme `MUST` esportare nei propri metadati di governance la stru
 ```json
 {
   "governance_conformance": {
-    "conformance_suite_id": "SC-SUITE-v4.5.1-DIGEST-a8f3b29c",
+    "conformance_suite_id": "SC-SUITE-v4.5.2-DIGEST-a8f3b29c",
     "runtime_attestation": {
       "runtime_artifact_digest": "SHA256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "compiler_fingerprint": "RUSTC-1.78.0-NIGHTLY-2024",
@@ -1495,7 +1562,7 @@ export interface ExecutionEnvelope {
 }
 
 export interface RuntimeProfile {
-  semantic_profile: string; // es. "SCINTILLA-SOS-v4.5.1"
+  semantic_profile: string; // es. "SCINTILLA-SOS-v4.5.2"
   schema_profile: string;   // es. "SCHEMA-SC-v10.3"
   canonicalization_profile: string; // es. "SC-JCS-1"
   policy_profile: string;   // es. "POLICY-BUNDLE-v1.2"
@@ -1637,6 +1704,6 @@ Il Policy Guidance Engine (Livello 2) applica una verifica semantica vincolante 
 
 ---
 
-**SCINTILLA CORE v4.5.1 CANDIDATE CANONICAL STANDARD EDITION**
+**SCINTILLA CORE v4.5.2 CANDIDATE CANONICAL STANDARD EDITION**
 * **Coverage:** Chapters 0–12 & Annexes A–C Fully Emitted
 * **Governance Authority:** Single Source of Truth for SCINTILLA CORE Domain
