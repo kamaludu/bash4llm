@@ -943,15 +943,42 @@ M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
 #### 9.2.2 Mappatura della Labeling Function L: S -> P(AP) tramite Proiezioni pi
 La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$:
 
-1. **`SafetyGateAllowed`:** $\text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S, t_{\text{prop}}) = \text{ALLOW}$.
+1. **`SafetyGateAllowed`:** 
+```math
+\text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S, t_{\text{prop}}) = \text{ALLOW}
+```
+
 2. **`DecisionOutcomeAllowed`:** $\text{DecisionOutcomeAllowed} \in L(S) \iff \pi_{\mathcal{O}}(S) = \text{ALLOW}$.
-3. **`HashChainValid`:** $\text{HashChainValid} \in L(S) \iff H(\text{Canon}(\pi_{\text{last\_tx}}(S))) = \pi_{\text{last\_hash}}(S)$.
-4. **`MonotonicFence`:** $\text{MonotonicFence} \in L(S) \iff \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_N} > \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_{N-1}}$.
-5. **`StateIsRecoverableFailure`:** $\text{StateIsRecoverableFailure} \in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}$.
-6. **`StateIsSecurityLockdown`:** $\text{StateIsSecurityLockdown} \in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}$.
-7. **`StateIsValidationError`:** $\text{StateIsValidationError} \in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}$.
+3. **`HashChainValid`:** 
+```math
+\text{HashChainValid} \in L(S) \iff H(\text{Canon}(\pi_{\text{last\_tx}}(S))) = \pi_{\text{last\_hash}}(S)
+```
+
+4. **`MonotonicFence`:** 
+```math
+\text{MonotonicFence} \in L(S) \iff \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_N} > \pi_{\text{lease}}(S).\text{fencing}_{\text{token}_{N-1}}
+```
+
+5. **`StateIsRecoverableFailure`:** 
+```math
+\text{StateIsRecoverableFailure} \in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}
+```
+
+6. **`StateIsSecurityLockdown`:** 
+```math
+\text{StateIsSecurityLockdown} \in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}
+```
+7. **`StateIsValidationError`:** 
+```math
+\text{StateIsValidationError} \in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}
+```
+
 8. **`StateIsNormal`:** $\text{StateIsNormal} \in L(S) \iff \pi_Q(S) = \text{NORMAL}$.
-9. **`StateIsReadOnly`:** $\text{StateIsReadOnly} \in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}$.
+9. **`StateIsReadOnly`:** 
+```math
+\text{StateIsReadOnly} \in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}
+```
+
 10. **`JourneyProgressive`:** $\text{JourneyProgressive} \in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}$.
 11. **`KeyIsShredded`:** $\text{KeyIsShredded}_c \in L(S) \iff \text{LookupKey}(c, KMS) = \bot$.
 12. **`UserEngaged`:** $\text{UserEngaged} \in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}$.
@@ -970,7 +997,9 @@ La dinamica di sicurezza del modello è specificata dalle seguenti formule First
 * **FO-LTL Liveness 4 (Recuperabilità del Progresso dopo Errore Tecnico):**
   $$\square \left( (\text{StateIsValidationError} \lor \text{StateIsRecoverableFailure}) \implies \diamondsuit \text{JourneyProgressive} \right)$$
 * **FO-LTL Safety 5 (Invarianza dell'Oblio Crittografico):**
-  $$\forall c \in \mathcal{I}_{\text{case}}, \quad \square \left( \text{event} = \text{EV\_CRYPTO\_SHRED\_EXECUTED}(c) \implies \square \text{KeyIsShredded}_c \right)$$
+```math
+\forall c \in \mathcal{I}_{\text{case}}, \quad \square \left( \text{event} = \text{EV\_CRYPTO\_SHRED\_EXECUTED}(c) \implies \square \text{KeyIsShredded}_c \right)
+```
 
 #### 9.2.4 Riduzione e Mapping verso LTL Proposizionale per Model Checkers
 Per l'esecuzione diretta su strumenti di Model Checking Simbolico (NuSMV, SPIN, TLC), la quantificazione del primo ordine viene ridotta allo spazio discreto delle proposizioni atomiche mediante istanziazione finita sui domini $\mathcal{I}_{\text{case}}$:
