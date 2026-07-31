@@ -226,7 +226,11 @@ La revoca di un singolo elemento informativo da parte dell'utente genera una tra
 ```math
 \mathcal{Q}_{\text{revoked\_items}}' = \mathcal{Q}_{\text{revoked\_items}} \cup \{\text{item\_id}\}
 ```
-In sede di proiezione dello stato o consultazione via API ($\text{Obs}$), qualsiasi elemento avente $\text{item\_id} \in \mathcal{Q}_{\text{revoked\_items}}$ `MUST` restituire il valore nullo $\bot$.
+In sede di proiezione dello stato o consultazione via API ($\text{Obs}$), qualsiasi elemento avente:
+```math
+\text{item\_id} \in \mathcal{Q}_{\text{revoked\_items}}
+```
+`MUST` restituire il valore nullo $\bot$.
 
 #### 1.5.2 Oblio Crittografico Totale (`FULL_CRYPTO_SHREDDING`) (Layer B2 & Layer C)
 L'oblio totale dell'intero caso utente `SHALL` essere eseguito mediante la distruzione irreversibile della chiave radice $K_{\text{case}}$ nel modulo KMS ed il cancellamento di ogni percorso di recupero:
@@ -405,7 +409,10 @@ L'alfabeto degli eventi di sistema $\Sigma$ ($|\Sigma|=10$) è partizionato in d
 ```
 
 #### 2.2.2 Gestione della Stasi Operativa e Diritti in SAFE_READ_ONLY_MODE (q6) (Layer B2)
-Quando l'automa $M$ si trova nello stato $q_6 = \text{SAFE\_READ\_ONLY\_MODE}$:
+Quando l'automa $M$ si trova nello stato:
+```math
+q_6 = \text{SAFE\_READ\_ONLY\_MODE}
+```
 1. Per tutti gli eventi di business $\sigma \in \Sigma_{\text{business}}$, la funzione $\delta_M$ impone uno stuttering step ($q_6 \to q_6$), precludendo qualsiasi mutazione dello stato operativo del caso.
 2. Per tutti gli eventi amministrativi e di privacy $\sigma \in \Sigma_{\text{administrative}}$, la funzione $\delta_M$ ammette l'elaborazione e la persistenza della transizione sul Ledger immutabile $\mathcal{L}$, garantendo l'esercizio inalienabile dei diritti di revoca del consenso ed oblio dell'utente anche in stato di stasi operativa.
 
@@ -434,9 +441,25 @@ L'evoluzione concettuale del percorso umano dell'utente è modellata dall'automa
 ```
 
 #### 2.3.1 Dinamica dello Stato h11 (PREVENTIVE_STANDBY) (Layer B2)
-Lo stato $h_{11} = \text{PREVENTIVE\_STANDBY}$ definisce una condizione di equilibrio ad alta autonomia ed azione preventiva:
-1. **Ingresso in $h_{11}$:** La transizione dallo stato di indipendenza $h_6$ (`SUSTAINED_INDEPENDENCE`) a $h_{11}$ si verifica su emissione dell'evento $\text{HEV\_PREVENTIVE\_SUPPORT\_REQ} \in \Sigma_H$.
-2. **Uscita per Ricalibrazione o Sopraffazione:** La ricezione degli eventi $\text{HEV\_EMOTIONAL\_OVERWHELM}$ o $\text{HEV\_RELAPSE\_REGRESS}$ forza il rientro diretto dallo stato $h_{11}$ allo stato di ricalibrazione $h_8$ (`HUMAN_RECALIBRATION_REQUIRED`), riattivando il supporto focalizzato del Playbook Engine senza resettare lo storico delle competenze acquisite in $\mathcal{K}_{\text{competence}}$.
+Lo stato:
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+definisce una condizione di equilibrio ad alta autonomia ed azione preventiva:
+1. **Ingresso in $h_{11}$:** La transizione dallo stato di indipendenza $h_6$ (`SUSTAINED_INDEPENDENCE`) a $h_{11}$ si verifica su emissione dell'evento:
+```math
+\text{HEV\_PREVENTIVE\_SUPPORT\_REQ} \in \Sigma_H
+```
+
+2. **Uscita per Ricalibrazione o Sopraffazione:** La ricezione degli eventi:
+```math
+\text{HEV\_EMOTIONAL\_OVERWHELM}
+```
+o
+```math
+\text{HEV\_RELAPSE\_REGRESS}
+```
+forza il rientro diretto dallo stato $h_{11}$ allo stato di ricalibrazione $h_8$ (`HUMAN_RECALIBRATION_REQUIRED`), riattivando il supporto focalizzato del Playbook Engine senza resettare lo storico delle competenze acquisite in $\mathcal{K}_{\text{competence}}$.
 
 ---
 
@@ -460,8 +483,16 @@ La funzione di transizione pura dell'automa composito:
 \end{cases}
 ```
 
-1. **Invariante di Disaccoppiamento Unidirezionale (`INV-DECOUPLING-01`):** Gli eventi dell'automa umano $\Sigma_H$ non mutano lo stato di runtime $Q$. Viceversa, errori tecnici di sistema ($q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\}$) `SHALL NOT` paralizzare l'evoluzione concettuale dello stato umano $Q_H$.
-2. **Eccezione di Sovranità Umana in Lockdown:** In presenza di blocco critico di sicurezza ($q = \text{SECURITY\_LOCKDOWN}$), le sole transizioni dell'automa umano ammesse per la registrazione ed applicazione immediata sono quelle di richiesta di pausa o revoca del supporto (`HEV_PAUSE_REQUESTED`, `HEV_DECLINE_ALL`).
+1. **Invariante di Disaccoppiamento Unidirezionale (`INV-DECOUPLING-01`):** Gli eventi dell'automa umano $\Sigma_H$ non mutano lo stato di runtime $Q$. Viceversa, errori tecnici di sistema:
+```math
+q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\}
+```
+`SHALL NOT` paralizzare l'evoluzione concettuale dello stato umano $Q_H$.
+2. **Eccezione di Sovranità Umana in Lockdown:** In presenza di blocco critico di sicurezza:
+```math
+q = \text{SECURITY\_LOCKDOWN}
+```
+le sole transizioni dell'automa umano ammesse per la registrazione ed applicazione immediata sono quelle di richiesta di pausa o revoca del supporto (`HEV_PAUSE_REQUESTED`, `HEV_DECLINE_ALL`).
 
 ---
 
@@ -542,7 +573,10 @@ Una transizione $t \in T$ con evento $\sigma_C = \text{event}(t)$ ed emessa dall
 ### 3.3 Meta-Regole SOS per Competenze e Custodia Credenziali (Layer B3)
 
 #### 3.3.1 Meta-Regola SOS per la Palestra delle Competenze (`[SOS-COMPETENCE-UPDATE]`)
-Quando l'utente completa un nodo di Playbook $v \in V_P$ recante un attributo di competenza acquisita $\langle \text{skill\_id}, \text{level} \rangle$:
+Quando l'utente completa un nodo di Playbook $v \in V_P$ recante un attributo di competenza acquisita:
+```math
+\langle \text{skill\_id}, \text{level} \rangle
+```
 
 ```math
 \frac{\sigma_C = \text{HEV\_STEP\_COMPLETED} \quad v.\text{gained\_skill} = \langle k, l \rangle \quad \mathcal{K}_{\text{competence}}' = \mathcal{K}_{\text{competence}} \cup \{ \langle k, l, t_{\text{wall}} \rangle \}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, q_H, \text{ApplyValidated}(S, t[\mathcal{K}_{\text{competence}} \mapsto \mathcal{K}_{\text{competence}}'], \text{PASS}) \rangle} \quad [\text{SOS-COMPETENCE-UPDATE}]
