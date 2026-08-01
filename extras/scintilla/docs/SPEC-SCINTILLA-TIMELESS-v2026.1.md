@@ -11,6 +11,141 @@
 
 ---
 
+# MISSIONE
+
+## a) Scopo della Specifica
+
+La presente specifica definisce SCINTILLA CORE, il Kernel Normativo Canonico per la costruzione di sistemi destinati a supportare l'emancipazione personale.
+
+SCINTILLA CORE costituisce il Single Source of Truth del dominio e definisce, in modo formale, deterministico e verificabile, il comportamento osservabile, gli invarianti e i vincoli normativi che ogni implementazione conforme deve preservare.
+
+La presente specifica non descrive una particolare implementazione software, ma il modello normativo che governa tutte le implementazioni conformi.
+
+---
+
+## b) Missione del Kernel
+
+La missione di SCINTILLA CORE è definire un modello computazionale capace di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi, organizzativi ed emotivi che impediscono il passaggio dall'intenzione all'azione.
+
+Il sistema è progettato affinché l'intelligenza artificiale aumenti le capacità umane senza aumentare dipendenza, manipolazione o perdita di autodeterminazione.
+
+L'obiettivo del Kernel non è prendere decisioni al posto della persona, ma garantire che ogni implementazione conforme preservi i principi di autonomia, consenso, dignità, sicurezza, responsabilità e verificabilità definiti dalla presente specifica.
+
+---
+
+## c) Natura di SCINTILLA CORE
+
+SCINTILLA CORE è una specifica normativa.
+
+Non è un prodotto software, ma il contratto normativo sul quale prodotti software possono essere costruiti.
+
+SCINTILLA CORE non costituisce:
+
+un'applicazione;  
+un'interfaccia utente;  
+un chatbot;  
+un assistente digitale completo;  
+un modello linguistico;  
+un sistema RAG;  
+un servizio cloud;  
+una piattaforma web;  
+un'applicazione mobile.  
+
+
+SCINTILLA CORE definisce esclusivamente il comportamento normativo del Kernel deterministico sul quale tali sistemi possono essere costruiti.
+
+---
+
+## d) Ambito Normativo
+
+La presente specifica definisce in modo canonico:
+
+- il modello di stato;
+- la semantica delle transazioni;
+- il ledger immutabile;
+- gli automi;
+- gli invarianti;
+- le regole di transizione;
+- le politiche di sicurezza;
+- i diritti dell'utente;
+- i contratti di persistenza;
+- le proprietà di determinismo;
+- gli obblighi di conformità.
+
+
+Ogni elemento definito dalla presente specifica costituisce parte del contratto normativo del Kernel.
+
+Nessuna implementazione conforme può derogare agli invarianti, ai requisiti normativi o ai contratti definiti dalla presente specifica.
+
+---
+
+## e) Componenti Esterni
+
+Qualsiasi componente non definito dalla presente specifica è considerato esterno al Kernel.
+
+A titolo esemplificativo, appartengono a tale categoria:
+
+modelli linguistici (LLM);  
+sistemi RAG;  
+motori di ricerca;  
+basi di conoscenza;  
+servizi pubblici;  
+servizi cloud;  
+interfacce utente;  
+sistemi di autenticazione;  
+sistemi di orchestrazione;  
+applicazioni client;  
+integrazioni con software di terze parti.  
+
+
+La presenza, l'assenza o la sostituzione di tali componenti non modifica la semantica normativa di SCINTILLA CORE.
+
+Essi possono essere sostituiti, aggiornati o rimossi senza modificare il comportamento normativo del Kernel, purché ogni implementazione rimanga conforme alla presente specifica.
+
+---
+
+## f) Rapporto con le Implementazioni
+
+La presente specifica non prescrive una particolare architettura software.
+
+Implementazioni differenti possono essere conformi pur adottando linguaggi, piattaforme, architetture, algoritmi, librerie o infrastrutture differenti.
+
+Un'implementazione è conforme se, e solo se, preserva gli invarianti, i requisiti normativi e il comportamento osservabile definiti da SCINTILLA CORE.
+
+La conformità è determinata esclusivamente dal comportamento osservabile del sistema e non dalle scelte implementative adottate.
+
+---
+
+## g) Separazione tra Componenti Deterministiche e Componenti Probabilistiche
+
+SCINTILLA CORE distingue formalmente tra componenti deterministiche e componenti probabilistiche.
+
+Le componenti probabilistiche possono esclusivamente generare ipotesi, suggerimenti, classificazioni, spiegazioni o contenuti.
+
+Esse non possiedono autorità normativa sullo stato del sistema.
+
+Qualsiasi modifica dello stato persistente può avvenire esclusivamente attraverso le regole deterministiche definite dalla presente specifica.
+
+Le componenti probabilistiche costituiscono strumenti di supporto all'elaborazione, ma non possono modificare direttamente lo stato normativo del Kernel.
+
+---
+
+## h) Obiettivo della Specifica
+
+La finalità della presente specifica è costituire una base formale sufficientemente rigorosa da consentire la realizzazione di implementazioni interoperabili, verificabili, riproducibili e conformi, riducendo al minimo le ambiguità interpretative e preservando nel tempo l'integrità semantica del sistema.
+
+La presente specifica costituisce il riferimento normativo autorevole per la progettazione, l'implementazione, la verifica e la certificazione di conformità di qualsiasi sistema basato su SCINTILLA CORE.
+
+---
+
+**Principio Fondamentale**
+
+**SCINTILLA CORE definisce il comportamento normativo del sistema; le modalità implementative sono lasciate alle singole implementazioni conformi.**
+
+**In altre parole, la presente specifica definisce il "cosa"; ogni implementazione conforme definisce il "come".**
+
+---
+
 ### STRATIFICAZIONE FORMALE DELLA SPECIFICA
 
 Il presente documento è organizzato in tre livelli di astrazione formale espliciti:
