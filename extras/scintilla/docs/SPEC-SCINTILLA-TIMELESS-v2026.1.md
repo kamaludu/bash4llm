@@ -1,11 +1,11 @@
-# ✴ SCINTILLA CORE - CANONICAL SPECIFICATION
-## Candidate Canonical Standard Edition v4.5.3
+# ✴ SCINTILLA Core - CANONICAL SPECIFICATION
+## Canonical Standard Edition v4.5.3
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato:** Specifica Normativa Canonica Formale (Single Source of Truth - Candidate Standard)
 * **Edizione:** v4.5.3 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
-* **Autorità Governance:** Single Source of Truth Normativa per il dominio SCINTILLA CORE.
+* **Normative Authority:** Single Source of Truth Normativa per il dominio SCINTILLA Core.
 * **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
 * **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di divergenza o indecidibilità tra le descrizioni narrative in linguaggio naturale (Layer B) ed i contratti esecutivi machine-readable (Layer C / Capitolo 10), i contratti machine-readable di Layer C costituiscono l'autorità normativamente prevalente per l'esecuzione del runtime.
 
@@ -15,9 +15,9 @@
 
 ## a) Scopo della Specifica
 
-La presente specifica definisce SCINTILLA CORE, il Kernel Normativo Canonico per la costruzione di sistemi destinati a supportare l'emancipazione personale.
+La presente specifica definisce SCINTILLA Core, il Kernel Normativo Canonico per la **costruzione di sistemi destinati a supportare l'emancipazione personale.**
 
-SCINTILLA CORE costituisce il Single Source of Truth del dominio e definisce, in modo formale, deterministico e verificabile, il comportamento osservabile, gli invarianti e i vincoli normativi che ogni implementazione conforme deve preservare.
+SCINTILLA Core costituisce il Single Source of Truth del dominio e definisce, in modo formale, deterministico e verificabile, il comportamento osservabile, gli invarianti e i vincoli normativi che ogni implementazione conforme deve preservare.
 
 La presente specifica non descrive una particolare implementazione software, ma il modello normativo che governa tutte le implementazioni conformi.
 
@@ -25,7 +25,7 @@ La presente specifica non descrive una particolare implementazione software, ma 
 
 ## b) Missione del Kernel
 
-La missione di SCINTILLA CORE è definire un modello computazionale capace di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi, organizzativi ed emotivi che impediscono il passaggio dall'intenzione all'azione.
+La missione di SCINTILLA Core è definire un modello computazionale capace di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi, organizzativi ed emotivi che impediscono il passaggio dall'intenzione all'azione.
 
 Il sistema è progettato affinché l'intelligenza artificiale aumenti le capacità umane senza aumentare dipendenza, manipolazione o perdita di autodeterminazione.
 
@@ -33,13 +33,13 @@ L'obiettivo del Kernel non è prendere decisioni al posto della persona, ma gara
 
 ---
 
-## c) Natura di SCINTILLA CORE
+## c) Natura di SCINTILLA Core
 
-SCINTILLA CORE è una specifica normativa.
+SCINTILLA Core è una specifica normativa.
 
 Non è un prodotto software, ma il contratto normativo sul quale prodotti software possono essere costruiti.
 
-SCINTILLA CORE non costituisce:
+SCINTILLA Core non costituisce:
 
 un'applicazione;  
 un'interfaccia utente;  
@@ -52,7 +52,7 @@ una piattaforma web;
 un'applicazione mobile.  
 
 
-SCINTILLA CORE definisce esclusivamente il comportamento normativo del Kernel deterministico sul quale tali sistemi possono essere costruiti.
+SCINTILLA Core definisce esclusivamente il comportamento normativo del Kernel deterministico sul quale tali sistemi possono essere costruiti.
 
 ---
 
@@ -98,7 +98,7 @@ applicazioni client;
 integrazioni con software di terze parti.  
 
 
-La presenza, l'assenza o la sostituzione di tali componenti non modifica la semantica normativa di SCINTILLA CORE.
+La presenza, l'assenza o la sostituzione di tali componenti non modifica la semantica normativa di SCINTILLA Core.
 
 Essi possono essere sostituiti, aggiornati o rimossi senza modificare il comportamento normativo del Kernel, purché ogni implementazione rimanga conforme alla presente specifica.
 
@@ -110,7 +110,7 @@ La presente specifica non prescrive una particolare architettura software.
 
 Implementazioni differenti possono essere conformi pur adottando linguaggi, piattaforme, architetture, algoritmi, librerie o infrastrutture differenti.
 
-Un'implementazione è conforme se, e solo se, preserva gli invarianti, i requisiti normativi e il comportamento osservabile definiti da SCINTILLA CORE.
+Un'implementazione è conforme se, e solo se, preserva gli invarianti, i requisiti normativi e il comportamento osservabile definiti da SCINTILLA Core.
 
 La conformità è determinata esclusivamente dal comportamento osservabile del sistema e non dalle scelte implementative adottate.
 
@@ -118,7 +118,7 @@ La conformità è determinata esclusivamente dal comportamento osservabile del s
 
 ## g) Separazione tra Componenti Deterministiche e Componenti Probabilistiche
 
-SCINTILLA CORE distingue formalmente tra componenti deterministiche e componenti probabilistiche.
+SCINTILLA Core distingue formalmente tra componenti deterministiche e componenti probabilistiche.
 
 Le componenti probabilistiche possono esclusivamente generare ipotesi, suggerimenti, classificazioni, spiegazioni o contenuti.
 
@@ -134,19 +134,23 @@ Le componenti probabilistiche costituiscono strumenti di supporto all'elaborazio
 
 La finalità della presente specifica è costituire una base formale sufficientemente rigorosa da consentire la realizzazione di implementazioni interoperabili, verificabili, riproducibili e conformi, riducendo al minimo le ambiguità interpretative e preservando nel tempo l'integrità semantica del sistema.
 
-La presente specifica costituisce il riferimento normativo autorevole per la progettazione, l'implementazione, la verifica e la certificazione di conformità di qualsiasi sistema basato su SCINTILLA CORE.
+La presente specifica costituisce il riferimento normativo autorevole per la progettazione, l'implementazione, la verifica e la certificazione di conformità di qualsiasi sistema basato su SCINTILLA Core.
 
 ---
 
 **Principio Fondamentale**
 
-**SCINTILLA CORE definisce il comportamento normativo del sistema; le modalità implementative sono lasciate alle singole implementazioni conformi.**
+**SCINTILLA Core definisce il comportamento normativo del sistema; le modalità implementative sono lasciate alle singole implementazioni conformi.**
 
 **In altre parole, la presente specifica definisce il "cosa"; ogni implementazione conforme definisce il "come".**
 
 ---
 
-### STRATIFICAZIONE FORMALE DELLA SPECIFICA
+**Le sezioni successive descrivono progressivamente il Kernel da tre prospettive complementari: concettuale, normativa ed esecutiva. Tali prospettive rappresentano differenti livelli di formalizzazione della medesima semantica e non costituiscono specifiche indipendenti.**
+
+---
+
+### ARCHITETTURA NORMATIVA DELLA SPECIFICA
 
 Il presente documento è organizzato in tre livelli di astrazione formale espliciti:
 
@@ -166,7 +170,7 @@ Il presente documento è organizzato in tre livelli di astrazione formale esplic
 
 ### 0.1 MISSIONE FONDATIVA E INVARIANTE SUPREMO DI AGENCY
 
-Il dominio SCINTILLA CORE è ingegnerizzato attorno ad una singola missione: **aumentare la capacità concreta di una persona fragile o vulnerabile di trasformare una situazione di instabilità in un percorso strutturato di emancipazione ed autonomia**.
+Il dominio SCINTILLA Core è ingegnerizzato attorno ad una singola missione: **aumentare la capacità concreta di una persona fragile o vulnerabile di trasformare una situazione di instabilità in un percorso strutturato di emancipazione ed autonomia**.
 
 #### 0.1.1 Invariante Etico Supremo di Design (`INV-SUPREME-AGENCY-01`)
 Ogni algoritmo, regola di policy, automa o trasformazione di stato `MUST` conformarsi incondizionatamente al seguente Invariante Supremo:
@@ -175,7 +179,7 @@ Ogni algoritmo, regola di policy, automa o trasformazione di stato `MUST` confor
 \mathbf{INV-SUPREME-AGENCY-01}
 ```
 
-> **"SCINTILLA CORE ha la missione di creare un automa di garanzia ed un assistente digitale capaci di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi ed organizzativi che impediscono il passaggio dall'intenzione all'azione, senza mai sostituirsi alla loro volontà e senza mai supportare azioni incompatibili con la dignità umana, la sicurezza ed i diritti altrui."**
+> **"SCINTILLA Core ha la missione di creare un automa di garanzia ed un assistente digitale capaci di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi ed organizzativi che impediscono il passaggio dall'intenzione all'azione, senza mai sostituirsi alla loro volontà e senza mai supportare azioni incompatibili con la dignità umana, la sicurezza ed i diritti altrui."**
 
 #### 0.1.2 Tassonomia Concettuale dell'Agency Responsabile
 Il sistema definisce l'**Agency Operativa Responsabile** come la combinazione qualitativa di dominio di sei dimensioni fondamentali:
@@ -632,7 +636,7 @@ where V_{\text{active\_completed}} = V_{\text{completed}} \cap \{v.\text{node\_i
 
 ### 1.8 Contratto del Modulo Crittografico Astratto (`CryptoProviderContract`) (Layer A & C)
 
-Ogni implementazione esecutiva di SCINTILLA CORE `MUST` integrare un modulo crittografico conforme alla seguente interfaccia astratta:
+Ogni implementazione esecutiva di SCINTILLA Core `MUST` integrare un modulo crittografico conforme alla seguente interfaccia astratta:
 
 ```math
 \mathbf{CryptoProviderContract} := \langle \text{DeriveKey}, \text{EncryptPayload}, \text{DecryptPayload}, \text{ShredKey}, \text{VerifySignature}, \text{LookupKey} \rangle
@@ -656,7 +660,7 @@ Ogni implementazione esecutiva di SCINTILLA CORE `MUST` integrare un modulo crit
 
 ### 2.1 Modello di Isolamento Stratificato a 6 Livelli
 
-L'architettura di SCINTILLA CORE è strutturata in 6 livelli funzionali ad isolamento unidirectionale rigoroso, dove i livelli superiori non possiedono alcuna autorità di scrittura diretta sullo stato di runtime:
+L'architettura di SCINTILLA Core è strutturata in 6 livelli funzionali ad isolamento unidirectionale rigoroso, dove i livelli superiori non possiedono alcuna autorità di scrittura diretta sullo stato di runtime:
 
 ```text
 [ LEVEL 5 ] Large Language Model (Probabilistic Hypothesis Generator)
@@ -693,7 +697,7 @@ F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
 ```
 
 #### 2.2.1 Definizione di Dominio DP-FSM e Precondizione Statica di Unicità
-Ai fini della specifica SCINTILLA CORE, un automa DP-FSM indica una macchina a stati finiti la cui relazione di transizione è deterministica a valle dell'applicazione della funzione di risoluzione prioritaria $\mathbf{Resolve}(q, \sigma)$
+Ai fini della specifica SCINTILLA Core, un automa DP-FSM indica una macchina a stati finiti la cui relazione di transizione è deterministica a valle dell'applicazione della funzione di risoluzione prioritaria $\mathbf{Resolve}(q, \sigma)$
 
 Un contratto di automa è valido ed eseguibile se e solo se soddisfa la precondizione statica di unicità:
 
@@ -805,7 +809,7 @@ forza il rientro diretto dallo stato $h_{11}$ allo stato di ricalibrazione `HUMA
 
 ### 2.4 Equazione Matematica del Sistema Reattivo Composito (Layer A)
 
-Il sistema reattivo globale di SCINTILLA CORE è modellato dallo spazio di stato composito $S_C = Q \times Q_H$ 
+Il sistema reattivo globale di SCINTILLA Core è modellato dallo spazio di stato composito $S_C = Q \times Q_H$ 
 
 La funzione di transizione pura dell'automa composito $\delta_C : (Q \times Q_H) \times (\Sigma \cup \Sigma_H) \longrightarrow (Q \times Q_H)$ è definita dall'equazione a casi:
 
@@ -1167,7 +1171,7 @@ Ogni avanzamento nel grafo $G_P$ `MUST` aggiornare la componente $\mathcal{K}_{\
 
 ### 6.1 Spazio delle Versioni e Tupla dei Profili di Runtime (Layer A)
 
-Ogni componente versionabile di SCINTILLA CORE appartiene allo spazio vettoriale discreto delle versioni $V := \mathbb{N} \times \mathbb{N} \times \mathbb{N}$ rappresentato dalla tupla $v = \langle \text{major}, \text{minor}, \text{patch} \rangle$
+Ogni componente versionabile di SCINTILLA Core appartiene allo spazio vettoriale discreto delle versioni $V := \mathbb{N} \times \mathbb{N} \times \mathbb{N}$ rappresentato dalla tupla $v = \langle \text{major}, \text{minor}, \text{patch} \rangle$
 
 Il contesto esecutivo completo di una transazione o di un registro è vincolato dalla **Tupla dei Profili di Runtime (Runtime Profile Tuple)**:
 
@@ -1301,7 +1305,7 @@ Quando il runtime esegue come processo autonomo del sistema operativo, tale iden
 ### 9.2 MODELLO DI TRANSIZIONE DI KRIPKE E LOGICA TEMPORALE (Layer A)
 
 #### 9.2.1 Formalizzazione della Struttura di Kripke
-La semantica temporale di SCINTILLA CORE è descritta dalla Struttura di Kripke:
+La semantica temporale di SCINTILLA Core è descritta dalla Struttura di Kripke:
 
 ```math
 M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
@@ -1623,7 +1627,7 @@ La suite di test comprende tre categorie di vettori:
 
 ### 12.1 Stato Normativo del Documento
 
-La presente **SCINTILLA CORE CANONICAL SPECIFICATION v4.5.3 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA CORE.
+La presente **SCINTILLA Core CANONICAL SPECIFICATION v4.5.3 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA Core.
 
 Lo stato corrente del documento è:
 
@@ -1858,6 +1862,6 @@ Il Policy Guidance Engine (Livello 2) applica una verifica semantica vincolante 
 
 ---
 
-**SCINTILLA CORE v4.5.3 CANDIDATE CANONICAL STANDARD EDITION**
+**SCINTILLA Core v4.5.3 CANDIDATE CANONICAL STANDARD EDITION**
 * **Coverage:** Chapters 0–12 & Annexes A–C Fully Emitted
-* **Governance Authority:** Single Source of Truth for SCINTILLA CORE Domain
+* **Governance Authority:** Single Source of Truth for SCINTILLA Core Domain
