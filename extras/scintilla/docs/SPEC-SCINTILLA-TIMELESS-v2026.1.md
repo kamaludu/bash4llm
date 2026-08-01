@@ -1693,7 +1693,7 @@ export type BasisPoints = SafeInteger; // Interval closed intero [0, 10000]
 ### A.2 Reference TypeScript Helper Implementation
 
 ```typescript
-// 1. Validazione a runtime degli interi sicuri a 64-bit (Capitolo 10.2)
+// 1. Runtime Validation of 64-Bit Safe Integers (Chapter 10.2)
 export function parseSafeInteger(v: number): SafeInteger {
   if (!Number.isInteger(v) || v < -9007199254740991 || v > 9007199254740991) {
     throw new Error("ERR_CONFIGURATION_MALFORMED (Code 85): Number is not a safe integer");
@@ -1701,7 +1701,7 @@ export function parseSafeInteger(v: number): SafeInteger {
   return v as SafeInteger;
 }
 
-// 2. Validazione e saturazione dell'intervallo Basis Points [0, 10000] (Capitolo 1.7.3)
+// 2. Validation and saturation of the Basis Points interval [0, 10000] (Chapter 1.7.3)
 export function parseBasisPoints(v: number): BasisPoints {
   const safe = parseSafeInteger(v);
   if (safe < 0 || safe > 10000) {
@@ -1710,7 +1710,7 @@ export function parseBasisPoints(v: number): BasisPoints {
   return safe as BasisPoints;
 }
 
-// 3. Decodifica pura da SMLDocumentParsed a Evento dell'Automa Umano (Capitolo 4.4)
+// 3. Pure Decoding from SMLDocumentParsed to Human Automaton Event (Chapter 4.4)
 export function mapSMLToFSMEvent(doc: SMLDocumentParsed): string {
   if (doc.conversation_outcome === "OVERWHELMED") return "HEV_EMOTIONAL_OVERWHELM";
   if (doc.conversation_outcome === "NEEDS_REPHRASING") return "HEV_RECALIBRATION_REQ";
