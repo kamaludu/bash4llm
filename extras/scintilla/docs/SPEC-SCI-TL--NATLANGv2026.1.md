@@ -1,7 +1,7 @@
 
 [![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-CORE_CANONICAL_SPECIFICATION-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCINTILLA-TIMELESS-v2026.1.md)
 
-# ✴ SCINTILLA Core - SPECIFICA NORMATIVA CANONICA INTEGRALE IN PROSA DIVULGATIVA
+# ✴ SCINTILLA Core - SPECIFICA NORMATIVA CANONICA IN PROSA DIVULGATIVA
 ## Edizione Standard Canonica v4.5.5
 *(Equivalente alla Specifica Formale - Single Source of Truth — in Prosa Espansa con Scenari Pratici e Schede di Garanzia)*
 
