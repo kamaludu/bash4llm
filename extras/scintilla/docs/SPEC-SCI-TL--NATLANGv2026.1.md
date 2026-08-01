@@ -1,4 +1,4 @@
-[✴ SCINTILLA - CORE CANONICAL SPECIFICATION](SPEC-SCINTILLA-TIMELESS-v2026.1.md)
+[![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-CORE_CANONICAL_SPECIFICATION-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCINTILLA-TIMELESS-v2026.1.md)
 
 # ✴ SCINTILLA - SPECIFICA CANONICA IN LINGUAGGIO NATURALE
 ## Standard Edition v4.2 (Edizione Accessibile Umano-Centrica)
