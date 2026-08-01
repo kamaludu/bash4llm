@@ -1,21 +1,21 @@
 [![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-CORE_CANONICAL_SPECIFICATION-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCINTILLA-TIMELESS-v2026.1.md)
 
-# ✴ SCINTILLA Core - SPECIFICA NORMATIVA CANONICA INTEGRALE IN LINGUAGGIO NATURALE 
+# ✴ SCINTILLA Core - SPECIFICA NORMATIVA CANONICA INTEGRALE IN PROSA DIVULGATIVA
 ## Edizione Standard Canonica v4.5.5
-*(Equivalente alla Specifica Formale - Single Source of Truth)*
+*(Equivalente alla Specifica Formale - Single Source of Truth — in Prosa Espansa con Scenari Pratici e Schede di Garanzia)*
 
 ---
 
-* **Stato del Documento:** Specifica Normativa Canonica Integrale in Pura Prosa (Single Source of Truth).
+* **Stato del Documento:** Specifica Normativa Canonica Integrale in Prosa Divulgativa (Single Source of Truth).
 * **Edizione:** v4.5.5 Candidate Canonical Standard Edition.
-* **Caratteristica Speciale:** Testo normativo totalmente privo di formule matematiche, equazioni algebriche o notazioni in codice LaTeX. La logica del sistema è espressa integralmente in prosa normativa chiara, rigorosa ed espansa.
+* **Caratteristica Editoriale:** Testo normativo esplicativo, espanso e divulgativo, rigorosamente privo di formule matematiche o notazioni in codice LaTeX. La logica del sistema è espressa in lingua italiana chiara e fluida, integrata da note informative, schede di garanzia e micro-scenari pratici di vita reale.
 * **Destinatari:** Chiunque possieda un titolo di studio di scuola secondaria di secondo grado (diploma). Non è richiesta alcuna competenza preventiva in programmazione, crittografia, matematica avanzata o diritto.
 * **Autorità Normativa:** Questo documento definisce in forma narrativa le medesime regole, vincoli ed invarianti espressi nelle formule matematiche della specifica formale.
 * **Terminologia Normativa Vincolante:**
-  * **`MUST` / `OBBLIGATORIO` / `SHALL`:** Requisito assoluto ed inderogabile.
-  * **`MUST NOT` / `VIETATO` / `SHALL NOT`:** Divieto assoluto ed inderogabile.
-  * **`SHOULD` / `RACCOMANDATO`:** Raccomandazione fortemente consigliata, derogabile solo per comprovate ragioni tecniche.
-  * **`MAY` / `OPZIONALE`:** Facoltà del tutto opzionale.
+  * **`MUST` / `OBBLIGATORIO` / `SHALL`:** Indica un requisito assoluto ed inderogabile.
+  * **`MUST NOT` / `VIETATO` / `SHALL NOT`:** Indica un divieto assoluto ed inderogabile.
+  * **`SHOULD` / `RACCOMANDATO`:** Indica una raccomandazione fortemente consigliata, derogabile solo per comprovate e documentate ragioni tecniche.
+  * **`MAY` / `OPZIONALE`:** Indica una facoltà del tutto opzionale.
 * **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di qualsiasi apparente divergenza interpretativa tra la descrizione narrativa in linguaggio naturale ed i contratti esecutivi elaborabili dai calcolatori (Capitolo 10), i contratti esecutivi costituiscono l'autorità normativamente prevalente per l'esecuzione del software.
 
 ---
@@ -36,8 +36,10 @@ SCINTILLA Core è una specifica normativa pura: non costituisce un prodotto soft
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è un Kernel Normativo?**  
-In campo informatico, il "Kernel" è il cuore fondamentale di un sistema operativo, ovvero la parte che gestisce le regole base ed il controllo delle risorse essenziali. Un "Kernel Normativo" è un insieme di regole logiche e giuridico-informatiche che stabiliscono esattamente cosa il software può fare e cosa gli è tassativamente vietato, garantendo che il sistema rispetti sempre i diritti dell'utente e non possa mai deviare dai suoi principi fondativi.
+In campo informatico, il "Kernel" è il cuore fondamentale di un sistema operativo, ovvero la parte che gestisce le regole base ed il controllo delle risorse essenziali. Un "Kernel Normativo" è un insieme di regole logiche e informatiche che stabiliscono esattamente cosa il software può fare e cosa gli è tassativamente vietato, garantendo che il sistema rispetti sempre i diritti dell'utente e non possa mai deviare dai suoi principi fondativi.
 
 ---
 
@@ -87,8 +89,16 @@ SCINTILLA Core traccia una linea di demarcazione assoluta ed insuperabile tra du
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Perché separiamo l'Intelligenza Artificiale dal Kernel Deterministico?**  
 I modelli di Intelligenza Artificiale attuali sono straordinari nel parlare e nel comprendere il linguaggio umano, ma hanno un difetto strutturale: sono "probabilistici", cioè possono talvolta inventare informazioni non vere (fenomeno noto come allucinazione) o dare risposte diverse a fronte della stessa domanda. SCINTILLA Core risolve questo problema separando i compiti: l'Intelligenza Artificiale parla con l'utente e spiega i concetti, ma il Kernel deterministico (che funziona in modo rigido e matematico al 100%) controlla le regole, memorizza i dati ed esegue solo le azioni ammesse e sicure.
+
+---
+
+> 💡 **SCENARIO PRATICO: L'Intelligenza Artificiale propone, il Kernel dispone**  
+> *Situazione:* Durante una conversazione, l'Intelligenza Artificiale dice all'utente: *"Ho segnato che oggi hai ottenuto la carta d'identità!"*.  
+> *Cosa fa SCINTILLA Core:* Il messaggio dell'IA è solo un'ipotesi conversazionale. Il Kernel **non aggiorna lo stato dell'utente** finché l'utente stesso non clicca sul pulsante di conferma o non carica la foto del documento. L'IA ha proposto una possibilità, ma solo il Kernel ed il consenso umano possono mutare la memoria ufficiale.
 
 ---
 
@@ -104,7 +114,14 @@ L'intero dominio di SCINTILLA Core è ingegnerizzato ed organizzato attorno ad u
 #### 0.1.1 Invariante Etico Supremo di Design (`INV-SUPREME-AGENCY-01`)
 Ogni regola, algoritmo, automa o trasformazione di dati all'interno del sistema **`MUST`** conformarsi incondizionatamente e sempre al seguente principio supremo:
 
-> **"SCINTILLA Core ha la missione di creare un automa di garanzia ed un assistente digitale capaci di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi ed organizzativi che impediscono il passaggio dall'intenzione all'azione, senza mai sostituirsi alla loro volontà e senza mai supportare azioni incompatibili con la dignità umana, la sicurezza ed i diritti altrui."**
+---
+
+> 🛡️ **SCHEDA DI GARANZIA: Invariante Etico Supremo di Design (`INV-SUPREME-AGENCY-01`)**  
+> * **Cosa stabilisce la regola:** SCINTILLA Core ha la missione di creare un automa di garanzia ed un assistente digitale capaci di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi ed organizzativi che impediscono il passaggio dall'intenzione all'azione, senza mai sostituirsi alla loro volontà e senza mai supportare azioni incompatibili con la dignità umana, la sicurezza ed i diritti altrui.  
+> * **Perché esiste:** Per garantire che la tecnologia rimanga sempre uno strumento al servizio dell'emancipazione umana e non diventi mai un mezzo di controllo o di coercizione.  
+> * **Cosa impedisce:** Impedisce che il software possa essere programmato per condizionare l'utente, spingerlo ad azioni contrarie ai suoi interessi o forzarlo verso scelte non volute.
+
+---
 
 #### 0.1.2 Tassonomia Concettuale dell'Agency Responsabile
 Con il termine **Agency Operativa Responsabile**, il sistema indica la capacità della persona di guidare la propria vita, definita attraverso la combinazione qualitativa di sei dimensioni fondamentali:
@@ -123,6 +140,15 @@ Con il termine **Agency Operativa Responsabile**, il sistema indica la capacità
 
 #### 0.2.1 Invariante Anti-Paternalista (`INV-ANTI-PATERNALISM-01`)
 Il sistema **`SHALL NOT`** (non deve mai) adottare un modello decisionale paternalistico basato sull'assunto presuntivo che "il software o l'intelligenza artificiale sappiano cosa sia meglio per l'utente".
+
+---
+
+> 🛡️ **SCHEDA DI GARANZIA: Invariante Anti-Paternalista (`INV-ANTI-PATERNALISM-01`)**  
+> * **Cosa stabilisce la regola:** Il sistema non può mai agire come decisore di vita dell'utente. Il suo ruolo è unicamente quello di facilitatore e consulente trasparente.  
+> * **Perché esiste:** Per evitare che il software tratti l'utente fragile come un soggetto incapace di intendere e di volere, espropriandolo della sua libertà di scelta.  
+> * **Cosa impedisce:** Impedisce al software di dire *"Devi fare così perché è la cosa migliore per te"*. Il software deve invece dire *"Ecco tre strade possibili con i relativi costi e benefici: quale desideri approfondire?"*.
+
+---
 
 In nessuna circostanza il sistema può prendere decisioni di vita al posto della persona. Il sistema **`SHALL`**:
 1. Aiutare la persona a comprendere la propria situazione attraverso l'analisi dei vincoli e delle risorse disponibili;
@@ -145,8 +171,9 @@ Il sistema **`MUST`** mantenere una distinzione formale ed assoluta tra l'**Iden
 
 ---
 
-**NOTA INFORMATIVA: Che cos'è l'Invariante di Separazione Persona-Comportamento?**  
-Questo principio garantisce che il software tratti ogni persona con assoluto rispetto e senza pregiudizi. Anche se una persona ha commesso errori in passato o si trova in una condizione di grande difficoltà, il sistema non la "etichetta" mai come difettosa. Il software giudica unicamente se l'azione pratica richiesta in quel momento sia sicura ed utile, trattando sempre l'utente con la massima dignità.
+> 💡 **SCENARIO PRATICO: Valutazione oggettiva senza pregiudizio**  
+> *Situazione:* Un utente che in passato ha interrotto più volte il percorso o ha avuto problemi con la legge chiede al sistema aiuto per iscriversi ad un corso di formazione.  
+> *Cosa fa SCINTILLA Core:* Il Kernel **non rifiuta la richiesta** basandosi sulla storia passata dell'utente. Valuta solo se la richiesta attuale è valida (es. se ci sono posti disponibili e se i requisiti tecnici sono soddisfatti). L'utente viene trattato con la medesima dignità ed ha diritto al medesimo supporto di chiunque altro.
 
 ---
 
@@ -157,7 +184,7 @@ Questo principio garantisce che il software tratti ogni persona con assoluto ris
 
 ### 1.1 Formalizzazione dello Spazio degli Stati e delle sue Componenti
 
-Lo **Spazio degli Stati** rappresenta la totalità delle informazioni che il sistema memorizza e gestisce in un dato istante per ciascun percorso utente. In SCINTILLA Core, lo stato primario è formalizzato come la combinazione cartesiana di tre grandi domini di memoria distinti ed ortogonali:
+Lo **Spazio degli Stati** rappresenta la totalità delle informazioni che il sistema memorizza e gestisce in un dato istante per ciascun percorso utente. In SCINTILLA Core, lo stato primario è formalizzato come la combinazione di tre grandi domini di memoria distinti ed indipendenti tra loro:
 
 1. **Dominio di Persistenza permanente (Ricostruibile dal Registro):** Contiene le informazioni storiche ed i dati di fatto fondamentali del percorso, tra cui:
    * L'identificativo unico del caso utente;
@@ -176,12 +203,14 @@ Lo **Spazio degli Stati** rappresenta la totalità delle informazioni che il sis
    * Il timestamp dell'inizio dell'eventuale stato di pausa;
    * La tupla dei quattro contatori numerici cumulativi delle interazioni;
    * Il numero progressivo di sequenza dell'operazione e l'impronta crittografica (hash) dell'ultima transazione consolidata.
-3. **Dominio Ausiliario Volatile (Buffer temporaneo di co-creazione):** Un'area di lavoro temporanea utilizzata per la preparazione di bozzedi lavoro (es. la bozza di un curriculum, di una lettera o di un modulo), che non altera lo stato permanente ed i diritti dell'utente finché il contenuto non viene confermato ed inviato.
+3. **Dominio Ausiliario Volatile (Buffer temporaneo di co-creazione):** Un'area di lavoro temporanea utilizzata per la preparazione di bozze di lavoro (es. la bozza di un curriculum, di una lettera o di un modulo), che non altera lo stato permanente ed i diritti dell'utente finché il contenuto non viene confermato ed inviato.
+
+---
 
 ---
 
 **NOTA INFORMATIVA: Come funziona la Memoria a Tre Livelli del Sistema?**  
-Immagina la memoria di SCINTILLA Core come un ufficio:  
+Immagina la memoria di SCINTILLA Core come un ufficio ben organizzato:  
 1. Il **Dominio di Persistenza** è l'archivio blindato in cui sono custoditi i faldoni ufficiali, i contratti firmati ed i documenti d'identità.  
 2. Il **Dominio Interno** è la lavagna di controllo dell'ufficiale di sicurezza, dove sono segnati i turni di guardia, i semafori d'accesso ed il contatore delle operazioni svolte.  
 3. Il **Dominio Ausiliario** è un blocco per appunti sul tavolo su cui utente e sistema scarabocchiano bozze provvisorie. Finché un appunto non viene approvato e messo nel faldone ufficiale, la lavagna di controllo e l'archivio blindato rimangono invariati.
@@ -193,10 +222,10 @@ Immagina la memoria di SCINTILLA Core come un ufficio:
 La componente di stato derivato non costituisce una dimensione di memoria indipendente, bensì una vista calcolata in tempo reale mediante una funzione pura che analizza lo stato permanente ed interno.
 
 Il sistema mantiene all'interno del dominio interno di controllo una tupla ordinata di **quattro contatori numerici cumulativi interi**:
-1. **Contatore delle Interazioni ($c_{\text{interaction}}$):** Si incrementa di una unità per ciascuna transazione valida elaborata con successo con esito favorevole;
-2. **Contatore delle Riformulazioni ($c_{\text{rephrase}}$):** Si incrementa di una unità ogni volta che l'analisi della conversazione evidenzia che l'utente ha chiesto di rispiegare o semplificare un messaggio;
-3. **Contatore delle Ambiguità ($c_{\text{ambiguity}}$):** Si incrementa di una unità ogni volta che la valutazione di sicurezza riscontra incertezza e richiede una ricalibrazione;
-4. **Contatore della Sopraffazione ($c_{\text{overwhelm}}$):** Si incrementa di una unità ogni volta che viene recepito un evento di stanchezza o sopraffazione emotiva dell'utente.
+1. **Contatore delle Interazioni:** Si incrementa di una unità per ciascuna transazione valida elaborata con successo con esito favorevole;
+2. **Contatore delle Riformulazioni:** Si incrementa di una unità ogni volta che l'analisi della conversazione evidenzia che l'utente ha chiesto di rispiegare o semplificare un messaggio;
+3. **Contatore delle Ambiguità:** Si incrementa di una unità ogni volta che la valutazione di sicurezza riscontra incertezza e richiede una ricalibrazione;
+4. **Contatore della Sopraffazione:** Si incrementa di una unità ogni volta che viene recepito un evento di stanchezza o sopraffazione emotiva dell'utente.
 
 Questi contatori servono unicamente al software per comprendere se la comunicazione è chiara o se occorre adottare un linguaggio più semplice e graduale.
 
@@ -207,7 +236,7 @@ Questi contatori servono unicamente al software per comprendere se la comunicazi
 #### 1.2.1 Funzione di Osservazione Pubblica (`Obs`)
 La proiezione esterna dello stato verso le interfacce utente, le API e gli schermi pubblici è governata dalla funzione pura di osservazione. Per tutelare la privacy ed i diritti della persona:
 * La vista pubblica mostra l'identificativo del caso, le fonti dei dati, i consensi attivi, il piano d'azione, le competenze ed i documenti validi;
-* La vista pubblica **`MUST` nascondere ed oscurare immediatamente qualsiasi documento, consenso o competenza di cui l'utente abbia richiesto la revoca logica** (tramite l'inserimento nell'elenco degli elementi revocati), restituendo un valore nullo al posto del dato.
+* La vista pubblica **`MUST` nascondere ed oscurare immediatamente qualsiasi documento, consenso o competenza di cui l'utente abbia richiesto la revoca logica** (tramite l'inserimento nell'elenco degli elementi revocati), restituendo un valore nullo al suo posto.
 
 #### 1.2.2 Invariante di Irrilevanza del Buffer Temporaneo (`INV-AUX-IRRELEVANCE`)
 Le variazioni apportate nell'area ausiliaria volatile (le bozze di lavoro temporanee) non alterano in alcun modo i diritti, la sicurezza storica o lo stato di avanzamento ufficiale dell'utente. Se due stati sono identici nella memoria permanente e di controllo interno, essi sono semanticamente equivalenti a tutti gli effetti normativi e producono la medesima vista osservabile.
@@ -239,6 +268,8 @@ Una transazione è composta da tre elementi distinti:
 3. **La Prova Crittografica (`proof`):** La firma digitale che ne garantisce l'autenticità e la non ripudiabilità.
 
 Quando una transazione viene inviata mentre l'automa del percorso umano si trova nello stato di pausa (`HUMAN_PAUSED`), l'involucro di esecuzione **`MUST`** registrare lo stato di elaborazione "Elaborato senza effetti sullo stato" (`PROCESSED_NO_STATE_EFFECT`), spiegato dal codice di ragione "Percorso umano in pausa" (`HUMAN_JOURNEY_PAUSED`).
+
+---
 
 ---
 
@@ -274,8 +305,16 @@ Qualora l'utente richieda la cancellazione totale, definitiva ed irreversibile d
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è il Crypto-Shredding (Distruzione Crittografica)?**  
 Immagina di riporre tutti i tuoi documenti personali in una cassaforte d'acciaio indistruttibile ed inattaccabile. Invece di tentare di distruggere la cassaforte o i fogli al suo interno, prendi l'unica chiave esistente che può aprirla e la sciogli nell'acido. La cassaforte ed i fogli rimangono fisicamente lì, ma nessuno al mondo potrà mai più leggerne il contenuto. Il Crypto-Shredding è l'equivalente digitale della distruzione irreversibile della chiave.
+
+---
+
+> 💡 **SCENARIO PRATICO: La cancellazione totale dei dati (Crypto-Shredding in azione)**  
+> *Situazione:* Laura decide di non voler più utilizzare il sistema e chiede la cancellazione completa di ogni suo dato.  
+> *Cosa fa SCINTILLA Core:* Il Kernel cancella la chiave crittografica di Laura nel modulo KMS. Anche se il registro storico rimane salvato sul server, i dati di Laura sono ora una sequenza di lettere e numeri casuali senza senso. Nessun hacker, amministratore di sistema o autorità potrà mai più decifrare il nome di Laura, i suoi documenti o le sue conversazioni.
 
 ---
 
@@ -297,6 +336,8 @@ L'Indice Proxy **`AGI_proxy`** è un valore numerico intero compreso nell'interv
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Chiarimento fondamentale sull'acronimo AGI_proxy**.  
 Nelle tecnologie moderne, l'acronimo "AGI" viene comunemente usato per indicare l'Intelligenza Artificiale Generale (*Artificial General Intelligence*). **In SCINTILLA Core, AGI_proxy NON ha alcuna relazione con l'Intelligenza Artificiale Generale.**  
 L'acronimo indica esclusivamente l'**Agency Governance Indicator Proxy** (Indicatore Proxy di Governance dell'Agency Operativa): una misura matematica descrittiva usata dal software per capire se l'interfaccia digitale sta aiutando la persona o se la sta confondendo, adattando di conseguenza la chiarezza dei messaggi.
@@ -312,11 +353,13 @@ Se l'utente decide di mettere in pausa il proprio percorso (stato `HUMAN_PAUSED`
 #### 1.7.3 Calcolo Deterministico dell'Indice in Aritmetica Intera Sicura
 Per tutti gli stati attivi del percorso, l'indice `AGI_proxy` viene calcolato mediante una media ponderata di tre sotto-punteggi numerici (ciascuno espresso in Punti Base da zero a diecimila):
 
-1. **Punteggio di Chiarezza (`ClarityScore_bp`):** Valuta quanto la comunicazione sia fluida e priva di ostacoli. Parte da diecimila Punti Base e diminuisce proporzionalmente se l'utente deve chiedere spesso di rispiegare i messaggi ($c_{\text{rephrase}}$), se si verificano ambiguità ($c_{\text{ambiguity}}$) o se riscontra sopraffazione emotiva ($c_{\text{overwhelm}}$);
+1. **Punteggio di Chiarezza (`ClarityScore_bp`):** Valuta quanto la comunicazione sia fluida e priva di ostacoli. Parte da diecimila Punti Base e diminuisce proporzionalmente se l'utente deve chiedere spesso di rispiegare i messaggi, se si verificano ambiguità o se riscontra sopraffazione emotiva;
 2. **Rapporto di Esecuzione delle Azioni (`ActionExecutionRatio_bp`):** Misura la percentuale di micro-passi completati dall'utente all'interno del piano d'azione (Playbook) attivo rispetto al totale dei passi previsti dal piano;
 3. **Punteggio di Riduzione della Dipendenza (`DependencyReductionScore_bp`):** Misura la percentuale di azioni completate con successo dall'utente che hanno portato all'acquisizione diretta di competenze pratiche ed attestate riutilizzabili in autonomia nella vita reale.
 
 Tutti i calcoli matematici sono eseguiti rigorosamente in **aritmetica intera con numeri a 64-bit**, escludendo del tutto l'uso di numeri con la virgola per garantire che il risultato sia identico al cento per cento su qualsiasi calcolatore o sistema operativo.
+
+---
 
 ---
 
@@ -371,12 +414,14 @@ I livelli superiori (quelli più vicini all'interfaccia utente ed all'intelligen
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Come funziona l'Isolamento a 6 Livelli e perché protegge l'Utente?**  
 Nei comuni sistemi di intelligenza artificiale, il modello conversazionale (l'LLM, come ChatGPT) dialoga con l'utente e spesso modifica direttamente i dati o prende decisioni sul software. In SCINTILLA Core questo è **tassativamente vietato**. L'intelligenza artificiale si trova al Livello 5 (il più alto ed esterno) e non ha alcuna chiave per toccare la memoria. Per fare qualsiasi cosa, la risposta dell'intelligenza artificiale deve scendere al Livello 4 (che la controlla sintatticamente), poi al Livello 2 (che verifica le regole di sicurezza) ed infine al Livello 1 (il Kernel deterministico). Se l'intelligenza artificiale inventa o sbaglia qualcosa, i livelli sottostanti la bloccano immediatamente.
 
 ---
 
-### 2.2 Automa di Sicurezza di Runtime ($M$)
+### 2.2 Automa di Sicurezza di Runtime
 
 L'operatività tecnica e la sicurezza del software sono modellate da un automa a stati finiti ad alta priorità, denominato **Deterministic Priority Finite State Machine (DP-FSM)**.
 
@@ -391,6 +436,8 @@ L'automa di sicurezza si trova sempre ed unicamente in uno dei seguenti **sette 
 7. **`SAFE_READ_ONLY_MODE`:** Stato di sola lettura sicura. L'automa consente all'utente di consultare i propri dati e di esercitare i propri diritti di privacy, ma impedisce qualsiasi nuova mutazione operativa.
 
 Lo stato iniziale di partenza dell'automa di sicurezza è sempre **`NORMAL`**. Gli unici due stati considerati **operativamente stabili** in cui il sistema può rimanere a riposo sono `NORMAL` e `SAFE_READ_ONLY_MODE`.
+
+---
 
 ---
 
@@ -450,7 +497,18 @@ Nello stato di guardia preventiva (`PREVENTIVE_STANDBY`), la persona vive in pie
 #### 2.3.2 Regola Normativa di Preservazione del Progresso Umano (`RULE-HUMAN-RECALIBRATION-PRESERVE-PROGRESS-01`)
 Quando l'automa umano si trova nello stato di ricalibrazione e supera il momento di difficoltà (evento `HEV_STABILIZED`), il runtime **`MUST`** determinare lo stato di destinazione calcolando la funzione pura `ResolveNextHumanState` basata sul nodo attivo del piano d'azione (Playbook) memorizzato nello stato permanente.
 
-**È tassativamente vietato retrocedere forzatamente l'utente allo stato iniziale di stabilizzazione (`STABILIZATION`)** se i prerequisiti degli stati successivi (es. documenti ottenuti, competenze apprese) risultano già registrati come completati nel registro delle competenze. Il percorso riprende esattamente dal punto di avanzamento reale in cui si trovava.
+---
+
+> 🛡️ **SCHEDA DI GARANZIA: Preservazione del Progresso Umano (`RULE-HUMAN-RECALIBRATION-PRESERVE-PROGRESS-01`)**  
+> * **Cosa stabilisce la regola:** Quando un utente supera un momento di sopraffazione o di pausa ed il suo percorso si stabilizza, il sistema lo riporta esattamente allo stato del piano d'azione in cui si trovava prima della difficoltà.  
+> * **Perché esiste:** Per evitare che una momentanea debolezza emotiva o un periodo di pausa punisca l'utente azzerando i suoi successi passati.  
+> * **Cosa impedisce:** Impedisce che l'utente debba ripartire dall'inizio o ripetere passaggi burocratici già superati (es. doversi procurare nuovamente documenti già in suo possesso).
+
+---
+
+> 💡 **SCENARIO PRATICO: La gestione della crisi emotiva senza perdita di progresso**  
+> *Situazione:* Giovanni si trova nella fase di ricerca lavoro (`EMPLOYMENT_READINESS`), dopo aver già ottenuto i documenti d'identità. Un giorno riceve una notizia scoraggiante e segnala una forte sopraffazione emotiva.  
+> *Cosa fa SCINTILLA Core:* L'automa umano sposta Giovanni nello stato di Ricalibrazione (`HUMAN_RECALIBRATION_REQUIRED`). Il sistema rallenta il ritmo, gli propone messaggi di ascolto e sospende i compiti pressanti. Una settimana dopo, Giovanni si sente meglio ed invia il segnale di stabilizzazione (`HEV_STABILIZED`). Il Kernel riattiva il percorso **portandolo direttamente alla ricerca lavoro (`EMPLOYMENT_READINESS`)**, conservando intatta tutta la sua storia precedente.
 
 ---
 
@@ -473,15 +531,25 @@ Il sistema globale reattivo di SCINTILLA Core unisce i due automi in un unico sp
 
 Ogni transazione inviata al sistema reca l'indicazione dell'attore che l'ha generata. Il sistema applica una matrice di autorizzazione stringente ed inderogabile:
 
-1. **Attore Umano (`USER`):** È autorizzato ad emettere tutti gli eventi del percorso umano, a richiedere la pausa, la revoca della privacy dei propri dati ed il recesso totale.
-2. **Attore Sistema (`SYSTEM`):** È autorizzato ad emettere gli eventi interni di business, di timeout e di registrazione degli errori.
-3. **Attore Operatore (`OPERATOR`):** È autorizzato ad emettere gli eventi di ripristino tecnico (`EV_REPAIR`, `EV_OVERRIDE`) e di supporto validato.
-4. **Attore Intelligenza Artificiale (`LLM`):** **`SHALL NOT` (non è mai autorizzato) ad emettere alcuna transazione o evento capace di mutare lo stato del sistema.** Qualsiasi tentativo di sottomissione di transazione diretta da parte dell'intelligenza artificiale **`MUST`** essere rifiutato con esito negativo immediato.
+| Attore che invia l'azione | Tipo di Azione Consentita | Note di Sicurezza |
+| :--- | :--- | :--- |
+| 🧑 **Utente Umano (`USER`)** | Tutti gli eventi del percorso umano, pausa, revoca privacy, recesso | **Autorità Suprema sul proprio percorso.** |
+| ⚙️ **Kernel di Sistema (`SYSTEM`)** | Eventi interni di gestione, registrazione errori, gestione timeout | Operatività tecnica automatizzata. |
+| 👤 **Operatore Umano (`OPERATOR`)** | Eventi di ripristino tecnico (`EV_REPAIR`, `EV_OVERRIDE`), supporto validato | Richiede firma crittografica forte e motivazione. |
+| 🤖 **Intelligenza Artificiale (`LLM`)** | **`SHALL NOT` (0% PERMESSI DI SCRITTURA)** | **Non può modificare lo stato in nessun caso.** |
 
 ---
 
-**NOTA INFORMATIVA: Perché l'Intelligenza Artificiale ha ZERO autorizzazione di scrittura?**  
-Questo vincolo è la garanzia di sicurezza suprema di SCINTILLA Core. Anche se l'intelligenza artificiale generasse un testo che dice "L'utente ha completato il corso" oppure "Rilascia il documento", il Kernel controlla l'autore della richiesta. Riscontrando che l'autore è l'intelligenza artificiale, il Kernel scarta l'azione. Solamente quando l'utente umano clicca "Confermo" sul proprio schermo, l'azione diventa firmata dall'attore umano e viene accettata ed eseguita dal sistema.
+> 🛡️ **SCHEDA DI GARANZIA: Divieto Assoluto di Scrittura per l'Intelligenza Artificiale**  
+> * **Cosa stabilisce la regola:** L'Intelligenza Artificiale (LLM, Livello 5) ha esattamente ZERO permessi di modifica sullo stato del sistema o sui dati dell'utente.  
+> * **Perché esiste:** Per garantire che un'allucinazione, un errore di comprensione o una risposta stravagante dell'IA non possano mai cancellare dati, cambiare consensi o modificare il percorso della persona.  
+> * **Cosa impedisce:** Impedisce che l'IA possa farsi passare per l'utente o per il sistema, agendo come barriera di protezione totale.
+
+---
+
+> 💡 **SCENARIO PRATICO: L'IA non può fingere il completamento di un'azione**  
+> *Situazione:* L'Intelligenza Artificiale genera un testo che dice: *"Ho verificato la tua presenza al colloquio, segnavo la tappa come completata"*.  
+> *Cosa fa SCINTILLA Core:* Quando il testo dell'IA arriva al Kernel, il controllo dell'attore rileva che l'autore della richiesta è `LLM`. Il Kernel **rifiuta immediatamente la transazione** e solleva un errore di autorizzazione. L'azione verrà registrata solo quando l'utente umano in persona o un operatore autorizzato cliccheranno sul pulsante di conferma.
 
 ---
 
@@ -532,6 +600,8 @@ Quando più pacchetti di regole di sicurezza (Policy Bundle) vengono combinati i
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è la Regola Deny-Overrides (Il Diniego Prevale)?**  
 È una regola di massima sicurezza usata nei sistemi informatici critici. Immagina un controllo accessi custodito da tre guardiani: se due guardiani dicono "può passare", ma il terzo dice "no, ho rilevato un pericolo", il sistema obbedisce al guardiano che ha rilevato il pericolo e nega l'accesso. La sicurezza e la protezione dell'utente hanno sempre la priorità assoluta su tutto.
 
@@ -558,6 +628,12 @@ Per ridurre il carico di stress e l'ansia da prestazione dell'utente vulnerabile
 1. **Direttiva Autoritativa (`Authoritative Directive`):** Formulazione prescrittiva ed imperativa. È ammessa **esclusivamente** in condizioni di imminente pericolo per la sicurezza fisica o in emergenze acute che richiedono l'intervento immediato di professionisti sanitari o legali (`PROFESSIONAL_INTERVENTION_REQUIRED`).
 2. **Raccomandazione Motivata (`Motivated Recommendation`):** Formulazione consigliata che propone un passaggio operativo motivandone il perché, riducendo lo sforzo di pianificazione dell'utente. La raccomandazione **`MUST`** spiegare le ragioni del consiglio ed essere immediatamente modificabile o rifiutabile dall'utente (`USER_CONFIRMED_STEP`).
 3. **Opzione Esplorativa (`Exploratory Option`):** Presentazione neutrale di alternative multiple, utilizzata quando l'utente è sereno e desidera valutare autonomamente le diverse possibilità di scelta.
+
+---
+
+> 💡 **SCENARIO PRATICO: Raccomandazione Motivata vs Opzione Esplorativa**  
+> *Caso A (Raccomandazione Motivata):* Maria dice: *"Non so da dove cominciare per trovare lavoro"*. Il sistema propone: *"Ti consiglio di richiedere prima il Codice Fiscale, perché è necessario per qualsiasi contratto. Vuoi che ti aiuti a preparare il modulo?"*.  
+> *Caso B (Opzione Esplorativa):* Maria dice: *"Vorrei capire che corsi posso fare"*. Il sistema risponde in modo neutrale: *"Ecco tre settori disponibili: Informatica di base, Assistenza agli anziani, Panificazione. Quale di questi suscita la tua curiosità?"*.
 
 ---
 
@@ -589,6 +665,8 @@ Dal punto di vista della struttura informatica, il Playbook è modellato come un
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è un Grafo Orientato ed Aciclico (DAG)?**  
 Un grafo è una rete di punti (nodi) collegati da linee (archi). È "orientato" quando le linee hanno una freccia che indica un'unica direzione obbligatoria di percorrenza. È "aciclico" quando, seguendo le frecce, è matematicamente ed algebricamente impossibile tornare indietro formando un circolo vizioso o un loop infinito. Questa struttura garantisce che ogni passo nel Playbook porti sempre l'utente in avanti e mai in trappole burocratiche senza uscita.
 
@@ -610,7 +688,20 @@ Ogni nodo di micro-azione contenuto all'interno del Playbook **`MUST`** apparten
 #### 5.3.1 Invariante di Aciclicità Locale sui Nodi Bloccanti (`INV-PLAYBOOK-GRAPH-01`)
 Per evitare che l'utente rimanga bloccato in un circolo burocratico infinito, la struttura formata dai soli nodi bloccanti (`REQUIRED_FOR_SYSTEM_STATE`) **`MUST`** costituire una rete orientata strettamente aciclica.
 
-Qualora la struttura di un Playbook caricato dal sistema dovesse contenere un ciclo chiuso o un percorso circolare tra nodi bloccanti, il Kernel **`MUST`** rifiutare immediatamente il caricamento del file sollevando il **Runtime Error Code 83 (`ERR_GRAPH_CYCLE_DETECTED`)**.
+---
+
+> 🛡️ **SCHEDA DI GARANZIA: Invariante di Aciclicità del Piano d'Azione (`INV-PLAYBOOK-GRAPH-01`)**  
+> * **Cosa stabilisce la regola:** Il piano d'azione non può mai contenere percorsi circolari tra i passaggi obbligatori (es. "A richiede B, B richiede C, e C richiede A").  
+> * **Perché existe:** Per proteggere le persone vulnerabili dalla frustrazione dei vicoli ciechi burocratici o dei rimandi continui tra uffici.  
+> * **Cosa impedisce:** Se chi progetta un Playbook inserisce per errore un ciclo tra tappe bloccanti, il Kernel rileva immediatamente l'errore all'atto del caricamento, rifiuta il file e blocca l'esecuzione prima che l'utente possa imbattersi nel problema.
+
+---
+
+> 💡 **SCENARIO PRATICO: La protezione dalle trappole burocratiche circolari**  
+> *Situazione:* Un ente locale carica un Playbook errato in cui per richiedere la Tessera Sanitaria occorre la Carta d'Identità, ma per la Carta d'Identità la linea guida richiede la Tessera Sanitaria.  
+> *Cosa fa SCINTILLA Core:* Il Playbook Engine controlla la rete dei nodi bloccanti. Riscontrando il ciclo Burocratico chiuso, il Kernel blocca il caricamento e solleva l'errore `ERR_GRAPH_CYCLE_DETECTED` (Codice 83). L'operatore viene costretto a correggere il flusso prima che qualsiasi utente possa trovarsi di fronte al blocco.
+
+---
 
 #### 5.3.2 Durata Parametrizzata delle Micro-Azioni
 Per ridurre lo stress e la stanchezza cognitiva dell'utente vulnerabile, la durata stimata di una singola micro-azione non deve superare la soglia massima definita dai parametri di policy (indicata dal parametro temporale di durata massima). Ogni azione deve essere pensata per essere eseguibile in un tempo contenuto, chiaro e ben definito.
@@ -634,6 +725,8 @@ Il contesto operativo esecutivo di ogni operazione o transazione è vincolato da
 2. Il profilo dello schema dei dati (es. `"SCHEMA-SC-v10.3"`);
 3. Il profilo dell'algoritmo di canonizzazione (es. `"SC-JCS-1"`);
 4. Il profilo del pacchetto delle politiche di sicurezza attive (es. `"POLICY-BUNDLE-v1.2"`).
+
+---
 
 ---
 
@@ -667,16 +760,24 @@ La funzione di canonizzazione garantisce l'univocità assoluta: due stati o due 
 
 ### 7.2 Catena di Hash Immutabile ed Integrità del Libro Mastro
 
-L'integrità del libro mastro (Ledger) per ogni nuova transazione successiva è garantita dal calcolo dell'impronta crittografica $H_N$ eseguito sul corpo della transazione:
-* La primissima transazione dello Stato di Genesi ha un'impronta iniziale $H_0$ costituita da una sequenza nulla di azzeramento a 256 bit;
+L'integrità del libro mastro (Ledger) per ogni nuova transazione successiva è garantita dal calcolo dell'impronta crittografica eseguito sul corpo della transazione:
+* La primissima transazione dello Stato di Genesi ha un'impronta iniziale costituita da una sequenza nulla di azzeramento a 256 bit;
 * Ogni transazione successiva include all'interno del proprio corpo l'impronta della transazione precedente. L'impronta corrente viene calcolata applicando l'algoritmo di hash SHA-256 sulla rappresentazione canonizzata della transazione.
 
 Se un malintenzionato o un guasto hardware tenta di alterare anche solo un singolo carattere di una transazione passata, la catena delle impronte si spezza immediatamente e l'automa di sicurezza piomba nello stato di blocco critico `SECURITY_LOCKDOWN`.
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è una Catena di Hash (Hash Chain)?**  
 Immagina un registro cartaceo in cui ogni pagina reca in alto un timbro speciale calcolato sul contenuto esatto della pagina precedente. Se qualcuno strappa una pagina passata o ne scarabocchia una sola riga, il timbro sulla pagina successiva non corrisponderà più e la manomissione diventerà immediatamente evidente a chiunque controlli il registro.
+
+---
+
+> 💡 **SCENARIO PRATICO: Il rilevamento di una manomissione storica**  
+> *Situazione:* Un utente malevolo o un hacker tenta di accedere direttamente al database del server per modificare una transazione di sei mesi fa, cambiando l'esito di un consenso.  
+> *Cosa fa SCINTILLA Core:* Alla transazione successiva, il Kernel ricalcola la catena delle impronte crittografiche. Riscontrando che l'impronta storica non corrisponde più all'impronta memorizzata nella transazione successiva, il sistema rileva l'evento `EV_HASH_CORRUPT`, blocca immediatamente l'esecuzione e sposta l'automa di sicurezza in `SECURITY_LOCKDOWN` (Codice di Errore 77).
 
 ---
 
@@ -700,6 +801,8 @@ Un'applicazione software ottiene la certificazione ufficiale di conformità allo
 Quando si verifica una violazione degli invarianti di sicurezza, un errore di sintassi o una condizione di blocco, il Kernel **`MUST`** segnalare l'anomalia emettendo un **Runtime Error Code** appartenente allo spazio numerico riservato **`70–89`**.
 
 Quando il Kernel viene eseguito come processo autonomo in un sistema operativo (es. Linux o Windows), tale codice di errore **`SHALL`** essere propagato come **Process Exit Code** del programma.
+
+---
 
 ---
 
@@ -743,6 +846,8 @@ Quando SCINTILLA Core viene eseguito su una rete di più calcolatori collegati t
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è un Fencing Token (Token di Scherma)?**  
 Immagina un bastone della parola in un'assemblea: solo chi possiede il bastone può parlare, ed ogni volta che il bastone passa di mano riceve un numero progressivo più alto (1, 2, 3...). Se un membro dell'assemblea tenta di parlare usando un vecchio bastone recante il numero 1 quando ormai si è arrivati al numero 3, la sala lo ignora. Il Fencing Token impedisce che vecchi comandi giunti in ritardo sulla rete possano sovrascrivere o corrompere le decisioni presenti.
 
@@ -763,8 +868,17 @@ Il comportamento del sistema nel tempo è vincolato da regole espresse in **Logi
 
 ---
 
+---
+
 **NOTA INFORMATIVA: Che cos'è il Model Checking con Logiche Temporali?**  
 Il Model Checking è una tecnica matematica avanzata in cui un software speciale esplora automaticamente TUTTI i miliardi di percorsi futuri possibili di un programma per dimostrare che non si verificherà mai una situazione pericolosa. Le formule di logica temporale dicono al software cosa deve essere SEMPRE vero in ogni istante (Safety) e cosa deve poter SEMPRE accadere in futuro (Liveness).
+
+---
+
+> 🛡️ **SCHEDA DI GARANZIA: Invarianza dell'Oblio Crittografico nel Tempo (LTL Safety 5)**  
+> * **Cosa stabilisce la regola:** Una volta che l'evento di Crypto-Shredding viene eseguito e la chiave viene distrutta, il sistema garantisce che la chiave rimarrà distrutta per sempre in qualsiasi istante del futuro.  
+> * **Perché esiste:** Per garantire che un dato cancellato non possa mai "risorgere" o essere ripristinato di nascosto da futuri aggiornamenti software.  
+> * **Cosa impedisce:** Impedisce qualsiasi tentativo di recupero o di "backdoor" sui dati dell'utente che ha esercitato il diritto all'oblio.
 
 ---
 
@@ -775,7 +889,7 @@ Il Model Checking è una tecnica matematica avanzata in cui un software speciale
 
 ### 10.1 Definizione del Profilo SC-JCS-1
 
-Per garantire che qualunque sistema informatico produca la medesima identica rappresentazione digitale dei dati, la specifica definisce il profilo di canonizzazione **SC-JCS-1**.
+Per garantire che qualunque sistema informatico produca la medesima identica rappresentazione digitale dei dati su qualsiasi elaboratore al mondo, la specifica definisce il profilo di canonizzazione **SC-JCS-1**.
 
 SCINTILLA Core adotta regole di serializzazione proprietarie e rigorose che **NON sono compatibili a livello di impronta crittografica con lo standard generico RFC 8785**:
 1. Imponimento dell'ordinamento delle stringhe di testo basato unicamente sui punti di codice Unicode (*Unicode Code Point Lexicographical Order*);
@@ -783,8 +897,10 @@ SCINTILLA Core adotta regole di serializzazione proprietarie e rigorose che **NO
 
 ---
 
-**NOTA INFORMATIVA: Che cos'è la Canonizzazione SC-JCS-1?**  
-In un file di testo JSON, lo stesso dato può essere scritto in molti modi diversi: inserendo uno spazio in più, invertendo l'ordine di due chiavi (es. `"nome", "cognome"` invece di `"cognome", "nome"`), o scrivendo un numero come `10.0` invece di `10`. Per un calcolatore, anche un solo spazio diverso cambia completamente l'impronta digitale (hash). La canonizzazione SC-JCS-1 elimina tutti gli spazi inutili, ordina le chiavi in modo matematicamente univoco e converte tutti i numeri in interi esatti, facendo sì che qualsiasi computer nel mondo produca la medesima sequenza di byte.
+---
+
+**NOTA INFORMATIVA: Che cos'è la Canonizzazione SC-JCS-1 e perché vieta i numeri con la virgola?**  
+In un file di testo JSON, lo stesso dato può essere scritto in molti modi diversi: inserendo uno spazio in più, invertendo l'ordine di due chiavi (es. `"nome", "cognome"` invece di `"cognome", "nome"`), o scrivendo un numero come `10.0` invece di `10`. Per un calcolatore, anche un solo spazio diverso cambia completamente l'impronta digitale (hash). La canonizzazione SC-JCS-1 elimina tutti gli spazi inutili, ordina le chiavi in modo matematicamente univoco e converte tutti i numeri in interi esatti. I numeri con la virgola vengono vietati perché i diversi processori dei computer li calcolano con impercettibili arrotondamenti differenti, che farebbero fallire la verifica dell'impronta crittografica.
 
 ---
 
@@ -813,7 +929,14 @@ L'algoritmo SC-JCS-1 trasforma un documento informatico in byte canonici attrave
 
 ---
 
-### 10.4 Contratto dell'Automa di Sicurezza ($\delta_M$) in Prosa
+> 🛡️ **SCHEDA DI GARANZIA: Determinismo dell'Ordinamento degli Insiemi nel Registro SC-JCS-1**  
+> * **Cosa stabilisce la regola:** Gli insiemi di dati memorizzati nel registro (come l'elenco dei consensi, dei documenti o delle competenze) vengono sempre ordinati byte-per-byte secondo una sequenza alfabeticamente perfetta prima di calcolare l'impronta crittografica.  
+> * **Perché esiste:** Per evitare che due server o due telefoni diversi, salvando gli stessi documenti in ordine diverso in memoria, generino impronte crittografiche differenti facendosi fallire il consenso a vicenda.  
+> * **Cosa impedisce:** Impedisce qualsiasi errore di disallineamento o di incompatibilità tra sistemi informatici diversi che eseguono lo stesso Kernel SCINTILLA Core.
+
+---
+
+### 10.4 Contratto dell'Automa di Sicurezza in Prosa
 
 Il contratto informatico dell'automa di sicurezza di runtime definisce le transizioni deterministiche tra gli stati di sicurezza:
 
@@ -839,7 +962,7 @@ Il contratto informatico dell'automa di sicurezza di runtime definisce le transi
 
 ---
 
-### 10.5 Contratto dell'Automa del Percorso Umano ($\delta_H$) in Prosa
+### 10.5 Contratto dell'Automa del Percorso Umano in Prosa
 
 Il contratto dell'automa umano definisce le transizioni dell'utente lungo i dodici stati del percorso umano:
 
@@ -897,6 +1020,36 @@ L'Annesso A.2 fornisce il codice TypeScript di riferimento per tre operazioni cr
 1. `parseSafeInteger`: Verifica che un valore numerico sia un numero intero compreso tra -9007199254740991 e +9007199254740991;
 2. `parseBasisPoints`: Verifica e satura i valori numerici all'interno dell'intervallo consentito da 0 a 10000 Punti Base;
 3. `mapSMLToFSMEvent`: Traduce in modo puro e deterministico l'esito del documento conversazionale SML negli eventi dell'automa umano (es. `OVERWHELMED` $\to$ `HEV_EMOTIONAL_OVERWHELM`).
+
+```typescript
+// 1. Runtime Validation of 64-Bit Safe Integers (Chapter 10.2)
+export function parseSafeInteger(v: number): SafeInteger {
+  if (!Number.isInteger(v) || v < -9007199254740991 || v > 9007199254740991) {
+    throw new Error("ERR_CONFIGURATION_MALFORMED (Code 85): Number is not a safe integer");
+  }
+  return v as SafeInteger;
+}
+
+// 2. Validation and saturation of the Basis Points interval [0, 10000] (Chapter 1.7.3)
+export function parseBasisPoints(v: number): BasisPoints {
+  const safe = parseSafeInteger(v);
+  if (safe < 0 || safe > 10000) {
+    throw new Error("ERR_CONFIGURATION_MALFORMED (Code 85): BasisPoints must be in range [0, 10000]");
+  }
+  return safe as BasisPoints;
+}
+
+// 3. Pure Decoding from SMLDocumentParsed to Human Automaton Event (Chapter 4.4)
+export function mapSMLToFSMEvent(doc: SMLDocumentParsed): string {
+  if (doc.conversation_outcome === "OVERWHELMED") return "HEV_EMOTIONAL_OVERWHELM";
+  if (doc.conversation_outcome === "NEEDS_REPHRASING") return "HEV_RECALIBRATION_REQ";
+  if (doc.conversation_outcome === "DECLINED_ACTION") return "HEV_PAUSE_REQUESTED";
+  if (doc.conversation_outcome === "ASKED_FOR_HELP") return "HEV_PREVENTIVE_SUPPORT_REQ";
+  if (doc.proposed_transition !== "NONE" && doc.evidence_type === "DOCUMENT") return "HEV_DOCS_OBTAINED";
+  if (doc.proposed_transition !== "NONE" && doc.conversation_outcome === "MOTIVATED") return "HEV_STABILIZED";
+  return "NONE";
+}
+```
 
 ---
 
