@@ -1,3 +1,4 @@
+
 [![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-CORE_CANONICAL_SPECIFICATION-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCINTILLA-TIMELESS-v2026.1.md)
 
 # ✴ SCINTILLA Core - SPECIFICA NORMATIVA CANONICA INTEGRALE IN PROSA DIVULGATIVA
@@ -33,8 +34,6 @@ La missione del Kernel è ridurre gli ostacoli cognitivi (la difficoltà di comp
 Il sistema è progettato affinché l'intelligenza artificiale aumenti le capacità umane senza mai produrre dipendenza psicologica, manipolazione comportamentale o perdita di autodeterminazione. L'obiettivo del Kernel non è prendere decisioni al posto della persona, ma garantire che ogni implementazione conforme preservi i principi di autonomia, consenso, dignità, sicurezza, responsabilità e verificabilità definiti da questa specifica.
 
 SCINTILLA Core è una specifica normativa pura: non costituisce un prodotto software commerciale, un'interfaccia utente, un chatbot o un'applicazione mobile, ma il contratto di garanzia ed il modello di regole sulla cui base tali strumenti possono essere costruiti in modo sicuro.
-
----
 
 ---
 
@@ -86,8 +85,6 @@ SCINTILLA Core traccia una linea di demarcazione assoluta ed insuperabile tra du
 
 1. **Componenti Probabilistiche (es. Intelligenza Artificiale / LLM):** Hanno il solo ed unico compito di generare ipotesi, suggerimenti, spiegazioni conversazionali o traduzioni testuali. Esse sono intrinsecamente soggette a possibili imprecisioni ed **`MUST NOT`** (non devono mai) possedere alcuna autorità di scrittura diretta sullo stato del sistema o sulle decisioni operative.
 2. **Componenti Deterministiche (Il Kernel SCINTILLA Core):** Sono algoritmi matematici certi e riproducibili al cento per cento. Qualsiasi modifica della memoria, avanzamento di percorso o concessione di permessi **`MUST`** avvenire esclusivamente attraverso l'applicazione delle regole deterministiche del Kernel.
-
----
 
 ---
 
@@ -207,8 +204,6 @@ Lo **Spazio degli Stati** rappresenta la totalità delle informazioni che il sis
 
 ---
 
----
-
 **NOTA INFORMATIVA: Come funziona la Memoria a Tre Livelli del Sistema?**  
 Immagina la memoria di SCINTILLA Core come un ufficio ben organizzato:  
 1. Il **Dominio di Persistenza** è l'archivio blindato in cui sono custoditi i faldoni ufficiali, i contratti firmati ed i documenti d'identità.  
@@ -271,8 +266,6 @@ Quando una transazione viene inviata mentre l'automa del percorso umano si trova
 
 ---
 
----
-
 **NOTA INFORMATIVA: Che cos'è un Libro Mastro Immutabile (Ledger Append-Only)?**  
 Un Ledger è un registro informatico organizzato come un libro mastro contabile digitale: ogni nuova transazione viene scritta subito dopo la precedente e legata ad essa mediante un'impronta crittografica (hash). Una volta scritta, una transazione non può più essere modificata, cancellata o sovrascritta da nessuno al mondo. Se si vuole correggere un errore del passato, occorre scrivere una nuova transazione di rettifica in fondo al registro. Questo garantisce una trasparenza ed un'onestà totale sulla storia del percorso.
 
@@ -305,8 +298,6 @@ Qualora l'utente richieda la cancellazione totale, definitiva ed irreversibile d
 
 ---
 
----
-
 **NOTA INFORMATIVA: Che cos'è il Crypto-Shredding (Distruzione Crittografica)?**  
 Immagina di riporre tutti i tuoi documenti personali in una cassaforte d'acciaio indistruttibile ed inattaccabile. Invece di tentare di distruggere la cassaforte o i fogli al suo interno, prendi l'unica chiave esistente che può aprirla e la sciogli nell'acido. La cassaforte ed i fogli rimangono fisicamente lì, ma nessuno al mondo potrà mai più leggerne il contenuto. Il Crypto-Shredding è l'equivalente digitale della distruzione irreversibile della chiave.
 
@@ -336,8 +327,6 @@ L'Indice Proxy **`AGI_proxy`** è un valore numerico intero compreso nell'interv
 
 ---
 
----
-
 **NOTA INFORMATIVA: Chiarimento fondamentale sull'acronimo AGI_proxy**.  
 Nelle tecnologie moderne, l'acronimo "AGI" viene comunemente usato per indicare l'Intelligenza Artificiale Generale (*Artificial General Intelligence*). **In SCINTILLA Core, AGI_proxy NON ha alcuna relazione con l'Intelligenza Artificiale Generale.**  
 L'acronimo indica esclusivamente l'**Agency Governance Indicator Proxy** (Indicatore Proxy di Governance dell'Agency Operativa): una misura matematica descrittiva usata dal software per capire se l'interfaccia digitale sta aiutando la persona o se la sta confondendo, adattando di conseguenza la chiarezza dei messaggi.
@@ -358,8 +347,6 @@ Per tutti gli stati attivi del percorso, l'indice `AGI_proxy` viene calcolato me
 3. **Punteggio di Riduzione della Dipendenza (`DependencyReductionScore_bp`):** Misura la percentuale di azioni completate con successo dall'utente che hanno portato all'acquisizione diretta di competenze pratiche ed attestate riutilizzabili in autonomia nella vita reale.
 
 Tutti i calcoli matematici sono eseguiti rigorosamente in **aritmetica intera con numeri a 64-bit**, escludendo del tutto l'uso di numeri con la virgola per garantire che il risultato sia identico al cento per cento su qualsiasi calcolatore o sistema operativo.
-
----
 
 ---
 
@@ -414,8 +401,6 @@ I livelli superiori (quelli più vicini all'interfaccia utente ed all'intelligen
 
 ---
 
----
-
 **NOTA INFORMATIVA: Come funziona l'Isolamento a 6 Livelli e perché protegge l'Utente?**  
 Nei comuni sistemi di intelligenza artificiale, il modello conversazionale (l'LLM, come ChatGPT) dialoga con l'utente e spesso modifica direttamente i dati o prende decisioni sul software. In SCINTILLA Core questo è **tassativamente vietato**. L'intelligenza artificiale si trova al Livello 5 (il più alto ed esterno) e non ha alcuna chiave per toccare la memoria. Per fare qualsiasi cosa, la risposta dell'intelligenza artificiale deve scendere al Livello 4 (che la controlla sintatticamente), poi al Livello 2 (che verifica le regole di sicurezza) ed infine al Livello 1 (il Kernel deterministico). Se l'intelligenza artificiale inventa o sbaglia qualcosa, i livelli sottostanti la bloccano immediatamente.
 
@@ -436,8 +421,6 @@ L'automa di sicurezza si trova sempre ed unicamente in uno dei seguenti **sette 
 7. **`SAFE_READ_ONLY_MODE`:** Stato di sola lettura sicura. L'automa consente all'utente di consultare i propri dati e di esercitare i propri diritti di privacy, ma impedisce qualsiasi nuova mutazione operativa.
 
 Lo stato iniziale di partenza dell'automa di sicurezza è sempre **`NORMAL`**. Gli unici due stati considerati **operativamente stabili** in cui il sistema può rimanere a riposo sono `NORMAL` e `SAFE_READ_ONLY_MODE`.
-
----
 
 ---
 
@@ -600,8 +583,6 @@ Quando più pacchetti di regole di sicurezza (Policy Bundle) vengono combinati i
 
 ---
 
----
-
 **NOTA INFORMATIVA: Che cos'è la Regola Deny-Overrides (Il Diniego Prevale)?**  
 È una regola di massima sicurezza usata nei sistemi informatici critici. Immagina un controllo accessi custodito da tre guardiani: se due guardiani dicono "può passare", ma il terzo dice "no, ho rilevato un pericolo", il sistema obbedisce al guardiano che ha rilevato il pericolo e nega l'accesso. La sicurezza e la protezione dell'utente hanno sempre la priorità assoluta su tutto.
 
@@ -662,8 +643,6 @@ Dal punto di vista della struttura informatica, il Playbook è modellato come un
 1. **Nodi di Micro-Azione:** L'insieme delle singole azioni o tappe pratiche che l'utente può compiere;
 2. **Archi di Collegamento Orientati:** Le frecce di direzione che stabiliscono la sequenza logica di successione tra i nodi (es. "Prima richiedi il codice fiscale, POI richiedi la carta d'identità");
 3. **Condizioni di Verificabilità:** L'insieme delle regole di controllo informatico che verificano in modo automatico e puro se i prerequisiti necessari per accedere ad uno specifico nodo siano stati effettivamente soddisfatti dallo stato dell'utente.
-
----
 
 ---
 
@@ -728,8 +707,6 @@ Il contesto operativo esecutivo di ogni operazione o transazione è vincolato da
 
 ---
 
----
-
 **NOTA INFORMATIVA: Che cos'è il Replay Storico Deterministico del Libro Mastro?**  
 Poiché il libro mastro registra le decisioni per anni, le regole del software potrebbero aggiornarsi nel tempo passando dalla versione 4 alla versione 5. Quando il sistema deve "riavvolgere il nastro" e rielaborare una vecchia transazione del passato per ricostruire lo stato originale, non deve usare le regole nuove di oggi, ma **deve applicare esattamente le regole che erano in vigore nel momento esatto in cui quella vecchia transazione è stata scritta**. Questo principio garantisce che il passato rimanga sempre perfettamente riproducibile.
 
@@ -768,8 +745,6 @@ Se un malintenzionato o un guasto hardware tenta di alterare anche solo un singo
 
 ---
 
----
-
 **NOTA INFORMATIVA: Che cos'è una Catena di Hash (Hash Chain)?**  
 Immagina un registro cartaceo in cui ogni pagina reca in alto un timbro speciale calcolato sul contenuto esatto della pagina precedente. Se qualcuno strappa una pagina passata o ne scarabocchia una sola riga, il timbro sulla pagina successiva non corrisponderà più e la manomissione diventerà immediatamente evidente a chiunque controlli il registro.
 
@@ -801,8 +776,6 @@ Un'applicazione software ottiene la certificazione ufficiale di conformità allo
 Quando si verifica una violazione degli invarianti di sicurezza, un errore di sintassi o una condizione di blocco, il Kernel **`MUST`** segnalare l'anomalia emettendo un **Runtime Error Code** appartenente allo spazio numerico riservato **`70–89`**.
 
 Quando il Kernel viene eseguito come processo autonomo in un sistema operativo (es. Linux o Windows), tale codice di errore **`SHALL`** essere propagato come **Process Exit Code** del programma.
-
----
 
 ---
 
@@ -846,8 +819,6 @@ Quando SCINTILLA Core viene eseguito su una rete di più calcolatori collegati t
 
 ---
 
----
-
 **NOTA INFORMATIVA: Che cos'è un Fencing Token (Token di Scherma)?**  
 Immagina un bastone della parola in un'assemblea: solo chi possiede il bastone può parlare, ed ogni volta che il bastone passa di mano riceve un numero progressivo più alto (1, 2, 3...). Se un membro dell'assemblea tenta di parlare usando un vecchio bastone recante il numero 1 quando ormai si è arrivati al numero 3, la sala lo ignora. Il Fencing Token impedisce che vecchi comandi giunti in ritardo sulla rete possano sovrascrivere o corrompere le decisioni presenti.
 
@@ -865,8 +836,6 @@ Il comportamento del sistema nel tempo è vincolato da regole espresse in **Logi
 * **LTL Liveness 4 (Recuperabilità del Progresso):** In caso di un guasto tecnico temporaneo o di un errore di validazione, esiste sempre la garanzia temporale che il sistema possa ripristinarsi e consentire all'utente di riprendere il proprio percorso avanzato;
 * **LTL Safety 5 (Invarianza dell'Oblio Crittografico):** Una volta eseguita la distruzione della chiave crittografica (`EV_CRYPTO_SHRED_EXECUTED`), la chiave rimane distrutta per sempre in tutti gli istanti futuri del tempo;
 * **CTL System Agency Guarantee:** Per qualsiasi stato attivo dell'utente, esiste sempre almeno un cammino futuro raggiungibile che porta ad un avanzamento effettivo del percorso personale.
-
----
 
 ---
 
@@ -894,8 +863,6 @@ Per garantire che qualunque sistema informatico produca la medesima identica rap
 SCINTILLA Core adotta regole di serializzazione proprietarie e rigorose che **NON sono compatibili a livello di impronta crittografica con lo standard generico RFC 8785**:
 1. Imponimento dell'ordinamento delle stringhe di testo basato unicamente sui punti di codice Unicode (*Unicode Code Point Lexicographical Order*);
 2. **Divieto assoluto ed inderogabile di qualsiasi numero con la virgola (virgola mobile) o scritto in notazione scientifica.**
-
----
 
 ---
 
