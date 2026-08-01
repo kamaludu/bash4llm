@@ -140,13 +140,13 @@ La presente specifica costituisce il riferimento normativo autorevole per la pro
 
 **Principio Fondamentale**
 
-**SCINTILLA Core definisce il comportamento normativo del sistema; le modalità implementative sono lasciate alle singole implementazioni conformi.**
-
+**SCINTILLA Core definisce il comportamento normativo del sistema; le modalità implementative sono lasciate alle singole implementazioni conformi.**  
 **In altre parole, la presente specifica definisce il "cosa"; ogni implementazione conforme definisce il "come".**
 
 ---
 
-**Le sezioni successive descrivono progressivamente il Kernel da tre prospettive complementari: concettuale, normativa ed esecutiva. Tali prospettive rappresentano differenti livelli di formalizzazione della medesima semantica e non costituiscono specifiche indipendenti.**
+**Le sezioni successive descrivono progressivamente il Kernel da tre prospettive complementari: concettuale, normativa ed esecutiva.**  
+**Tali prospettive rappresentano differenti livelli di formalizzazione della medesima semantica e non costituiscono specifiche indipendenti.**
 
 ---
 
