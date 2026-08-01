@@ -1,10 +1,10 @@
 # ✴ SCINTILLA Core - CANONICAL SPECIFICATION
-## Canonical Standard Edition v4.5.4
+## Canonical Standard Edition v4.5.5
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato:** Specifica Normativa Canonica Formale (Single Source of Truth - Candidate Standard)
-* **Edizione:** v4.5.4 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
+* **Edizione:** v4.5.5 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
 * **Normative Authority:** Single Source of Truth Normativa per il dominio SCINTILLA Core.
 * **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
 * **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di divergenza o indecidibilità tra le descrizioni narrative in linguaggio naturale (Layer B) ed i contratti esecutivi machine-readable (Layer C / Capitolo 10), i contratti machine-readable di Layer C costituiscono l'autorità normativamente prevalente per l'esecuzione del runtime.
@@ -13,50 +13,19 @@
 
 # MISSIONE
 
-## a) Scopo della Specifica
+## a) Scopo, Natura e Missione della Specifica
 
-La presente specifica definisce SCINTILLA Core, il Kernel Normativo Canonico per la **costruzione di sistemi destinati a supportare l'emancipazione personale.**
+La presente specifica definisce **SCINTILLA Core**, il Kernel Normativo Canonico per la costruzione di sistemi deterministici destinati a supportare l'emancipazione personale e l'autonomia operativa di persone fragili o vulnerabili.
 
-SCINTILLA Core costituisce il Single Source of Truth del dominio e definisce, in modo formale, deterministico e verificabile, il comportamento osservabile, gli invarianti e i vincoli normativi che ogni implementazione conforme deve preservare.
+SCINTILLA Core costituisce il *Single Source of Truth* del dominio e definisce, in modo formale, deterministico e verificabile, il comportamento osservabile, gli invarianti ed i vincoli normativi che ogni implementazione conforme `MUST` preservare.
 
-La presente specifica non descrive una particolare implementazione software, ma il modello normativo che governa tutte le implementazioni conformi.
+La missione del Kernel è ridurre gli ostacoli cognitivi, informativi, organizzativi ed emotivi che impediscono il passaggio dall'intenzione all'azione, garantendo che l'intelligenza artificiale aumenti le capacità umane senza mai produrre dipendenza, manipolazione o perdita di autodeterminazione.
 
----
-
-## b) Missione del Kernel
-
-La missione di SCINTILLA Core è definire un modello computazionale capace di aumentare l'autonomia operativa e l'agency delle persone, riducendo gli ostacoli cognitivi, informativi, organizzativi ed emotivi che impediscono il passaggio dall'intenzione all'azione.
-
-Il sistema è progettato affinché l'intelligenza artificiale aumenti le capacità umane senza aumentare dipendenza, manipolazione o perdita di autodeterminazione.
-
-L'obiettivo del Kernel non è prendere decisioni al posto della persona, ma garantire che ogni implementazione conforme preservi i principi di autonomia, consenso, dignità, sicurezza, responsabilità e verificabilità definiti dalla presente specifica.
+SCINTILLA Core è una specifica normativa pura (non un prodotto software, una piattaforma web o un chatbot) ed opera come contratto di garanzia sul quale prodotti ed interfacce possono essere costruiti.
 
 ---
 
-## c) Natura di SCINTILLA Core
-
-SCINTILLA Core è una specifica normativa.
-
-Non è un prodotto software, ma il contratto normativo sul quale prodotti software possono essere costruiti.
-
-SCINTILLA Core non costituisce:
-
-un'applicazione;  
-un'interfaccia utente;  
-un chatbot;  
-un assistente digitale completo;  
-un modello linguistico;  
-un sistema RAG;  
-un servizio cloud;  
-una piattaforma web;  
-un'applicazione mobile.  
-
-
-SCINTILLA Core definisce esclusivamente il comportamento normativo del Kernel deterministico sul quale tali sistemi possono essere costruiti.
-
----
-
-## d) Ambito Normativo
+## b) Ambito Normativo
 
 La presente specifica definisce in modo canonico:
 
@@ -79,7 +48,7 @@ Nessuna implementazione conforme può derogare agli invarianti, ai requisiti nor
 
 ---
 
-## e) Componenti Esterni
+## c) Componenti Esterni
 
 Qualsiasi componente non definito dalla presente specifica è considerato esterno al Kernel.
 
@@ -104,7 +73,7 @@ Essi possono essere sostituiti, aggiornati o rimossi senza modificare il comport
 
 ---
 
-## f) Rapporto con le Implementazioni
+## d) Rapporto con le Implementazioni
 
 La presente specifica non prescrive una particolare architettura software.
 
@@ -116,7 +85,7 @@ La conformità è determinata esclusivamente dal comportamento osservabile del s
 
 ---
 
-## g) Separazione tra Componenti Deterministiche e Componenti Probabilistiche
+## e) Separazione tra Componenti Deterministiche e Componenti Probabilistiche
 
 SCINTILLA Core distingue formalmente tra componenti deterministiche e componenti probabilistiche.
 
@@ -127,14 +96,6 @@ Esse non possiedono autorità normativa sullo stato del sistema.
 Qualsiasi modifica dello stato persistente può avvenire esclusivamente attraverso le regole deterministiche definite dalla presente specifica.
 
 Le componenti probabilistiche costituiscono strumenti di supporto all'elaborazione, ma non possono modificare direttamente lo stato normativo del Kernel.
-
----
-
-## h) Obiettivo della Specifica
-
-La finalità della presente specifica è costituire una base formale sufficientemente rigorosa da consentire la realizzazione di implementazioni interoperabili, verificabili, riproducibili e conformi, riducendo al minimo le ambiguità interpretative e preservando nel tempo l'integrità semantica del sistema.
-
-La presente specifica costituisce il riferimento normativo autorevole per la progettazione, l'implementazione, la verifica e la certificazione di conformità di qualsiasi sistema basato su SCINTILLA Core.
 
 ---
 
@@ -389,10 +350,13 @@ con vista derivata iniziale:
 #### 1.3.1 Obbligo Formale di Invarianza di Serializzazione del Genesis State (RFC-007)
 
 ```math
-\mathbf{PROOF-OBLIGATION-GENESIS-SERIALIZATION-INVARIANCE} := \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.4}})) \equiv_{\text{bytes}} \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.4}}))
+\mathbf{PROOF-OBLIGATION-GENESIS-SERIALIZATION-INVARIANCE} := \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.5}})) \equiv_{\text{bytes}} \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.3}}))
 ```
-*(Garantisce che il refactoring algebrico di s0 in Layer A produca un flusso di byte UTF-8 e un hash H0 = 0_D256 identici alla versione precedente).*
-
+(Garantisce che il refactoring algebrico ed organizzativo di* $s_0$ *produca un flusso di byte UTF-8 e un hash* 
+```math
+H_0 = \mathbf{0}_{\mathcal{D}_{256}}
+```
+identici alla versione canonica di riferimento).
 
 ---
 
@@ -751,14 +715,14 @@ L'alfabeto degli eventi di sistema $\Sigma$ ($|\Sigma|=10$) è partizionato nei 
 ```
 
 #### 2.2.4 Gestione della Stasi Operativa in SAFE_READ_ONLY_MODE (q6) (Layer B2)
-Quando l'automa $M$ si trova nello stato:
+La permanenza dell'automa $M$ nello stato:
 ```math
 q_6 = \text{SAFE\_READ\_ONLY\_MODE}
 ```
-
-1. Per tutti gli eventi di business $\sigma \in \Sigma_{\text{business}}$, la funzione $\delta_M$ impone uno stuttering step ($q_6 \to q_6$), precludendo qualsiasi mutazione dello stato operativo.
-2. Per tutti gli eventi amministrativi $\sigma \in \Sigma_{\text{administrative}}$, la funzione $\delta_M$ ammette l'elaborazione e la persistenza della transizione sul Ledger immutabile $\mathcal{L}$, garantendo l'esercizio dei diritti dell'utente anche in stasi operativa.
-3. Per gli eventi di ripristino $\sigma \in \Sigma_{\text{recovery}}$, la funzione $\delta_M$ transita lo stato verso $\text{NORMAL}$ secondo il contratto formale §10.4.
+è governata esclusivamente dalle regole di transizione del contratto $\delta_M$ (§10.4) e dalle meta-regole SOS (§3.2):
+1. **Eventi di Business** ($\Sigma_{\text{business}}$): Impropongono uno *stuttering step* ($q_6 \to q_6$), precludendo qualsiasi mutazione dello stato operativo.
+2. **Eventi Amministrativi** ($\Sigma_{\text{administrative}}$): Sono ammessi ed elaborati per garantire l'esercizio inalienabile dei diritti dell'utente (revoca privacy, oblivion).
+3. **Eventi di Ripristino** ($\Sigma_{\text{recovery}}$): Transitano lo stato verso $\text{NORMAL}$ previa verifica autorizzativa dell'operatore o applicazione di patch formale.
 
 ---
 
@@ -1118,13 +1082,13 @@ Al fine di ridurre lo stress ed il carico cognitivo dell'utente vulnerabile senz
 
 ### 4.6 Filosofia Normativa dell'Intervento Umano (Human Override) (Layer B2)
 
-L'intervento di un operatore umano (`OPERATOR`) costituisce un meccanismo di garanzia e supporto e `MUST` conformarsi ai seguenti principi normativi inderogabili:
+L'intervento di un operatore umano (`OPERATOR`) costituisce un meccanismo di garanzia e supporto e `MUST` conformarsi ai seguenti 5 principi normativi inderogabili:
 
-1. **Principio di Tracciabilità:** Ogni azione di override `MUST` generare una transizione registrata nel Ledger $\mathcal{L}$ contenente l'ID dell'operatore.
-2. **Principio di Autenticazione Forte:** L'override richiede una firma crittografica valida ed il possesso del permesso `SC.PERMISSION.OPERATOR_OVERRIDE`.
-3. **Principio di Spiegabilità Obbligatoria:** Ogni intervento di override `MUST` includere una motivazione esplicita in formato testuale non vuoto.
-4. **Principio di Inalterabilità Storica:** L'override modifica unicamente lo stato proiettato corrente $S_N$, ma `SHALL NOT` cancellare o alterare le transizioni precedenti del Ledger.
-5. **Principio di Rispettabilità del Consenso:** L'operatore umano `SHALL NOT` forzare l'esecuzione di azioni in violazione del consenso espresso dall'utente, salvo nei casi previsti dal livello HOBM `PROFESSIONAL_INTERVENTION_REQUIRED`.
+1. **Tracciabilità Assoluta:** Ogni azione di override `MUST` generare una transizione registrata sul Ledger $\mathcal{L}$ recante l'identificativo dell'operatore.
+2. **Autenticazione Forte:** L'override richiede una firma digitale valida ed il possesso del permesso `SC.PERMISSION.OPERATOR_OVERRIDE`.
+3. **Spiegabilità Obbligatoria:** Ogni intervento `MUST` includere la motivazione esplicita in formato testuale non vuoto.
+4. **Inalterabilità Storica:** L'override modifica unicamente lo stato proiettato corrente $S_N$, ma `SHALL NOT` alterare o elidere le transizioni storiche precedenti.
+5. **Rispetto del Consenso:** L'operatore `SHALL NOT` forzare l'esecuzione di azioni in violazione del consenso espresso dall'utente, salvo nei casi previsti dal livello HOBM `PROFESSIONAL_INTERVENTION_REQUIRED`.
 
 ---
 
@@ -1270,7 +1234,7 @@ contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
 
 Un'implementazione esecutiva ottiene la certificazione di conformità se e solo se soddisfa i seguenti tre criteri normativi vincolanti:
 
-1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dalla suite di test normativi (`CONFORMANCE-TEST-SUITE-v4.5.4.JSON`).
+1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dalla suite di test normativi (`CONFORMANCE-TEST-SUITE-v4.5.5.JSON`).
 2. **Requisito di Verifica Temporale LTL/CTL:** Formalizzazione delle proprietà logiche temporali (§9.2) con superamento degli obblighi di proof/model checking.
 3. **Totalità Matematica della Transizione:** Gestione corretta ed esaustiva di tutte le transizioni ammissibili per gli automi $M$ ed $\mathcal{H}$ tramite la funzione $\mathbf{Resolve}$
 
@@ -1476,7 +1440,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica $
 ```json
 {
   "automaton_id": "SCINTILLA_RUNTIME_SAFETY_AUTOMATON",
-  "specification_version": "4.5.4-CANDIDATE",
+  "specification_version": "4.5.5-CANDIDATE",
   "states": [
     "NORMAL",
     "REQUIRE_RECALIBRATION",
@@ -1562,7 +1526,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
 ```json
 {
   "automaton_id": "SCINTILLA_HUMAN_JOURNEY_AUTOMATON",
-  "specification_version": "4.5.4-APPROVED",
+  "specification_version": "4.5.5-APPROVED",
   "states": [
     "UNASSESSED",
     "INITIAL_ASSESSMENT",
@@ -1628,7 +1592,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
 
 ### 11.1 Assiomatizzazione dei Test Vectors e Conformance Suite
 
-I Test Vector concreti per la certificazione di conformità dello Standard Reference Profile 1 sono formalmente definiti nell'artefatto normativo esterno: **`CONFORMANCE-TEST-SUITE-v4.5.4.JSON`**.
+I Test Vector concreti per la certificazione di conformità dello Standard Reference Profile 1 sono formalmente definiti nell'artefatto normativo esterno: **`CONFORMANCE-TEST-SUITE-v4.5.5.JSON`**.
 
 La suite di test comprende tre categorie di vettori:
 1. **Positive Path Vectors:** Oggetti JSON di input e relative stringhe di byte canonizzate SC-JCS-1 con digest SHA-256 attesi.
@@ -1644,11 +1608,11 @@ La suite di test comprende tre categorie di vettori:
 
 ### 12.1 Stato Normativo del Documento
 
-La presente **SCINTILLA Core CANONICAL SPECIFICATION v4.5.4 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA Core.
+La presente **SCINTILLA Core CANONICAL SPECIFICATION v4.5.5 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA Core.
 
 Lo stato corrente del documento è:
 
-**SPECIFICATION-AUDITED & FORMALIZATION-READY — Candidate Canonical Standard Edition (v4.5.4)**
+**SPECIFICATION-AUDITED & FORMALIZATION-READY — Candidate Canonical Standard Edition (v4.5.5)**
 
 La struttura formale è definita, esente da contraddizioni interne e pronta per la fase di formalizzazione via prover e sviluppo dell'implementazione di riferimento.
 
@@ -1661,7 +1625,7 @@ Ogni runtime conforme `MUST` esportare nei propri metadati di governance la stru
 ```json
 {
   "governance_conformance": {
-    "conformance_suite_id": "SC-SUITE-v4.5.4-DIGEST-a8f3b29c",
+    "conformance_suite_id": "SC-SUITE-v4.5.5-DIGEST-a8f3b29c",
     "runtime_attestation": {
       "runtime_artifact_digest": "SHA256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "compiler_fingerprint": "RUSTC-1.78.0-NIGHTLY-2024",
@@ -1693,6 +1657,8 @@ La seguente matrice esplicita lo stato epistemico di ciascuna proprietà formale
 
 ## ANNEX A: TYPESCRIPT TYPE MAPPING (INFORMATIVO / LAYER C / RFC-008)
 
+### A.1 Normative Type Constraints & Interfaces
+
 ```typescript
 export type ActorType = "USER" | "LLM" | "OPERATOR" | "SYSTEM" | `EXTENSION_ACTOR:${string}`;
 
@@ -1719,71 +1685,20 @@ export type ProvenanceDomain =
   | "PERSONAL_GOAL" 
   | "TECHNICAL_SYSTEM";
 
-// RFC-008: Branded Integer Types e Runtime Guard Function
+// Branded Integer Types per Aritmetica Intera Sicura
 export type SafeInteger = number & { readonly __safeIntBrand: unique symbol };
-export type BasisPoints = SafeInteger; // Strict Safe Signed Integer Range [0, 10000]
+export type BasisPoints = SafeInteger; // Interval closed intero [0, 10000]
+```
 
+### A.2 Reference TypeScript Helper Implementation
+
+```typescript
+// Funzione di utilità di riferimento per la validazione a runtime degli interi sicuri
 export function parseSafeInteger(v: number): SafeInteger {
   if (!Number.isInteger(v) || v < -9007199254740991 || v > 9007199254740991) {
     throw new Error("ERR_CONFIGURATION_MALFORMED (Code 85): Number is not a safe integer");
   }
   return v as SafeInteger;
-}
-
-export interface ExecutionEnvelope {
-  execution_status: "PROCESSED_NOMINAL" | "PROCESSED_NO_STATE_EFFECT" | "REJECTED_VALIDATION_ERROR";
-  reason_code: string;
-  state_mutations_applied: boolean;
-}
-
-export interface RuntimeProfile {
-  semantic_profile: string; // es. "SCINTILLA-SOS-v4.5.4"
-  schema_profile: string;   // es. "SCHEMA-SC-v10.3"
-  canonicalization_profile: string; // es. "SC-JCS-1"
-  policy_profile: string;   // es. "POLICY-BUNDLE-v1.2"
-}
-
-export interface DataProvenanceRecord {
-  provenance_id: string;            
-  source_category: "USER_DECLARATION" | "LLM_INFERENCE" | "SYSTEM_VERIFIED" | "OPERATOR_CONFIRMED" | "EXTERNAL_SOURCE";
-  asserted_by_actor_id: string;     
-  timestamp_utc: string;            
-  confidence_score_bp: BasisPoints; // Basis Points [0, 10000]
-  verifiability_status: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
-  assertion_domain: ProvenanceDomain;
-}
-
-export interface AgencyGainIndexRecord {
-  clarity_score_bp: BasisPoints;            
-  action_execution_ratio_bp: BasisPoints;   
-  dependency_reduction_score_bp: BasisPoints; 
-  computed_agi_bp: BasisPoints;             
-}
-
-export interface SMLDocumentParsed {
-  sml_version: "2.0";
-  listen_summary: string;
-  listen_agency: string;
-  conversation_outcome: 
-    | "UNDERSTOOD" 
-    | "NEEDS_REPHRASING" 
-    | "OVERWHELMED" 
-    | "MOTIVATED" 
-    | "DECLINED_ACTION" 
-    | "ASKED_FOR_HELP";
-  map_overview: string;
-  proposed_transition: string | "NONE";
-  micro_action?: {
-    id: string | "NONE";
-    title: string;
-    minutes: SafeInteger;
-  };
-  evidence: string;
-  evidence_type: 
-    | "USER_DECLARATION" 
-    | "DOCUMENT" 
-    | "SYSTEM_EVENT" 
-    | "OPERATOR_CONFIRMATION";
 }
 ```
 
@@ -1894,6 +1809,6 @@ Al fine di garantire la risoluzione topologica dei simboli per i formalizzatori 
 
 ---
 
-**SCINTILLA Core v4.5.4 CANDIDATE CANONICAL STANDARD EDITION**
+**SCINTILLA Core v4.5.5 CANDIDATE CANONICAL STANDARD EDITION**
 * **Coverage:** Chapters 0–12 & Annexes A–C Fully Emitted
 * **Governance Authority:** Single Source of Truth for SCINTILLA Core Domain
