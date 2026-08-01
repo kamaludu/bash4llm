@@ -4,10 +4,10 @@
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato:** Specifica Normativa Canonica Formale (Single Source of Truth - Candidate Standard)
-* **Edizione:** v4.5.5 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
-* **Normative Authority:** Single Source of Truth Normativa per il dominio SCINTILLA Core.
-* **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
-* **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di divergenza o indecidibilità tra le descrizioni narrative in linguaggio naturale (Layer B) ed i contratti esecutivi machine-readable (Layer C / Capitolo 10), i contratti machine-readable di Layer C costituiscono l'autorità normativamente prevalente per l'esecuzione del runtime.
+* **Edizione:** v4.5.5 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Specified)
+* **Normative Authority:** Single Source of Truth Normativa per tutte le implementazioni conformi a SCINTILLA Core.
+* **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`), assumono significato normativo quando utilizzati in forma maiuscola..
+* **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di divergenza, ambiguità o indecidibilità tra le descrizioni narrative in linguaggio naturale (Layer B) e i contratti esecutivi machine-readable (Layer C / Capitolo 10), i contratti machine-readable di Layer C costituiscono l'autorità normativamente prevalente per l'esecuzione del runtime.
 
 ---
 
@@ -1830,5 +1830,5 @@ Al fine di garantire la risoluzione topologica dei simboli per i formalizzatori 
 ---
 
 **SCINTILLA Core v4.5.5 CANDIDATE CANONICAL STANDARD EDITION**
-* **Coverage:** Chapters 0–12 & Annexes A–C Fully Emitted
+* **Coverage:** Chapters 0–12 & Annexes A–D Fully Emitted
 * **Governance Authority:** Single Source of Truth for SCINTILLA Core Domain
