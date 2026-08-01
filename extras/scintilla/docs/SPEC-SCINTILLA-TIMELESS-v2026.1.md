@@ -1,10 +1,10 @@
 # ✴ SCINTILLA Core - CANONICAL SPECIFICATION
-## Canonical Standard Edition v4.5.3
+## Canonical Standard Edition v4.5.4
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
 
 * **Stato:** Specifica Normativa Canonica Formale (Single Source of Truth - Candidate Standard)
-* **Edizione:** v4.5.3 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
+* **Edizione:** v4.5.4 Candidate Canonical Standard Edition (Human-Agency Centric & Formally Verified)
 * **Normative Authority:** Single Source of Truth Normativa per il dominio SCINTILLA Core.
 * **Terminologia Normativa:** RFC 2119 / RFC 8174 (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`).
 * **Regola di Precedenza Normativa (`RULE-NORMATIVE-PRECEDENCE-01`):** In caso di divergenza o indecidibilità tra le descrizioni narrative in linguaggio naturale (Layer B) ed i contratti esecutivi machine-readable (Layer C / Capitolo 10), i contratti machine-readable di Layer C costituiscono l'autorità normativamente prevalente per l'esecuzione del runtime.
@@ -389,7 +389,7 @@ con vista derivata iniziale:
 #### 1.3.1 Obbligo Formale di Invarianza di Serializzazione del Genesis State (RFC-007)
 
 ```math
-\mathbf{PROOF-OBLIGATION-GENESIS-SERIALIZATION-INVARIANCE} := \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.3}})) \equiv_{\text{bytes}} \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.3}}))
+\mathbf{PROOF-OBLIGATION-GENESIS-SERIALIZATION-INVARIANCE} := \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.4}})) \equiv_{\text{bytes}} \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.4}}))
 ```
 *(Garantisce che il refactoring algebrico di s0 in Layer A produca un flusso di byte UTF-8 e un hash H0 = 0_D256 identici alla versione precedente).*
 
@@ -577,6 +577,8 @@ L'Indice Proxy AGI_proxy \in [0, 10000] (espresso in Basis Points interi) misura
 ```math
 \forall S \in \mathcal{S}, \forall t \in T, \quad \mathcal{R}_{\text{exec}}(S, t) \text{ MUST NOT depend on } \text{AGI}_{\text{proxy}}(S)
 ```
+
+*Nota di Chiarimento Semantico sull'Acronimo:* Ai fini della presente specifica e di qualsiasi contratto di interfaccia (API/JSON), l'acronimo **`AGI_proxy`** indica esclusivamente l'**Agency Governance Indicator Proxy** (Indicatore Proxy di Governance dell'Agency Operativa) e non ha alcuna relazione teorica, funzionale o concettuale con costrutti di Artificial General Intelligence.
 
 #### 1.7.2 Definizione Normativa di Invarianza per Stati Non-Attivi (Layer B1)
 
@@ -804,6 +806,22 @@ definisce una condizione di equilibrio ad alta autonomia ed azione preventiva:
 \text{HEV\_RELAPSE\_REGRESS}
 ```
 forza il rientro diretto dallo stato $h_{11}$ allo stato di ricalibrazione `HUMAN_RECALIBRATION_REQUIRED`, riattivando il supporto focalizzato del Playbook Engine senza resettare lo storico delle competenze acquisite.
+
+#### 2.3.2 Regola Normativa di Preservazione del Progresso Umano (`RULE-HUMAN-RECALIBRATION-PRESERVE-PROGRESS-01`)
+Quando l'automa $\mathcal{H}$ si trova nello stato $h_8$ (`HUMAN_RECALIBRATION_REQUIRED`) e riceve l'evento:
+```math
+\text{HEV\_STABILIZED}
+```
+il runtime `MUST` determinare lo stato di destinazione $q_H'$ mediante la funzione pura:
+```math
+\text{ResolveNextHumanState}(q_H, \pi_{\text{persistent}}(S).\mathcal{K}_{\text{playbook}})
+```
+Tale funzione assegna $q_H'$ allo stato corrispondente al nodo attivo in:
+```math
+\mathcal{K}_{\text{playbook}}.\text{node}_{\text{curr}}
+```
+
+È tassativamente vietato retrocedere l'utente allo stato $h_2$ (`STABILIZATION`) qualora i prerequisiti degli stati successivi risultino già soddisfatti in $V_{\text{completed}}$.
 
 ---
 
@@ -1252,7 +1270,7 @@ contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
 
 Un'implementazione esecutiva ottiene la certificazione di conformità se e solo se soddisfa i seguenti tre criteri normativi vincolanti:
 
-1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dalla suite di test normativi (`CONFORMANCE-TEST-SUITE-v4.5.3.JSON`).
+1. **Test Vector Match:** $100\%$ di corrispondenza bit-identica sugli hash generati dalla suite di test normativi (`CONFORMANCE-TEST-SUITE-v4.5.4.JSON`).
 2. **Requisito di Verifica Temporale LTL/CTL:** Formalizzazione delle proprietà logiche temporali (§9.2) con superamento degli obblighi di proof/model checking.
 3. **Totalità Matematica della Transizione:** Gestione corretta ed esaustiva di tutte le transizioni ammissibili per gli automi $M$ ed $\mathcal{H}$ tramite la funzione $\mathbf{Resolve}$
 
@@ -1446,7 +1464,7 @@ Tutti i campi numerici rappresentanti probabilità, punteggi di confidenza o ind
 ```math
 \text{Order}_{\text{SC}} := \text{UnicodeCodePointLex}
 ```
-5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry` (`completed_nodes`, `permissions`, `prerequisites`, `roles`, `scopes`), gli elementi dell'array `MUST` essere serializzati autonomamente in byte SC-JCS-1 ed ordinati in modo ascendente sulla base del confronto lexicografico byte-per-byte UTF-8 delle loro rappresentazioni canoniche.
+5. **Set Semantics Deep Bottom-Up Array Sorting:** Per tutte le chiavi registrate nel `SetSemanticsRegistry` (`completed_nodes`, `permissions`, `prerequisites`, `roles`, `scopes`, `consent_items`, `revoked_items`, `competence_records`, `vault_records`), gli elementi dell'array `MUST` essere serializzati autonomamente in byte SC-JCS-1 ed ordinati in modo ascendente sulla base del confronto lessicografico byte-per-byte UTF-8 delle loro rappresentazioni canoniche.
 6. **Invarianza Posizionale per Array Generici (Non-Set):** La sequenza logica degli elementi appartenenti ad un array non registrato nel `SetSemanticsRegistry` costituisce parte integrante della rappresentazione canonica dello stato. **È tassativamente vietata qualsiasi trasformazione semantica o strutturale che perda o modifichi l'informazione posizionale.** Il runtime è libero di adottare internamente qualsiasi struttura dati o rappresentazione in memoria, a condizione che la fase di serializzazione canonica ricostruisca senza alterazioni l'esatta sequenza logica originale.
 
 ---
@@ -1458,7 +1476,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica $
 ```json
 {
   "automaton_id": "SCINTILLA_RUNTIME_SAFETY_AUTOMATON",
-  "specification_version": "4.5.3-CANDIDATE",
+  "specification_version": "4.5.4-CANDIDATE",
   "states": [
     "NORMAL",
     "REQUIRE_RECALIBRATION",
@@ -1517,7 +1535,6 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica $
     {"from": "OPERATOR_REQUIRED", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "OPERATOR_REQUIRED", "event": "*", "to": "OPERATOR_REQUIRED"},
 
-    {"from": "SECURITY_LOCKDOWN", "event": "EV_OVERRIDE", "to": "NORMAL"},
     {"from": "SECURITY_LOCKDOWN", "event": "EV_REPAIR", "to": "NORMAL"},
     {"from": "SECURITY_LOCKDOWN", "event": "EV_TIMEOUT", "to": "SAFE_READ_ONLY_MODE"},
     {"from": "SECURITY_LOCKDOWN", "event": "*", "to": "SECURITY_LOCKDOWN"},
@@ -1545,7 +1562,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
 ```json
 {
   "automaton_id": "SCINTILLA_HUMAN_JOURNEY_AUTOMATON",
-  "specification_version": "4.5.3-APPROVED",
+  "specification_version": "4.5.4-APPROVED",
   "states": [
     "UNASSESSED",
     "INITIAL_ASSESSMENT",
@@ -1611,7 +1628,7 @@ Il seguente contratto JSON definisce la funzione di transizione deterministica d
 
 ### 11.1 Assiomatizzazione dei Test Vectors e Conformance Suite
 
-I Test Vector concreti per la certificazione di conformità dello Standard Reference Profile 1 sono formalmente definiti nell'artefatto normativo esterno: **`CONFORMANCE-TEST-SUITE-v4.5.3.JSON`**.
+I Test Vector concreti per la certificazione di conformità dello Standard Reference Profile 1 sono formalmente definiti nell'artefatto normativo esterno: **`CONFORMANCE-TEST-SUITE-v4.5.4.JSON`**.
 
 La suite di test comprende tre categorie di vettori:
 1. **Positive Path Vectors:** Oggetti JSON di input e relative stringhe di byte canonizzate SC-JCS-1 con digest SHA-256 attesi.
@@ -1627,11 +1644,11 @@ La suite di test comprende tre categorie di vettori:
 
 ### 12.1 Stato Normativo del Documento
 
-La presente **SCINTILLA Core CANONICAL SPECIFICATION v4.5.3 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA Core.
+La presente **SCINTILLA Core CANONICAL SPECIFICATION v4.5.4 Candidate Canonical Standard Edition** definisce la specifica normativa canonica e completa del dominio SCINTILLA Core.
 
 Lo stato corrente del documento è:
 
-**SPECIFICATION-AUDITED & FORMALIZATION-READY — Candidate Canonical Standard Edition (v4.5.3)**
+**SPECIFICATION-AUDITED & FORMALIZATION-READY — Candidate Canonical Standard Edition (v4.5.4)**
 
 La struttura formale è definita, esente da contraddizioni interne e pronta per la fase di formalizzazione via prover e sviluppo dell'implementazione di riferimento.
 
@@ -1644,7 +1661,7 @@ Ogni runtime conforme `MUST` esportare nei propri metadati di governance la stru
 ```json
 {
   "governance_conformance": {
-    "conformance_suite_id": "SC-SUITE-v4.5.3-DIGEST-a8f3b29c",
+    "conformance_suite_id": "SC-SUITE-v4.5.4-DIGEST-a8f3b29c",
     "runtime_attestation": {
       "runtime_artifact_digest": "SHA256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "compiler_fingerprint": "RUSTC-1.78.0-NIGHTLY-2024",
@@ -1720,7 +1737,7 @@ export interface ExecutionEnvelope {
 }
 
 export interface RuntimeProfile {
-  semantic_profile: string; // es. "SCINTILLA-SOS-v4.5.3"
+  semantic_profile: string; // es. "SCINTILLA-SOS-v4.5.4"
   schema_profile: string;   // es. "SCHEMA-SC-v10.3"
   canonicalization_profile: string; // es. "SC-JCS-1"
   policy_profile: string;   // es. "POLICY-BUNDLE-v1.2"
@@ -1862,6 +1879,21 @@ Il Policy Guidance Engine (Livello 2) applica una verifica semantica vincolante 
 
 ---
 
-**SCINTILLA Core v4.5.3 CANDIDATE CANONICAL STANDARD EDITION**
+## ANNEX D: FORWARD DECLARATIONS & SYMBOL REGISTRY (LAYER A / INFORMATIVO)
+
+Al fine di garantire la risoluzione topologica dei simboli per i formalizzatori matematici e per i sistemi di verifica formale (Coq, Lean 4, TLA+), la seguente tabella mappa la dichiarazione ed il dominio di appartenenza dei simboli primitivi utilizzati nella specifica:
+
+| Simbolo Formale | Dominio di appartenenza / Firma algebrica | Descrizione sintetica | Definizione primario |
+| :--- | :--- | :--- | :--- |
+| `P(L)` | `Ledger -> State` | Funzione di Proiezione dal Ledger allo Stato | Capitolo 1.4.4 |
+| `delta_nominal` | `(State, Transaction) -> State` | Transizione pura in assenza di errori di validazione | Capitolo 1.6.3 |
+| `delta_err` | `(State, Transaction, Error) -> State` | Transizione pura di gestione dell'errore applicativo | Capitolo 1.6.3 |
+| `R_exec` | `(State, Transaction) -> {ALLOW, DENY, RECALIBRATE}` | Predicato esecutivo puro del Policy Guidance Engine | Capitolo 4.1 |
+| `DecisionProof` | `ByteString` | Impronta crittografica di attestazione della decisione | Capitolo 2.1 |
+| `SMLOutcome` | `Enum` | Esito conversazionale sintattico decodificato | Capitolo 1.1.2 & C.1 |
+
+---
+
+**SCINTILLA Core v4.5.4 CANDIDATE CANONICAL STANDARD EDITION**
 * **Coverage:** Chapters 0–12 & Annexes A–C Fully Emitted
 * **Governance Authority:** Single Source of Truth for SCINTILLA Core Domain
