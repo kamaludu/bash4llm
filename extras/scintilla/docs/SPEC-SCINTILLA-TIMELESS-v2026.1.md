@@ -826,7 +826,10 @@ Quando l'automa del percorso umano si trova nello stato q_H = HUMAN_PAUSED e giu
 
 #### 3.4.2 Meta-Regola SOS di Timeout ed Inattività Umana (SOS-HUMAN-TIMEOUT)
 
-Quando l'automa umano si trova in q_H = HUMAN_PAUSED ed il tempo di permanenza supera la soglia parametrizzata $\theta_{\text{inactivity\_timeout}}$:
+Quando l'automa umano si trova in q_H = HUMAN_PAUSED ed il tempo di permanenza supera la soglia parametrizzata 
+```math
+\theta_{\text{inactivity\_timeout}}
+```
 
 ```math
 \frac{q_H = \text{HUMAN\_PAUSED} \quad (E.t_{\text{wall}} - t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad t_{\text{timeout}} = \text{BuildSystemTx}(S, E, \text{HEV\_RECALIBRATION\_REQ})}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t_{\text{timeout}}}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t_{\text{timeout}}, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
