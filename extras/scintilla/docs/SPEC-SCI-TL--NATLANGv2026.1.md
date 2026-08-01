@@ -1113,3 +1113,22 @@ Il modello di consistenza per cui le operazioni su un registro distribuito appai
 Una transizione di un automa a stati finiti in cui l'arrivo di un evento lascia il sistema esattamente nel medesimo stato in cui si trovava, senza produrre alcuna modifica o effetto collaterale.
 
 ---
+
+***Normative Information***  
+
+**Author:** Cristian Evangelisti  
+**Contact:** `opensource@cevangel.anonaddy.me`  
+The Author is responsible for the definition, maintenance, and publication of this normative specification.  
+
+***Copyright and License***  
+Copyright © 2026 Cristian Evangelisti.  
+This specification is distributed under the terms of the **GNU Free Documentation License (GNU FDL)**, Version 1.3 or any later version published by the Free Software Foundation; with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.  
+A copy of the license is available at: https://www.gnu.org/licenses/fdl-1.3.html  
+[License Information](https://www.gnu.org/licenses/fdl)  
+
+***AI-Assisted Development***  
+This specification was developed through an iterative process of analysis, design, review, and refinement assisted by Generative Artificial Intelligence systems (Large Language Models - LLMs). These systems were used exclusively as support tools for document design, review, formalization, and editing.  
+All content within this specification has been selected, verified, modified where necessary, and explicitly approved by the Author. Artificial Intelligence systems possess no normative authority, do not determine the content of the specification, do not hold the role of author or co-author, and assume no editorial, technical, or regulatory liability regarding this document. The Author retains full responsibility for the content, consistency, correctness, and evolution of this specification.  
+
+***Compatibility and Versioning***  
+Unless otherwise indicated, compatibility between different versions of this specification is not implied. Every implementation must explicitly declare the version of the specification with which it complies.  
