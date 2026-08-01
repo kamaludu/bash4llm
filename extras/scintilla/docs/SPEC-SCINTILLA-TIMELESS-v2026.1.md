@@ -1693,12 +1693,32 @@ export type BasisPoints = SafeInteger; // Interval closed intero [0, 10000]
 ### A.2 Reference TypeScript Helper Implementation
 
 ```typescript
-// Funzione di utilità di riferimento per la validazione a runtime degli interi sicuri
+// 1. Validazione a runtime degli interi sicuri a 64-bit (Capitolo 10.2)
 export function parseSafeInteger(v: number): SafeInteger {
   if (!Number.isInteger(v) || v < -9007199254740991 || v > 9007199254740991) {
     throw new Error("ERR_CONFIGURATION_MALFORMED (Code 85): Number is not a safe integer");
   }
   return v as SafeInteger;
+}
+
+// 2. Validazione e saturazione dell'intervallo Basis Points [0, 10000] (Capitolo 1.7.3)
+export function parseBasisPoints(v: number): BasisPoints {
+  const safe = parseSafeInteger(v);
+  if (safe < 0 || safe > 10000) {
+    throw new Error("ERR_CONFIGURATION_MALFORMED (Code 85): BasisPoints must be in range [0, 10000]");
+  }
+  return safe as BasisPoints;
+}
+
+// 3. Decodifica pura da SMLDocumentParsed a Evento dell'Automa Umano (Capitolo 4.4)
+export function mapSMLToFSMEvent(doc: SMLDocumentParsed): string {
+  if (doc.conversation_outcome === "OVERWHELMED") return "HEV_EMOTIONAL_OVERWHELM";
+  if (doc.conversation_outcome === "NEEDS_REPHRASING") return "HEV_RECALIBRATION_REQ";
+  if (doc.conversation_outcome === "DECLINED_ACTION") return "HEV_PAUSE_REQUESTED";
+  if (doc.conversation_outcome === "ASKED_FOR_HELP") return "HEV_PREVENTIVE_SUPPORT_REQ";
+  if (doc.proposed_transition !== "NONE" && doc.evidence_type === "DOCUMENT") return "HEV_DOCS_OBTAINED";
+  if (doc.proposed_transition !== "NONE" && doc.conversation_outcome === "MOTIVATED") return "HEV_STABILIZED";
+  return "NONE";
 }
 ```
 
