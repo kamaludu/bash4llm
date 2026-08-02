@@ -597,64 +597,52 @@ L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Poi
 
 #### 1.7.2 Definizione Normativa di Invarianza per Stati Non-Attivi (Layer B1)
 
-```math
-\mathbf{DEF-AGI-PAUSED-STATE-INVARIANCE}
+```text
+DEF-AGI-PAUSED-STATE-INVARIANCE
 ```
 
-```math
-\forall S_N \in \mathcal{S}, \quad \text{AGI}_{\text{proxy}}(S_N) := \begin{cases}
-\text{AGI}_{\text{proxy}}(S_{N-1}) & \text{se } q_H(S_N) \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \} \\
-\text{AGI}_{\text{computed}}(S_N) & \text{se } q_H(S_N) \notin \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}
-\end{cases}
+```text
+∀ S_N ∈ S,  AGI_proxy(S_N) := 
+    AGI_proxy(S_N-1)  se q_H(S_N) ∈ { HUMAN_PAUSED, HUMAN_DECLINED_ASSISTANCE }
+    AGI_computed(S_N) se q_H(S_N) ∉ { HUMAN_PAUSED, HUMAN_DECLINED_ASSISTANCE }
 ```
 
 #### 1.7.3 Calcolo Deterministico dell'AGI in Aritmetica Intera Sicura (Layer A / RFC-003)
 
-Per tutti gli stati attivi, 
-```math
-\text{AGI}_{\text{computed}}(S) \in [0, 10000]
-```
-è calcolato unicamente in aritmetica intera sicura a 64 bit $I_{\text{safe}}$ con saturazione dei contatori a $10^6$ ed operatore di troncamento $\lfloor \dots \rfloor$:
+Per tutti gli stati attivi, AGI_computed(S) ∈ [0, 10000] è calcolato unicamente in aritmetica intera sicura a 64 bit I_safe con saturazione dei contatori a 10⁶ ed operatore di troncamento ⌊ ... ⌋:
 
-```math
-\text{AGI}_{\text{computed}}(S) := \left\lfloor \frac{w_1 \cdot \text{ClarityScore}_{\text{bp}}(S) + w_2 \cdot \text{ActionExecutionRatio}_{\text{bp}}(S) + w_3 \cdot \text{DependencyReductionScore}_{\text{bp}}(S)}{10000} \right\rfloor
+```text
+AGI_computed(S) := ⌊ (w1 · ClarityScore_bp(S) + w2 · ActionExecutionRatio_bp(S) + w3 · DependencyReductionScore_bp(S)) / 10000 ⌋
 ```
-where $w_1, w_2, w_3 \in [0, 10000]$ sono interi tali che $w_1 + w_2 + w_3 = 10000$.
+dove w1, w2, w3 ∈ [0, 10000] sono interi tali che w1 + w2 + w3 = 10000.
 
 1. **ClarityScore in Basis Points:**
 
-```math
-\text{ClarityScore}_{\text{bp}}(S) := \begin{cases}
-10000 & \text{se } c_{\text{interaction}} = 0 \\
-\max\left(0, \ 10000 - \left\lfloor \frac{(c_{\text{rephrase}} + c_{\text{ambiguity}} + 2 \cdot c_{\text{overwhelm}}) \times 10000}{\max(1, c_{\text{interaction}})} \right\rfloor \right) & \text{se } c_{\text{interaction}} > 0
-\end{cases}
+```text
+ClarityScore_bp(S) :=
+    10000                                                                     se c_interaction = 0
+    max(0, 10000 - ⌊ ((c_rephrase + c_ambiguity + 2 · c_overwhelm) · 10000) / max(1, c_interaction) ⌋)  se c_interaction > 0
 ```
 
 2. **ActionExecutionRatio in Basis Points:**
 
-```math
-\text{ActionExecutionRatio}_{\text{bp}}(S) := \begin{cases}
-0 & \text{se } \text{pb}_{\text{id}} = \text{null} \lor |V_P| = 0 \\
-\left\lfloor \frac{|\{ \text{id} \in V_{\text{completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \}| \times 10000}{|V_P|} \right\rfloor & \text{se } \text{pb}_{\text{id}} \neq \text{null} \land |V_P| > 0
-\end{cases}
+```text
+ActionExecutionRatio_bp(S) :=
+    0                                                                         se pb_id = null ∨ |V_P| = 0
+    ⌊ (|{ id ∈ V_completed | ∃ v ∈ G_P.V_P t.c. v.node_id = id }| · 10000) / |V_P| ⌋  se pb_id ≠ null ∧ |V_P| > 0
 ```
 
 3. **DependencyReductionScore in Basis Points (RFC-003):**
 
-```math
-\text{DependencyReductionScore}_{\text{bp}}(S) := \begin{cases}
-0 & \text{se } |V_{\text{active\_completed}}| = 0 \\
-\left\lfloor \frac{|\{ \text{id} \in V_{\text{active\_completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \land \text{IsEmpoweredAction}(v, S) \}| \times 10000}{|V_{\text{active\_completed}}|} \right\rfloor & \text{se } |V_{\text{active\_completed}}| > 0
-\end{cases}
+```text
+DependencyReductionScore_bp(S) :=
+    0                                                                         se |V_active_completed| = 0
+    ⌊ (|{ id ∈ V_active_completed | ∃ v ∈ G_P.V_P t.c. v.node_id = id ∧ IsEmpoweredAction(v, S) }| · 10000) / |V_active_completed| ⌋  se |V_active_completed| > 0
 ```
-dove
-```math
-V_{\text{active\_completed}} = V_{\text{completed}} \cap \{v.\text{node\_id} \mid v \in G_P.V_P\}
-```
-ed il predicato booleano puro $\text{IsEmpoweredAction}(v, S)$ è formalizzato come:
+dove V_active_completed = V_completed ∩ {v.node_id | v ∈ G_P.V_P}, ed il predicato booleano puro IsEmpoweredAction(v, S) è formalizzato come:
 
-```math
-\text{IsEmpoweredAction}(v, S) \iff \left( v.\text{action\_type} \in \{\text{USER\_CONFIRMED\_STEP}, \text{REQUIRED\_FOR\_SYSTEM\_STATE}\} \land v.\text{gained\_skill} \neq \text{null} \right)
+```text
+IsEmpoweredAction(v, S) ⇔ ( v.action_type ∈ {USER_CONFIRMED_STEP, REQUIRED_FOR_SYSTEM_STATE} ∧ v.gained_skill ≠ null )
 ```
 
 ---
