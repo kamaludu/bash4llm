@@ -302,6 +302,7 @@ ed è normatively ordinata come:
 La mutazione deterministica della tupla:
 ```math
 \mathcal{M}_{\text{metrics}}' = \text{UpdateMetrics}(\mathcal{M}_{\text{metrics}}, t.\text{event}, \text{SMLOutcome})
+```
 è regolata dalle seguenti regole di incremento applicate da $\text{ApplyValidated}$:
 1. $c_{\text{interaction}}$ si incrementa di $+1$ per ogni transazione valida $t$ elaborata con esito `PASS`.
 2. $c_{\text{rephrase}}$ si incrementa di $+1$ quando l'esito conversazionale SML è `NEEDS_REPHRASING`.
