@@ -1,3 +1,57 @@
+# CAPITOLO 5: EMANCIPATION PLAYBOOK ENGINE
+## (Layer A & Layer B2)
+
+---
+
+### 5.1 Struttura del Grafo del Playbook (Layer A)
+
+Un **Emancipation Playbook** è formalizzato come un grafo orientato ed etichettato:
+
+```math
+G_P := (V_P, E_P, C_P)
+```
+
+* $V_P$: Insieme dei Nodi di Micro-Azione ($v \in V_P$).
+* $E_P \subseteq V_P \times V_P$: Archi diretti rappresentanti la sequenza logica di progressione.
+* $C_P$: Insieme delle Condizioni di Verificabilità, dove ogni elemento $c \in C_P$ è un predicato booleano puro $c: \mathcal{S} \to \{ \text{True}, \text{False} \}$.
+
+---
+
+### 5.2 Tipizzazione dei Nodi Playbook (Layer B2)
+
+Ogni nodo $v \in V_P$ `MUST` appartenere ad una delle seguenti categorie formali:
+
+1. **`INFORMATION`:** Nodo a contenuto puramente informativo o educativo. Non richiede azioni o conferme per il proseguimento.
+2. **`OPTIONAL_STEP`:** Micro-passo suggerito per ottimizzare il percorso, saltabile dall'utente senza alcun blocco del flusso.
+3. **`USER_CONFIRMED_STEP`:** Micro-passo che richiede il consenso o la conferma esplicita dell'utente prima di essere marcato come completato.
+4. **`REQUIRED_FOR_SYSTEM_STATE`:** Prerequisito tecnico o legale bloccante. Solo i nodi appartenenti a questa categoria possono condizionare le transizioni dell'automa di sicurezza $M$.
+
+---
+
+### 5.3 Invarianti di Esecuzione e Tracking dello Stato Playbook (Layer A & Layer B2)
+
+#### 5.3.1 Invariante di Aciclicità Locale sui Nodi Bloccanti (`INV-PLAYBOOK-GRAPH-01`) (Layer A & B2)
+Il sotto-grafo formato dai soli nodi tipizzati `REQUIRED_FOR_SYSTEM_STATE` `MUST` essere uno Strict Directed Acyclic Graph (DAG).
+
+```math
+\mathbf{INV-PLAYBOOK-GRAPH-01} := \text{IsAcyclic}(G_P \vert_{\text{REQUIRED\_FOR\_SYSTEM\_STATE}}) = \text{TRUE}
+```
+La rilevazione di cicli sui nodi bloccanti determina il rifiuto immediato del caricamento del Playbook ed il sollevamento del **Runtime Error Code 83 (`ERR_GRAPH_CYCLE_DETECTED`)**.
+
+#### 5.3.2 Durata Parametrizzata dei Micro-Passi (Layer B2)
+La durata stimata di una micro-azione non può superare il valore definito dal parametro di policy:
+```math
+\theta_{\text{max\_duration}} \in \Theta
+```
+
+#### 5.3.3 Tracciamento dello Stato di Avanzamento (Layer A)
+Ogni avanzamento nel grafo $G_P$ `MUST` aggiornare la componente $\mathcal{K}_{\text{playbook}}$ nello stato $\mathcal{S}$, dove:
+```math
+\mathcal{K}_{\text{playbook}} := \langle \text{pb}_{\text{id}}, \text{node}_{\text{curr}}, V_{\text{completed}} \rangle \in (\mathcal{I} \cup \{\text{null}\}) \times (\mathcal{I} \cup \{\text{null}\}) \times \mathcal{P}(\mathcal{I})
+```
+
+---
+
 # CAPITOLO 6: TASSONOMIA DELLE VERSIONI ED ALGEBRA DI COMPATIBILITÀ
 ## (Layer A & Layer B2)
 
