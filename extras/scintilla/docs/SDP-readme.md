@@ -1,4 +1,4 @@
-[SDP](SDP-PDA.md)
+**[Scintilla Development Protocol](SDP-PDA.md)**
 
 # Usare ✴ Scintilla Development Protocol (SDP)
 
