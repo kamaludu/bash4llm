@@ -1,3 +1,138 @@
+# CAPITOLO 4: POLICY GUIDANCE ENGINE & STRATIFICAZIONE DELLE POLICY
+## (Layer A & Layer B2)
+
+---
+
+### 4.1 Stratificazione delle Policy in 3 Livelli
+
+Per impedire l'esecuzionalità diretta di regole espresse in linguaggio naturale o soggette ad ambiguità interpretativa, il Policy Guidance Engine adotta una stratificazione rigorosa su tre livelli di astrazione:
+
+1. **Policy Specification Layer (Livello Normativo Umano):** Testo normativo, principi etici e linee guida operative espresse in linguaggio naturale controllato per gli operatori umani.
+2. **Policy Compilation Layer (Livello di Compilazione):** Processo di traduzione automatizzata e validata che trasforma le specifiche normative in predicati formali e insiemi di parametri $\Theta$.
+3. **Executable Policy Predicate Layer (Livello Esecutivo Puro):** Il codice o byte-code deterministico derivato:
+```math
+\mathcal{R}_{\text{exec}} : \mathcal{S} \times T \longrightarrow \{ \text{ALLOW}, \text{DENY}, \text{RECALIBRATE} \}
+```
+l'unico direttamente eseguibile dal runtime al Livello 2.
+
+---
+
+### 4.2 Definizione Algebrica del Policy Bundle (Layer A)
+
+Un `PolicyBundle` $\mathcal{P}$ è formalizzato come la tupla algebrica:
+
+```math
+\mathcal{P} := \left\langle \text{PolicyID}, \text{Version}, \Theta, \mathcal{R}_{\text{exec}}, \text{Sig}_\mathcal{P} \right\rangle
+```
+
+* $\text{PolicyID} \in \mathcal{I}$: Identificatore unico della policy (UUIDv7).
+* $\text{Version} \in V$: Versione della policy nello Spazio delle Versioni $V$ (§6.1).
+* $\Theta$: Lo spazio dei parametri di configurazione e soglie, es. 
+```math
+\theta_{\text{duration}}, \theta_{\text{confidence}}, \theta_{\text{max\_clock\_skew}}
+```
+
+* $\mathcal{R}_{\text{exec}}$: Predicato esecutivo puro valutato sullo stato e sulla transazione.
+* $\text{Sig}_\mathcal{P}$: La firma crittografica dell'autorità di policy emittente calcolata su $\text{Canon}(\mathcal{P})$.
+
+---
+
+### 4.3 Composizione di Policy e Regola di Versione Composita (Layer A & B2)
+
+L'operatore di composizione algebrica $\oplus$ produce il bundle composito $\mathcal{P}_{\text{comp}} = \mathcal{P}_1 \oplus \mathcal{P}_2$ mediante la funzione esplicita $\text{ComposePolicy}$:
+
+```math
+\text{ComposePolicy}(\mathcal{P}_1, \mathcal{P}_2) := \left\langle \text{PolicyID}_{\text{comp}}, \text{CompositePolicyVersion}, \text{CompositePolicyDigest}, \Theta_1 \cup \Theta_2, \mathcal{R}_{\text{exec, comp}}, \text{Sig}_{\text{comp}} \right\rangle
+```
+
+1. **Impronta Crittografica Composita (Content-Addressed Binary Digest):**
+   L'identità immutabile del bundle composito è determinata dalla concatenazione binaria esplicita dei due digest a 256 bit disposti in ordine lessicografico non codificato:
+```math
+\text{CompositePolicyDigest} := \text{SHA256}\left( A_{\text{sorted}} \mathbin{\Vert} B_{\text{sorted}} \right)
+```
+dove $A_{\text{sorted}}$ e $B_{\text{sorted}}$ sono i due array di 32 byte binari ordinati secondo la relazione:
+```math
+A_{\text{sorted}} \le B_{\text{sorted}} \iff \text{ByteLexicographicalCompare}(A, B) \le 0
+```
+
+2. **Requisito Normativo di Assegnazione Versione Composita (`REQ-POLICY-SEMVER-DERIVATION`) (Layer B2):**
+   La versione formale $\text{CompositePolicyVersion} \in V$ segue la convenzione di dominio definita per segnalare incompatibilità tra bundle eterogenei:
+```math
+\text{CompositePolicyVersion} := \begin{cases}
+v_2 & \text{se } v_1 \preceq_{\text{compat}} v_2 \\
+v_1 & \text{se } v_2 \preceq_{\text{compat}} v_1 \\
+\langle \max(M_1, M_2) + 1, \ 0, \ 0 \rangle & \text{se } v_1 \text{ e } v_2 \text{ sono incompatibili } (M_1 \neq M_2)
+\end{cases}
+```
+
+3. **Valutazione Composita Disgiunta (`DENY-OVERRIDES`):**
+   La funzione di valutazione esecutiva composita $\mathcal{R}_{\text{exec, comp}}(S, t)$ è governata dalla regola disgiunta conservativa:
+```math
+\mathcal{R}_{\text{exec, comp}}(S, t) = \begin{cases}
+\text{DENY} & \text{se } \mathcal{R}_{\text{exec}, 1}(S, t) = \text{DENY} \lor \mathcal{R}_{\text{exec}, 2}(S, t) = \text{DENY} \\
+\text{RECALIBRATE} & \text{se } (\mathcal{R}_{\text{exec}, 1}(S, t) = \text{RECALIBRATE} \lor \mathcal{R}_{\text{exec}, 2}(S, t) = \text{RECALIBRATE}) \\
+& \quad \land \mathcal{R}_{\text{exec}, 1}(S, t) \neq \text{DENY} \land \mathcal{R}_{\text{exec}, 2}(S, t) \neq \text{DENY} \\
+\text{ALLOW} & \text{se } \mathcal{R}_{\text{exec}, 1}(S, t) = \text{ALLOW} \land \mathcal{R}_{\text{exec}, 2}(S, t) = \text{ALLOW}
+\end{cases}
+```
+
+---
+
+### 4.4 Decodifica Deterministica Input SML v2.0 in Evento Umano (Layer A & B2)
+
+Per eliminare l'ambiguità tra i suggerimenti linguistici generati dal Livello 5 (LLM) e gli eventi accettati dal runtime (Livello 3/1), il Livello 4 applica la funzione pura di decodifica deterministica $\text{MapSMLToFSMEvent}$.
+
+La funzione mappa tutti gli esiti conversazionali SML v2.0 definiti nella sintassi sintattica (§C.1) agli eventi esecutivi dell'automa umano $\Sigma_H \cup \{ \text{NONE} \}$:
+
+```math
+\text{MapSMLToFSMEvent} : \text{SMLDocumentParsed} \longrightarrow \Sigma_H \cup \{ \text{NONE} \}
+```
+
+```math
+\text{MapSMLToFSMEvent}(d) := \begin{cases}
+\text{HEV\_EMOTIONAL\_OVERWHELM} & \text{se } d.\text{conversation\_outcome} = \text{OVERWHELMED} \\
+\text{HEV\_RECALIBRATION\_REQ} & \text{se } d.\text{conversation\_outcome} = \text{NEEDS\_REPHRASING} \\
+\text{HEV\_PAUSE\_REQUESTED} & \text{se } d.\text{conversation\_outcome} = \text{DECLINED\_ACTION} \\
+\text{HEV\_PREVENTIVE\_SUPPORT\_REQ} & \text{se } d.\text{conversation\_outcome} = \text{ASKED\_FOR\_HELP} \\
+\text{HEV\_DOCS\_OBTAINED} & \text{se } d.\text{proposed\_transition} \neq \text{"NONE"} \land d.\text{evidence\_type} = \text{DOCUMENT} \\
+\text{HEV\_STABILIZED} & \text{se } d.\text{proposed\_transition} \neq \text{"NONE"} \land d.\text{conversation\_outcome} = \text{MOTIVATED} \\
+\text{NONE} & \text{in qualsiasi altro caso (compreso } d.\text{conversation\_outcome} = \text{UNDERSTOOD})
+\end{cases}
+```
+
+---
+
+### 4.5 Tassonomia della Guida ed Ergonomia Cognitiva (Layer B2)
+
+Al fine di ridurre lo stress ed il carico cognitivo dell'utente vulnerabile senza usurparne la sovranità decisionale, il sistema definisce tre livelli formali di guida comunicativa:
+
+1. **Direttiva Autoritativa (Authoritative Directive):** Formulazione prescrittiva ammessa **esclusivamente** in condizioni di imminente rischio per la sicurezza o situazioni di emergenza acuta (`PROFESSIONAL_INTERVENTION_REQUIRED`).
+2. **Raccomandazione Motivata e Contestualizzata (Motivated Recommendation):** Formulazione consigliata che propone un percorso operativo riducendo il carico cognitivo. La raccomandazione `MUST` esplicitare la motivazione, il grado di certezza ed essere immediatamente revocabile o modificabile dall'utente (`USER_CONFIRMED_STEP`).
+3. **Opzione Esplorativa (Exploratory Option):** Presentazione neutrale di alternative multiple, indicata quando l'utente si trova in uno stato di stabilità emotiva e desidera confrontare autonomamente le possibilità.
+
+#### 4.5.1 Regola di Non-Pregiudizio sul Rifiuto dei Suggerimenti (`RULE-COMMUNITY-REFERRAL-NON-PREJUDICE-01`)
+
+```math
+\forall S_1, S_2 \in \mathcal{S}, \ \text{se } S_2 = \text{ApplyValidated}(S_1, t, \text{PASS}) \text{ con } \text{event}(t) \in \{\text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL}\} \implies \text{Capabilities}(\text{Obs}(S_2)) = \text{Capabilities}(\text{Obs}(S_1))
+```
+
+1. **Invarianza della Proiezione Osservabile:** La ricezione di un evento di rifiuto o rinvio relativo a un suggerimento di collegamento con servizi esterni o comunità reali `SHALL NOT` ridurre l'insieme delle autorizzazioni, dei diritti e delle capacità rese osservabili dalla funzione $\text{Obs}(S)$.
+2. **Divieto di Ultimatum:** Nessun nodo del grafo di Playbook $G_P$ `SHALL` condizionare il proseguimento del percorso all'accettazione di interazioni esterne, salvo nei casi in cui tali interazioni costituiscano un prerequisito tecnico o legale esplicitamente tipizzato come `REQUIRED_FOR_SYSTEM_STATE`.
+
+---
+
+### 4.6 Filosofia Normativa dell'Intervento Umano (Human Override) (Layer B2)
+
+L'intervento di un operatore umano (`OPERATOR`) costituisce un meccanismo di garanzia e supporto e `MUST` conformarsi ai seguenti 5 principi normativi inderogabili:
+
+1. **Tracciabilità Assoluta:** Ogni azione di override `MUST` generare una transizione registrata sul Ledger $\mathcal{L}$ recante l'identificativo dell'operatore.
+2. **Autenticazione Forte:** L'override richiede una firma digitale valida ed il possesso del permesso `SC.PERMISSION.OPERATOR_OVERRIDE`.
+3. **Spiegabilità Obbligatoria:** Ogni intervento `MUST` includere la motivazione esplicita in formato testuale non vuoto.
+4. **Inalterabilità Storica:** L'override modifica unicamente lo stato proiettato corrente $S_N$, ma `SHALL NOT` alterare o elidere le transizioni storiche precedenti.
+5. **Rispetto del Consenso:** L'operatore `SHALL NOT` forzare l'esecuzione di azioni in violazione del consenso espresso dall'utente, salvo nei casi previsti dal livello HOBM `PROFESSIONAL_INTERVENTION_REQUIRED`.
+
+---
+
 # CAPITOLO 5: EMANCIPATION PLAYBOOK ENGINE
 ## (Layer A & Layer B2)
 
