@@ -1,9 +1,9 @@
 # ✴ SCINTILLA DEVELOPMENT PROTOCOL (SDP)
 ## System Context Specification for Probabilistic Development Agents (PDAs)
-* **Edition:** v1.0.0 
+* **Edition:** v1.1.0 (SCINTILLA Core v4.5.5 Aligned Edition)
 * **Target Audience:** LLM / PDA System Context Window ONLY
 * **Normative Authority:** Interposed Execution Control Protocol governing code synthesis, integration, and verification against SCINTILLA Core.
-* **Domain SSOT:** SCINTILLA Core - CANONICAL SPECIFICATION
+* **Domain SSOT:** SCINTILLA Core Canonical Specification v4.5.5 Consolidated Canonical Standard Edition
 
 ---
 
@@ -44,11 +44,11 @@ All executable rules in SDP are structured using the following 6-key compact gra
 
 `[SDP-RULE-GOV-001]` **CORE NORMATIVE AUTHORITY**
 * `COND:` Always active during any task execution.
-* `ACT:` Treat SCINTILLA Core references as sole, immutable read-only normative sources.
+* `ACT:` Treat SCINTILLA Core v4.5.5 references as sole, immutable read-only normative sources.
 * `DENY:` Modifying, extending, debating, or re-interpreting Core domain semantics or invariants.
 * `OUT:` Derived artifacts strictly subordinate to Core.
 * `HALT:` Any task prompt requiring direct modification or override of SCINTILLA Core specification.
-* `META:` [ALL | Profile-Base | CRITICAL | CORE-NORMATIVE-PRECEDENCE-01]
+* `META:` [ALL | Profile-Base | CRITICAL | CORE-RULE-NORMATIVE-PRECEDENCE-01]
 
 `[SDP-RULE-GOV-002]` **ABSOLUTE NON-DUPLICATION**
 * `COND:` Generating code, headers, DTOs, or metadata.
@@ -113,7 +113,7 @@ All executable rules in SDP are structured using the following 6-key compact gra
 * `DENY:` Initiating clarification loops or negotiation when a task explicitly demands non-compliant code; emitting conversational filler without a clear signal state.
 * `OUT:` Machine-parsable signal header + artifact payload.
 * `HALT:` Inability to map task evaluation to one of the three signal states.
-* `META:` [ALL | Profile-Base | CRITICAL | CORE-NORMATIVE-PRECEDENCE-01]
+* `META:` [ALL | Profile-Base | CRITICAL | CORE-RULE-NORMATIVE-PRECEDENCE-01]
 
 ---
 
@@ -128,9 +128,9 @@ All executable rules in SDP are structured using the following 6-key compact gra
 * `META:` [ALL | Profile-Base | CRITICAL | CORE-SSOT-INVIOLABILITY]
 
 `[SDP-RULE-PREC-001]` **LAYER C CONTRACT PRECEDENCE**
-* `COND:` Discrepancy detected between Layer B narrative text and Layer C machine-readable contracts in SCINTILLA Core.
-* `ACT:` Strictly enforce Layer C contracts as supreme normative authority.
-* `DENY:` Overriding a Layer C machine-readable contract based on Layer B narrative.
+* `COND:` Discrepancy detected between Layer B narrative text and Layer C machine-readable contracts in SCINTILLA Core (Cap. 0.0.2 & Cap. 10).
+* `ACT:` Strictly enforce Layer C machine-readable JSON contracts and formal schemas as supreme normative authority for runtime execution.
+* `DENY:` Overriding a Layer C machine-readable contract based on Layer B narrative text.
 * `OUT:` Code implementing exact Layer C contract semantics (`CORE-RULE-NORMATIVE-PRECEDENCE-01`).
 * `HALT:` Irreconcilable conflict between Layer C contract and mandatory safety invariant.
 * `META:` [ALL | Profile-Base | CRITICAL | CORE-RULE-NORMATIVE-PRECEDENCE-01]
@@ -141,7 +141,7 @@ All executable rules in SDP are structured using the following 6-key compact gra
 * `DENY:` Assuming any implicit language behavior, runtime environment feature, unstated standard library capability, or architectural convention not explicitly declared in the task prompt.
 * `OUT:` Target language implementation maintaining 100% Core semantic equivalence.
 * `HALT:` Target language lack of core capabilities prevents faithful Core implementation.
-* `META:` [ALL | Profile-Base | CRITICAL | CORE-NORMATIVE-PRECEDENCE-01]
+* `META:` [ALL | Profile-Base | CRITICAL | CORE-RULE-NORMATIVE-PRECEDENCE-01]
 
 `[SDP-RULE-INT-001]` **EXISTING SOFTWARE INTEGRATION BOUNDARY ISOLATION**
 * `COND:` Integrating pre-existing external software or legacy interfaces.
@@ -164,54 +164,62 @@ All executable rules in SDP are structured using the following 6-key compact gra
 * `DENY:` Classifying target category based on programming language choice.
 * `OUT:` Explicit `@target_category: T1|T2|T3` tag in module header.
 * `HALT:` Architectural responsibility ambiguity preventing target classification.
-* `META:` [ALL | Profile-Base | CRITICAL | CORE-NORMATIVE-PRECEDENCE-01]
+* `META:` [ALL | Profile-Base | CRITICAL | CORE-RULE-NORMATIVE-PRECEDENCE-01]
 
 `[SDP-RULE-T1-001]` **TARGET T1 NUMERICAL REPRESENTATION INVARIANTS**
-* `COND:` Generating Target T1 (Core Runtime) code.
-* `ACT:` Apply Core-defined numerical representation invariants (`CORE-REQ-NUMERICAL-REPRESENTATION`), preserving exact Core-defined representation semantics.
-* `DENY:` Using numerical representations, operations, or transformations incompatible with Core-defined numerical representation constraints.
-* `OUT:` Code conforming to Core-defined numerical representation rules.
-* `HALT:` Presence of any non-compliant numerical operation or representation in Target T1 code.
+* `COND:` Generating Target T1 (Core Runtime) code or state DTOs.
+* `ACT:` Apply Core-defined numerical representation invariants (CORE-Cap-10.2 / RFC-003), strictly enforcing the 64-bit safe integer range $I_{safe} = [-9007199254740991, +9007199254740991]$, integer truncating division $\lfloor \dots \rfloor$, and fixed-point Basis Points scaling $[0, 10000]$ for non-integer domain indicators.
+* `DENY:` Using floating-point types (`f32`, `f64`, `float`, `double`), scientific notation (`1e10`), `NaN`, or `Infinity` in T1 state schemas, transitions, or metric evaluation.
+* `OUT:` Code conforming strictly to safe integer arithmetic and Basis Points bounds (`CORE-REQ-NUMERICAL-REPRESENTATION`).
+* `HALT:` Presence of any floating-point operation or non-compliant numerical representation in Target T1 code.
 * `META:` [T1 | Profile-Base | CRITICAL | CORE-REQ-NUMERICAL-REPRESENTATION]
 
-`[SDP-RULE-T1-002]` **TARGET T1 PURE MUTATION ISOLATION**
+`[SDP-RULE-T1-002]` **TARGET T1 PURE MUTATION & ENVIRONMENT ISOLATION**
 * `COND:` Implementing state transition functions in Target T1.
-* `ACT:` Implement transition logic as pure, side-effect-free functions accepting immutable parameters and returning new state projections (`CORE-REQ-APPLY-TOTALITY-POLICY`).
-* `DENY:` Reading system clocks, generating random numbers, performing I/O, or mutating global state inside pure transitions.
-* `OUT:` Pure function signatures accepting explicit parameters and returning pure state structures.
-* `HALT:` Detected I/O operation, clock read, or side-effect inside a T1 transition function.
+* `ACT:` Isolate impure environmental validation `ValidateEnvironment(S, t, E)` (clock skew, fencing lease, cryptographic signatures) from pure state transition logic `ApplyValidated(S, t, v_res)` (CORE-Cap-1.6), implementing transition logic as pure, side-effect-free total functions returning pure state projections (`CORE-REQ-APPLY-TOTALITY-POLICY`).
+* `DENY:` Reading system clocks, checking external leases, generating random numbers, performing I/O, or mutating global state inside pure `ApplyValidated` transitions.
+* `OUT:` Pure function signatures accepting explicit state parameters and returning deterministic mutated state structures.
+* `HALT:` Detected I/O operation, clock read, or environmental check inside an `ApplyValidated` T1 transition function.
 * `META:` [T1 | Profile-Base | CRITICAL | CORE-REQ-APPLY-TOTALITY-POLICY]
 
-`[SDP-RULE-T1-003]` **TARGET T1 CANONICAL SERIALIZATION**
-* `COND:` Implementing serialization routines in Target T1.
-* `ACT:` Implement Core-defined canonical serialization protocol (`CORE-RULE-CANONICAL-SERIALIZATION`).
-* `DENY:` Using non-canonical serializers or violating Core-defined canonical byte ordering rules.
-* `OUT:` Canonical serialization functions matching Core canonical digest vectors.
-* `HALT:` Inability to guarantee deterministic Core-defined canonical representation.
+`[SDP-RULE-T1-003]` **TARGET T1 SC-JCS-1 CANONICAL SERIALIZATION**
+* `COND:` Implementing serialization routines or content-addressed hash calculation in Target T1.
+* `ACT:` Implement SC-JCS-1 Standard Reference Profile 1 (CORE-Cap-10), strictly enforcing UTF-8 NFC normalization, Unicode code-point key sorting (`UnicodeCodePointLex`), deep byte-level UTF-8 sorting for keys in `SetSemanticsRegistry`, and strict positional sequence preservation for non-set arrays.
+* `DENY:` Using standard RFC 8785 JSON Canonicalization Scheme directly without SC-JCS-1 extensions, allowing floating-point values, or altering array element positions in non-set arrays.
+* `OUT:` Canonical serialization functions matching Core SC-JCS-1 digest vectors (`CORE-RFC-010`).
+* `HALT:` Inability to guarantee SC-JCS-1 deterministic canonical representation.
 * `META:` [T1 | Profile-Base | CRITICAL | CORE-RULE-CANONICAL-SERIALIZATION]
 
-`[SDP-RULE-T2-001]` **TARGET T2 INPUT PARSER & DTO ISOLATION**
-* `COND:` Generating communication language parsers or external integration adapters in Target T2.
-* `ACT:` Validate input syntax against Core-defined communication language grammar (`CORE-LAYER-5-ISOLATION`), returning isolated DTOs without mutating T1 state.
-* `DENY:` Bypassing syntactic validation or allowing integration DTOs to execute direct state writes.
-* `OUT:` Isolated parser DTO structures with explicit validation result types.
-* `HALT:` Parser logic allowing unvalidated input to trigger direct state mutation.
+`[SDP-RULE-T1-004]` **TARGET T1 DP-FSM RESOLUTION & WILDCARD PARSING**
+* `COND:` Synthesizing finite state machine transition logic for Runtime Safety ($M$) or Human Journey ($\mathcal{H}$).
+* `ACT:` Implement the exact 4-tier pure resolution function `Resolve(q, σ)` (CORE-Cap-2.2.2), strictly enforcing `RULE-EXPLICIT-SHADOWS-WILDCARD` and interpreting target wildcard tokens (`"to": "*"`) as identity/stuttering steps ($q' = q$) (`RULE-WILDCARD-TARGET-REFLEXIVITY`) or dynamic pure function calls (`ResolveNextHumanState`).
+* `DENY:` Deviating from the 4-tier resolution precedence or treating wildcard `'*'` target transitions as invalid or unhandled states.
+* `OUT:` Deterministic DP-FSM implementation matching $\delta_M$ and $\delta_H$ machine-readable contracts (CORE-Cap-10.4 & 10.5).
+* `HALT:` Transition logic introducing non-deterministic state resolution or unhandled wildcard events.
+* `META:` [T1 | Profile-Base | CRITICAL | CORE-RULE-DP-FSM-RESOLVE]
+
+`[SDP-RULE-T2-001]` **TARGET T2 INPUT PARSER & SML v2.0 DECODER**
+* `COND:` Generating communication language parsers, LLM output validators, or external integration adapters in Target T2.
+* `ACT:` Validate input syntax strictly against SML v2.0 EBNF grammar (CORE-Annex-C.1) and decode conversational outcomes via pure function `MapSMLToFSMEvent` (CORE-Cap-4.4), returning isolated `SMLDocumentParsed` DTOs without mutating T1 state.
+* `DENY:` Bypassing syntactic validation, allowing raw LLM text outputs to directly mutate system state, or bypassing `MapSMLToFSMEvent` mapping to $\Sigma_H$.
+* `OUT:` Isolated parser DTO structures with explicit validation result types and mapped $\Sigma_H$ events (`CORE-LAYER-5-ISOLATION`).
+* `HALT:` Parser logic allowing unvalidated SML text to trigger direct T1 state mutation.
 * `META:` [T2 | Profile-Base | CRITICAL | CORE-LAYER-5-ISOLATION]
 
 `[SDP-RULE-T2-002]` **TARGET T2 SEMANTIC SAFETY GATE**
 * `COND:` Processing probabilistic text outputs or proposed transitions in Target T2.
-* `ACT:` Enforce Core-defined safety gate constraints (`CORE-RULE-SEMANTIC-SAFETY-GATE`), rejecting unanchored administrative claims.
-* `DENY:` Allowing unverified administrative assertions to be presented as authoritative directives.
-* `OUT:` Safety Gate wrapper returning Core-defined failure signal on unanchored claims.
-* `HALT:` Bypass of Core-defined safety gate logic.
+* `ACT:` Enforce Core Level 2 Semantic Safety Gate constraints (CORE-Cap-4.5 & Annex C.2), strictly rejecting unanchored administrative claims categorized under `FACTUAL_ADMINISTRATIVE` and converting unverified prescriptive assertions into Exploratory Options.
+* `DENY:` Allowing unverified administrative assertions to be presented as authoritative directives or direct transition triggers.
+* `OUT:` Safety Gate wrapper returning Core-defined `EV_SML_FAIL` signal on unanchored claims (`CORE-RULE-SEMANTIC-SAFETY-GATE`).
+* `HALT:` Bypass of Core Level 2 Semantic Safety Gate logic.
 * `META:` [T2 | Profile-Base | CRITICAL | CORE-RULE-SEMANTIC-SAFETY-GATE]
 
-`[SDP-RULE-T3-001]` **TARGET T3 TEST HARNESS ISOLATION**
-* `COND:` Generating test suites or replay harnesses in Target T3.
-* `ACT:` Generate un-mocked test runners validating Core-defined deterministic output equivalence and Core-defined runtime error taxonomy (`CORE-ERR-TAXONOMY`) against Target T1/T2 binaries.
-* `DENY:` Hardcoding test pass results or mocking Core transition logic inside harnesses.
-* `OUT:` Automated test harness scripts validating conformance against test vectors.
-* `HALT:` Test harness logic that masks or silences runtime error codes.
+`[SDP-RULE-T3-001]` **TARGET T3 TEST HARNESS & ERROR TAXONOMY VALIDATION**
+* `COND:` Generating test suites, property test generators, or replay harnesses in Target T3.
+* `ACT:` Generate un-mocked test runners validating Core-defined deterministic output equivalence and verifying that generated binaries emit exact Runtime Error Codes (range 70–89) and Process Exit Codes (CORE-Cap-8.2) against `CONFORMANCE-TEST-SUITE-v4.5.5.JSON`.
+* `DENY:` Hardcoding test pass results, mocking Core transition logic inside harnesses, or asserting error code ranges outside 70–89.
+* `OUT:` Automated test harness scripts validating conformance against test vectors (`CORE-ERR-TAXONOMY`).
+* `HALT:` Test harness logic that masks, silences, or alters Core Runtime Error Codes.
 * `META:` [T3 | Profile-Base | MAJOR | CORE-ERR-TAXONOMY]
 
 ---
@@ -257,8 +265,8 @@ PRE_FLIGHT_SELF_AUDIT_LOOP:
 PRE-FLIGHT ERROR CATALOGUE (ERR-PDA-01 THROUGH ERR-PDA-09)
 ================================================================================
 [ERR-PDA-01: NUMERICAL INVARIANT VIOLATION]
-  CHECK: Generated artifact violates Core-defined numerical representation invariants in Target T1.
-  CORRECT: Restore compliance with Core-defined numerical representation rules (`CORE-REQ-NUMERICAL-REPRESENTATION`).
+  CHECK: Generated artifact uses floating-point types, non-integer numbers, or violates I_safe / Basis Points [0, 10000] constraints in Target T1/SC-JCS-1.
+  CORRECT: Convert all numerical fields to safe integers (I_safe) or integer Basis Points and enforce truncating integer division ⌊...⌋ (`CORE-REQ-NUMERICAL-REPRESENTATION`).
 
 [ERR-PDA-02: CONTRACT BYPASS]
   CHECK: Custom conditional logic implemented instead of exact Core Layer C machine-readable contracts.
@@ -365,8 +373,8 @@ PRE-FLIGHT ERROR CATALOGUE (ERR-PDA-01 THROUGH ERR-PDA-09)
   "required": ["statement_id", "sdp_version", "core_version_under_test", "compliance_profile", "declared_target_categories", "assessment_result", "evidence_manifest_digests"],
   "properties": {
     "statement_id": { "type": "string", "format": "uuid" },
-    "sdp_version": { "type": "string", "default": "1.0.0" },
-    "core_version_under_test": { "type": "string" },
+    "sdp_version": { "type": "string", "default": "1.1.0" },
+    "core_version_under_test": { "type": "string", "default": "4.5.5" },
     "compliance_profile": { "type": "string", "enum": ["Profile-Base", "Profile-Extended", "Profile-HighAssurance"] },
     "declared_target_categories": { "type": "array", "items": { "type": "string", "enum": ["T1", "T2", "T3"] } },
     "assessment_result": { "type": "string", "enum": ["CONFORMANT", "NON_CONFORMANT"] },
@@ -388,7 +396,10 @@ PRE-FLIGHT ERROR CATALOGUE (ERR-PDA-01 THROUGH ERR-PDA-09)
 
 ```text
 ================================================================================
-END OF SPECIFICATION: SCINTILLA DEVELOPMENT PROTOCOL (SDP v1.0.0)
+END OF SPECIFICATION: SCINTILLA DEVELOPMENT PROTOCOL (SDP v1.1.0)
 STATUS: CANONICAL PURIFIED (LLM-ONLY SYSTEM CONTEXT SPECIFICATION)
 ================================================================================
 ```
+
+---
+
