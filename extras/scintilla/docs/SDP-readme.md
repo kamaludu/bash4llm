@@ -168,7 +168,7 @@ L'IA genererà due tipi di oggetti JSON. Ecco cosa sono e cosa devi farci:
 
 ---
 
-## 3. TABELLA PRONTO SOCCORSO CODICI DI ERRORE (`ERR-PDA-01..09`)
+## 3. 🚨 TABELLA CODICI DI ERRORE (`ERR-PDA-01..09`)
 
 Se l'IA o il manifesto segnalano un errore interno, ecco cosa significa:
 
