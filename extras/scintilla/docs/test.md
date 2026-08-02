@@ -1,3 +1,44 @@
+### 1.3 ASSIOMA DEL GENESIS STATE s0 (Layer A)
+
+Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ è formalizzato come la tripla annidata conforme alla struttura di $\mathcal{S}$ (§1.1.1):
+
+```math
+s_0 := \left\langle s_{0,\text{persistent}}, \ s_{0,\text{internal}}, \ s_{0,\text{auxiliary}} \right\rangle
+```
+
+dove:
+
+```math
+s_{0,\text{persistent}} := \left\langle \text{case}_{\text{id}}=\text{null}, \ \mathcal{M}_{\text{prov}}=\emptyset, \ \mathcal{Q}_{\text{consent}}=\emptyset, \ \mathcal{K}_{\text{playbook}}=\langle \text{null}, \text{null}, \emptyset \rangle, \ \mathcal{Q}_{\text{revoked\_items}}=\emptyset, \ \mathcal{K}_{\text{competence}}=\emptyset, \ \mathcal{V}_{\text{vault}}=\emptyset \right\rangle
+```
+
+```math
+s_{0,\text{internal}} := \left\langle q=\text{NORMAL}, \ q_H=\text{UNASSESSED}, \ \mathcal{P}_{\text{active}}=\mathcal{P}_{\text{default}}, \ \mathcal{F}_{\text{lease}}=\langle 0, t_0 \rangle, \ \mathcal{O}_{\text{bound}}=\text{AUTOMATED\_SUPPORT}, \ t_{\text{pause\_start}}=\text{null}, \ \mathcal{M}_{\text{metrics}}=\langle 0, 0, 0, 0 \rangle, \ \text{seq\_num}=0, \ \text{last\_hash}=\mathbf{0}_{\mathcal{D}_{256}} \right\rangle
+```
+
+```math
+s_{0,\text{auxiliary}} := \left\langle \mathcal{D}_{\text{drafts}}=\emptyset \right\rangle
+```
+
+con vista derivata iniziale:
+
+```math
+\text{Derive}(s_0) = \langle \mathcal{O}_{\text{decision}}=\text{NONE}, \ \mathcal{A}_{\text{index}}=0 \rangle
+```
+
+#### 1.3.1 Obbligo Formale di Invarianza di Serializzazione del Genesis State (RFC-007)
+
+```math
+\mathbf{PROOF-OBLIGATION-GENESIS-SERIALIZATION-INVARIANCE} := \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.5}})) \equiv_{\text{bytes}} \text{Canon}(\text{ToJSON}(s_0^{\text{v4.5.3}}))
+```
+*(Garantisce che il refactoring algebrico ed organizzativo di* $s_0$ *produca un flusso di byte UTF-8 e un hash* 
+```math
+H_0 = \mathbf{0}_{\mathcal{D}_{256}}
+```
+*identici alla versione canonica di riferimento).*
+
+---
+
 ### 1.4 TRANSAZIONI, INVOLUCRO DI ESECUZIONE E LEDGER IMMUTABILE L
 
 #### 1.4.1 Spazio delle Transazioni T, Codifica EncodeTx e Busta di Esecuzione (Layer A)
