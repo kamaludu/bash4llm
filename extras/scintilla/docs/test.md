@@ -1,3 +1,208 @@
+# CAPITOLO 2: ARCHITETTURA A LIVELLI E DOPPIA MACCHINA DEGLI STATI
+## (Layer A & Layer B2)
+
+---
+
+### 2.1 Modello di Isolamento Stratificato a 6 Livelli
+
+L'architettura di SCINTILLA Core è strutturata in 6 livelli funzionali ad isolamento unidirezionale rigoroso, dove i livelli superiori non possiedono alcuna autorità di scrittura diretta sullo stato di runtime:
+
+```text
+[ LEVEL 5 ] Large Language Model (Probabilistic Hypothesis Generator)
+     │ API Contract: Output SML v2.0 Syntactic Text Only (No State Authority)
+[ LEVEL 4 ] Communication, SML Parsing & Semantic Validation Layer
+     │ API Contract: Structured Hypothesis & Data Provenance Object
+[ LEVEL 3 ] Human Interaction, Consent & Agency Engine (Consent Ledger, AGI & HOBM)
+     │ API Contract: Validated Human Context, AGI Score & Consent State
+[ LEVEL 2 ] Policy Guidance Engine (Safety Gate, Policy Compilation & Rule Evaluation)
+     │ API Contract: Executable Policy DecisionResult with DecisionProof
+[ LEVEL 1 ] Deterministic Runtime (Fencing Lease, Monotonic Fence, ValidateEnv & Apply Pure Transition δ)
+     │ API Contract: Canonical Serialized Payload & Pure State Mutation
+[ LEVEL 0 ] Immutable State Ledger (Append-Only decisions.ndjson Content-Addressed Hash Chain)
+```
+
+---
+
+### 2.2 Runtime Safety State Machine M (Layer A & B2)
+
+L'operatività di sicurezza di runtime è modellata dall'automa **Deterministic Priority Finite State Machine (DP-FSM)** $M$:
+
+```math
+M := \langle Q, \Sigma, T_{\delta}, \delta_M, q_0, F_{\text{oper}} \rangle
+```
+
+1. **Insieme degli Stati Canonici $Q$ ($|Q|=7$):**
+```math
+Q = \{ \text{NORMAL } (q_0), \text{REQUIRE\_RECALIBRATION } (q_1), \text{VALIDATION\_ERROR } (q_2), \text{RECOVERABLE\_FAILURE } (q_3), \text{OPERATOR\_REQUIRED } (q_4), \text{SECURITY\_LOCKDOWN } (q_5), \text{SAFE\_READ\_ONLY\_MODE } (q_6) \}
+```
+2. **Stato Iniziale:** $q_0 = \text{NORMAL}$
+3. **Insieme degli Stati Operativamente Stabili $F_{\text{oper}}$:**
+```math
+F_{\text{oper}} = \{ \text{NORMAL}, \text{SAFE\_READ\_ONLY\_MODE} \}
+```
+
+#### 2.2.1 Definizione di Dominio DP-FSM e Precondizione Statica di Unicità
+Ai fini della specifica SCINTILLA Core, un automa DP-FSM indica una macchina a stati finiti la cui relazione di transizione è deterministica a valle dell'applicazione della funzione di risoluzione prioritaria $\mathbf{Resolve}(q, \sigma)$.
+
+Un contratto di automa è valido ed eseguibile se e solo se soddisfa la precondizione statica di unicità:
+
+```math
+\mathbf{ValidFSMContract} \iff \left( \forall q \in Q, \forall \sigma \in \Sigma, \ |\delta_{\text{explicit}}(q, \sigma)| \le 1 \right) \ \land \ \left( \forall \sigma \in \Sigma, \ |\delta_{\text{wildcard}}(\sigma)| \le 1 \right)
+```
+
+#### 2.2.2 Regola di Precedenza Wildcard, Funzione Algebrica Resolve e Regola di Parsing Target Wildcard
+
+```math
+\mathbf{RULE-EXPLICIT-SHADOWS-WILDCARD}
+```
+**"The explicit transition rules SHALL strictly shadow wildcard transition rules according to the four-tier resolution order."**
+
+```math
+\mathbf{RULE-WILDCARD-TARGET-REFLEXIVITY}
+```
+**"When a wildcard token `"*"` appears in the target state field (`"to": "*"`) of a machine transition contract, the runtime parser MUST interpret the transition as an identity/stuttering step ($q' = q$), maintaining the current state unchanged."**
+
+La risoluzione deterministica della transizione negli automi DP-FSM è governata dalla funzione algebrica pura con gerarchia a 4 livelli (estesa dalla regola di riflessività sul target):
+
+```math
+\mathbf{Resolve}(q, \sigma, F_T) := \begin{cases}
+q & \text{se } q \in F_T \quad (\text{Terminal Trap Rule}) \\
+\delta(q, \sigma) & \text{se } \delta(q, \sigma) \text{ è definita su } (\text{Stato Esplicito } q, \text{Evento Esplicito } \sigma) \land q \notin F_T \\
+\delta(*, \sigma) & \text{se } \delta(*, \sigma) \text{ è definita su } (\text{Stato Wildcard } *, \text{Evento Esplicito } \sigma) \land q \notin F_T \\
+\delta(q, *) & \text{se } \delta(q, *) \text{ è definita su } (\text{Stato Esplicito } q, \text{Evento Wildcard } *) \land q \notin F_T \\
+\delta(*, *) & \text{se } \delta(*, *) \text{ è definita su } (\text{Stato Wildcard } *, \text{Evento Wildcard } *) \land q \notin F_T \\
+q & \text{altrimenti } (\text{Implicit Stuttering})
+\end{cases}
+```
+
+*Nota esplicativa:* Quando l'immagine della funzione $\delta$ restituisce il token wildcard (es. $\delta(*, \sigma) = *$), la funzione $\mathbf{Resolve}$ applica l'identità $q' = q$.
+
+#### 2.2.3 Partizione dell'Alfabeto Sigma (Layer B2)
+L'alfabeto degli eventi di sistema $\Sigma$ ($|\Sigma|=10$) è partizionato nei seguenti sotto-insiemi disgiunti:
+
+1. **Eventi di Business ($\Sigma_{\text{business}}$):** Eventi di mutazione operativa e di progresso del caso utente:
+```math
+\Sigma_{\text{business}} := \{ \text{EV\_SUCCESS}, \text{EV\_ABANDON}, \text{EV\_SML\_FAIL}, \text{EV\_LEASE\_EXP}, \text{EV\_TIMEOUT} \}
+```
+2. **Eventi di Ripristino Operativo ($\Sigma_{\text{recovery}}$):** Eventi di override ed intervento autorizzato per il ripristino di stato:
+```math
+\Sigma_{\text{recovery}} := \{ \text{EV\_OVERRIDE}, \text{EV\_REPAIR} \}
+```
+3. **Eventi Amministrativi e di Tutela Diritti ($\Sigma_{\text{administrative}}$):** Eventi relativi all'integrità crittografica e alla gestione dei diritti dell'utente:
+```math
+\Sigma_{\text{administrative}} := \{ \text{EV\_HASH\_CORRUPT}, \text{EV\_ITEM\_PRIVACY\_REVOKED}, \text{EV\_CRYPTO\_SHRED\_EXECUTED} \}
+```
+
+#### 2.2.4 Gestione della Stasi Operativa in SAFE_READ_ONLY_MODE (q6) (Layer B2)
+La permanenza dell'automa $M$ nello stato:
+```math
+q_6 = \text{SAFE\_READ\_ONLY\_MODE}
+```
+è governata esclusivamente dalle regole di transizione del contratto $\delta_M$ (§10.4) e dalle meta-regole SOS (§3.2):
+1. **Eventi di Business** ($\Sigma_{\text{business}}$): Impongono uno *stuttering step* ($q_6 \to q_6$), precludendo qualsiasi mutazione dello stato operativo.
+2. **Eventi Amministrativi** ($\Sigma_{\text{administrative}}$): Sono ammessi ed elaborati per garantire l'esercizio inalienabile dei diritti dell'utente (revoca privacy, oblivion).
+3. **Eventi di Ripristino** ($\Sigma_{\text{recovery}}$): Transitano lo stato verso $\text{NORMAL}$ previa verifica autorizzativa dell'operatore o applicazione di patch formale.
+
+---
+
+### 2.3 Human Journey State Machine H (Layer A & B2)
+
+L'evoluzione concettuale del percorso umano dell'utente è modellata dall'automa DP-FSM di dominio $\mathcal{H}$:
+
+```math
+\mathcal{H} := \langle Q_H, \Sigma_H, \delta_H, q_{H0}, F_H \rangle
+```
+
+1. **Insieme degli Stati del Percorso Umano** $Q_H$ ($|Q_H|=12$):
+```math
+Q_H = \{ \text{UNASSESSED}, \text{INITIAL\_ASSESSMENT}, \text{STABILIZATION}, \text{DOCUMENT\_RECOVERY}, \text{EMPLOYMENT\_READINESS}, \text{FINANCIAL\_AUTONOMY}, \text{SUSTAINED\_INDEPENDENCE}, \text{HUMAN\_PAUSED}, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{HUMAN\_GOAL\_CHANGED}, \text{HUMAN\_DECLINED\_ASSISTANCE}, \text{PREVENTIVE\_STANDBY} \}
+```
+
+2. **Stato Iniziale:** $q_{H0} = \text{UNASSESSED} = h_0$
+3. **Insieme degli Stati Target / Terminali** $F_H$:
+```math
+F_H = \{ \text{HUMAN\_DECLINED\_ASSISTANCE} \} = \{ h_{10} \}
+```
+
+4. **Alfabeto degli Eventi Umani** $\Sigma_H$ ($|\Sigma_H|=15$):
+```math
+\Sigma_H = \{ \text{HEV\_ASSESS\_START}, \text{HEV\_STABILIZED}, \text{HEV\_DOCS\_OBTAINED}, \text{HEV\_JOB\_READY}, \text{HEV\_FINANCE\_OK}, \text{HEV\_INDEPENDENCE\_ACHIEVED}, \text{HEV\_RELAPSE\_REGRESS}, \text{HEV\_RECALIBRATION\_REQ}, \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_GOAL\_UPDATE}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM}, \text{HEV\_PREVENTIVE\_SUPPORT\_REQ}, \text{HEV\_STEP\_COMPLETED} \}
+```
+
+#### 2.3.1 Dinamica dello Stato h11 (PREVENTIVE_STANDBY) come "Base Sicura" (Layer B2)
+Lo stato:
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+definisce la condizione di **Santuario in Standby (Base Sicura)**:
+
+1. **Semantica di Custodia Discreta:** Quando l'automa umano $\mathcal{H}$ raggiunge lo stato $h_{11}$, l'utente ha acquisito piena autonomia operativa. Il sistema cessa di proporre micro-azioni quotidiane o notifiche proattive, ma mantiene attiva la vista di ascolto discreto.
+2. **Invarianza di Accessibilità dello Stato Finale:** Nel raggiungimento dello stato target:
+```math
+h_6 = \text{SUSTAINED\_INDEPENDENCE}
+```
+l'automa umano induce la transizione allo stato
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+preservando a tempo indeterminato l'accesso alla vista osservabile $\text{Obs}(S)$, al Vault
+```math
+\mathcal{V}_{\text{vault}}
+```
+e al registro delle competenze
+```math
+\mathcal{K}_{\text{competence}}
+```
+3. **Re-ingaggio Immediato:** Qualsiasi espressione di disagio, sopraffazione emotiva o richiesta esplicita dell'utente transitano immediatamente l'automa da $h_{11}$ allo stato di supporto attivo `HUMAN_RECALIBRATION_REQUIRED`, riattivando la guida senza che l'utente debba giustificare la propria ricaduta.
+
+#### 2.3.2 Regola Normativa di Preservazione del Progresso Umano (`RULE-HUMAN-RECALIBRATION-PRESERVE-PROGRESS-01`)
+Quando l'automa $\mathcal{H}$ si trova nello stato $h_8$ (`HUMAN_RECALIBRATION_REQUIRED`) e riceve l'evento:
+```math
+\text{HEV\_STABILIZED}
+```
+il runtime `MUST` determinare lo stato di destinazione $q_H'$ mediante la funzione pura:
+```math
+\text{ResolveNextHumanState}(q_H, \pi_{\text{persistent}}(S).\mathcal{K}_{\text{playbook}})
+```
+Tale funzione assegna $q_H'$ allo stato corrispondente al nodo attivo in:
+```math
+\mathcal{K}_{\text{playbook}}.\text{node}_{\text{curr}}
+```
+
+È tassativamente vietato retrocedere l'utente allo stato $h_2$ (`STABILIZATION`) qualora i prerequisiti degli stati successivi risultino già soddisfatti in $V_{\text{completed}}$.
+
+---
+
+### 2.4 Equazione Matematica del Sistema Reattivo Composito (Layer A)
+
+Il sistema reattivo globale di SCINTILLA Core è modellato dallo spazio di stato composito $S_C = Q \times Q_H$.
+
+La funzione di transizione pura dell'automa composito $\delta_C : (Q \times Q_H) \times (\Sigma \cup \Sigma_H) \longrightarrow (Q \times Q_H)$ è definita dall'equazione a casi:
+
+```math
+\delta_C((q, q_H), \sigma_C) = \begin{cases} 
+(\delta_M(q, \sigma_C, T_{\delta}), q_H) & \text{se } \sigma_C \in \Sigma \\
+(q, \mathbf{Resolve}(q_H, \sigma_C, F_H)) & \text{se } \sigma_C \in \Sigma_H \land q \in (F_{\text{oper}} \cup \{\text{REQUIRE\_RECALIBRATION}\}) \\
+(q, \mathbf{Resolve}(q_H, \sigma_C, F_H)) & \text{se } \sigma_C \in \Sigma_H \land q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\} \\
+(q, \mathbf{Resolve}(q_H, \sigma_C, F_H)) & \text{se } \sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\} \\
+(q, q_H) & \text{se } \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \land q \in \{\text{OPERATOR\_REQUIRED}, \text{SECURITY\_LOCKDOWN}\}
+\end{cases}
+```
+
+1. **Invariante di Disaccoppiamento Unidirezionale (`INV-DECOUPLING-01`):** Gli eventi dell'automa umano $\Sigma_H$ non mutano lo stato di runtime $Q$. Viceversa, errori tecnici di sistema:
+```math
+q \in \{\text{VALIDATION\_ERROR}, \text{RECOVERABLE\_FAILURE}\}
+```
+`SHALL NOT` paralizzare l'evoluzione concettuale dello stato umano $Q_H$.
+
+2. **Eccezione di Sovranità Umana in Lockdown:** In presenza di blocco critico di sicurezza:
+```math
+q = \text{SECURITY\_LOCKDOWN}
+```
+le sole transizioni dell'automa umano ammesse per la registrazione ed applicazione immediata sono quelle di richiesta di pausa o revoca del supporto (`HEV_PAUSE_REQUESTED`, `HEV_DECLINE_ALL`).
+
+---
+
 # CAPITOLO 3: SEMANTICA OPERAZIONALE FORMALE ESAUSTIVA (SMALL-STEP SOS)
 ## (Layer B3 - Regole Operative SOS)
 
