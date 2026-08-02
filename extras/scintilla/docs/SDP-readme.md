@@ -1,4 +1,6 @@
-# Usare Scintilla Development Protocol (SDP)
+[SDP](SDP-PDA.md)
+
+# Usare ✴ Scintilla Development Protocol (SDP)
 
 Lo SDP è uno **"Agent Constraint Layer"**: una gabbia normativa che controlla **il comportamento dell'Intelligenza Artificiale**, non il modo in cui tu le parli.
 
