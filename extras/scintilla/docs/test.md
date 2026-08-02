@@ -1,11 +1,3 @@
-# CAPITOLO 1: ALGEBRA ASTRATTA DEL MODELLO DI DOMINIO
-## (Layer A & Layer B1/B2)
-
----
-
-### 1.1 Formalizzazione dello Spazio degli Stati e delle Proiezioni
-
-Lo Spazio degli Stati $\mathcal{S}$ è il sotto-spazio cartesiano dello stato primario valido di sistema.
 
 #### 1.1.1 Definizione del Sottospazio dello Stato Primario (Layer A)
 Lo stato primario del sistema $\mathcal{S}$ è formalizzato come l'insieme delle triple valide appartenenti al prodotto cartesiano dei domini di persistenza, controllo e buffer temporaneo:
