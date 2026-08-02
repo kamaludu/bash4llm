@@ -276,25 +276,16 @@ dove $\mathcal{T} \subset \mathbb{N}^+$ denota lo spazio dei timestamp UTC espre
 ```
 
 #### 1.1.2 Vista Derivata Pura Disaccoppiata e Contatori di Interazione (Layer A)
-La componente di stato derivato $\mathcal{S}_{\text{derived}}$ non costituisce una dimensione indipendente dello spazio $\mathcal{S}$ bensì una vista calcolata mediante la funzione pura:
+La componente di stato derivato $\mathcal{S}_{\mathrm{derived}}$ non costituisce una dimensione indipendente dello spazio $\mathcal{S}$ bensì una vista calcolata mediante la funzione pura:
 
 ```math
-\text{Derive} : \mathcal{S}_{\text{persistent}} \times \mathcal{S}_{\text{internal}} \longrightarrow \mathcal{S}_{\text{derived}}
-```
-```math
-\mathcal{S}_{\text{derived}} := \mathcal{O}_{\text{decision}} \times \mathcal{A}_{\text{index}}
-```
-
-La tupla dei contatori cumulativi di interazione:
-```math
-\mathcal{M}_{\text{metrics}} \in \mathbb{N}^4
-```
-risiede nel dominio primario di controllo interno
-```math
-\mathcal{S}_{\text{internal}}
+\begin{aligned}
+\text{Derive} &: \mathcal{S}_{\text{persistent}} \times \mathcal{S}_{\text{internal}} \longrightarrow \mathcal{S}_{\text{derived}} \\
+\mathcal{S}_{\text{derived}} &:= \mathcal{O}_{\text{decision}} \times \mathcal{A}_{\text{index}}
+\end{aligned}
 ```
 
-ed è normatively ordinata come:
+La tupla dei contatori cumulativi di interazione $\mathcal{M}_{\text{metrics}} \in \mathbb{N}^4$ risiede nel dominio primario di controllo interno $\mathcal{S}_{\text{internal}}$ ed è normatively ordinata come:
 
 ```math
 \mathcal{M}_{\text{metrics}} := \left\langle c_{\text{interaction}}, \ c_{\text{rephrase}}, \ c_{\text{ambiguity}}, \ c_{\text{overwhelm}} \right\rangle
@@ -302,13 +293,14 @@ ed è normatively ordinata come:
 
 La mutazione deterministica della tupla:
 ```math
-\mathcal{M}_{\text{metrics}}' = \text{UpdateMetrics}(\mathcal{M}_{\text{metrics}}, t.\text{event}, \text{SMLOutcome})
+\mathcal{M}_{\text{metrics}}^\prime = \text{UpdateMetrics}(\mathcal{M}_{\text{metrics}}, t.\text{event}, \text{SMLOutcome})
 ```
-è regolata dalle seguenti regole di incremento applicate da $\text{ApplyValidated}$:
-1. $c_{\text{interaction}}$ si incrementa di $+1$ per ogni transazione valida $t$ elaborata con esito `PASS`.
-2. $c_{\text{rephrase}}$ si incrementa di $+1$ quando l'esito conversazionale SML è `NEEDS_REPHRASING`.
-3. $c_{\text{overwhelm}}$ si incrementa di $+1$ quando l'evento recepito è `HEV_EMOTIONAL_OVERWHELM`.
-4. $c_{\text{ambiguity}}$ si incrementa di $+1$ quando la valutazione di policy restituisce l'esito `RECALIBRATE`.
+
+è regolata dalle seguenti regole di incremento applicate da `ApplyValidated`:
+1. `c_interaction`: si incrementa di $+1$ per ogni transazione valida $t$ elaborata con esito `PASS`.
+2. `c_rephrase`: si incrementa di $+1$ quando l'esito conversazionale SML è `NEEDS_REPHRASING`.
+3. `c_overwhelm`: si incrementa di $+1$ quando l'evento recepito è `HEV_EMOTIONAL_OVERWHELM`.
+4. `c_ambiguity`: si incrementa di $+1$ quando la valutazione di policy restituisce l'esito `RECALIBRATE`.ncrementa di $+1$ quando la valutazione di policy restituisce l'esito `RECALIBRATE`.
 
 #### 1.1.3 Proiezioni Canoniche dello Stato (Layer A)
 La scomposizione dello stato astratto $S \in \mathcal{S}$ nelle sue componenti primarie e scalari è regolata dagli operatori di proiezione ortogonale:
@@ -2008,4 +2000,3 @@ All content within this specification has been selected, verified, modified wher
 
 ***Compatibility and Versioning***  
 Unless otherwise indicated, compatibility between different versions of this specification is not implied. Every implementation must explicitly declare the version of the specification with which it complies.  
-
