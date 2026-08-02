@@ -292,6 +292,7 @@ La tupla dei contatori cumulativi di interazione:
 risiede nel dominio primario di controllo interno
 ```math
 \mathcal{S}_{\text{internal}}
+```
 
 ed è normatively ordinata come:
 
