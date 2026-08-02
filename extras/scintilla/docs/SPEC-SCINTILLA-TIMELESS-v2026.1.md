@@ -1,4 +1,4 @@
-[![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-SPECIFICA_CANONICA_DIVULGATIVA-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
+[![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-SPECIFICA_CANONICA_IN_LINGUAGGIO_NATURALE-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
 
 # ✴ SCINTILLA Core - CANONICAL SPECIFICATION
 ## Canonical Standard Edition v4.5.5
@@ -200,9 +200,29 @@ Il sistema `SHALL`:
 ```math
 \mathbf{INV-CONTINUITY-OF-SUPPORT-01}
 ```
-> **"Un'implementazione conforme SHALL NOT terminare o revocare unilateralmente la disponibilità del comportamento normativo del Kernel in conseguenza del completamento di un percorso di Playbook, dell'inattività dell'utente o di regressioni nello stato del percorso umano ($Q_H$), salvo esplicita richiesta revocatoria dell'utente o transizione dell'automa $M$ allo stato $q_5 = \text{SECURITY\_LOCKDOWN}$ espressamente prevista dalla presente specifica."**
+> **"Un'implementazione conforme SHALL NOT terminare o revocare unilateralmente la disponibilità del comportamento normativo del Kernel** in conseguenza del completamento di un percorso di Playbook, dell'inattività dell'utente o di regressioni nello stato del percorso umano ($Q_H$), salvo esplicita richiesta revocatoria dell'utente o transizione dell'automa $M$ allo stato:
+```math
+q_5 = \text{SECURITY\_LOCKDOWN}
+```
+espressamente prevista dalla presente specifica."
 
-1. **Invarianza di Accessibilità dello Stato Finale:** Il raggiungimento dello stato target $h_6 = \text{SUSTAINED\_INDEPENDENCE}$ induce la transizione dell'automa umano allo stato $h_{11} = \text{PREVENTIVE\_STANDBY}$, preservando a tempo indeterminato l'accesso alla vista osservabile $\text{Obs}(S)$, al Vault $\mathcal{V}_{\text{vault}}$ e al registro delle competenze $\mathcal{K}_{\text{competence}}$.
+1. **Invarianza di Accessibilità dello Stato Finale:** Il raggiungimento dello stato target:
+```math
+h_6 = \text{SUSTAINED\_INDEPENDENCE}
+```
+induce la transizione dell'automa umano allo stato:
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+preservando a tempo indeterminato l'accesso alla vista osservabile $\text{Obs}(S)$, al Vault
+```math
+\mathcal{V}_{\text{vault}}
+```
+e al registro delle competenze
+```math
+\mathcal{K}_{\text{competence}}
+```
+
 2. **Conservazione delle Funzionalità su Regressione:** Qualsiasi transizione regressiva nell'automa $\mathcal{H}$ (es. `HEV_EMOTIONAL_OVERWHELM` o `HEV_RELAPSE_REGRESS`) `SHALL NOT` ridurre le autorizzazioni, i diritti o le funzionalità rese osservabili dalla funzione $\text{Obs}(S)$.
 
 ---
@@ -1874,3 +1894,4 @@ All content within this specification has been selected, verified, modified wher
 
 ***Compatibility and Versioning***  
 Unless otherwise indicated, compatibility between different versions of this specification is not implied. Every implementation must explicitly declare the version of the specification with which it complies.  
+
