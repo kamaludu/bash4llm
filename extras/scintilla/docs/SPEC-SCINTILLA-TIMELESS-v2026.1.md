@@ -1,4 +1,4 @@
-[![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-SPECIFICA_CANONICA_IN_LINGUAGGIO_NATURALE-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
+[![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-SPECIFICA_CANONICA_DIVULGATIVA-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
 
 # ✴ SCINTILLA Core - CANONICAL SPECIFICATION
 ## Canonical Standard Edition v4.5.5
@@ -285,13 +285,24 @@ La componente di stato derivato $\mathcal{S}_{\text{derived}}$ non costituisce u
 \mathcal{S}_{\text{derived}} := \mathcal{O}_{\text{decision}} \times \mathcal{A}_{\text{index}}
 ```
 
-La tupla dei contatori cumulativi di interazione $\mathcal{M}_{\text{metrics}} \in \mathbb{N}^4$ risiede nel dominio primario di controllo interno $\mathcal{S}_{\text{internal}}$ ed è normatively ordinata come:
+La tupla dei contatori cumulativi di interazione:
+```math
+\mathcal{M}_{\text{metrics}} \in \mathbb{N}^4
+```
+risiede nel dominio primario di controllo interno
+```math
+\mathcal{S}_{\text{internal}}
+
+ed è normatively ordinata come:
 
 ```math
 \mathcal{M}_{\text{metrics}} := \left\langle c_{\text{interaction}}, \ c_{\text{rephrase}}, \ c_{\text{ambiguity}}, \ c_{\text{overwhelm}} \right\rangle
 ```
 
-La mutazione deterministica della tupla $\mathcal{M}_{\text{metrics}}' = \text{UpdateMetrics}(\mathcal{M}_{\text{metrics}}, t.\text{event}, \text{SMLOutcome})$ è regolata dalle seguenti regole di incremento applicate da $\text{ApplyValidated}$:
+La mutazione deterministica della tupla:
+```math
+\mathcal{M}_{\text{metrics}}' = \text{UpdateMetrics}(\mathcal{M}_{\text{metrics}}, t.\text{event}, \text{SMLOutcome})
+è regolata dalle seguenti regole di incremento applicate da $\text{ApplyValidated}$:
 1. $c_{\text{interaction}}$ si incrementa di $+1$ per ogni transazione valida $t$ elaborata con esito `PASS`.
 2. $c_{\text{rephrase}}$ si incrementa di $+1$ quando l'esito conversazionale SML è `NEEDS_REPHRASING`.
 3. $c_{\text{overwhelm}}$ si incrementa di $+1$ quando l'evento recepito è `HEV_EMOTIONAL_OVERWHELM`.
@@ -351,7 +362,13 @@ S_1 \equiv_{\text{CoreState}} S_2 \iff \pi_{\text{persistent}}(S_1) = \pi_{\text
 ```math
 \forall S_1, S_2 \in \mathcal{S}, \quad S_1 \equiv_{\text{CoreState}} S_2 \implies \text{Obs}(S_1) = \text{Obs}(S_2)
 ```
-*(Dichiara che le variazioni nel buffer volatile* $\mathcal{S}_{\text{auxiliary}}$ *non alterano le proiezioni osservabili dei diritti, del percorso o dello stato storico dell'utente. Costituisce un teorema derivato direttamente dalle definizioni matematiche di* $\text{Obs}(S)$ *e* $\equiv_{\text{CoreState}}$*).*
+*(Dichiara che le variazioni nel buffer volatile*
+```math
+\mathcal{S}_{\text{auxiliary}}
+*non alterano le proiezioni osservabili dei diritti, del percorso o dello stato storico dell'utente. Costituisce un teorema derivato direttamente dalle definizioni matematiche di* $\text{Obs}(S)$ e
+```math
+$\equiv_{\text{CoreState}}
+```
 
 ---
 
@@ -422,7 +439,11 @@ L'**Involucro di Esecuzione (Execution Envelope)** è la componente di metadati 
 \text{execution\_envelope} := \left\langle \text{execution\_status}, \text{reason\_code}, \text{state\_mutations\_applied} \right\rangle
 ```
 
-Quando una transazione viene elaborata durante lo stato di pausa dell'automa umano ($q_H = \text{HUMAN\_PAUSED}$), l'involucro di esecuzione `MUST` registrare:
+Quando una transazione viene elaborata durante lo stato di pausa dell'automa umano:
+```math
+q_H = \text{HUMAN\_PAUSED}
+```
+l'involucro di esecuzione `MUST` registrare:
 
 ```math
 \text{execution\_envelope} = \left\langle \text{"PROCESSED\_NO\_STATE\_EFFECT"}, \text{"HUMAN\_JOURNEY\_PAUSED"}, \text{false} \right\rangle
@@ -594,7 +615,11 @@ L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Poi
 
 #### 1.7.3 Calcolo Deterministico dell'AGI in Aritmetica Intera Sicura (Layer A / RFC-003)
 
-Per tutti gli stati attivi, $\text{AGI}_{\text{computed}}(S) \in [0, 10000]$ è calcolato unicamente in aritmetica intera sicura a 64 bit $I_{\text{safe}}$ con saturazione dei contatori a $10^6$ ed operatore di troncamento $\lfloor \dots \rfloor$:
+Per tutti gli stati attivi, 
+```math
+\text{AGI}_{\text{computed}}(S) \in [0, 10000]
+```
+è calcolato unicamente in aritmetica intera sicura a 64 bit $I_{\text{safe}}$ con saturazione dei contatori a $10^6$ ed operatore di troncamento $\lfloor \dots \rfloor$:
 
 ```math
 \text{AGI}_{\text{computed}}(S) := \left\lfloor \frac{w_1 \cdot \text{ClarityScore}_{\text{bp}}(S) + w_2 \cdot \text{ActionExecutionRatio}_{\text{bp}}(S) + w_3 \cdot \text{DependencyReductionScore}_{\text{bp}}(S)}{10000} \right\rfloor
@@ -627,7 +652,11 @@ where $w_1, w_2, w_3 \in [0, 10000]$ sono interi tali che $w_1 + w_2 + w_3 = 100
 \left\lfloor \frac{|\{ \text{id} \in V_{\text{active\_completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \land \text{IsEmpoweredAction}(v, S) \}| \times 10000}{|V_{\text{active\_completed}}|} \right\rfloor & \text{se } |V_{\text{active\_completed}}| > 0
 \end{cases}
 ```
-where $V_{\text{active\_completed}} = V_{\text{completed}} \cap \{v.\text{node\_id} \mid v \in G_P.V_P\}$, ed il predicato booleano puro $\text{IsEmpoweredAction}(v, S)$ è formalizzato come:
+dove
+```math
+V_{\text{active\_completed}} = V_{\text{completed}} \cap \{v.\text{node\_id} \mid v \in G_P.V_P\}
+```
+ed il predicato booleano puro $\text{IsEmpoweredAction}(v, S)$ è formalizzato come:
 
 ```math
 \text{IsEmpoweredAction}(v, S) \iff \left( v.\text{action\_type} \in \{\text{USER\_CONFIRMED\_STEP}, \text{REQUIRED\_FOR\_SYSTEM\_STATE}\} \land v.\text{gained\_skill} \neq \text{null} \right)
@@ -786,10 +815,29 @@ F_H = \{ \text{HUMAN\_DECLINED\_ASSISTANCE} \} = \{ h_{10} \}
 ```
 
 #### 2.3.1 Dinamica dello Stato h11 (PREVENTIVE_STANDBY) come "Base Sicura" (Layer B2)
-Lo stato $h_{11} = \text{PREVENTIVE\_STANDBY}$ definisce la condizione di **Santuario in Standby (Base Sicura)**:
+Lo stato:
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+definisce la condizione di **Santuario in Standby (Base Sicura)**:
 
 1. **Semantica di Custodia Discreta:** Quando l'automa umano $\mathcal{H}$ raggiunge lo stato $h_{11}$, l'utente ha acquisito piena autonomia operativa. Il sistema cessa di proporre micro-azioni quotidiane o notifiche proattive, ma mantiene attiva la vista di ascolto discreto.
-2. **Invarianza di Accessibilità dello Stato Finale:** Nel raggiungimento dello stato target $h_6 = \text{SUSTAINED\_INDEPENDENCE}$, l'automa umano induce la transizione allo stato $h_{11} = \text{PREVENTIVE\_STANDBY}$, preservando a tempo indeterminato l'accesso alla vista osservabile $\text{Obs}(S)$, al Vault $\mathcal{V}_{\text{vault}}$ e al registro delle competenze $\mathcal{K}_{\text{competence}}$.
+2. **Invarianza di Accessibilità dello Stato Finale:** Nel raggiungimento dello stato target:
+```math
+h_6 = \text{SUSTAINED\_INDEPENDENCE}
+```
+l'automa umano induce la transizione allo stato
+```math
+h_{11} = \text{PREVENTIVE\_STANDBY}
+```
+preservando a tempo indeterminato l'accesso alla vista osservabile $\text{Obs}(S)$, al Vault
+```math
+\mathcal{V}_{\text{vault}}
+```
+e al registro delle competenze
+```math
+\mathcal{K}_{\text{competence}}
+```
 3. **Re-ingaggio Immediato:** Qualsiasi espressione di disagio, sopraffazione emotiva o richiesta esplicita dell'utente transitano immediatamente l'automa da $h_{11}$ allo stato di supporto attivo `HUMAN_RECALIBRATION_REQUIRED`, riattivando la guida senza che l'utente debba giustificare la propria ricaduta.
 
 #### 2.3.2 Regola Normativa di Preservazione del Progresso Umano (`RULE-HUMAN-RECALIBRATION-PRESERVE-PROGRESS-01`)
@@ -863,7 +911,7 @@ La Mappa di Osservazione Canonica $\pi_{\text{SOS}}$ estrae la tripla dello stat
 ```math
 \forall S \in \mathcal{S}, \forall t \in T, \quad \left( \pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \sigma_1 \land \pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \sigma_2 \right) \implies \sigma_1 = \sigma_2
 ```
-*(Deriva direttamente dalla purezza e dal determinismo delle funzioni $\delta_M$, $\delta_H$ e $\text{ApplyValidated}$).*
+*(Deriva direttamente dalla purezza e dal determinismo delle funzioni* $\delta_M$, $\delta_H$ e $\text{ApplyValidated}$)
 
 #### 3.0.2 Requisito di Progresso SOS Condizionato (`REQ-SOS-CONDITIONED-PROGRESS`) (Layer B2)
 ```math
@@ -960,7 +1008,11 @@ All'ottenimento o verifica oggettiva di un documento d'identità o attestato for
 
 #### 3.4.1 Meta-Regola SOS di Stasi in Stato Pausa (SOS-HUMAN-PAUSED-STUTTER / RFC-002)
 
-Quando l'automa del percorso umano si trova nello stato $q_H = \text{HUMAN\_PAUSED}$ e giunge un qualsiasi evento $t$ non corrispondente a `HEV_RESUME_REQUESTED`, `HEV_DECLINE_ALL` o `HEV_EMOTIONAL_OVERWHELM`, l'automa esegue uno stuttering step preservando lo stato di stasi ed emettendo una transazione recante l'involucro di esecuzione $e_{\text{paused}}$:
+Quando l'automa del percorso umano si trova nello stato:
+```math
+q_H = \text{HUMAN\_PAUSED}
+```
+e giunge un qualsiasi evento $t$ non corrispondente a `HEV_RESUME_REQUESTED`, `HEV_DECLINE_ALL` o `HEV_EMOTIONAL_OVERWHELM`, l'automa esegue uno stuttering step preservando lo stato di stasi ed emettendo una transazione recante l'involucro di esecuzione $e_{\text{paused}}$ :
 
 ```math
 \frac{q_H = \text{HUMAN\_PAUSED} \quad \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM} \} \quad e_{\text{paused}} = \langle \text{"PROCESSED\_NO\_STATE\_EFFECT"}, \text{"HUMAN\_JOURNEY\_PAUSED"}, \text{false} \rangle}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \text{HUMAN\_PAUSED}, \text{ApplyValidated}(S, t[e \mapsto e_{\text{paused}}], \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-PAUSED-STUTTER}]
@@ -968,7 +1020,14 @@ Quando l'automa del percorso umano si trova nello stato $q_H = \text{HUMAN\_PAUS
 
 #### 3.4.2 Meta-Regola SOS di Timeout ed Inattività Umana (SOS-HUMAN-TIMEOUT)
 
-Quando l'automa umano si trova in $q_H = \text{HUMAN\_PAUSED}$ ed il tempo di permanenza supera la soglia parametrizzata $\theta_{\text{inactivity\_timeout}}$:
+Quando l'automa umano si trova in:
+```math
+q_H = \text{HUMAN\_PAUSED}
+```
+ed il tempo di permanenza supera la soglia parametrizzata
+```math
+\theta_{\text{inactivity\_timeout}}
+```
 
 ```math
 \frac{q_H = \text{HUMAN\_PAUSED} \quad (E.t_{\text{wall}} - \pi_{\text{internal}}(S).t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad t_{\text{timeout}} = \text{BuildSystemTx}(S, E, \text{HEV\_RECALIBRATION\_REQ})}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t_{\text{timeout}}}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t_{\text{timeout}}, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
@@ -1013,7 +1072,11 @@ Un `PolicyBundle` $\mathcal{P}$ è formalizzato come la tupla algebrica:
 
 * $\text{PolicyID} \in \mathcal{I}$: Identificatore unico della policy (UUIDv7).
 * $\text{Version} \in V$: Versione della policy nello Spazio delle Versioni $V$ (§6.1).
-* $\Theta$: Lo spazio dei parametri di configurazione e soglie, es. $\theta_{\text{duration}}, \theta_{\text{confidence}}, \theta_{\text{max\_clock\_skew}}$.
+* $\Theta$: Lo spazio dei parametri di configurazione e soglie, es. 
+```math
+\theta_{\text{duration}}, \theta_{\text{confidence}}, \theta_{\text{max\_clock\_skew}}
+```
+
 * $\mathcal{R}_{\text{exec}}$: Predicato esecutivo puro valutato sullo stato e sulla transazione.
 * $\text{Sig}_\mathcal{P}$: La firma crittografica dell'autorità di policy emittente calcolata su $\text{Canon}(\mathcal{P})$.
 
@@ -1240,7 +1303,11 @@ Dove
 ```math
 H: \mathcal{B}^* \to \mathcal{D}_{256}
 ```
-è la funzione di hash astratta (SHA-256) e $\text{TransactionBody}_N$ contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
+è la funzione di hash astratta (SHA-256) e 
+```math
+\text{TransactionBody}_N
+```
+contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
 
 ---
 
@@ -1322,22 +1389,65 @@ M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
 #### 9.2.2 Mappatura della Labeling Function e Predicati sulle Transizioni
 La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$ e la transazione candidata in valutazione contesto $t_{\text{prop}}$, mentre i predicati di concorrenza e transizione sono formalizzati sulle coppie di stati adiacenti $(S_i, S_{i+1})$:
 
-1. **SafetyGateAllowed:** $\text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S, t_{\text{prop}}) = \text{ALLOW}$.
-2. **DecisionOutcomeAllowed:** $\text{DecisionOutcomeAllowed} \in L(S) \iff \text{Derive}(\pi_{\text{persistent}}(S), \pi_{\text{internal}}(S)).\mathcal{O}_{\text{decision}} = \text{ALLOW}$.
-3. **HashChainValid:** $\text{HashChainValid} \in L(S) \iff H(\text{Canon}(t_{\text{prev}})) = \pi_{\text{internal}}(S).\text{last\_hash}$.
-4. **MonotonicFence (Predicato su Transizione):** $\text{MonotonicFence}(S_i, S_{i+1}) \iff \pi_{\text{internal}}(S_{i+1}).\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}} > \pi_{\text{internal}}(S_i).\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}}$.
-5. **StateIsRecoverableFailure:** $\text{StateIsRecoverableFailure} \in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}$.
-6. **StateIsSecurityLockdown:** $\text{StateIsSecurityLockdown} \in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}$.
-7. **StateIsValidationError:** $\text{StateIsValidationError} \in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}$.
-8. **StateIsNormal:** $\text{StateIsNormal} \in L(S) \iff \pi_Q(S) = \text{NORMAL}$.
-9. **StateIsReadOnly:** $\text{StateIsReadOnly} \in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}$.
-10. **JourneyProgressive:** $\text{JourneyProgressive} \in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}$.
-11. **KeyIsShredded:** $\text{KeyIsShredded}_c \in L(S) \iff \text{LookupKey}(K_c) = \bot$.
-12. **UserEngaged:** $\text{UserEngaged} \in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}$.
-13. **NonTerminalHumanState:** $\text{NonTerminalHumanState} \in L(S) \iff \pi_{Q_H}(S) \notin F_H$.
-14. **HumanState:** $\text{HumanState}_{h_i} \in L(S) \iff \pi_{Q_H}(S) = h_i$.
-15. **CryptoShredExecuted (RFC-005):**
+1. **SafetyGateAllowed:** 
+```math
+\text{SafetyGateAllowed} \in L(S) \iff \mathcal{R}_{\text{exec}}(S, t_{\text{prop}}) = \text{ALLOW}
+```
 
+2. **DecisionOutcomeAllowed:** $\text{DecisionOutcomeAllowed} \in L(S) \iff \text{Derive}(\pi_{\text{persistent}}(S), \pi_{\text{internal}}(S)).\mathcal{O}_{\text{decision}} = \text{ALLOW}$.
+3. **HashChainValid:** 
+```math
+\text{HashChainValid} \in L(S) \iff H(\text{Canon}(t_{\text{prev}})) = \pi_{\text{internal}}(S).\text{last\_hash}
+```
+
+4. **MonotonicFence (Predicato su Transizione):** 
+```math
+\text{MonotonicFence}(S_i, S_{i+1}) \iff \pi_{\text{internal}}(S_{i+1}).\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}} > \pi_{\text{internal}}(S_i).\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}}
+```
+
+5. **StateIsRecoverableFailure:** 
+```math
+\text{StateIsRecoverableFailure} \in L(S) \iff \pi_Q(S) = \text{RECOVERABLE\_FAILURE}
+```
+
+6. **StateIsSecurityLockdown:** 
+```math
+\text{StateIsSecurityLockdown} \in L(S) \iff \pi_Q(S) = \text{SECURITY\_LOCKDOWN}
+```
+
+7. **StateIsValidationError:** 
+```math
+\text{StateIsValidationError} \in L(S) \iff \pi_Q(S) = \text{VALIDATION\_ERROR}
+```
+
+8. **StateIsNormal:** $\text{StateIsNormal} \in L(S) \iff \pi_Q(S) = \text{NORMAL}$.
+9. **StateIsReadOnly:** 
+```math
+\text{StateIsReadOnly} \in L(S) \iff \pi_Q(S) = \text{SAFE\_READ\_ONLY\_MODE}
+```
+
+10. **JourneyProgressive:** $\text{JourneyProgressive} \in L(S) \iff \pi_Q(S) \in F_{\text{oper}} \land \pi_{Q_H}(S) \in \{h_1, h_2, h_3, h_4, h_5, h_6, h_{11}\}$.
+11. **KeyIsShredded:** 
+```math
+\text{KeyIsShredded}_c \in L(S) \iff \text{LookupKey}(K_c) = \bot
+```
+
+12. **UserEngaged:** 
+```math
+\text{UserEngaged} \in L(S) \iff \pi_{Q_H}(S) \notin \{h_7, h_{10}\}
+```
+
+13. **NonTerminalHumanState:** 
+```math
+\text{NonTerminalHumanState} \in L(S) \iff \pi_{Q_H}(S) \notin F_H
+```
+
+14. **HumanState:** 
+```math
+\text{HumanState}_{h_i} \in L(S) \iff \pi_{Q_H}(S) = h_i
+```
+
+15. **CryptoShredExecuted (RFC-005):**
 ```math
 \text{CryptoShredExecuted}_c \in L(S) \iff t.\text{event} = \text{EV\_CRYPTO\_SHRED\_EXECUTED}(c)
 ```
