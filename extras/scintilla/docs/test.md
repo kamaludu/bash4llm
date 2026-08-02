@@ -1,3 +1,273 @@
+### 1.4 TRANSAZIONI, INVOLUCRO DI ESECUZIONE E LEDGER IMMUTABILE L
+
+#### 1.4.1 Spazio delle Transazioni T, Codifica EncodeTx e Busta di Esecuzione (Layer A)
+
+Una transazione $t \in T$ è formalizzata come la tupla: 
+
+```math
+t := \langle \text{TransactionBody}, \text{execution\_envelope}, \text{proof} \rangle
+```
+
+La funzione pura di codifica per la persistenza è definita come:
+
+```math
+\text{EncodeTx} : T \longrightarrow \text{TransactionBody}
+```
+
+```math
+\text{TransactionBody} := \left\langle \text{tx}_{\text{id}}, \text{case}_{\text{id}}, \text{seq}_{\text{num}}, \text{prev}_{\text{hash}}, \text{timestamp}, \text{actor}, \text{event}, \text{payload}, \text{policy}_{\text{binding}_{\text{hash}}}, \text{schema}_{\text{hash}}, \text{authorization}_{\text{snapshot}_{\text{hash}}}, \text{runtime}_{\text{profile}}, \text{specification\_id} \right\rangle
+```
+
+L'**Involucro di Esecuzione (Execution Envelope)** è la componente di metadati applicativi generata dal runtime che registra il risultato dell'elaborazione senza contaminare il payload di dominio:
+
+```math
+\text{execution\_envelope} := \left\langle \text{execution\_status}, \text{reason\_code}, \text{state\_mutations\_applied} \right\rangle
+```
+
+Quando una transazione viene elaborata durante lo stato di pausa dell'automa umano:
+```math
+q_H = \text{HUMAN\_PAUSED}
+```
+l'involucro di esecuzione `MUST` registrare:
+
+```math
+\text{execution\_envelope} = \left\langle \text{"PROCESSED\_NO\_STATE\_EFFECT"}, \text{"HUMAN\_JOURNEY\_PAUSED"}, \text{false} \right\rangle
+```
+
+#### 1.4.2 Predicato Normativo di Sicurezza in Costruzione Errori e BuildErrorTx (Layer A e B2 / RFC-006)
+
+```math
+\text{IsLockdownEvent}(\sigma) \iff \sigma \in \{ \text{EV\_HASH\_CORRUPT} \}
+```
+
+```math
+\text{BuildErrorTx}(S, E, \text{err}, \sigma_{\text{orig}}) := \left\langle \text{TransactionBody}\left(\text{case}_{\text{id}}=S.\text{case}_{\text{id}}, \text{seq}_{\text{num}}=S.\text{seq}_{\text{num}}+1, \text{prev}_{\text{hash}}=S.\text{last\_hash}, \text{timestamp}=E.t_{\text{wall}}, \text{event}=\begin{cases} \sigma_{\text{orig}} & \text{se } \text{IsLockdownEvent}(\sigma_{\text{orig}}) \\ \text{EV\_SML\_FAIL} & \text{altrimenti} \end{cases}, \text{actor}=\text{SYSTEM}, \text{payload}=\text{err}\right), \ \text{execution\_envelope}_{\text{err}}, \ \text{proof}_{\text{null}} \right\rangle
+```
+
+```math
+\text{BuildSystemTx}(S, E, \sigma) := \left\langle \text{TransactionBody}(\text{case}_{\text{id}}=S.\text{case}_{\text{id}}, \text{seq}_{\text{num}}=S.\text{seq}_{\text{num}}+1, \text{prev}_{\text{hash}}=S.\text{last\_hash}, \text{timestamp}=E.t_{\text{wall}}, \text{event}=\sigma, \text{actor}=\text{SYSTEM}), \ \text{execution\_envelope}_{\text{default}}, \ \text{proof}_{\text{null}} \right\rangle
+```
+
+#### 1.4.3 Il Ledger come Monoide Libero L e Funzione Persist (Layer A)
+
+Il registro immutabile delle decisioni (Ledger) è formalizzato come un Monoide Libero definito sullo spazio dei corpi delle transazioni canonizzate:
+
+```math
+\mathcal{L} := \langle (\text{TransactionBody})^*, \mathbin{\Vert}, \epsilon \rangle
+```
+
+La funzione pura di persistenza converte la transazione $t \in T$ nel suo corpo canonico mediante $\text{EncodeTx}(t) \in \text{TransactionBody}$ e la concatena in modo append-only al registro:
+
+```math
+\text{Persist} : \mathcal{L} \times T \longrightarrow \mathcal{L}
+```
+
+```math
+\text{Persist}(L, t) := L \mathbin{\Vert} \langle \text{EncodeTx}(t) \rangle
+```
+
+#### 1.4.4 Invariante di Consistenza della Proiezione del Ledger (Layer A)
+
+```math
+\mathbf{INVARIANT-LEDGER-PROJECTION-CONSISTENCY}
+```
+
+* **Ipotesi H1:** La funzione $\text{EncodeTx} : T \to \text{TransactionBody}$ preserva la semantica formale della transazione $t \in T$.
+* **Ipotesi H2:** Il monoide libero $\mathcal{L}$ applica rigorosamente l'operazione di concatenazione associativa monotonica append-only.
+* **Ipotesi H3:** La funzione di transizione $\text{ApplyValidated}$ è una funzione pura deterministica.
+* **Tesi (Proof Obligation Induttiva su $|L|$):** Per qualsiasi Ledger $L \in \mathcal{L}$ e transazione $t \in T$, lo stato proiettato $P$ soddisfa l'equivalenza semantica dello stato primario rispetto al risultato della validazione ambientale:
+
+```math
+\forall L \in \mathcal{L}, \forall t \in T, \quad P(\text{Persist}(L, t)) \equiv_{\text{CoreState}} \text{ApplyValidated}(P(L), t, \text{ValidateEnvironment}(P(L), t, E))
+```
+
+---
+
+### 1.5 Privacy, Revoca Logica Parziale e Crypto-Erasure Totale
+
+#### 1.5.1 Revoca Logica Parziale (`SOFT_LOGICAL_REVOCATION`) (Layer B2)
+La revoca di un singolo elemento informativo da parte dell'utente genera una transizione recante l'evento `EV_ITEM_PRIVACY_REVOKED`. L'applicazione della transazione aggiunge l'identificatore al registro:
+
+```math
+\mathcal{Q}_{\text{revoked\_items}}' = \mathcal{Q}_{\text{revoked\_items}} \cup \{\text{item\_id}\}
+```
+```math
+\text{ResourceId}(e) := \begin{cases}
+e.\text{doc\_id} & \text{se } e \in \mathcal{V}_{\text{vault}} \\
+e.\text{consent\_id} & \text{se } e \in \mathcal{Q}_{\text{consent}} \\
+e.\text{skill\_id} & \text{se } e \in \mathcal{K}_{\text{competence}}
+\end{cases}
+```
+
+In sede di proiezione dello stato o consultazione via API ($\text{Obs}$), qualsiasi elemento $e$ tale che:
+```math
+\text{ResourceId}(e) \in \mathcal{Q}_{\text{revoked\_items}}
+```
+`MUST` restituire il valore nullo $\bot$.
+
+*Nota di Invarianza Strutturale:* La revoca logica parziale oscura la visibilità dei dati nella vista pubblica $\text{Obs}(S)$, ma **NON rimuove l'identificatore del nodo dall'insieme dei nodi completati** $V_{\text{completed}}$ in $\mathcal{K}_{\text{playbook}}$, preservando l'integrità del grafo e la deterministica riproducibilità dell'avanzamento.
+
+#### 1.5.2 Oblio Crittografico Totale (`FULL_CRYPTO_SHREDDING`) (Layer B2 & Layer C)
+L'oblio totale dell'intero caso utente `SHALL` essere eseguito mediante la distruzione irreversibile della chiave radice $K_{\text{case}}$ nel modulo KMS ed il cancellamento di ogni percorso di recupero:
+
+```math
+\text{ShredKey}(K_{\text{case}}) \implies \text{NoRecovery}(K_{\text{case}}) \quad \land \quad \forall v \in \mathcal{V}, \ \text{DecryptPayload}(\bot, E_{K_{\text{case}}}(v)) = \bot
+```
+L'atto di distruzione `MUST` registrare sul Ledger la transazione formale $t_{\text{shred}}$ recante l'evento `EV_CRYPTO_SHRED_EXECUTED`.
+
+---
+
+### 1.6 Validazione Ambientale Impura vs Funzione Pura ApplyValidated
+
+#### 1.6.1 Predicato Impuro di Validazione Ambientale ValidateEnvironment e Requisiti di Cluster (Layer A & B2)
+La validazione delle condizioni di contesto fisiche, temporali e crittografiche esterne allo stato algebrico è governata dal predicato impuro:
+
+```math
+\text{ValidateEnvironment} : \mathcal{S} \times T \times E \longrightarrow \text{ValidationResult}
+```
+```math
+\text{ValidationResult} := \{ \text{PASS} \} \cup \mathcal{E}_{\text{validation}}
+```
+
+```math
+\text{ValidateEnvironment}(S, t, E) = \begin{cases}
+\text{PASS} & \text{se } \text{VerifySignature}(t.\text{proof}, t.\text{TransactionBody}, E.K_{\text{pubkey\_registry}}) = \text{TRUE} \\
+& \quad \land \ |t.\text{timestamp} - E.t_{\text{wall}}| \le \Theta.\theta_{\text{max\_clock\_skew}} \\
+& \quad \land \ E.\text{LeaseManager}.\text{IsTokenValid}(S.\mathcal{F}_{\text{lease}}.\text{fencing}_{\text{token}}) = \text{TRUE} \\
+\text{ERR\_SIG} & \text{se la firma crittografica è invalida} \\
+\text{ERR\_CLOCK} & \text{se } |t.\text{timestamp} - E.t_{\text{wall}}| > \Theta.\theta_{\text{max\_clock\_skew}} \\
+\text{ERR\_LEASE} & \text{se il lease di concorrenza è scaduto o invalido}
+\end{cases}
+```
+
+```math
+\mathbf{REQ-CLUSTER-CLOCK-SYNC} := \max_{i,j} |t_{\text{wall}, i} - t_{\text{wall}, j}| \le \delta_{\text{clock}} \quad \text{con } \delta_{\text{clock}} < \frac{1}{2} \Theta.\theta_{\text{max\_clock\_skew}}
+```
+*(Impone che la sincronizzazione temporale tra i nodi esecutori sia limitata superiormente per prevenire rifiuti inconsistenti per clock skew).*
+
+#### 1.6.2 Funzione Pura di Transizione di Stato ApplyValidated (Layer A)
+La mutazione di stato è governata dalla funzione pura e deterministica $\text{ApplyValidated}$, priva di accesso diretto all'ambiente $E$:
+
+```math
+\text{ApplyValidated} : \mathcal{S} \times T \times \text{ValidationResult} \longrightarrow \mathcal{S}
+```
+
+#### 1.6.3 Requisito Normativo di Totalità di ApplyValidated (`REQ-APPLY-TOTALITY-POLICY`) (Layer B2)
+La funzione pura $\text{ApplyValidated}$ è una **funzione totale** su $\mathcal{S}$ definita dalla seguente specifica a casi con precedenza assoluta di lockdown per corruzione dell'hash:
+
+```math
+\text{ApplyValidated}(S, t, \text{v\_res}) := \begin{cases}
+S[ q \mapsto \text{SECURITY\_LOCKDOWN} ] & \text{se } t.\text{event} = \text{EV\_HASH\_CORRUPT} \\
+\delta_{\text{nominal}}(S, t) & \text{se } t.\text{event} \neq \text{EV\_HASH\_CORRUPT} \land \text{v\_res} = \text{PASS} \land \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW} \\
+\delta_{\text{err}}(S, t, \text{v\_res}) & \text{se } t.\text{event} \neq \text{EV\_HASH\_CORRUPT} \land (\text{v\_res} \in \mathcal{E}_{\text{validation}} \lor \mathcal{R}_{\text{exec}}(S, t) \neq \text{ALLOW})
+\end{cases}
+```
+
+---
+
+### 1.7 INDICE PROXY OPERATIVO DI GUADAGNO DI AGENCY (AGI_proxy)
+
+L'Indice Proxy $\text{AGI}_{\text{proxy}} \in [0, 10000]$ (espresso in Basis Points interi) misura gli indicatori comportamentali descrittivi di avanzamento dell'utente sul sistema.
+
+#### 1.7.1 Assunzione di Confine Epistemico ed Invariante di Isolamento Descrittivo (Layer B1)
+
+```math
+\mathbf{AXIOM-EPISTEMIC-BOUNDARY-AGI}
+```
+
+```math
+\mathbf{INV-AGI-DESCRIPTIVE-ISOLATION}
+```
+
+```math
+\forall S \in \mathcal{S}, \forall t \in T, \quad \mathcal{R}_{\text{exec}}(S, t) \text{ MUST NOT depend on } \text{AGI}_{\text{proxy}}(S)
+```
+
+*Nota di Chiarimento Semantico sull'Acronimo:* Ai fini della presente specifica e di qualsiasi contratto di interfaccia (API/JSON), l'acronimo **`AGI_proxy`** indica esclusivamente l'**Agency Governance Indicator Proxy** (Indicatore Proxy di Governance dell'Agency Operativa) e non ha alcuna relazione teorica, funzionale o concettuale con costrutti di Artificial General Intelligence.
+
+#### 1.7.2 Definizione Normativa di Invarianza per Stati Non-Attivi (Layer B1)
+
+```math
+\mathbf{DEF-AGI-PAUSED-STATE-INVARIANCE}
+```
+
+```math
+\forall S_N \in \mathcal{S}, \quad \text{AGI}_{\text{proxy}}(S_N) := \begin{cases}
+\text{AGI}_{\text{proxy}}(S_{N-1}) & \text{se } q_H(S_N) \in \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \} \\
+\text{AGI}_{\text{computed}}(S_N) & \text{se } q_H(S_N) \notin \{ \text{HUMAN\_PAUSED}, \text{HUMAN\_DECLINED\_ASSISTANCE} \}
+\end{cases}
+```
+
+#### 1.7.3 Calcolo Deterministico dell'AGI in Aritmetica Intera Sicura (Layer A / RFC-003)
+
+Per tutti gli stati attivi, 
+```math
+\text{AGI}_{\text{computed}}(S) \in [0, 10000]
+```
+è calcolato unicamente in aritmetica intera sicura a 64 bit $I_{\text{safe}}$ con saturazione dei contatori a $10^6$ ed operatore di troncamento $\lfloor \dots \rfloor$:
+
+```math
+\text{AGI}_{\text{computed}}(S) := \left\lfloor \frac{w_1 \cdot \text{ClarityScore}_{\text{bp}}(S) + w_2 \cdot \text{ActionExecutionRatio}_{\text{bp}}(S) + w_3 \cdot \text{DependencyReductionScore}_{\text{bp}}(S)}{10000} \right\rfloor
+```
+where $w_1, w_2, w_3 \in [0, 10000]$ sono interi tali che $w_1 + w_2 + w_3 = 10000$.
+
+1. **ClarityScore in Basis Points:**
+
+```math
+\text{ClarityScore}_{\text{bp}}(S) := \begin{cases}
+10000 & \text{se } c_{\text{interaction}} = 0 \\
+\max\left(0, \ 10000 - \left\lfloor \frac{(c_{\text{rephrase}} + c_{\text{ambiguity}} + 2 \cdot c_{\text{overwhelm}}) \times 10000}{\max(1, c_{\text{interaction}})} \right\rfloor \right) & \text{se } c_{\text{interaction}} > 0
+\end{cases}
+```
+
+2. **ActionExecutionRatio in Basis Points:**
+
+```math
+\text{ActionExecutionRatio}_{\text{bp}}(S) := \begin{cases}
+0 & \text{se } \text{pb}_{\text{id}} = \text{null} \lor |V_P| = 0 \\
+\left\lfloor \frac{|\{ \text{id} \in V_{\text{completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \}| \times 10000}{|V_P|} \right\rfloor & \text{se } \text{pb}_{\text{id}} \neq \text{null} \land |V_P| > 0
+\end{cases}
+```
+
+3. **DependencyReductionScore in Basis Points (RFC-003):**
+
+```math
+\text{DependencyReductionScore}_{\text{bp}}(S) := \begin{cases}
+0 & \text{se } |V_{\text{active\_completed}}| = 0 \\
+\left\lfloor \frac{|\{ \text{id} \in V_{\text{active\_completed}} \mid \exists v \in G_P.V_P \text{ t.c. } v.\text{node\_id} = \text{id} \land \text{IsEmpoweredAction}(v, S) \}| \times 10000}{|V_{\text{active\_completed}}|} \right\rfloor & \text{se } |V_{\text{active\_completed}}| > 0
+\end{cases}
+```
+dove
+```math
+V_{\text{active\_completed}} = V_{\text{completed}} \cap \{v.\text{node\_id} \mid v \in G_P.V_P\}
+```
+ed il predicato booleano puro $\text{IsEmpoweredAction}(v, S)$ è formalizzato come:
+
+```math
+\text{IsEmpoweredAction}(v, S) \iff \left( v.\text{action\_type} \in \{\text{USER\_CONFIRMED\_STEP}, \text{REQUIRED\_FOR\_SYSTEM\_STATE}\} \land v.\text{gained\_skill} \neq \text{null} \right)
+```
+
+---
+
+### 1.8 Contratto del Modulo Crittografico Astratto (`CryptoProviderContract`) (Layer A & C)
+
+Ogni implementazione esecutiva di SCINTILLA Core `MUST` integrare un modulo crittografico conforme alla seguente interfaccia astratta:
+
+```math
+\mathbf{CryptoProviderContract} := \langle \text{DeriveKey}, \text{EncryptPayload}, \text{DecryptPayload}, \text{ShredKey}, \text{VerifySignature}, \text{LookupKey} \rangle
+```
+
+1. $\text{DeriveKey}(K_{\text{parent}}, \text{context}) \to K_{\text{child}}$: Derivazione deterministica chiavi effimere.
+2. $\text{EncryptPayload}(K_{\text{item}}, v) \to \text{Payload}_{\text{encrypted}}$: Cifratura autenticata simmetrica.
+3. $\text{DecryptPayload}(K_{\text{item}}, \text{Payload}_{\text{encrypted}}) \to v \mid \bot$: Decifratura ed autenticazione payload.
+4. $\text{ShredKey}(K_{\text{id}}) \to \text{TRUE}$: Distruzione del materiale di chiave ed elisione dei percorsi di recupero ($\text{NoRecovery}$).
+5. $\text{VerifySignature}(\text{proof}, \text{data}, K_{\text{pub}}) \to \mathbb{B}$: Verifica firma digitale a chiave pubblica.
+6. $\text{LookupKey}(K_{\text{id}}) \to K_{\text{active}} \mid \bot$: Verifica presenza ed estrazione del materiale di chiave attivo.
+
+*Nota di Binding Normativo:* Il binding concreto degli algoritmi crittografici (AES-256-GCM, HKDF-SHA256, Ed25519) è definito unicamente nel Profilo Concreto di Riferimento SC-JCS-1 (Layer C / Capitolo 10).
+
+---
+
 # CAPITOLO 2: ARCHITETTURA A LIVELLI E DOPPIA MACCHINA DEGLI STATI
 ## (Layer A & Layer B2)
 
