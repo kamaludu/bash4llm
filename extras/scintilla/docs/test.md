@@ -1,3 +1,46 @@
+### 1.2 Interfaccia Osservabile Pubblica ed Equivalenza di Stato
+
+#### 1.2.1 Funzione di Osservazione Pubblica Obs (Layer A)
+La proiezione esterna dello stato verso le interfacce utente, API e viste pubbliche è governata dalla funzione pura di osservazione:
+
+```math
+\text{Obs} : \mathcal{S} \longrightarrow \mathcal{O}
+```
+```math
+\text{Obs}(S) := \left\langle \pi_{\text{persistent}}(S).\text{case}_{\text{id}}, \ \mathcal{M}_{\text{prov}}, \ \mathcal{Q}_{\text{consent}} \setminus \mathcal{R}, \ \mathcal{K}_{\text{playbook}}, \ \mathcal{Q}_{\text{revoked\_items}}, \ \mathcal{K}_{\text{competence}} \setminus \mathcal{R}, \ \mathcal{V}_{\text{vault}} \setminus \mathcal{R} \right\rangle
+```
+
+*dove* 
+```math
+\mathcal{R} = \{ e \mid \text{ResourceId}(e) \in \mathcal{Q}_{\text{revoked\_items}} \}
+```
+
+#### 1.2.2 Equivalenza di Stato Primario CoreState (Layer A)
+Due stati astratti $S_1, S_2 \in \mathcal{S}$ sono semanticamente equivalenti nello stato primario se e solo se le loro proiezioni di persistenza e controllo interno sono identiche:
+
+```math
+S_1 \equiv_{\text{CoreState}} S_2 \iff \pi_{\text{persistent}}(S_1) = \pi_{\text{persistent}}(S_2) \land \pi_{\text{internal}}(S_1) = \pi_{\text{internal}}(S_2)
+```
+
+#### 1.2.3 Proprietà Derivata dell'Algebra di Stato: Irrilevanza Osservazionale del Buffer Temporaneo (Layer A / Level 3)
+```math
+\mathbf{THEOREM-AUXILIARY-IRRELEVANCE}
+```
+```math
+\forall S_1, S_2 \in \mathcal{S}, \quad S_1 \equiv_{\text{CoreState}} S_2 \implies \text{Obs}(S_1) = \text{Obs}(S_2)
+```
+*(Dichiara che le variazioni nel buffer volatile*
+```math
+\mathcal{S}_{\text{auxiliary}}
+```
+*non alterano le proiezioni osservabili dei diritti, del percorso o dello stato storico dell'utente. Costituisce un teorema derivato direttamente dalle definizioni matematiche di* $\text{Obs}(S)$ e
+```math
+\equiv_{\text{CoreState}}
+```
+
+---
+
+
 ### 1.3 ASSIOMA DEL GENESIS STATE s0 (Layer A)
 
 Lo stato iniziale di genesi $s_0 = P(\epsilon) \in \mathcal{S}$ è formalizzato come la tripla annidata conforme alla struttura di $\mathcal{S}$ (§1.1.1):
