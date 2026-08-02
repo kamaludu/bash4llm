@@ -186,7 +186,7 @@ Se l'IA o il manifesto segnalano un errore interno, ecco cosa significa:
 
 ---
 
-## 4. FRASI MAGICHE DA USARE NEI PROMPT (Frasi d'Emergenza)
+## 4.	🪄 FRASI MAGICHE DA USARE NEI PROMPT (Frasi d'Emergenza)
 
 Se durante la chat l'IA sembra confusa, uscite dal seminato o si comporta in modo strano, incolla una di queste direttive per riportarla immediatamente nei binari dello SDP:
 
