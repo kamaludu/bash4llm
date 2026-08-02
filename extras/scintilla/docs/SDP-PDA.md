@@ -1,6 +1,6 @@
 # ✴ SCINTILLA DEVELOPMENT PROTOCOL (SDP)
 ## System Context Specification for Probabilistic Development Agents (PDAs)
-* **Edition:** v1.0.0 Token-Optimized Canonical Edition (Purified)
+* **Edition:** v1.0.0 
 * **Target Audience:** LLM / PDA System Context Window ONLY
 * **Normative Authority:** Interposed Execution Control Protocol governing code synthesis, integration, and verification against SCINTILLA Core.
 * **Domain SSOT:** SCINTILLA Core - CANONICAL SPECIFICATION
