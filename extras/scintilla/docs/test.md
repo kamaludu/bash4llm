@@ -1,3 +1,45 @@
+# CAPITOLO 7: CANONIZZAZIONE ASTRATTA ED INTEGRITÀ CRITTOGRAFICA
+## (Layer A & Layer B2)
+
+---
+
+### 7.1 SPAZIO NORMALIZZATO E CANONIZZAZIONE (Layer A)
+
+Sia $\mathcal{S}_{\text{normalized}} \subseteq \mathcal{S}$ il sottoinsieme di stati conformi alle regole di normalizzazione del profilo di riferimento SC-JCS-1 (§10.2). 
+
+La funzione di canonizzazione deterministica $\text{Canon} : \mathcal{S}_{\text{normalized}} \longrightarrow \mathcal{B}^*$ converte lo stato strutturato nella sua rappresentazione binaria unica. L'iniettività semantica di $\text{Canon}$ costituisce una proprietà obiettivo garantita dall'applicazione dell'algoritmo deterministico SC-JCS-1 (§10.3), assicurando che due stati semanticamente identici producano il medesimo flusso di byte UTF-8.
+
+#### 7.1.1 Teorema di Totalità ed Univocità della Serializzazione (Layer A / RFC-010)
+
+```math
+\mathbf{THEOREM-SERIALIZATION-TOTALITY-AND-UNIQUENESS} := \forall t \in T, \ \text{EncodeTx}(t) \in J_{\text{SC}} \implies \exists! b \in \mathcal{B}^* \text{ t.c. } \text{Canon}(\text{EncodeTx}(t)) = b
+```
+
+---
+
+### 7.2 Catena di Hash Immutabile ed Integrità delle Transazioni (Layer A)
+
+La continuità e l'integrità del Ledger $\mathcal{L}$ per la transazione $N$-esima è determinata dal calcolo del checksum $H_N \in \mathcal{D}_{256}$ eseguito sul corpo della transazione $\text{TransactionBody}_N$:
+
+```math
+H_0 = \mathbf{0}_{\mathcal{D}_{256}} \quad (\text{Digest nullo di Genesi a 256 bit})
+```
+```math
+H_N = H\left( \text{Canon}(\text{TransactionBody}_N) \right)
+```
+
+Dove 
+```math
+H: \mathcal{B}^* \to \mathcal{D}_{256}
+```
+è la funzione di hash astratta (SHA-256) e 
+```math
+\text{TransactionBody}_N
+```
+contiene $H_{N-1}$ come valore vincolato del campo `prev_hash`.
+
+---
+
 # CAPITOLO 8: FRAMEWORK DI CONFORMITÀ E TASSONOMIA DEI RUNTIME ERROR CODES
 ## (Layer B2 - Specificazione Normativa)
 
