@@ -40,7 +40,7 @@ Quando avvii una sessione di sviluppo, il contesto fornito all'LLM (via API, IDE
 |    (Funge da "Single Source of Truth" di Dominio di sola lettura)             |
 +-------------------------------------------------------------------------------+
 | 3. TASK PROMPT (INPUT DELL'UTENTE)                                            |
-|    Inserisci la richiesta specifica (es. "Sviluppa il modulo T1 per...")       |
+|    Inserisci la richiesta specifica (es. "Sviluppa il modulo T1 per...")      |
 +-------------------------------------------------------------------------------+
 ```
 
