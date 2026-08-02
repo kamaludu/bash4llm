@@ -1,3 +1,158 @@
+# CAPITOLO 3: SEMANTICA OPERAZIONALE FORMALE ESAUSTIVA (SMALL-STEP SOS)
+## (Layer B3 - Regole Operative SOS)
+
+---
+
+### 3.0 Mappa di Osservazione e Corrispondenza Relazione-Funzione
+
+La Mappa di Osservazione Canonica $\pi_{\text{SOS}}$ estrae la tripla dello stato di valutazione della semantica operazionale:
+
+```math
+\pi_{\text{SOS}} : \mathcal{S} \longrightarrow \left( Q \times Q_H \times \mathcal{S}_{\text{persistent}} \right)
+```
+```math
+\pi_{\text{SOS}}(S) := \langle \pi_Q(S), \ \pi_{Q_H}(S), \ \pi_{\text{persistent}}(S) \rangle
+```
+
+#### 3.0.1 Proprietà Derivata di Determinismo della Relazione SOS (`PROPERTY-SOS-DETERMINISM`) (Layer B1)
+```math
+\mathbf{PROPERTY-SOS-DETERMINISM}
+```
+```math
+\forall S \in \mathcal{S}, \forall t \in T, \quad \left( \pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \sigma_1 \land \pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \sigma_2 \right) \implies \sigma_1 = \sigma_2
+```
+*(Deriva direttamente dalla purezza e dal determinismo delle funzioni* $\delta_M$, $\delta_H$ e $\text{ApplyValidated}$)
+
+#### 3.0.2 Requisito di Progresso SOS Condizionato (`REQ-SOS-CONDITIONED-PROGRESS`) (Layer B2)
+```math
+\mathbf{REQ-SOS-CONDITIONED-PROGRESS}
+```
+```math
+\forall (\pi_{\text{SOS}}(S), t) \in \text{Domain}(\xrightarrow{t}_{\text{Sys}}), \quad \exists! \sigma' \in \left( Q \times Q_H \times \mathcal{S}_{\text{persistent}} \right) \quad \text{t.c.} \quad \pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \sigma'
+```
+
+#### 3.0.3 Proprietà di Corrispondenza Relazionale-Funzionale (Layer A)
+
+```math
+\mathbf{PROPERTY-SOS-SEMANTIC-CORRESPONDENCE}
+```
+* **Ipotesi H1:** La relazione di transizione SOS $\to_{\text{Sys}}$ soddisfa la Proprietà di Determinismo (`PROPERTY-SOS-DETERMINISM`).
+* **Ipotesi H2:** Il predicato di validazione d'ambiente restituisce l'esito $\text{ValidateEnvironment}(S, t, E) = \text{PASS}$.
+* **Ipotesi H3:** La funzione $\text{ApplyValidated}$ ammette come parametro d'ingresso il risultato della validazione.
+* **Tesi (Proof Obligation su analisi per casi):** La transizione relazionale SOS 
+```math
+\pi_{\text{SOS}}(S) \xrightarrow{t}_{\text{Sys}} \langle q', q_H', S_{\text{persistent}}' \rangle
+```
+sussiste se e solo se lo stato successivo $S' = \text{ApplyValidated}(S, t, \text{PASS})$ soddisfa la coincidenza di proiezioni:
+```math
+S' = \text{ApplyValidated}(S, t, \text{PASS}) \quad \land \quad q' = \pi_Q(S') \quad \land \quad q_H' = \pi_{Q_H}(S') \quad \land \quad S_{\text{persistent}}' = \pi_{\text{persistent}}(S')
+```
+
+---
+
+### 3.1 Matrice Normativa di Autorizzazione Evento-Attore (Layer B2)
+
+Una transizione $t \in T$ con evento $\sigma_C = \text{event}(t)$ ed emessa dall'attore $\alpha = \text{actor}(t)$ è autorizzata se e solo se soddisfa il predicato booleano $\text{Authorized}(\sigma_C, \text{type}(\alpha))$:
+
+```math
+\text{Authorized}(\sigma_C, \text{type}(\alpha)) \iff \begin{cases}
+\text{True} & \text{se } \sigma_C \in \Sigma_H \land \text{type}(\alpha) \in \{\text{USER}, \text{OPERATOR}, \text{SYSTEM}\} \\
+\text{True} & \text{se } \sigma_C \in \Sigma_{\text{business}} \cup \Sigma_{\text{administrative}} \land \text{type}(\alpha) = \text{SYSTEM} \\
+\text{True} & \text{se } \sigma_C = \text{EV\_ITEM\_PRIVACY\_REVOKED} \land \text{type}(\alpha) \in \{\text{USER}, \text{OPERATOR}\} \\
+\text{True} & \text{se } \sigma_C \in \Sigma_{\text{recovery}} \land \text{type}(\alpha) = \text{OPERATOR} \\
+\text{False} & \text{in tutti gli altri casi (compreso qualsiasi tentativo con } \text{type}(\alpha) = \text{LLM})
+\end{cases}
+```
+
+---
+
+### 3.2 META-REGOLE SOS DELLA SICUREZZA DI RUNTIME (M) (Layer B3)
+
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q' = \mathbf{Resolve}(q, \sigma_C, \emptyset) \quad \text{EvaluateGuards}(S, t) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-SAFETY}]
+```
+
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma \quad (\text{v\_res} \in \mathcal{E}_{\text{validation}} \lor \neg \text{Authorized}(\sigma_C, \text{type}(\alpha)) \lor \text{EvaluateGuards}(S, t) = \text{FAIL}) \quad q' = \begin{cases} q & \text{se } q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \\ \text{VALIDATION\_ERROR} & \text{altrimenti} \end{cases}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q', q_H, \text{ApplyValidated}(S, \text{BuildErrorTx}(S, E, \text{v\_res}, \sigma_C), \text{v\_res}) \rangle} \quad [\text{SOS-META-SAFETY-FAIL}]
+```
+
+#### 3.2.1 Meta-Regole SOS di Ripristino ed Override da Operatore (Layer B3)
+
+```math
+\frac{\sigma_C = \text{event}(t) = \text{EV\_REPAIR} \quad q \in \{\text{SECURITY\_LOCKDOWN}, \text{SAFE\_READ\_ONLY\_MODE}\} \quad \text{type}(\alpha) = \text{OPERATOR} \quad p = t.\text{payload} \quad \text{ValidRepairPatch}(p)}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle \text{NORMAL}, q_H, \text{ApplyCompensativeRepair}(S, p) \rangle} \quad [\text{SOS-COMPENSATIVE-REPAIR}]
+```
+
+```math
+\frac{\sigma_C = \text{EV\_OVERRIDE} \quad q = \text{OPERATOR\_REQUIRED} \quad \text{type}(\alpha) = \text{OPERATOR} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS}}{\langle \text{OPERATOR\_REQUIRED}, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle \text{NORMAL}, q_H, \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-OPERATOR-OVERRIDE}]
+```
+
+---
+
+### 3.3 Meta-Regole SOS per Competenze e Custodia Credenziali (Layer B3)
+
+#### 3.3.1 Meta-Regola SOS per la Palestra delle Competenze (`[SOS-COMPETENCE-UPDATE]`)
+Quando l'utente completa un nodo di Playbook $v \in V_P$ recante un attributo di competenza acquisita:
+
+```math
+\frac{\sigma_C = \text{HEV\_STEP\_COMPLETED} \quad v.\text{gained\_skill} = \langle k, l \rangle \quad \mathcal{K}_{\text{competence}}' = \mathcal{K}_{\text{competence}} \cup \{ \langle k, l, t_{\text{wall}} \rangle \}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, q_H, \text{ApplyValidated}(S, t[\mathcal{K}_{\text{competence}} \mapsto \mathcal{K}_{\text{competence}}'], \text{PASS}) \rangle} \quad [\text{SOS-COMPETENCE-UPDATE}]
+```
+
+#### 3.3.2 Meta-Regola SOS per la Custodia Credenziali (`[SOS-VAULT-RECORD]`)
+All'ottenimento o verifica oggettiva di un documento d'identità o attestato formale:
+
+```math
+\frac{\sigma_C = \text{HEV\_DOCS\_OBTAINED} \quad \text{doc} = \langle \text{doc\_id}, H_{\text{doc}}, \text{VERIFIED} \rangle \quad \mathcal{V}_{\text{vault}}' = \mathcal{V}_{\text{vault}} \cup \{ \text{doc} \}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \text{DOCUMENT\_RECOVERY}, \text{ApplyValidated}(S, t[\mathcal{V}_{\text{vault}} \mapsto \mathcal{V}_{\text{vault}}'], \text{PASS}) \rangle} \quad [\text{SOS-VAULT-RECORD}]
+```
+
+---
+
+### 3.4 META-REGOLE SOS DEL PERCORSO UMANO (H) E SOVRANITÀ (Layer B3)
+
+```math
+\frac{\sigma_C = \text{event}(t) \in \Sigma_H \quad q \in F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS} \quad \text{Authorized}(\sigma_C, \text{type}(\alpha)) \quad q_H' = \mathbf{Resolve}(q_H, \sigma_C, F_H) \quad \mathcal{R}_{\text{exec}}(S, t) = \text{ALLOW}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, q_H', \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-META-HUMAN}]
+```
+
+```math
+\frac{\sigma_C \in \{ \text{HEV\_PAUSE\_REQUESTED}, \text{HEV\_DECLINE\_ALL} \} \quad q \notin F_{\text{oper}} \quad \text{ValidateEnvironment}(S, t, E) = \text{PASS}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \mathbf{Resolve}(q_H, \sigma_C, F_H), \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-SOVEREIGNTY-LOCKDOWN}]
+```
+
+#### 3.4.1 Meta-Regola SOS di Stasi in Stato Pausa (SOS-HUMAN-PAUSED-STUTTER / RFC-002)
+
+Quando l'automa del percorso umano si trova nello stato:
+```math
+q_H = \text{HUMAN\_PAUSED}
+```
+e giunge un qualsiasi evento $t$ non corrispondente a `HEV_RESUME_REQUESTED`, `HEV_DECLINE_ALL` o `HEV_EMOTIONAL_OVERWHELM`, l'automa esegue uno stuttering step preservando lo stato di stasi ed emettendo una transazione recante l'involucro di esecuzione $e_{\text{paused}}$ :
+
+```math
+\frac{q_H = \text{HUMAN\_PAUSED} \quad \sigma_C \in \Sigma_H \setminus \{ \text{HEV\_RESUME\_REQUESTED}, \text{HEV\_DECLINE\_ALL}, \text{HEV\_EMOTIONAL\_OVERWHELM} \} \quad e_{\text{paused}} = \langle \text{"PROCESSED\_NO\_STATE\_EFFECT"}, \text{"HUMAN\_JOURNEY\_PAUSED"}, \text{false} \rangle}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \text{HUMAN\_PAUSED}, \text{ApplyValidated}(S, t[e \mapsto e_{\text{paused}}], \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-PAUSED-STUTTER}]
+```
+
+#### 3.4.2 Meta-Regola SOS di Timeout ed Inattività Umana (SOS-HUMAN-TIMEOUT)
+
+Quando l'automa umano si trova in:
+```math
+q_H = \text{HUMAN\_PAUSED}
+```
+ed il tempo di permanenza supera la soglia parametrizzata
+```math
+\theta_{\text{inactivity\_timeout}}
+```
+
+```math
+\frac{q_H = \text{HUMAN\_PAUSED} \quad (E.t_{\text{wall}} - \pi_{\text{internal}}(S).t_{\text{pause\_start}}) > \theta_{\text{inactivity\_timeout}} \quad t_{\text{timeout}} = \text{BuildSystemTx}(S, E, \text{HEV\_RECALIBRATION\_REQ})}{\langle q, \text{HUMAN\_PAUSED}, S \rangle \xrightarrow{t_{\text{timeout}}}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t_{\text{timeout}}, \text{PASS}) \rangle} \quad [\text{SOS-HUMAN-TIMEOUT}]
+```
+
+#### 3.4.3 Meta-Regola SOS di Adattamento per Sopraffazione Emotiva (SOS-EMOTIONAL-OVERWHELM)
+
+Alla rilevazione di uno stato di sopraffazione emotiva segnalato dall'utente o dal parser SML:
+
+```math
+\frac{\sigma_C = \text{HEV\_EMOTIONAL\_OVERWHELM}}{\langle q, q_H, S \rangle \xrightarrow{t}_{\text{Sys}} \langle q, \text{HUMAN\_RECALIBRATION\_REQUIRED}, \text{ApplyValidated}(S, t, \text{PASS}) \rangle} \quad [\text{SOS-EMOTIONAL-OVERWHELM}]
+```
+
+---
+
 # CAPITOLO 4: POLICY GUIDANCE ENGINE & STRATIFICAZIONE DELLE POLICY
 ## (Layer A & Layer B2)
 
