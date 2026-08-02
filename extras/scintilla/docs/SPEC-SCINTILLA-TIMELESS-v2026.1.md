@@ -369,7 +369,7 @@ S_1 \equiv_{\text{CoreState}} S_2 \iff \pi_{\text{persistent}}(S_1) = \pi_{\text
 ```
 *non alterano le proiezioni osservabili dei diritti, del percorso o dello stato storico dell'utente. Costituisce un teorema derivato direttamente dalle definizioni matematiche di* $\text{Obs}(S)$ e
 ```math
-$\equiv_{\text{CoreState}}
+\equiv_{\text{CoreState}}
 ```
 
 ---
