@@ -1,3 +1,28 @@
+#### 1.1.1 Definizione del Sottospazio dello Stato Primario (Layer A)
+Lo stato primario del sistema $\mathcal{S}$ è formalizzato come l'insieme delle triple valide appartenenti al prodotto cartesiano dei domini di persistenza, controllo e buffer temporaneo:
+
+```math
+\mathcal{S} := \mathcal{S}_{\text{persistent}} \times \mathcal{S}_{\text{internal}} \times \mathcal{S}_{\text{auxiliary}}
+```
+
+Dove i domini componenti sono definiti come:
+
+1. **Dominio di Persistenza Ricostruibile dal Ledger (Tupla Etichettata):**
+```math
+\mathcal{S}_{\text{persistent}} := \langle \text{case}_{\text{id}} \in \mathcal{I}_{\text{case}}, \ \mathcal{M}_{\text{prov}}, \ \mathcal{Q}_{\text{consent}}, \ \mathcal{K}_{\text{playbook}}, \ \mathcal{Q}_{\text{revoked\_items}}, \ \mathcal{K}_{\text{competence}}, \ \mathcal{V}_{\text{vault}} \rangle
+```
+
+2. **Dominio Interno di Runtime e Sicurezza:**
+```math
+\mathcal{S}_{\text{internal}} := Q \times Q_H \times \mathcal{P}_{\text{active}} \times \mathcal{F}_{\text{lease}} \times \mathcal{O}_{\text{bound}} \times (\mathcal{T} \cup \{\text{null}\}) \times \mathcal{M}_{\text{metrics}} \times \mathbb{N} \times \mathcal{D}_{256}
+```
+dove $\mathcal{T} \subset \mathbb{N}^+$ denota lo spazio dei timestamp UTC espresso in millisecondi a 64 bit e $\mathcal{O}_{\text{bound}}$ denota il dominio dei livelli di supervisione umana (`HumanOversightLevel`).
+
+3. **Dominio Ausiliario Volatile di Co-creazione:**
+```math
+\mathcal{S}_{\text{auxiliary}} := \mathcal{D}_{\text{drafts}}
+```
+
 #### 1.1.2 Vista Derivata Pura Disaccoppiata e Contatori di Interazione (Layer A)
 La componente di stato derivato $\mathcal{S}_{\mathrm{derived}}$ non costituisce una dimensione indipendente dello spazio $\mathcal{S}$ bensì una vista calcolata mediante la funzione pura:
 
