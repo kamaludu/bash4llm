@@ -1381,15 +1381,16 @@ La semantica temporale di SCINTILLA Core è descritta dalla Struttura di Kripke:
 M_K := \langle \mathcal{S}, s_0, \to_{\text{Sys}}, AP, L, F \rangle
 ```
 
-* $\mathcal{S}$: Spazio degli Stati algebrico primario (§1.1.1).
-* $s_0 \in \mathcal{S}$: Stato di Genesi (§1.3).
-* $\to_{\text{Sys}} \subseteq \mathcal{S} \times \mathcal{S}$: Relazione di transizione generata dalla semantica operazionale SOS (§3).
-* $AP$: Insieme finito dei simboli di Proposizione Atomica Booleana.
-* $L: \mathcal{S} \to \mathcal{P}(AP)$: La Funzione di Etichettatura (Labeling Function).
-* $F \subseteq \mathcal{P}(\mathcal{S})$: Insieme dei vincoli di Fairness definita sulle tracce ammissibili.
+- $\mathcal{S}$: Spazio degli Stati algebrico primario (§1.1.1).
+- $s_0 \in \mathcal{S}$: Stato di Genesi (§1.3).
+- $\to_{\text{Sys}} \subseteq \mathcal{S} \times \mathcal{S}$: Relazione di transizione generata dalla semantica operazionale SOS (§3).  
+- $AP$: Insieme finito dei simboli di Proposizione Atomica Booleana.  
+- $L: \mathcal{S} \to \mathcal{P}(AP)$: La Funzione di Etichettatura (Labeling Function).  
+- $F \subseteq \mathcal{P}(\mathcal{S})$: Insieme dei vincoli di Fairness definita sulle tracce ammissibili.  
 
 #### 9.2.2 Mappatura della Labeling Function e Predicati sulle Transizioni
-La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$ e la transazione candidata in valutazione contesto $t_{\text{prop}}$, mentre i predicati di concorrenza e transizione sono formalizzati sulle coppie di stati adiacenti $(S_i, S_{i+1})$:
+
+La mappa $L(S)$ determina l'appartenenza dei simboli in $AP$ mediante le proiezioni dello stato $S$ e la transazione candidata in valutazione contesto $t_{\text{prop}}$ , mentre i predicati di concorrenza e transizione sono formalizzati sulle coppie di stati adiacenti $(S_i, S_{i+1})$ :
 
 1. **SafetyGateAllowed:** 
 ```math
