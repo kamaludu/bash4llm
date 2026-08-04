@@ -1,9 +1,9 @@
 [![Logo 320](../../docs/img/bash4llm320.png "Logo bash4llm")](../../README.md)
 
-# Text User Interface 
+[![Bash](https://img.shields.io/badge/TUI%20REPL-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](SPEC-TUI.md) [![Italiano](https://img.shields.io/badge/Italiano-🇮🇹-white)](#-sezione-italiana) 
+[![English](https://img.shields.io/badge/English-🇬🇧-white)](#-english-section)
 
-[![Bash](https://img.shields.io/badge/TUI%20REPL-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](SPEC-TUI.md) [![Italiano](https://img.shields.io/badge/Italiano-🇮🇹-white)](#sezione-italiana) 
-[![English](https://img.shields.io/badge/English-🇬🇧-white)](#english-section)
+# Text User Interface 
 
 ---
 
