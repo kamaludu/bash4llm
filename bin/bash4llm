@@ -70,6 +70,12 @@ export BASH4LLM_PLAT_ANDROID BASH4LLM_PLAT_MACOS BASH4LLM_PLAT_WSL BASH4LLM_PLAT
 # Hard reset of the manual prompt state to prevent environment variable leakage
 BASH4LLM_KEY_MANUAL_PROMPT=0
 
+# Hard reset of Scintilla-Ready / Deterministic Extensions status flags
+VALIDATE_SML=0
+VALIDATE_REGEX=""
+SANITIZE_OUTPUT=0
+JSON_DIAGNOSTICS=0
+
 # Initialize cache for model normalization
 declare -A BASH4LLM_MODEL_CACHE=()
 
@@ -88,6 +94,7 @@ BG_BLACK="" BG_RED="" BG_GREEN="" BG_YELLOW="" BG_BLUE="" BG_MAGENTA="" BG_CYAN=
 BASH4LLM_ERR_NO_API_KEY=10
 BASH4LLM_ERR_BAD_MODEL=11
 BASH4LLM_ERR_CURL_FAILED=12
+BASH4LLM_ERR_PARSE=13
 BASH4LLM_ERR_NO_PROMPT=14
 BASH4LLM_ERR_TMP=15
 BASH4LLM_ERR_API=16
@@ -98,11 +105,13 @@ BASH4LLM_ERR_SEC=17
 BASH4LLMERR_NO_API_KEY=$BASH4LLM_ERR_NO_API_KEY
 BASH4LLMERR_BAD_MODEL=$BASH4LLM_ERR_BAD_MODEL
 BASH4LLMERR_CURL_FAILED=$BASH4LLM_ERR_CURL_FAILED
+BASH4LLMERR_PARSE=$BASH4LLM_ERR_PARSE
 BASH4LLMERR_NO_PROMPT=$BASH4LLM_ERR_NO_PROMPT
 BASH4LLMERR_TMP=$BASH4LLM_ERR_TMP
 BASH4LLMERR_API=$BASH4LLM_ERR_API
 BASH4LLMERR_SEC=$BASH4LLM_ERR_SEC
 #--1<---[ /SECTION: PRECORE_BOOT_SETUP_SHELL ]--->1--
+
 #--2<---[ SECTION: PRECORE_BOOT_SETUP_ENV_CMDS ]--->2--
 # --------------------------------------------------
 # Strict verification of the execution environment (POSIX Compliant)
@@ -305,6 +314,28 @@ _extract_notes_section() {
 DEBUG="${DEBUG:-${BASH4LLM_DEBUG:-0}}"
 BASH4LLM_LOG="${BASH4LLM_LOG:-}"
 
+# --------------------------------------------------
+# Logging and Diagnostic Subsystem
+# --------------------------------------------------
+emit_json_diagnostics() {
+  local status_type="${1:-ERROR}"
+  local err_code="${2:-13}"
+  local reason_code="${3:-UNKNOWN_ERROR}"
+  local msg="${4:-}"
+  local now_ts=""
+  now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
+
+  jq -c -n \
+    --arg status "$status_type" \
+    --argjson code "$err_code" \
+    --arg reason "$reason_code" \
+    --arg message "$msg" \
+    --arg ts "$now_ts" \
+    '{bash4llm_status:$status, code:($code|tonumber), reason:$reason, message:$message, timestamp:$ts}' >&2 || \
+  printf '{"bash4llm_status":"%s","code":%d,"reason":"%s","message":"%s","timestamp":"%s"}\n' \
+    "$status_type" "$err_code" "$reason_code" "$msg" "$now_ts" >&2
+}
+
 log_prefix() { printf '%s: ' "$SCRIPT_NAME"; }
 
 log_info() {
@@ -326,8 +357,23 @@ log_warn() {
 }
 
 log_error() {
-  local code="${1:-ERROR}" msg="${2:-}"
-  printf '%s%sERROR%s: %s: %s\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$code" "$msg" >&2
+  local code="${1:-ERROR}" msg="${2:-}" err_num=13
+  case "$code" in
+    APIKEY|NO_KEY)   err_num="${BASH4LLM_ERR_NO_API_KEY:-10}" ;;
+    BAD_MODEL|MODEL) err_num="${BASH4LLM_ERR_BAD_MODEL:-11}" ;;
+    CURL|NETWORK)    err_num="${BASH4LLM_ERR_CURL_FAILED:-12}" ;;
+    SYNTAX_VAL|PARSE)err_num="${BASH4LLM_ERR_PARSE:-13}" ;;
+    PROMPT|NO_PROMPT)err_num="${BASH4LLM_ERR_NO_PROMPT:-14}" ;;
+    TMP|STORAGE)     err_num="${BASH4LLM_ERR_TMP:-15}" ;;
+    API)             err_num="${BASH4LLM_ERR_API:-16}" ;;
+    SEC|SECURITY)    err_num="${BASH4LLM_ERR_SEC:-17}" ;;
+  esac
+
+  if is_truthy "${JSON_DIAGNOSTICS:-0}"; then
+    emit_json_diagnostics "ERROR" "$err_num" "$code" "$msg"
+  else
+    printf '%s%sERROR%s: %s: %s\n' "$(log_prefix)" "${C_RED}" "${C_RST}" "$code" "$msg" >&2
+  fi
   if [ -n "$BASH4LLM_LOG" ]; then printf '%s ERROR %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" "$msg" >>"$BASH4LLM_LOG" 2>/dev/null || true; fi
 }
 
@@ -2338,22 +2384,25 @@ execute_isolated_hook() {
   local hook_file="${BASH4LLM_EXTRAS_DIR:-}/hooks/${module_name}.sh"
   [ -f "$hook_file" ] || return 0
 
-  # 1. Validazione della sicurezza del percorso e dei permessi
+  # 1. Validation of route safety and permits
   if ! validate_path_security "$hook_file"; then
     log_error "SEC" "Security validation failed for hook file: $hook_file. Aborting execution."
     return 17
   fi
 
-  # 2. CORREZIONE: Controllo dell'integrità crittografica SHA-256 rispetto al manifest
+  # 2. SHA-256 cryptographic integrity check against the manifest
   if ! verify_module_integrity "$hook_file"; then
     log_error "SEC" "Cryptographic integrity validation failed for hook file: $hook_file. Aborting execution."
     return 17
   fi
 
-  # Execute inside a subshell to isolate execution context
+  # Execution in isolation within a subshell
   local hook_out
   hook_out="$(
-    # Strip sensitive API keys and tokens from subshell environment memory
+    # BIDIRECTIONAL ISOLATION FD 3: Prevents leakage of isolated descriptors and tokens
+    exec 3>&- 3<&- 2>/dev/null || true
+
+    # Sensitive strip of API keys and tokens from the subshell's memory environment
     if command -v compgen >/dev/null 2>&1; then
       for var in $(compgen -v 2>/dev/null | grep -E '(_API_KEY|_KEY|_TOKEN|^GROQ_)' || true); do
         unset "$var" 2>/dev/null || true
@@ -2362,7 +2411,7 @@ execute_isolated_hook() {
       unset GROQ_API_KEY BASH4LLM_API_KEY GEMINI_API_KEY MISTRAL_API_KEY HUGGINGFACE_API_KEY BASH4LLM_AUTH_TOKEN 2>/dev/null || true
     fi
 
-    # Source and execute the hook within the safe cleaned subshell
+    # Sourcing and executing the hook in the reclaimed subshell
     # shellcheck source=/dev/null
     . "$hook_file" 2>/dev/null
     if type "${hook_type}_execution_hook" >/dev/null 2>&1; then
@@ -2373,7 +2422,7 @@ execute_isolated_hook() {
   )"
   local hook_rc=$?
 
-  # Safe Whitelist Parser (Zero-Eval) to extract approved settings back to the Core
+  # Strict Whitelist Parser (Zero-Eval) for Safe Import into Core
   local line key val
   while IFS= read -r line; do
     [ -z "$line" ] && continue
@@ -2390,6 +2439,12 @@ execute_isolated_hook() {
         FALLBACK_PAYLOAD)
           if [[ "$val" =~ ^[a-zA-Z0-9+/=]+$ ]]; then
             export FALLBACK_PAYLOAD="$val"
+          fi
+          ;;
+        TRANSFORMED_PAYLOAD)
+          # Base64 whitelist for payloads transformed into memory by hooks
+          if [[ "$val" =~ ^[a-zA-Z0-9+/=]+$ ]]; then
+            export TRANSFORMED_PAYLOAD="$val"
           fi
           ;;
         BASH4LLM_AUTH_TOKEN)
@@ -4365,6 +4420,18 @@ detect_empty_edge_case() {
 
 finalize_and_output() {
   local mode="${1:-}" text="${2:-}"
+  
+  # Delegation and Hardening Sanitization Output
+  if is_truthy "${SANITIZE_OUTPUT:-0}"; then
+    local sanitizer_script="${BASH4LLM_EXTRAS_DIR:-}/security/output-sanitizer.sh"
+    if [ -f "$sanitizer_script" ] && verify_module_integrity "$sanitizer_script" >/dev/null 2>&1; then
+      text="$(printf '%s' "$text" | "$sanitizer_script" --no-ansi 2>/dev/null || true)"
+    else
+      # Fallback Nativo a Whitelist POSIX Stringente (T2 Hardening)
+      text="$(printf '%s' "$text" | ( LC_ALL=C tr -dc '\t\r\n[:print:]' ) )"
+    fi
+  fi
+
   local resp_file="" tmp_copy="" len=0 do_save=0 dest_dir="" dest_path="" tmp_save=""
 
   resp_file="${RESP:-}"
@@ -4432,6 +4499,28 @@ finalize_and_output() {
   fi
 }
 
+validate_response_syntax() {
+  local text="${1:-}"
+  
+  # 1. SML Validation v2.0 EBNF Standard
+  if is_truthy "${VALIDATE_SML:-0}"; then
+    if ! printf '%s' "$text" | grep -q "SML_VERSION: 2.0"; then return 1; fi
+    if ! printf '%s' "$text" | grep -q "LISTEN_SUMMARY:"; then return 1; fi
+    if ! printf '%s' "$text" | grep -q "CONVERSATION_OUTCOME:"; then return 1; fi
+    if ! printf '%s' "$text" | grep -q "PROPOSED_TRANSITION:"; then return 1; fi
+    if ! printf '%s' "$text" | grep -q "EVIDENCE_TYPE:"; then return 1; fi
+  fi
+
+  # 2. POSIX Extended Regular Expression (ERE) Validation
+  if [ -n "${VALIDATE_REGEX:-}" ]; then
+    if ! printf '%s' "$text" | grep -qE "${VALIDATE_REGEX}"; then
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
 perform_request_once() {
   acquire_thread_lock || return $?
 
@@ -4483,6 +4572,14 @@ perform_request_once() {
       BASH4LLM_EDGE_COMPLETION_TOKENS=0
 
       text="$(extract_text_from_resp || true)"
+
+      # SYNTAX & SML VALIDATION ENGINE
+      if ! validate_response_syntax "$text"; then
+        log_error "SYNTAX_VAL" "Response failed syntax validation."
+        release_thread_lock
+        return "${BASH4LLM_ERR_PARSE:-13}"
+      fi
+
       detect_empty_edge_case || true
 
       ui_last="${BASH4LLM_CONFIG_DIR%/}/ui_state/last_api.json"
@@ -4523,6 +4620,19 @@ perform_request_once() {
           fi
           release_thread_lock
           return "$BASH4LLM_ERR_API"
+        fi
+      fi
+
+      # Invoke the secure generic post-execution hook on transaction success
+      execute_isolated_hook "post" "hook" "SUCCESS" "$rc" "${http_code_fallback:-200}"
+      local post_status=$?
+
+      # Override payload if transformed payload base64 string was emitted by post hook
+      if [ "$post_status" -eq 0 ] && [ -n "${TRANSFORMED_PAYLOAD:-}" ]; then
+        local decoded_transformed=""
+        decoded_transformed="$(printf '%s' "$TRANSFORMED_PAYLOAD" | b64decode 2>/dev/null || true)"
+        if [ -n "$decoded_transformed" ]; then
+          text="$decoded_transformed"
         fi
       fi
 
@@ -5059,6 +5169,23 @@ while [ $# -gt 0 ]; do
       exit 0 ;;
     --bootstrap-only)
       BOOTSTRAP_ONLY=1
+      shift
+      ;;
+    --validate-sml)
+      VALIDATE_SML=1
+      shift
+      ;;
+    --validate-regex)
+      check_required_arg "--validate-regex" "$#"
+      VALIDATE_REGEX="$2"
+      shift 2
+      ;;
+    --sanitize)
+      SANITIZE_OUTPUT=1
+      shift
+      ;;
+    --json-diagnostics)
+      JSON_DIAGNOSTICS=1
       shift
       ;;
     --) shift; break ;;
