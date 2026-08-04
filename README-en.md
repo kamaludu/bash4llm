@@ -63,6 +63,7 @@ The following command-line utilities must be available in `PATH`:
 ## Installation
 
 ### Quick Start ⏩
+And *Installing Optional Extras:*
 
 ```sh
 # 1. Clone the repository
@@ -76,16 +77,12 @@ chmod +x bash4llm/bash4llm
 # 3. Initialize and fetch model list
 cd bash4llm 
 ./bash4llm --refresh-models
-```
 
-If no API key environment variable is set on first run, the script prompts for masked key entry.
-
-**Installing Optional Extras:**
-
-```sh
 # 4. Optional: Install Extras
 ./bash4llm --install-extras ../repo-bash4llm/extras/
 ```
+
+If no API key environment variable is set on first run, the script prompts for masked key entry.
 
 For comprehensive installation details, refer to **[INSTALL-en.md](INSTALL-en.md)**.
 
