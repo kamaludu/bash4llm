@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ==============================================================================
 # SCINTILLA CORE v4.5.5 — T3 TEST SUITE FOR REFACTORED BASH4LLM
-# ==============================================================================
 # @target_category: T3
 # @derived_from: CORE-Annex-C.1, CORE-Cap-8.2
 # ==============================================================================
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
+# =============================================================================
 
 set -euo pipefail
 
