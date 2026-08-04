@@ -65,7 +65,7 @@ fi
 # 3. Test JSON Diagnostics Flag
 printf "Test 3: JSON Diagnostics Output Check ... "
 DIAG_OUT=$(echo "Hello" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --validate-sml --json-diagnostics --dry-run 2>&1 || true)
-if echo "$DIAG_OUT" | jq -e '.bash4llm_status == "ERROR"' >/dev/null 2>&1; then
+if echo "$DIAG_OUT" | grep '^{' | jq -e 'select(.bash4llm_status == "ERROR")' >/dev/null 2>&1; then
   printf "PASSED\n"
 else
   printf "FAILED\n" && exit 1
