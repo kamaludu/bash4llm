@@ -64,6 +64,7 @@ Pacchetti richiesti nel `PATH`:
 ## Guida all'installazione
 
 ### Installazione rapida ⏩
+Con *Installazione degli Extras opzionali:*
 
 ```sh
 # 1. Clona il repository
@@ -77,16 +78,13 @@ chmod +x bash4llm/bash4llm
 # 3. Inizializzazione e aggiornamento modelli
 cd bash4llm 
 ./bash4llm --refresh-models
+
+# 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
+./bash4llm --install-extras ../repo-bash4llm/extras/
 ```
 
 Al primo avvio senza variabile d'ambiente impostata, lo script chiederà l'inserimento interattivo della chiave API (input nascosto a schermo).
 
-**Installazione degli Extras opzionali:**
-
-```sh
-# 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
-./bash4llm --install-extras ../repo-bash4llm/extras/
-```
 
 Istruzioni dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
 
