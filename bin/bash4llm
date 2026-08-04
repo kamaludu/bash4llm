@@ -4558,26 +4558,31 @@ perform_request_once() {
     fi
 
     if [ "$rc" -eq 0 ]; then
+      BASH4LLM_EDGE_EMPTY=0
+      BASH4LLM_EDGE_REQ_ID=""
+      BASH4LLM_EDGE_FINISH_REASON=""
+      BASH4LLM_EDGE_COMPLETION_TOKENS=0
+
+      # Extract response text; fallback to prompt input in --dry-run mode
+      text="$(extract_text_from_resp 2>/dev/null || true)"
+      if [ -z "$text" ] && is_truthy "${DRY_RUN:-0}"; then
+        text="${CONTENT:-}"
+      fi
+
+      # SYNTAX & SML VALIDATION ENGINE (Executed BEFORE dry-run early exit)
+      if ! validate_response_syntax "$text"; then
+        log_error "SYNTAX_VAL" "Response failed syntax validation."
+        release_thread_lock
+        exit "${BASH4LLM_ERR_PARSE:-13}"
+      fi
+
+      # DRY-RUN / SKIP_NETWORK SIMULATION EXIT (After syntax validation check)
       if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
         if [ "${DEBUG:-0}" -eq 1 ]; then
           log_info "DRYRUN" "DRY-RUN/SKIP_NETWORK: request simulated successfully. Payload: $PAYLOAD"
         fi
         release_thread_lock
         return 0
-      fi
-
-      BASH4LLM_EDGE_EMPTY=0
-      BASH4LLM_EDGE_REQ_ID=""
-      BASH4LLM_EDGE_FINISH_REASON=""
-      BASH4LLM_EDGE_COMPLETION_TOKENS=0
-
-      text="$(extract_text_from_resp || true)"
-
-      # SYNTAX & SML VALIDATION ENGINE
-      if ! validate_response_syntax "$text"; then
-        log_error "SYNTAX_VAL" "Response failed syntax validation."
-        release_thread_lock
-        return "${BASH4LLM_ERR_PARSE:-13}"
       fi
 
       detect_empty_edge_case || true
@@ -4686,6 +4691,7 @@ perform_request_once() {
   return "$BASH4LLM_ERR_API"
 }
 #--2<---[ /SECTION: CORE_SETUP_API_CALL ]--->2--
+
 #--3<---[ SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
 collect_input_from_files() {
   local out="" first=1 f
