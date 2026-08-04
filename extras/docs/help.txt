@@ -27,6 +27,9 @@ Output Formatting & Storage:
   --save                 Force saving output to history regardless of size
   --nosave               Disable saving output to history
   --threshold <n>        Autosave threshold in bytes (default: 1000)
+  --validate-sml          Enforce strict SML v2.0 structure on response text
+  --validate-regex <PAT>  Validate response text against POSIX Extended Regex
+  --sanitize              Strip ANSI escape codes and unprintable characters
 
 Streaming:
   --stream               Enable real-time SSE (Server-Sent Events) streaming
@@ -83,6 +86,7 @@ Diagnostics & Inspection:
   --print-config-dir     Print canonical config directory path
   --print-provider-file  Print canonical active provider file path
   --print-model-file <p> Print canonical model file path for provider <p>
+  --json-diagnostics      Emit single-line structured JSON errors on stderr
 
 Maintenance & Testing:
   --install-extras [dir] Install or update extras components (alias: --install-extra)
