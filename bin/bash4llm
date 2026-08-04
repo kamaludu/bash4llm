@@ -830,7 +830,7 @@ ensure_api_key_for_provider() {
 
   # 4. Non-interactive Mode Protection
   if [ ! -t 0 ]; then
-    printf 'bash4llm: %sERROR%s: missing API key for provider %s (env %s) in non-interactive mode\n' "${C_RED:-}" "${C_RST:-}" "$prov" "$envvar" >&2
+    log_error "APIKEY" "missing API key for provider $prov (env $envvar) in non-interactive mode"
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
@@ -5745,7 +5745,7 @@ if [ "${REFRESH_MODELS:-0}" -eq 1 ]; then
   exit 0
 fi
 
-if [ ! -s "${MODELS_FILE:-}" ]; then
+if [ ! -s "${MODELS_FILE:-}" ] && ! is_truthy "${DRY_RUN:-0}"; then
   if ! ensure_api_key_for_provider "$PROVIDER"; then
     log_error "APIKEY" "API key required to refresh models for provider $PROVIDER."
   else
