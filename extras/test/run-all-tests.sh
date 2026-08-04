@@ -56,10 +56,11 @@ declare -A CANONICAL_SUITES=(
   ["hardening"]="Level 4 — Hardening Test Suite|hardening.sh|4"
   ["concurrency"]="Level 5 — Concurrency Test Suite|concurrency.sh|5"
   ["stress"]="Level 6 — Stress Test Suite|stress.sh|6"
+  ["deterministic"]="Level 7 — Deterministic & SML Test Suite|scintilla-t3.sh|7"
 )
 
 # Ordered list of canonical level names for full pipeline execution
-CANONICAL_ORDER=("sanity" "compatibility" "regression" "hardening" "concurrency" "stress")
+CANONICAL_ORDER=("sanity" "compatibility" "regression" "hardening" "concurrency" "stress" "deterministic")
 
 FAIL_FAST=0
 FORWARD_ARGS=()
