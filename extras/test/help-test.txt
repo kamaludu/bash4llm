@@ -8,18 +8,18 @@ USAGE:
   ./extras/test/run-all-tests.sh [COMMAND] [SUITE...] [OPTIONS]
 
 COMMANDS:
-  `all`                         Execute all canonical test suites in order (default)
-  `list`                        List all authorized canonical test suites registered in manifest
-  `help`, -h, --help            Display this test suite CLI help manual
+  all                         Execute all canonical test suites in order (default)
+  list                        List all authorized canonical test suites registered in manifest
+  help, -h, --help            Display this test suite CLI help manual
 
 CANONICAL TEST SUITES:
-  `sanity`                      Level 1: System vitality & CLI flags check
-  `compatibility`               Level 2: Public Compatibility Contract & Exit Codes (10..17)
-  `regression`                  Level 3: End-to-end prompt assembly & thread lifecycle
-  `hardening`                   Level 4: Security Invariants (INV-1..5) & boundary fuzzing
-  `concurrency`                 Level 5: Multi-process lock contention & atomic NDJSON appends
-  `stress`                      Level 6: High-volume payload staging & history rotation
-  `deterministic`               Level 7: Deterministic SML v2.0, POSIX Regex & Output Sanitization
+  sanity                      Level 1: System vitality & CLI flags check
+  compatibility               Level 2: Public Compatibility Contract & Exit Codes (10..17)
+  regression                  Level 3: End-to-end prompt assembly & thread lifecycle
+  hardening                   Level 4: Security Invariants (INV-1..5) & boundary fuzzing
+  concurrency                 Level 5: Multi-process lock contention & atomic NDJSON appends
+  stress                      Level 6: High-volume payload staging & history rotation
+  deterministic               Level 7: Deterministic SML v2.0, POSIX Regex & Output Sanitization
 
 OPTIONS:
   --fail-fast                 Halt execution immediately upon the first assertion failure
@@ -45,6 +45,6 @@ EXAMPLES:
   bash4llm --test list
 
 SECURITY & INTEGRITY:
-  All test modules are verified against `extras/manifest.sha256` before execution.
+  All test modules are verified against extras/manifest.sha256 before execution.
   Unregistered or modified test scripts are automatically rejected with Exit Code 17.
 ========================================
