@@ -28,8 +28,8 @@ unset BASH_ENV ENV CDPATH GLOBIGNORE
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.0"
-SCRIPT_DATE="2026-07-26"
+SCRIPT_VERSION="2.8.1"
+SCRIPT_DATE="2026-08-04"
 
 # ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -3315,7 +3315,11 @@ _exec_curl_secure() {
   hdr_file="$(_tmpf file "$target_dir" curl_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
 
   if [ -n "$api_key" ]; then
-    printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+    if [[ "$api_key" == *":"* ]]; then
+      printf '%s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+    else
+      printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
+    fi
   else
     printf 'Content-Type: application/json\n' > "$hdr_file"
   fi
@@ -4052,7 +4056,9 @@ refresh_models_dispatch() {
     return 127
   fi
 
-  if "$fn" "$destfile" 2>/dev/null; then
+  "$fn" "$destfile" 2>/dev/null
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER -> $destfile"
     fi
@@ -4060,8 +4066,9 @@ refresh_models_dispatch() {
     return 0
   fi
 
+  "$fn" 2>/dev/null
   rc=$?
-  if "$fn" 2>/dev/null; then
+  if [ "$rc" -eq 0 ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
       log_info "MODELREFRESH" "Models refreshed for provider $PROVIDER (no explicit dest)"
     fi
@@ -4069,7 +4076,6 @@ refresh_models_dispatch() {
     return 0
   fi
 
-  rc=$?
   log_error "MODELREFRESH" "refresh_models for provider $PROVIDER failed (rc $rc)."
   return "$rc"
 }
