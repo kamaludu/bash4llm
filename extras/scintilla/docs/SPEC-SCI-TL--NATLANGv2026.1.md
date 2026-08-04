@@ -388,15 +388,21 @@ I livelli superiori (quelli più vicini all'interfaccia utente ed all'intelligen
 ```text
 [ LIVELLO 5 ] Modello Linguistico di Intelligenza Artificiale (Generatore Probabilistico)
      │ Contratto API: Genera unicamente testo sintattico SML v2.0 (Zero autorità di stato)
+
 [ LIVELLO 4 ] Livello di Comunicazione, Parsing SML e Validazione Sintattica
      │ Contratto API: Decodifica il testo e crea oggetti di provenienza dati strutturati
+
 [ LIVELLO 3 ] Motore di Interazione Umana, Consenso ed Agency (Consenso, Registro & HOBM)
      │ Contratto API: Valuta il contesto umano, i consensi attivi e l'indice AGI_proxy
+
 [ LIVELLO 2 ] Motore delle Politiche e della Guida (Policy Guidance Engine & Safety Gate)
      │ Contratto API: Compila e valuta le regole esecutive pure (DecisionResult)
+
 [ LIVELLO 1 ] Runtime Deterministico Kernel (Validazione Ambientale e Transizione Pura)
      │ Contratto API: Gestisce il lock di concorrenza e muta lo stato in modo puro
+
 [ LIVELLO 0 ] Registro Immutabile delle Decisioni (Ledger Append-Only su File NDJSON)
+
 ```
 
 ---
