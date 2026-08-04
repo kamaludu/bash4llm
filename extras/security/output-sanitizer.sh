@@ -38,8 +38,8 @@ esac
 # Zero-Eval Output Sanitizer Engine (100% Standalone & Portable)
 # =======================================
 sanitize_stream() {
-  # Step 1: Remove unprintable C0 control codes (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F)
-  LC_ALL=C tr -d '\000-\008\013\014\016-\037' | \
+  # Step 1: POSIX T2 Strict Whitelist (Preserves \t, \r, \n, printable ASCII characters, and \033 for ANSI cleanup)
+  LC_ALL=C tr -dc '\t\r\n\033[:print:]' | \
   awk -v esc=$'\033' -v strict="$STRICT_MODE" -v no_ansi="$NO_ANSI" '
     {
       line = $0
@@ -49,9 +49,10 @@ sanitize_stream() {
         ansi_regex = esc "\\[[0-9;?<=>]*[a-zA-Z]"
         gsub(ansi_regex, "", line)
         gsub(esc "\\([^B]", "", line)
+        gsub(esc, "", line) # Rimuove eventuali caratteri ESC orfani o residui
       }
 
-      # Step 3: Level 2 Strict Output Mode (Escape shell metacharacters for piping safety)
+      # Step 3: Level 2 Strict Output Mode (Escape shell metacharacters for pipeline safety)
       if (strict == 1) {
         gsub(/\\/, "\\\\", line)
         gsub(/\$/, "\\$", line)
