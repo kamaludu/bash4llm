@@ -11,7 +11,6 @@
 # Repository: https://github.com/kamaludu/bash4llm
 # Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
-
 set -euo pipefail
 
 # Resolves bash4llm binary dynamically by walking up the directory tree
@@ -41,12 +40,13 @@ resolve_bash4llm_bin() {
 }
 
 BASH4LLM_BIN="$(resolve_bash4llm_bin)"
+TEST_MODEL="llama-3.3-70b-versatile"
 
 printf "=== [T3 TEST] VERIFYING REFACTORED BASH4LLM ENHANCEMENTS ===\n"
 
 # 1. Test Syntax Validation Flag (Reject non-SML text)
 printf "Test 1: SML Validation Reject Check ... "
-INVALID_OUT=$(echo "Hello world" | "$BASH4LLM_BIN" --validate-sml --dry-run 2>&1 || true)
+INVALID_OUT=$(echo "Hello world" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --validate-sml --dry-run 2>&1 || true)
 if echo "$INVALID_OUT" | grep -qE "SYNTAX_VAL|13|14"; then
   printf "PASSED\n"
 else
@@ -55,7 +55,7 @@ fi
 
 # 2. Test Output Sanitization Flag
 printf "Test 2: Output Sanitization Check ... "
-CLEAN_TEXT=$(echo -e "\x1B[31mRedText\x1B[0m" | "$BASH4LLM_BIN" --sanitize --dry-run 2>&1 || true)
+CLEAN_TEXT=$(echo -e "\x1B[31mRedText\x1B[0m" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --sanitize --dry-run 2>&1 || true)
 if [[ "$CLEAN_TEXT" != *"\x1B"* ]]; then
   printf "PASSED\n"
 else
@@ -64,7 +64,7 @@ fi
 
 # 3. Test JSON Diagnostics Flag
 printf "Test 3: JSON Diagnostics Output Check ... "
-DIAG_OUT=$(echo "Hello" | "$BASH4LLM_BIN" --validate-sml --json-diagnostics --dry-run 2>&1 || true)
+DIAG_OUT=$(echo "Hello" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --validate-sml --json-diagnostics --dry-run 2>&1 || true)
 if echo "$DIAG_OUT" | jq -e '.bash4llm_status == "ERROR"' >/dev/null 2>&1; then
   printf "PASSED\n"
 else
