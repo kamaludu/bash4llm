@@ -3,7 +3,7 @@
 # Official release modules integrity verification table
 
 e5d1eb5964ddedcfff28382f61cae0b52d30c3a194dddb832fc7597aaec38753  README.md
-b40ef82e8dec0107a346cfd532887c1224c18503e8d6fdd8fa27074bdf379e92  chat/SPEC-TUI.md
+1710e10481fbba9f5a23e2f44bfc48d3fdf96868c4a1a8b37aa0a4d8575a6b93  chat/SPEC-TUI.md
 abfd7112aeb1789dd11b2b1c5d231b3a5346d530c740e2591a769b64a5e87f27  chat/langs/de.properties
 27cc1e7862cdd2892c6b364295e123ecb5458da1d661408cc7cd0b5114016cc8  chat/langs/en.properties
 69eb3b24599ca7e77e7d183acee34bcf848e78d6305058b01367469c0c026a13  chat/langs/es.properties
