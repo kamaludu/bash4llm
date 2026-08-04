@@ -1,7 +1,7 @@
 [![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
 
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
-[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE) [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases)  
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE) [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases) [![Bash](https://img.shields.io/badge/TUI%20REPL-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](extras/chat/SPEC-TUI.md)  
 
 <!-- Release & Badges CI Generali -->
 [![ShellCheck](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml)
