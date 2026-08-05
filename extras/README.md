@@ -45,6 +45,7 @@ extras/
 │   ├── regression.sh
 │   ├── run-all-tests.sh      # Master Unified Automated Test Suite (chmod 700)
 │   ├── sanity.sh
+│   ├── scintilla-t3.sh.      # SCINTILLA Core — T3 TEST SUITE FOR BASH4LLM
 │   └── stress.sh
 └── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
 
