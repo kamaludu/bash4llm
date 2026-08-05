@@ -1,9 +1,9 @@
 [![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
 
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
-[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE) [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases) [![Bash](https://img.shields.io/badge/TUI-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](extras/chat/SPEC-TUI.md)  
+
 <!-- Release & General CI Badges -->
-[![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases)
 [![ShellCheck](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml)
 [![Smoke Tests](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml)
 [![Cross-Platform Tests](https://github.com/kamaludu/bash4llm/actions/workflows/cross-platform.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/cross-platform.yml)
@@ -63,6 +63,7 @@ The following command-line utilities must be available in `PATH`:
 ## Installation
 
 ### Quick Start ⏩
+And *Installing Optional Extras:*
 
 ```sh
 # 1. Clone the repository
@@ -76,16 +77,12 @@ chmod +x bash4llm/bash4llm
 # 3. Initialize and fetch model list
 cd bash4llm 
 ./bash4llm --refresh-models
-```
 
-If no API key environment variable is set on first run, the script prompts for masked key entry.
-
-**Installing Optional Extras:**
-
-```sh
 # 4. Optional: Install Extras
 ./bash4llm --install-extras ../repo-bash4llm/extras/
 ```
+
+If no API key environment variable is set on first run, the script prompts for masked key entry.
 
 For comprehensive installation details, refer to **[INSTALL-en.md](INSTALL-en.md)**.
 

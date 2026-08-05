@@ -1,10 +1,9 @@
 [![Logo 320](docs/img/bash4llm320.png "Logo bash4llm")](README.md)
 
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
-[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)  
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE) [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases) [![Bash](https://img.shields.io/badge/TUI-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](extras/chat/SPEC-TUI.md)  
 
 <!-- Release & Badges CI Generali -->
-[![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases)
 [![ShellCheck](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml)
 [![Smoke Tests](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml)
 [![Cross-Platform Tests](https://github.com/kamaludu/bash4llm/actions/workflows/cross-platform.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/cross-platform.yml)
@@ -64,6 +63,7 @@ Pacchetti richiesti nel `PATH`:
 ## Guida all'installazione
 
 ### Installazione rapida ⏩
+Con *Installazione degli Extras opzionali:*
 
 ```sh
 # 1. Clona il repository
@@ -77,16 +77,13 @@ chmod +x bash4llm/bash4llm
 # 3. Inizializzazione e aggiornamento modelli
 cd bash4llm 
 ./bash4llm --refresh-models
+
+# 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
+./bash4llm --install-extras ../repo-bash4llm/extras/
 ```
 
 Al primo avvio senza variabile d'ambiente impostata, lo script chiederà l'inserimento interattivo della chiave API (input nascosto a schermo).
 
-**Installazione degli Extras opzionali:**
-
-```sh
-# 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
-./bash4llm --install-extras ../repo-bash4llm/extras/
-```
 
 Istruzioni dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
 
