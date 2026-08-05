@@ -28,8 +28,8 @@ unset BASH_ENV ENV CDPATH GLOBIGNORE
 ulimit -c 0 2>/dev/null || true
 
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.2"
-SCRIPT_DATE="2026-08-04"
+SCRIPT_VERSION="2.8.3"
+SCRIPT_DATE="2026-08-05"
 
 # ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -149,7 +149,7 @@ safe_mkdir() {
     return 1
   fi
   if [ -L "$dir" ]; then
-    printf 'bash4llm: %sERROR%s: directory is a symlink: %s\n' "${C_RED:-}" "${C_RST:-}" "$dir" >&2
+    log_error "TMP" "Directory is a symlink: $dir"
     if [ "${BASH_SOURCE[0]}" = "$0" ]; then
       exit "${BASH4LLM_ERR_TMP:-15}"
     else
@@ -158,7 +158,7 @@ safe_mkdir() {
   fi
   if [ ! -d "$dir" ]; then
     mkdir -p "$dir" 2>/dev/null || {
-      printf 'bash4llm: %sERROR%s: cannot create directory: %s\n' "${C_RED:-}" "${C_RST:-}" "$dir" >&2
+      log_error "TMP" "Cannot create directory: $dir"
       if [ "${BASH_SOURCE[0]}" = "$0" ]; then
         exit "${BASH4LLM_ERR_TMP:-15}"
       else
@@ -214,6 +214,13 @@ trim_space() {
   var="${var#"${var%%[![:space:]]*}"}"
   var="${var%"${var##*[![:space:]]}"}"
   printf '%s' "$var"
+}
+
+# Helper to check if a function exists and is marked read-only
+_is_readonly_func() {
+  local fn="${1:-}"
+  [ -n "$fn" ] || return 1
+  declare -F "$fn" >/dev/null 2>&1 && ! (unset -f "$fn" 2>/dev/null)
 }
 
 # Synchronize the MODELS_FILE path based on the active provider
@@ -466,6 +473,7 @@ fi
 # --------------------------------------------------
 # Function: read_secure_input (Hardened TTY Echo & Prompt Execution Order)
 # --------------------------------------------------
+if ! _is_readonly_func read_secure_input; then
 read_secure_input() {
   local _target_var="${1:-}"
   local _prompt_msg="${2:-Enter sensitive value}"
@@ -473,11 +481,11 @@ read_secure_input() {
   local _allow_verify="${4:-0}"
 
   if [[ ! "$_target_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-    printf 'bash4llm: ERROR [read_secure_input]: Invalid target variable identifier: %s\n' "$_target_var" >&2
+    log_error "ARGS" "Invalid target variable identifier: $_target_var"
     return 1
   fi
 
-  # CORREZIONE 1: Imposta _is_tty=1 SOLO SE lo Standard Input (fd 0) è un terminale reale
+  # Determine if Standard Input is a real interactive terminal
   local _is_tty=0
   if [ -t 0 ] && [ -r /dev/tty ] && [ -c /dev/tty ]; then
     _is_tty=1
@@ -501,21 +509,19 @@ read_secure_input() {
         stty echo < /dev/tty 2>/dev/null || stty echo 2>/dev/null || true
       fi
     fi
-    # TECHNICAL DEBT AUDIT [INV-3]: Isolated parent trap restoration.
-    if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi # TECHNICAL DEBT AUDIT _parent_trap_
-    if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi # TECHNICAL DEBT AUDIT _parent_trap_
+    if [ -n "$_parent_trap_int" ]; then eval "$_parent_trap_int"; else trap - INT; fi
+    if [ -n "$_parent_trap_term" ]; then eval "$_parent_trap_term"; else trap - TERM; fi
   }
 
   trap '_rsi_cleanup; printf "\n" >&2; return 1' INT TERM
 
-  # CRITICAL: Disable echo ON /dev/tty BEFORE displaying prompt
+  # Disable echo ON /dev/tty BEFORE displaying prompt
   if [ "$_is_tty" -eq 1 ]; then
     stty -echo < /dev/tty 2>/dev/null || stty -echo 2>/dev/null || true
     printf -- '%s %s[input hidden]%s: ' "$_prompt_msg" "${C_MAGENTA:-}" "${C_RST:-}" >&2
   fi
 
   local _raw_input="" _clean_input=""
-  # CORREZIONE 2: Legge da /dev/tty solo se _is_tty=1. Se è una pipe, legge dallo stdin standard.
   if [ "$_is_tty" -eq 1 ]; then
     IFS= read -r _raw_input < /dev/tty || _raw_input=""
   else
@@ -543,6 +549,7 @@ read_secure_input() {
   printf -v "$_target_var" '%s' "$_clean_input"
   return 0
 }
+fi
 
 # ------------------------------------
 # Function: validate_file_input
@@ -598,6 +605,7 @@ _get_owner() {
   fi
 }
 
+if ! _is_readonly_func validate_path_security; then
 validate_path_security() {
   local target_file="${1:-}"
   [ -f "$target_file" ] || return 1
@@ -667,6 +675,7 @@ validate_path_security() {
 
   return 0
 }
+fi
 
 # --------------------------------------------------
 # Function: _core_sha256
@@ -692,6 +701,7 @@ _core_sha256() {
 # Purpose: Verify file path permissions and cryptographic integrity against extras/manifest.sha256
 # Returns: 0 on success, BASH4LLM_ERR_SEC (17) on security or hash verification failure
 # --------------------------------------------------
+if ! _is_readonly_func verify_module_integrity; then
 verify_module_integrity() {
   local target_file="${1:-}"
   local rel_path="" manifest_file="" expected_hash="" actual_hash=""
@@ -749,6 +759,7 @@ verify_module_integrity() {
 
   return 0
 }
+fi
 
 # --------------------------------------------------
 # Function: ensure_api_key_for_provider
@@ -841,7 +852,7 @@ ensure_api_key_for_provider() {
   read_success=$?
 
   if [ "$read_success" -ne 0 ] || [ -z "$input_key" ]; then
-    printf 'bash4llm: %sERROR%s: no input received. Aborting.\n' "${C_RED:-}" "${C_RST:-}" >&2
+    log_error "APIKEY" "No input received from terminal prompt. Aborting."
     return "$BASH4LLM_ERR_NO_API_KEY"
   fi
 
@@ -856,6 +867,7 @@ ensure_api_key_for_provider() {
   return 0
 }
 
+if ! _is_readonly_func enforce_network_policy; then
 enforce_network_policy() {
   if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
@@ -873,6 +885,7 @@ enforce_network_policy() {
 
   return 0
 }
+fi
 #--4<---[ /SECTION: PRECORE_BOOT_SECURITY ]--->4--
 #--5<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->5--
 SCRIPTDIR="$(resolve_script_dir)"
@@ -1044,7 +1057,7 @@ resolve_provider_url() {
 }
 
 if [ -z "$(canonical_config_dir)" ]; then
-  printf 'bash4llm: %sERROR%s: CONFIG: canonical config dir is empty; aborting.\n' "${C_RED}" "${C_RST}" >&2
+  log_error "CONFIG" "Canonical config dir is empty; aborting."
   exit 1
 fi
 
@@ -1336,21 +1349,21 @@ _mktemp_in_dir() {
 show_payload_head() {
   local path="${1:-$PAYLOAD}" lines="${2:-200}"
   if [ -z "${path:-}" ]; then
-    printf 'bash4llm: %sERROR%s: payload file missing: %s\n' "${C_RED}" "${C_RST}" "<unset>" >&2
+    log_error "TMP" "Payload file path is unset"
     exit "$BASH4LLM_ERR_TMP"
   fi
   if [ ! -e "$path" ]; then
-    printf 'bash4llm: %sERROR%s: payload file missing: %s\n' "${C_RED}" "${C_RST}" "$path" >&2
+    log_error "TMP" "Payload file missing: $path"
     exit "$BASH4LLM_ERR_TMP"
   fi
   if [ ! -s "$path" ]; then
-    printf 'bash4llm: %sINFO%s: payload exists but is empty: %s\n' "${C_GREEN}" "${C_RST}" "$path" >&2
+    log_info "TMP" "Payload exists but is empty: $path"
     return 0
   fi
 
   if [ "${DEBUG:-0}" -eq 1 ]; then
-    printf 'bash4llm: %sINFO%s: payload path: %s\n' "${C_GREEN}" "${C_RST}" "$path" >&2
-    printf 'bash4llm: %sINFO%s: payload (head %d lines):\n' "${C_GREEN}" "${C_RST}" "$lines" >&2
+    log_info "PAYLOAD" "Payload path: $path"
+    log_info "PAYLOAD" "Payload (head $lines lines):"
     if [[ "$path" == *.b64 ]]; then
       b64decode < "$path" 2>/dev/null | head -n "$lines" >&2 || true
     else
@@ -1361,6 +1374,7 @@ show_payload_head() {
   return 0
 }
 
+if ! _is_readonly_func atomic_write; then
 atomic_write() {
   local dest="$1"
   local timeout="${2:-10}"
@@ -1393,6 +1407,7 @@ atomic_write() {
 
   return 0
 }
+fi
 
 extract_text_from_resp() {
   local resp_file="${RESP:-}" tmp_copy=""
@@ -1739,7 +1754,7 @@ explain_error_code() {
   local matched=""
   
   if [ -z "$input_code" ]; then
-    printf 'bash4llm: %sERROR%s: --explain-error requires an error code or alias.\n' "${C_RED}" "${C_RST}" >&2
+    log_error "ARGS" "Option --explain-error requires an error code or alias argument"
     exit 2
   fi
 
@@ -1747,7 +1762,7 @@ explain_error_code() {
   operational_tips="$(_extract_notes_section "OPERATIONAL TIPS (concise)" || true)"
 
   if [ -z "$error_defs" ]; then
-    printf 'bash4llm: %sWARNING%s: Unable to load core-notes.sh document. Cannot explain error.\n' "${C_YELLOW}" "${C_RST}" >&2
+    log_warn "DOCS" "Unable to load core-notes.sh document. Cannot explain error."
     printf 'Please install extras with: %s --install-extras\n' "$0" >&2
     exit 1
   fi
@@ -1777,6 +1792,7 @@ explain_error_code() {
   fi
 }
 #--6<---[ /SECTION: PRECORE_BOOT_STORAGE_LOCKS ]--->6--
+
 #--7<---[ SECTION: PRECORE_BOOT_CLI_HELPERS ]--->7--
 if [ "$#" -gt 0 ]; then
   i=1
@@ -1793,7 +1809,7 @@ if [ "$#" -gt 0 ]; then
           explain_error_code "${!next_index}"
           exit 0
         else
-          printf 'bash4llm: %sERROR%s: usage: --explain-error <error_code_or_alias>\n' "${C_RED}" "${C_RST}" >&2
+          log_error "ARGS" "Usage: --explain-error <error_code_or_alias>"
           exit 2
         fi
         ;;
@@ -1812,10 +1828,10 @@ if [ "$#" -gt 0 ]; then
           printf '%s\n' "$(canonical_model_file "$prov")"
           exit 0
         else
-          printf 'bash4llm: %sERROR%s: usage: --print-model-file <provider>\n' "${C_RED}" "${C_RST}" >&2
+          log_error "ARGS" "Usage: --print-model-file <provider>"
           exit 2
         fi
-        ;;        
+        ;;  
       --print-model-file=*)
         prov="${arg#--print-model-file=}"
         printf '%s\n' "$(canonical_model_file "$prov")"
@@ -1880,7 +1896,7 @@ load_provider_module() {
 
   if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
     if [ "$provider" != "groq" ]; then
-      printf 'Provider %s is not installed.\n' "$provider" >&2
+      log_error "PROVIDER" "Provider '$provider' module is not installed."
       PROVIDER_MODULE_LOADED=0
       return 0
     else
@@ -1942,7 +1958,7 @@ load_provider_module() {
       for f in "$req1" "$req2"; do
         if ! grep -xq "$f" "$dump_file.funcs.$$" 2>/dev/null; then
           if ! type "$f" >/dev/null 2>&1; then
-            printf 'ERROR: provider %s missing required function: %s\n' "$provider" "$f" >&2
+            log_error "PROVIDER" "Provider '$provider' missing required function: $f"
             exit 99
           fi
         fi
@@ -2376,6 +2392,7 @@ anonymize_thread_id() {
 }
 
 # SECURE HOOK ISOLATION & DETERMINISTIC PARSING
+if ! _is_readonly_func execute_isolated_hook; then
 execute_isolated_hook() {
   local hook_type="${1:-}" # "pre" or "post"
   local module_name="${2:-}"
@@ -2458,6 +2475,7 @@ execute_isolated_hook() {
 
   return "$hook_rc"
 }
+fi
 
 # Unified secure file signature extraction
 _get_file_signature() {
@@ -2570,6 +2588,7 @@ _locked_manifest_add_part() {
 # Function: check_local_rate_limit
 # Purpose: Sliding window rate limiting engine
 # ------------------------------------
+if ! _is_readonly_func check_local_rate_limit; then
 check_local_rate_limit() {
   local limit="${BASH4LLM_RATE_LIMIT:-unlimited}"
   [ "$limit" = "unlimited" ] && return 0
@@ -2613,6 +2632,7 @@ check_local_rate_limit() {
 
   return 0
 }
+fi
 
 make_tmpdir() {
   umask 077
@@ -3351,6 +3371,7 @@ _normalize_bool_env
 # Purpose: Authoritative Code Path for all Network Calls
 # Invariants: [INV-1] No Secret Exposure in argv | [INV-2] Isolated Storage
 # --------------------------------------------------
+if ! _is_readonly_func _exec_curl_secure; then
 _exec_curl_secure() {
   local method="${1:-POST}"
   local url="${2:-}"
@@ -3437,10 +3458,12 @@ _exec_curl_secure() {
 
   return "$rc"
 }
+fi
 #--5<---[ /SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 ########################################
 # SECTION: PRECORE_RUN - END
 ########################################
+
 ########################################
 # SECTION: PROVIDER - BEGIN
 ########################################
@@ -4178,6 +4201,7 @@ _lock_security_guards() {
 }
 _lock_security_guards
 #--1<---[ /SECTION: CORE_SETUP_DISPATCH_HELPERS ]--->1--
+
 #--2<---[ SECTION: CORE_SETUP_API_CALL ]--->2--
 resolve_model() {
   local active_provider="" candidate="" norm="" MODEL_PROVIDER_CFG="" cfg_model="" cnt=0 m="" relative_mfile=""
@@ -4647,9 +4671,9 @@ perform_request_once() {
       return 0
     else
       if [ "$rc" -eq "$BASH4LLM_ERR_CURL_FAILED" ]; then
-        printf 'bash4llm: %sWARN%s: Network error (curl). Retrying...\n' "${C_BYELLOW}" "${C_RST}" >&2
+        log_warn "CURL" "Network error (curl). Retrying..."
       elif [ "$rc" -eq "$BASH4LLM_ERR_API" ]; then
-        printf 'bash4llm: %sERROR%s: HTTP/API error. Not retrying.\n' "${C_RED}" "${C_RST}" >&2
+        log_error "API" "HTTP/API error. Not retrying."
         if [ "${DEBUG:-0}" -eq 1 ]; then
           head -n 50 "${RESP:-/dev/null}" >&2 || true
         fi
@@ -4668,7 +4692,7 @@ perform_request_once() {
         release_thread_lock
         return "$BASH4LLM_ERR_API"
       else
-        printf 'bash4llm: %sWARN%s: Unknown error (code %s). Retrying...\n' "${C_BYELLOW}" "${C_RST}" "$rc" >&2
+        log_warn "REQUEST" "Unknown error (code $rc). Retrying..."
       fi
     fi
 
@@ -4774,7 +4798,7 @@ list_models_cli() {
 
 validate_model_core() {
   local model="${1:-}" norm_model="" file_match=0
-  [ -n "$model" ] || { printf 'bash4llm: %sERROR%s: validate_model_core: model required\n' "${C_RED}" "${C_RST}" >&2; return 1; }
+  [ -n "$model" ] || { log_error "BAD_MODEL" "Model identifier parameter is required"; return 1; }
 
   norm_model="$(_normalize_model_name "$model")"
 
@@ -4793,13 +4817,13 @@ validate_model_core() {
     fi
 
     if [ "$file_match" -ne 1 ]; then
-      printf 'bash4llm: %sERROR%s: The model "%s" is not present in %s\n' "${C_RED}" "${C_RST}" "$model" "$MODELS_FILE" >&2
+      log_error "BAD_MODEL" "The model '$model' is not present in $MODELS_FILE"
       return 1
     fi
   fi
 
   if ! is_supported_model "$norm_model"; then
-    printf 'bash4llm: %sERROR%s: The "%s" model is not supported by %s (requires non-text input).\n' "${C_RED}" "${C_RST}" "$model" "${C_BGREEN}Bash4LLM⁺${C_RST}" >&2
+    log_error "BAD_MODEL" "The model '$model' is not supported (requires non-text input)"
     return 1
   fi
 
@@ -4945,6 +4969,7 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
   return 0 2>/dev/null || exit 0
 fi
 #--3<---[ /SECTION: CORE_SETUP_INPUT_HELPERS ]--->3--
+
 #--4<---[ SECTION: CORE_SETUP_CLI_PARSE ]--->4--
 JSON_INPUT="${JSON_INPUT:-}" TEMPLATE="${TEMPLATE:-}" BATCH_FILE="${BATCH_FILE:-}" CHAT_MODE="${CHAT_MODE:-0}" SET_DEFAULT_MODEL="${SET_DEFAULT_MODEL:-}"
 LIST_MODELS="${LIST_MODELS:-0}" LIST_PROVIDERS="${LIST_PROVIDERS:-0}" FORCE_SAVE_MODE="${FORCE_SAVE_MODE:-}" OUT_PATH="${OUT_PATH:-}"
@@ -5195,7 +5220,10 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --) shift; break ;;
-    -*) printf 'bash4llm: %sERROR%s: Unknown option: %s\n' "${C_RED}" "${C_RST}" "$1" >&2; exit "$BASH4LLM_ERR_TMP" ;;
+    -*)
+      log_error "ARGS" "Unknown option: $1"
+      exit "$BASH4LLM_ERR_TMP"
+      ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
