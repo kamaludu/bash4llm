@@ -1,4 +1,4 @@
-[![Specifica](https://img.shields.io/badge/%E2%9C%B4_SCINTILLA-SPECIFICA_CANONICA_DIVULGATIVA-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
+[![Specifica](https://img.shields.io/badge/✴️_SCINTILLA-SPECIFICA_CANONICA_DIVULGATIVA-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
 
 # ✴ SCINTILLA Core - CANONICAL SPECIFICATION
 ## Canonical Standard Edition v4.5.5
