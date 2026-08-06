@@ -25,4 +25,8 @@ groq-refresh.*/
 
 *.pem
 *.key
-extras/tools/*.pem
+extras/security/*.pem
+
+# Ignore all local user extras except directory placeholder
+local-extras/providers/*
+!local-extras/providers/.gitkeep
