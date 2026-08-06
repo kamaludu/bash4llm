@@ -5,6 +5,7 @@ on:
     paths:
       - 'extras/**'
       - '!extras/manifest.sha256'
+      - '!extras/manifest.sha256.sig'
   workflow_dispatch:
 
 jobs:
@@ -19,21 +20,24 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Generate SHA-256 Manifest
+      - name: Generate and Sign Extras Manifest
+        env:
+          ED25519_PRIVATE_KEY: ${{ secrets.ED25519_SIGNING_KEY }}
         run: |
-          cd extras
-          cat << 'EOF' > manifest.sha256
-          # Bash4LLM Extras Integrity Manifest (SHA-256)
-          # Format: <sha256_hash>  <relative_path_from_extras_dir>
-          # Official release modules integrity verification table
-
-          EOF
-          find . -type f ! -name "manifest.sha256" -exec sha256sum {} + | sed 's|  \./|  |' | sort -k2 >> manifest.sha256
+          chmod +x extras/tools/generate-manifest.sh
+          if [ -n "$ED25519_PRIVATE_KEY" ]; then
+            echo "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
+            chmod 600 /tmp/ci-private-key.pem
+            ./extras/tools/generate-manifest.sh --key /tmp/ci-private-key.pem
+            rm -f /tmp/ci-private-key.pem
+          else
+            ./extras/tools/generate-manifest.sh --no-sign-if-missing-key
+          fi
 
       - name: Commit & Push Changes
         uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
-          commit_message: "chore(security): auto-update extras/manifest.sha256 [skip ci]"
-          file_pattern: "extras/manifest.sha256"
+          commit_message: "chore(security): auto-update extras manifest & signatures [skip ci]"
+          file_pattern: "extras/manifest.sha256 extras/manifest.sha256.sig extras/official-ed25519.pub"
           auto_push_pr: false
           push_options: '--force'
