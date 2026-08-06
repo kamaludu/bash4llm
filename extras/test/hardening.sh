@@ -266,6 +266,81 @@ else
   skip_test "OpenSSL Key Vault Test" "openssl binary or openssl-helper.sh missing"
 fi
 
+# =============================================================================
+# TRUST DOMAINS & PROVIDER ISOLATION HARDENING TESTS
+# =============================================================================
+
+# Function Hijacking Protection Test
+test_hijack_dir="${BASH4LLM_DIR}/local-extras/providers"
+mkdir -p "$test_hijack_dir"
+chmod 700 "${BASH4LLM_DIR}/local-extras" "$test_hijack_dir"
+
+test_hijack_mod="${test_hijack_dir}/hard_hijack_prov.sh"
+cat <<'EOF' > "$test_hijack_mod"
+buildpayload_hard_hijack_prov() { printf '{}' > "$PAYLOAD"; }
+call_api_hard_hijack_prov() { return 0; }
+log_error() { echo "HIJACKED_LOG_ERROR"; }
+EOF
+chmod 600 "$test_hijack_mod"
+
+set +e
+"$TARGET_BIN" --provider local:hard_hijack_prov --dry-run "test" > "$CMD_LOG" 2>&1
+rc_hijack=$?
+set -e
+
+if grep -q "Blocked unauthorized function export" "$CMD_LOG" 2>/dev/null; then
+  rc_hijack_test=0
+else
+  rc_hijack_test=1
+fi
+rm -rf "${BASH4LLM_DIR}/local-extras" 2>/dev/null || true
+assert_test "Function Hijacking Protection (Unauthorized export blocked)" 0 $rc_hijack_test
+
+# Local Provider Domain Resolution Test
+test_local_dir="${BASH4LLM_DIR}/local-extras/providers"
+mkdir -p "$test_local_dir"
+chmod 700 "${BASH4LLM_DIR}/local-extras" "$test_local_dir"
+
+test_local_mod="${test_local_dir}/hard_local_dummy.sh"
+cat <<'EOF' > "$test_local_mod"
+buildpayload_hard_local_dummy() { printf '{"test":true}' > "$PAYLOAD"; }
+call_api_hard_local_dummy() { printf '{"choices":[{"message":{"content":"LOCAL_OK"}}]}' > "$RESP"; return 0; }
+EOF
+chmod 600 "$test_local_mod"
+
+set +e
+"$TARGET_BIN" --provider local:hard_local_dummy --dry-run "test" > "$CMD_LOG" 2>&1
+rc_local=$?
+set -e
+rm -rf "${BASH4LLM_DIR}/local-extras" 2>/dev/null || true
+assert_test "Local Provider Domain Resolution (local-extras domain execution)" 0 $rc_local
+
+# Provider API Version Contract Verification Test
+test_api_dir="${BASH4LLM_DIR}/local-extras/providers"
+mkdir -p "$test_api_dir"
+chmod 700 "${BASH4LLM_DIR}/local-extras" "$test_api_dir"
+
+test_api_mod="${test_api_dir}/hard_future_api.sh"
+cat <<'EOF' > "$test_api_mod"
+BASH4LLM_PROVIDER_API_VERSION=999
+buildpayload_hard_future_api() { printf '{}' > "$PAYLOAD"; }
+call_api_hard_future_api() { return 0; }
+EOF
+chmod 600 "$test_api_mod"
+
+set +e
+"$TARGET_BIN" --provider local:hard_future_api --dry-run "test" > "$CMD_LOG" 2>&1
+rc_api_contract=$?
+set -e
+
+if grep -q "requires unsupported API version" "$CMD_LOG" 2>/dev/null; then
+  rc_api_test=0
+else
+  rc_api_test=1
+fi
+rm -rf "${BASH4LLM_DIR}/local-extras" 2>/dev/null || true
+assert_test "Provider API Contract Enforcement (Incompatible version rejected)" 0 $rc_api_test
+
 printf '\n%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
 printf ' Level 4 Hardening Results: %d Passed, %d Failed (Total: %d)\n' "$PASS" "$FAIL" "$TOTAL"
 printf '%s----------------------------------------%s\n' "$C_BOLD" "$C_RST"
