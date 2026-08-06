@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ======================================
-# Bash4LLM⁺ — Official Extras Manifest Generator & Ed25519 Signer
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: generate-manifest.sh
-# Component: Maintainer Tooling
-# Copyright (C) 2026 Cristian Evangelisti
+# Component: Official Extras Manifest Generator & Ed25519 Signer
 # License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # ======================================
 
 set -euo pipefail
