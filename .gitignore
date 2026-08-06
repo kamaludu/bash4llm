@@ -22,3 +22,7 @@
 # Directory temporanee create da mktemp
 groq.*/ 
 groq-refresh.*/
+
+*.pem
+*.key
+extras/tools/*.pem
