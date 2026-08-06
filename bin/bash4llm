@@ -31,8 +31,12 @@ ulimit -c 0 2>/dev/null || true
 # RELEASE VERSION METADATA
 # ======================================
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.4"
+SCRIPT_VERSION="2.8.5"
 SCRIPT_DATE="2026-08-06"
+
+# Core Provider API Contract Version
+BASH4LLM_SUPPORTED_PROVIDER_API=1
+export BASH4LLM_SUPPORTED_PROVIDER_API
 
 # ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -776,6 +780,87 @@ verify_module_integrity() {
   return 0
 }
 fi
+
+# --------------------------------------------------
+# Functions: _provider_env_snapshot & _provider_env_restore
+# Purpose: Protect global shell execution context from ambient pollution by provider modules
+# --------------------------------------------------
+_provider_env_snapshot() {
+  _B4L_SAVED_PATH="${PATH:-}"
+  _B4L_SAVED_IFS="${IFS:-}"
+  _B4L_SAVED_PWD="${PWD:-}"
+  _B4L_SAVED_CDPATH="${CDPATH:-}"
+  _B4L_SAVED_LANG="${LANG:-}"
+  _B4L_SAVED_LC_ALL="${LC_ALL:-}"
+}
+
+_provider_env_restore() {
+  [ -n "${_B4L_SAVED_PATH+x}" ] && export PATH="$_B4L_SAVED_PATH"
+  [ -n "${_B4L_SAVED_IFS+x}" ] && export IFS="$_B4L_SAVED_IFS"
+  [ -n "${_B4L_SAVED_PWD+x}" ] && cd "$_B4L_SAVED_PWD" 2>/dev/null || true
+  [ -n "${_B4L_SAVED_CDPATH+x}" ] && export CDPATH="$_B4L_SAVED_CDPATH" || unset CDPATH 2>/dev/null || true
+  [ -n "${_B4L_SAVED_LANG+x}" ] && export LANG="$_B4L_SAVED_LANG" || unset LANG 2>/dev/null || true
+  [ -n "${_B4L_SAVED_LC_ALL+x}" ] && export LC_ALL="$_B4L_SAVED_LC_ALL" || unset LC_ALL 2>/dev/null || true
+  unset _B4L_SAVED_PATH _B4L_SAVED_IFS _B4L_SAVED_PWD _B4L_SAVED_CDPATH _B4L_SAVED_LANG _B4L_SAVED_LC_ALL 2>/dev/null || true
+}
+
+# --------------------------------------------------
+# Function: _verify_manifest_signature
+# Purpose: Verify Ed25519 cryptographic signature of extras manifest
+# Returns: 0 on valid signature or missing optional sig file, BASH4LLM_ERR_SEC (17) on failure
+# --------------------------------------------------
+_verify_manifest_signature() {
+  local manifest_file="${1:-}"
+  local sig_file="${manifest_file}.sig"
+  local pubkey_file="${BASH4LLM_EXTRAS_DIR%/}/official-ed25519.pub"
+  local errf="" rc=1
+
+  [ -f "$manifest_file" ] || return 1
+
+  # If signature file is not present, enforce optional/mandatory policy
+  if [ ! -f "$sig_file" ]; then
+    if is_truthy "${BASH4LLM_REQUIRE_MANIFEST_SIG:-0}"; then
+      log_error "SEC" "POLICY VIOLATION: Mandatory manifest signature missing: $sig_file"
+      return "${BASH4LLM_ERR_SEC:-17}"
+    fi
+    return 0
+  fi
+
+  if [ ! -f "$pubkey_file" ]; then
+    log_error "SEC" "Manifest signature present but public key missing: $pubkey_file"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  # Path security validation on key and signature files
+  if ! validate_path_security "$sig_file" || ! validate_path_security "$pubkey_file"; then
+    log_error "SEC" "Path security check failed for signature or public key file"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  errf="$(_tmpf file "$BASH4LLM_TMPDIR" sig_err 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+
+  if command -v openssl >/dev/null 2>&1; then
+    if openssl pkeyutl -verify -pubin -inkey "$pubkey_file" -rawin -in "$manifest_file" -sigfile "$sig_file" >"$errf" 2>&1; then
+      rc=0
+    else
+      log_error "SEC" "CRYPTOGRAPHIC SIGNATURE FAILURE! Manifest signature verification failed via OpenSSL"
+      rc="${BASH4LLM_ERR_SEC:-17}"
+    fi
+  elif command -v ssh-keygen >/dev/null 2>&1; then
+    if ssh-keygen -Y verify -f "$pubkey_file" -I "bash4llm-manifest" -n "file" -s "$sig_file" < "$manifest_file" >"$errf" 2>&1; then
+      rc=0
+    else
+      log_error "SEC" "CRYPTOGRAPHIC SIGNATURE FAILURE! Manifest signature verification failed via ssh-keygen"
+      rc="${BASH4LLM_ERR_SEC:-17}"
+    fi
+  else
+    log_error "SEC" "No Ed25519 cryptographic verifier (openssl or ssh-keygen) found in PATH"
+    rc="${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  rm -f "$errf" 2>/dev/null || true
+  return "$rc"
+}
 
 # --------------------------------------------------
 # Function: ensure_api_key_for_provider
@@ -1961,17 +2046,20 @@ _resolve_provider_module_path() {
 
 # --------------------------------------------------
 # Function: load_provider_module
-# Purpose: Load provider module under domain isolation and function whitelist filtering
+# Purpose: Load provider module under TOCTOU staging copy isolation, domain check, and whitelist filtering
 # --------------------------------------------------
 load_provider_module() {
   local provider_raw="${1:-}"
   local resolved="" resolved_path="" resolved_domain="" provider=""
-  local current_user="" beforesig="" aftersig="" dump_file="" rc=0 _nounset_was_on=0
-  local supports_streaming=0 supports_refresh_models=0 loaded_from="" prov_json=""
+  local current_user="" beforesig="" aftersig="" dump_file="" staged_file="" rc=0 _nounset_was_on=0
+  local supports_streaming=0 supports_refresh_models=0 loaded_from="" prov_json="" logical_rel_path="" prov_api_ver=""
+
+  _provider_env_snapshot
 
   resolved="$(_resolve_provider_module_path "$provider_raw" 2>/dev/null || true)"
   if [ -z "$resolved" ]; then
     log_error "PROVIDER" "Failed to resolve provider path for: $provider_raw"
+    _provider_env_restore
     return 1
   fi
 
@@ -1981,6 +2069,7 @@ EOF
 
   if [ "${LOADED_PROVIDER_NAME:-}" = "$provider" ] && [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
     sync_models_file_path "$provider"
+    _provider_env_restore
     return 0
   fi
 
@@ -1991,29 +2080,56 @@ EOF
   if [ "$resolved_domain" = "builtin" ]; then
     PROVIDER_MODULE_LOADED=1
     sync_models_file_path "$provider"
+    _provider_env_restore
     return 0
   fi
 
   PROVIDER_MODULE_PATH="$resolved_path"
 
-  # Domain Integrity & Path Security Verification
-  if ! verify_module_integrity "$PROVIDER_MODULE_PATH" "$resolved_domain"; then
-    log_error "SEC" "Provider module failed $resolved_domain domain verification: $PROVIDER_MODULE_PATH"
+  # Validate manifest Ed25519 signature if manifest exists
+  if [ "$resolved_domain" = "vendor" ]; then
+    if ! _verify_manifest_signature "${BASH4LLM_EXTRAS_DIR%/}/manifest.sha256"; then
+      log_error "SEC" "Manifest signature verification failed for vendor domain"
+      _provider_env_restore
+      return "${BASH4LLM_ERR_SEC:-17}"
+    fi
+    logical_rel_path="providers/${provider}.sh"
+  fi
+
+  # Anti-TOCTOU Staging Copy: Copy file to secure runtime temp before checking and sourcing
+  staged_file="$(_tmpf file "$BASH4LLM_TMPDIR" "staged.${provider}" 2>/dev/null)"
+  if [ -z "$staged_file" ]; then
+    log_error "TMP" "Failed to allocate staging copy file for provider $provider"
+    _provider_env_restore
+    return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+
+  if ! cp -f "$PROVIDER_MODULE_PATH" "$staged_file" 2>/dev/null; then
+    rm -f "$staged_file" 2>/dev/null || true
+    log_error "TMP" "Failed to create staging copy of provider module: $PROVIDER_MODULE_PATH"
+    _provider_env_restore
+    return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+  chmod 600 "$staged_file" 2>/dev/null || true
+
+  # Domain Integrity & Path Security Verification on the Staged Copy
+  if ! verify_module_integrity "$staged_file" "$resolved_domain" "$logical_rel_path"; then
+    rm -f "$staged_file" 2>/dev/null || true
+    log_error "SEC" "Staged provider module failed $resolved_domain domain verification: $PROVIDER_MODULE_PATH"
+    _provider_env_restore
     return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
-  beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-
-  if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
+  if bash -n "$staged_file" 2>/dev/null; then
     dump_file="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
-    [ -z "$dump_file" ] && { log_error "SEC" "Cannot create provider dump file"; return "${BASH4LLM_ERR_SEC:-17}"; }
+    [ -z "$dump_file" ] && { rm -f "$staged_file" 2>/dev/null || true; log_error "SEC" "Cannot create provider dump file"; _provider_env_restore; return "${BASH4LLM_ERR_SEC:-17}"; }
 
     (
       set -e
       trap 'rm -f "$dump_file.before.$$" "$dump_file.after.$$" "$dump_file.funcs.$$" 2>/dev/null' EXIT
 
       declare -F | awk '{print $3}' | sort > "$dump_file.before.$$" 2>/dev/null || true
-      . "$PROVIDER_MODULE_PATH"
+      . "$staged_file"
       declare -F | awk '{print $3}' | sort > "$dump_file.after.$$" 2>/dev/null || true
       comm -13 "$dump_file.before.$$" "$dump_file.after.$$" > "$dump_file.funcs.$$" 2>/dev/null || true
 
@@ -2027,6 +2143,14 @@ EOF
           fi
         fi
       done
+
+      # Check Provider API Version Contract if declared by provider
+      if [ -n "${BASH4LLM_PROVIDER_API_VERSION:-}" ]; then
+        if [ "$BASH4LLM_PROVIDER_API_VERSION" -gt "${BASH4LLM_SUPPORTED_PROVIDER_API:-1}" ]; then
+          log_error "PROVIDER" "Provider '$provider' requires unsupported API version $BASH4LLM_PROVIDER_API_VERSION (Core supports max ${BASH4LLM_SUPPORTED_PROVIDER_API:-1})"
+          exit 98
+        fi
+      fi
 
       # Whitelist Filter to prevent Function Hijacking attacks
       : > "$dump_file"
@@ -2053,9 +2177,13 @@ EOF
     )
     rc=$?
 
+    # Remove staging copy immediately after loading functions into dump
+    rm -f "$staged_file" 2>/dev/null || true
+
     if [ "$rc" -ne 0 ]; then
       log_error "PROVIDER" "Provider module failed isolated import (rc=$rc)"
       rm -f "$dump_file" 2>/dev/null || true
+      _provider_env_restore
       return "${BASH4LLM_ERR_SEC:-17}"
     fi
 
@@ -2074,10 +2202,8 @@ EOF
     PROVIDER_MODULE_LOADED=1
     rm -f "$dump_file" 2>/dev/null || true
 
-    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "Provider file changed during execution."; return "${BASH4LLM_ERR_SEC:-17}"; }
-
   else
+    rm -f "$staged_file" 2>/dev/null || true
     log_warn "PROVIDER" "Provider module invalid syntax; falling back to embedded provider."
     PROVIDER_MODULE_LOADED=0
   fi
@@ -2093,6 +2219,7 @@ EOF
   fi
 
   sync_models_file_path "$provider"
+  _provider_env_restore
   return 0
 }
 
