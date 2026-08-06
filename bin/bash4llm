@@ -2245,29 +2245,6 @@ _detect_base64_opts() {
 }
 _detect_base64_opts
 
-list_files_sorted_by_mtime() {
-  local dir="${1:-}" mtime="" f=""
-  find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
-    mtime=""
-    if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
-      mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)"
-    else
-      mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
-    fi
-    printf '%s|%s\n' "$mtime" "$f"
-  done | sort -n
-}
-
-tac_fallback() {
-  local f="${1:-}"
-  if command -v tac >/dev/null 2>&1; then
-    tac "$f"
-    return $?
-  fi
-  awk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' "$f"
-  return 0
-}
-
 _file_mtime() {
   local f="${1:-}"
   if [ ! -e "$f" ]; then printf '0'; return 0; fi
@@ -2526,15 +2503,22 @@ manifest_read() {
   return 1
 }
 #--2<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->2--
+
 #--3<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
 # CORE SECURITY & HOOK ISOLATION ENGINE
 # Cryptographically anonymizes the thread ID in-memory to prevent PII exposure.
-# Falls back to alternative hashing utilities to maximize portability.
-# Aborts execution if no unidirectional hash utility is found to protect data.
+# Idempotent: Returns existing 64-character SHA-256 hex string directly if already hashed.
 anonymize_thread_id() {
   local raw_id="${1:-}"
   if [ -z "$raw_id" ]; then
     SAFE_THREAD_ID=""
+    export SAFE_THREAD_ID
+    return 0
+  fi
+
+  # Idempotency Check: Avoid re-hashing an already anonymized 64-character hex hash
+  if [[ "$raw_id" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    SAFE_THREAD_ID="$raw_id"
     export SAFE_THREAD_ID
     return 0
   fi
@@ -3503,6 +3487,7 @@ thread_cache_invalidate() {
   return 0
 }
 #--4<---[ /SECTION: PRECORE_RUN_THREAD_ENGINE ]--->4--
+
 #--5<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 # Runtime globals and normalization (non-destructive defaults)
 # --------------------------------------------------
@@ -3535,9 +3520,6 @@ OUTPUT_MODE="${OUTPUT_MODE:-text}"
 THRESHOLD="${THRESHOLD:-1000}"
 
 MAX_RETRIES="${MAX_RETRIES:-1}"
-
-SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
-export SUPPORTED_PROVIDERS
 
 if type ensure_config_dir >/dev/null 2>&1; then
   ensure_config_dir >/dev/null 2>&1 || true
@@ -3890,7 +3872,7 @@ call_api_groq() {
 # Purpose:  Execute SSE streaming API call securing Bearer token from process list.
 # --------------------------------------------------
 call_api_streaming_groq() {
-  local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 stderr_head="" now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" CURL_CMD=() http_code="" json="" content="" resp_size=0 errf_size=0 resp_json_tmp="" p_dir="" api_json="" ui_last=""
+  local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" http_code="" resp_json_tmp="" api_json=""
   local curl_err_log="" _line="" hdr_file="" hdr_target="" api_key="" custom_key_var=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
@@ -4962,10 +4944,6 @@ expand_args_to_content() {
 }
 
 file_readable() { [ -r "$1" ] && [ -f "$1" ]; }
-    
-trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
-
-is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
 
 is_supported_model() {
   local m="${1:-}" l=""
@@ -5111,8 +5089,8 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
              file_size is_valid_json_file stage_b64 lock_exec _mktemp_in_dir show_payload_head \
              atomic_write extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir \
              b64_atomic_write b64_atomic_read ui_state_write run_static_config_check \
-             explain_error_code load_provider_module _detect_base64_opts list_files_sorted_by_mtime \
-             tac_fallback _file_mtime jq_safe rotate_history save_to_history manifest_create \
+             explain_error_code load_provider_module _detect_base64_opts \
+             _file_mtime jq_safe rotate_history save_to_history manifest_create \
              manifest_add_part manifest_read _get_perm_string _get_owner anonymize_thread_id \
              validate_path_security execute_isolated_hook _get_file_signature getfile_signature \
              _is_world_writable _locked_history_save _locked_manifest_create _locked_manifest_add_part \
@@ -5127,7 +5105,7 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
              refresh_models_dispatch validate_model_dispatch auto_select_model_dispatch \
              resolve_model build_payload_from_vars call_api_once call_api_streaming \
              extract_api_error detect_empty_edge_case finalize_and_output perform_request_once \
-             collect_input_from_files expand_args_to_content file_readable trim is_number \
+             collect_input_from_files expand_args_to_content file_readable \
              is_supported_model list_models_cli validate_model_core load_local_config \
              load_whitelist is_tty_out assemble_content read_secure_input \
              _core_sha256 verify_module_integrity \
@@ -5812,7 +5790,7 @@ EOF
     printf 'No selection made.\n' >&2
     exit "$BASH4LLM_ERR_TMP"
   fi
-  sel="$(trim "$sel")"
+  sel="$(trim_space "$sel")"
 
   if [ -z "$sel" ]; then
     chosen="$current_default"
