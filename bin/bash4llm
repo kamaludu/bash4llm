@@ -2068,12 +2068,14 @@ $resolved
 EOF
 
   if [ "${LOADED_PROVIDER_NAME:-}" = "$provider" ] && [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
+    PROVIDER="$provider"
     sync_models_file_path "$provider"
     _provider_env_restore
     return 0
   fi
 
   LOADED_PROVIDER_NAME="$provider"
+  PROVIDER="$provider"
   PROVIDER_MODULE_LOADED=0
 
   # Handle embedded builtin provider (e.g. groq)
