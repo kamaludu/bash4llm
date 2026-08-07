@@ -145,6 +145,7 @@ skip_test() {
 }
 
 export BASH4LLM_DIR="${TEST_SANDBOX}/bash4llm.d"
+unset LOCAL_PROVIDERS_DIR BASH4LLM_LOCAL_EXTRAS_DIR PROVIDERS_DIR 2>/dev/null || true
 if [ -n "$EFFECTIVE_EXTRAS_DIR" ]; then export BASH4LLM_EXTRAS_DIR="$EFFECTIVE_EXTRAS_DIR"; fi
 export BASH4LLM_SKIP_NETWORK=1
 export GROQ_API_KEY="dummy_hard_key"
@@ -277,9 +278,10 @@ chmod 700 "${BASH4LLM_DIR}/local-extras" "$test_hijack_dir"
 
 test_hijack_mod="${test_hijack_dir}/hard_hijack_prov.sh"
 cat <<'EOF' > "$test_hijack_mod"
+auto_select_model_hard_hijack_prov() { printf 'dummy-model'; }
 buildpayload_hard_hijack_prov() { printf '{}' > "$PAYLOAD"; }
 call_api_hard_hijack_prov() { return 0; }
-log_error() { echo "HIJACKED_LOG_ERROR"; }
+unauthorized_extra_function() { echo "HIJACKED"; }
 EOF
 chmod 600 "$test_hijack_mod"
 
@@ -303,6 +305,7 @@ chmod 700 "${BASH4LLM_DIR}/local-extras" "$test_local_dir"
 
 test_local_mod="${test_local_dir}/hard_local_dummy.sh"
 cat <<'EOF' > "$test_local_mod"
+auto_select_model_hard_local_dummy() { printf 'dummy-model'; }
 buildpayload_hard_local_dummy() { printf '{"test":true}' > "$PAYLOAD"; }
 call_api_hard_local_dummy() { printf '{"choices":[{"message":{"content":"LOCAL_OK"}}]}' > "$RESP"; return 0; }
 EOF
