@@ -30,6 +30,7 @@ extras/
 │   └── mistral.sh
 ├── security/                 # Active Security, Encryption & Output Sanitization
 │   ├── OPENSSL-HELPER.md
+│   ├── generate-manifest.sh. # Official Extras Manifest Generator & Ed25519 Signer
 │   ├── openssl-helper.sh     # Encrypted OpenSSL Key Vault Engine (chmod 600, sourced)
 │   └── output-sanitizer.sh   # Zero-Eval ANSI Filter & Output Sanitizer (chmod 700)
 ├── session/                  # Token-Aware Session Engine Extension
