@@ -490,7 +490,7 @@ EXIT CODES
         integrity check failure against manifest.sha256.
 
 OPERATIONAL MODES
-    bash4llm implements five main operational modes:
+    bash4llm implements six main operational modes:
 
   1. Single Request (Default)
     Acquires prompt, resolves provider and model, validates API keys, enforces rate 
@@ -508,6 +508,10 @@ OPERATIONAL MODES
 
   5. Interactive Provider Selection (--provider)
     Opens interactive selection menu to choose and persist active provider.
+
+  6. Sourced Session & Shell Autocompletion (. ./bash4llm)
+    Sourcing bash4llm in an active interactive shell unlocks the Vault session 
+    in RAM ($_B4L_RT_CTX) and automatically loads bash4llm-completion.sh.
 
 INTERNAL IMPLEMENTATION DETAILS
     This section describes core algorithms and security logics.
@@ -544,6 +548,11 @@ INTERNAL IMPLEMENTATION DETAILS
   6. Prompt Assembly Priority Chain
     Assembly of $CONTENT: Structured JSON ($JSON_INPUT) -> files via -f -> 
     templates ($TEMPLATE) -> standard input ($STDIN_CONTENT) -> positional arguments.
+
+  7. Interactive Shell Autocompletion Engine
+    When sourced via . ./bash4llm, the runtime automatically loads 
+    extras/docs/bash4llm-completion.sh, registering tab-completion for all CLI 
+    options, providers, models, and error codes without side-effects.
 
 TROUBLESHOOTING AND DIAGNOSTICS
     Anomalous Empty Responses (Empty Completion)
