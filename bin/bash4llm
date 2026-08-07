@@ -5150,6 +5150,14 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
     fi
   fi
 
+  # Auto-load shell completion script if available in extras
+  _comp_file="${BASH4LLM_EXTRAS_DIR:-}/docs/bash4llm-completion.sh"
+  if [ -f "$_comp_file" ] && [ -r "$_comp_file" ]; then
+    if . "$_comp_file" 2>/dev/null; then
+      log_info_user "COMPLETION" "Shell autocompletion enabled for current session."
+    fi
+  fi
+
   # Clean up environment functions ONLY for interactive session unlock
   _cleanup_sourced_env
   return 0 2>/dev/null || exit 0
