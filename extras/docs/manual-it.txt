@@ -120,8 +120,8 @@ OPZIONI
         --title <testo>.
 
     --title TESTO
-        Specifica la nuova stringa del titolo utente quando si esegue la 
-        rinominazione del thread tramite --rename-thread.
+        Specifies the new user-facing title string when executing thread 
+        renaming via --rename-thread.
 
   Sezione 4: Output e Formattazione
     --json
@@ -479,7 +479,7 @@ VARIABILI D'AMBIENTE
         Flag di controllo transazioni esterne. Se impostato su 0, blocca le chiamate di rete.
 
     BASH4LLM_SKIP_NETWORK
-        Inibisce le chiamate di rete e forza l'esecuzione simulata dry-run.
+        Inhibits network calls and forces dry-run simulated execution.
 
     BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET
         Se impostato su 1, blocca le connessioni esterne ogni volta che QUIET=1 è attivo.
@@ -527,7 +527,7 @@ CODICI DI USCITA
         del modulo SHA-256 rispetto a manifest.sha256.
 
 MODALITÀ OPERATIVE
-    bash4llm implementa cinque modalità operative principali:
+    bash4llm implementa sei modalità operative principali:
 
   1. Richiesta Singola (Predefinita)
     Acquisisce il prompt, risolve provider e modello, convalida le chiavi API, impone il 
@@ -545,6 +545,10 @@ MODALITÀ OPERATIVE
 
   5. Selezione Interattiva del Provider (--provider)
     Apre il menu di selezione interattivo per scegliere e persistere il provider attivo.
+
+  6. Sessione con Sourcing e Autocompletamento Shell (. ./bash4llm)
+    Il sourcing di bash4llm in una shell interattiva attiva sblocca la sessione del 
+    Vault in RAM ($_B4L_RT_CTX) e carica automaticamente bash4llm-completion.sh.
 
 DETTAGLI DI IMPLEMENTAZIONE INTERNA
     Questa sezione descrive gli algoritmi principali e le logiche di sicurezza.
@@ -581,6 +585,11 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
   6. Catena di Priorità per l'Assemblaggio del Prompt
     Assemblaggio di $CONTENT: JSON strutturato ($JSON_INPUT) -> file via -f -> 
     template ($TEMPLATE) -> standard input ($STDIN_CONTENT) -> argomenti posizionali.
+
+  7. Motore di Autocompletamento della Shell Interattiva
+    Se eseguito tramite sourcing (. ./bash4llm), il runtime carica automaticamente 
+    extras/docs/bash4llm-completion.sh, registrando il completamento con il tasto Tab 
+    per tutte le opzioni CLI, provider, modelli e codici di errore senza side-effect.
 
 RISOLUZIONE PROBLEMI E DIAGNOSTICA
     Risposte Vuote Anomale (Empty Completion)
