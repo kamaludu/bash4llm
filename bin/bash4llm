@@ -32,7 +32,7 @@ ulimit -c 0 2>/dev/null || true
 # ======================================
 SCRIPT_NAME="bash4llm"
 SCRIPT_VERSION="2.8.5"
-SCRIPT_DATE="2026-08-06"
+SCRIPT_DATE="2026-08-07"
 
 # Core Provider API Contract Version
 BASH4LLM_SUPPORTED_PROVIDER_API=1
@@ -2319,6 +2319,8 @@ rotate_history() {
     done | sort -t'|' -k1,1n
   )
 
+  local count="${#entries[@]}"
+
   # 3. Trim oldest entries to respect maximum allowed byte size (guarded against unbound variables when the array is empty)
   if [ "$total" -gt "$max_bytes" ] && [ "${#entries[@]}" -gt 0 ]; then
     for entry in ${entries[@]+"${entries[@]}"}; do
@@ -2326,13 +2328,13 @@ rotate_history() {
       oldest_path="${entry#*|}"
       if [ -f "$oldest_path" ] && lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$oldest_path"; then
         total=$(( total - oldest_size ))
+        count=$(( count - 1 ))
         [ "$total" -le "$max_bytes" ] && break
       fi
     done
   fi
 
   # 4. Trim oldest entries to respect maximum allowed file count limit (guarded against unbound variables when the array is empty)
-  local count="${#entries[@]}"
   if [ "$count" -gt "$max_files" ] && [ "${#entries[@]}" -gt 0 ]; then
     for entry in ${entries[@]+"${entries[@]}"}; do
       oldest_path="${entry#*|}"
@@ -3593,7 +3595,7 @@ _exec_curl_secure() {
 
   # 2. FD Redirection: Hide header file path from process inspection if supported
   hdr_target="$hdr_file"
-  if exec 3< "$hdr_file" 2>/dev/null; then
+  if [ "${BASH4LLM_PLAT_CYGWIN:-0}" -eq 0 ] && exec 3< "$hdr_file" 2>/dev/null; then
     if [ -e "/dev/fd/3" ]; then
       hdr_target="/dev/fd/3"
       rm -f "$hdr_file" 2>/dev/null || true
@@ -3626,9 +3628,8 @@ _exec_curl_secure() {
   fi
 
   if [ -n "$extra_opts_ref" ]; then
-    local -n _extra_ref="$extra_opts_ref" 2>/dev/null || true
-    if [ "${#_extra_ref[@]}" -gt 0 ]; then
-      cmd+=("${_extra_ref[@]}")
+    if [ "$#" -ge 8 ]; then
+      cmd+=("${@:8}")
     fi
   fi
 
@@ -3840,7 +3841,7 @@ call_api_groq() {
   fi
 
   local -a extra_w_opts=(-w "%{http_code}")
-  http_code="$(_exec_curl_secure "POST" "$provider_url" "$api_key" "$payload_dec" "$tmp_resp" "$tmp_err" 0 extra_w_opts)"
+  http_code="$(_exec_curl_secure "POST" "$provider_url" "$api_key" "$payload_dec" "$tmp_resp" "$tmp_err" 0 "${extra_w_opts[@]}")"
   rc=$?
 
   if [ "$payload_dec" != "$PAYLOAD" ]; then
@@ -4217,7 +4218,7 @@ validate_key_groq() {
 
   # Execute API key validation GET request through the secure authoritative path
   local -a key_val_opts=(--max-time 10 -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 "${key_val_opts[@]}" || echo "CURL_ERR")"
   curl_rc=$?
 
   # Immediately cleanup diagnostic temporary files
