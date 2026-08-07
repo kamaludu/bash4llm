@@ -47,12 +47,17 @@ fi
 
 # --- PHASE 2: TERMINAL CLEANUP AND SIGNAL LIFECYCLE MANAGEMENT ---
 
-# Clean up terminal state, disable bracketed paste, and release concurrency locks on exit
 tui_cleanup() {
   local rc=$?
   
   # Ensure terminal echo is restored in case of abnormal interruption
   stty echo 2>/dev/null || true
+
+  # Restore standard Readline TAB binding and remove completion function/cache
+  bind -r '\t' 2>/dev/null || true
+  unset -f _tui_readline_complete 2>/dev/null || true
+  unset -f _tui_load_models_cache 2>/dev/null || true
+  unset _TUI_MODELS_CACHE 2>/dev/null || true
   
   # Disable Bracketed Paste Mode safely before exiting to restore standard TTY state
   printf '\e[?2004l' >&2
@@ -157,6 +162,23 @@ sync_models_file_path
 ensure_run_tmpdir >/dev/null 2>&1 || {
   printf 'tui-repl.sh: ERROR: Unable to initialize secure run-specific temporary directory.\n' >&2
   exit "$BASH4LLM_ERR_TMP"
+}
+
+# Variable for in-memory model caching to prevent I/O during TAB completion
+_TUI_MODELS_CACHE=""
+
+_tui_load_models_cache() {
+  _TUI_MODELS_CACHE=""
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    local m_line norm_m
+    while IFS= read -r m_line || [ -n "$m_line" ]; do
+      [ -z "$m_line" ] && continue
+      norm_m="$(_normalize_model_name "$m_line")"
+      if is_supported_model "$norm_m"; then
+        _TUI_MODELS_CACHE="${_TUI_MODELS_CACHE} ${norm_m}"
+      fi
+    done < "$MODELS_FILE"
+  fi
 }
 
 # --- PHASE 4: DECLARATIVE DICTIONARIES & SECURE i18n PARSER ---
@@ -350,6 +372,219 @@ fi
 # Escape sequences wrapping readline-rendered non-printing characters to prevent cursor desync
 RL_START=$'\001'
 RL_END=$'\002'
+
+# --- PHASE 5.1: UNIVERSAL READLINE TAB COMPLETION ENGINE ---
+
+# Dispatcher generico dei candidati per TUTTI i comandi della TUI
+_tui_get_cmd_candidates() {
+  local cmd="$1" cur="$2"
+  case "$cmd" in
+    /format)
+      local item
+      for item in text raw json pretty; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /model)
+      if [ -z "${_TUI_MODELS_CACHE:-}" ]; then _tui_load_models_cache; fi
+      local item
+      for item in ${_TUI_MODELS_CACHE:-}; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /temperature|/ture)
+      local item
+      for item in 0.2 0.5 0.7 1.0 1.2 1.5 2.0; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /max)
+      local item
+      for item in 1024 2048 4096 8192 16384 32768; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /threshold)
+      local item
+      for item in 500 1000 5000 10000 50000 100000 1048576; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+  esac
+}
+
+_tui_readline_complete() {
+  # Forza IFS standard locale per prevenire l'eredità di IFS="" da read -e
+  local IFS=$' \t\n'
+
+  local line="${READLINE_LINE:0:$READLINE_POINT}"
+  local rest="${READLINE_LINE:$READLINE_POINT}"
+
+  # 1. GESTIONE UNIVERSIALE /file (Spazi e virgolette nel filesystem)
+  if [[ "$line" =~ ^/file([[:space:]]+(.*))?$ ]]; then
+    local raw_arg="${BASH_REMATCH[2]:-}"
+    local clean_arg="${raw_arg#\"}"
+    clean_arg="${clean_arg%\"}"
+    clean_arg="${clean_arg#\'}"
+    clean_arg="${clean_arg%\'}"
+
+    local -a file_matches=()
+    local f_item
+    while IFS= read -r f_item; do
+      if [ -n "$f_item" ]; then
+        if [ -d "$f_item" ]; then
+          file_matches+=("${f_item%/}/")
+        else
+          file_matches+=("${f_item} ")
+        fi
+      fi
+    done < <(compgen -f -- "$clean_arg" 2>/dev/null)
+
+    local num_f="${#file_matches[@]}"
+    if [ "$num_f" -eq 0 ]; then
+      return 0
+    elif [ "$num_f" -eq 1 ]; then
+      local match="${file_matches[0]}"
+      READLINE_LINE="/file ${match}${rest}"
+      READLINE_POINT=$(( 6 + ${#match} ))
+    else
+      local lcp="${file_matches[0]}"
+      local item
+      for item in "${file_matches[@]}"; do
+        while [ -n "$lcp" ] && [[ "${item}" != "${lcp}"* ]]; do
+          lcp="${lcp:0:$(( ${#lcp} - 1 ))}"
+        done
+      done
+
+      if [ "${#lcp}" -gt "${#clean_arg}" ]; then
+        READLINE_LINE="/file ${lcp}${rest}"
+        READLINE_POINT=$(( 6 + ${#lcp} ))
+      else
+        printf '\n  File: %s\n' "${file_matches[*]}" >&2
+      fi
+    fi
+    return 0
+  fi
+
+  # 2. MOTORE UNIVERSIALE PER TUTTI GLI ALTRI COMANDI E ARGOMENTI
+  local _glob_was_set=0
+  if [[ $- == *f* ]]; then _glob_was_set=1; fi
+  set -f
+
+  local -a words=()
+  read -r -a words <<< "$line" 2>/dev/null || true
+
+  local trailing_space=0
+  if [[ "$line" =~ [[:space:]]$ ]]; then
+    trailing_space=1
+  fi
+
+  local cmd="" cur=""
+  if [ "${#words[@]}" -gt 0 ]; then
+    cmd="${words[0]}"
+  fi
+
+  if [ "$trailing_space" -eq 1 ] || [ "${#words[@]}" -eq 0 ]; then
+    cur=""
+  else
+    local last_idx=$((${#words[@]} - 1))
+    cur="${words[$last_idx]}"
+  fi
+
+  local num_words="${#words[@]}"
+  if [ "$trailing_space" -eq 1 ]; then
+    num_words=$((num_words + 1))
+  fi
+
+  local -a matches=()
+  local append_space=1
+
+  # Dispatcher di contesto
+  if [ "$num_words" -le 1 ] || { [ "$num_words" -eq 2 ] && [ "$trailing_space" -eq 0 ] && [[ "$cur" == /* ]]; }; then
+    # Completamento NOME del comando slash
+    local -a tui_cmds=(/help /exit /quit /clear /thread /threads /private /config /undo /status /system /model /temperature /ture /max /threshold /format /file /block /edit)
+    local item
+    for item in "${tui_cmds[@]}"; do
+      if [[ "$item" == "$cur"* ]]; then
+        matches+=("$item")
+      fi
+    done
+  else
+    # Completamento ARGOMENTI per qualsiasi comando tramite dispatcher universale
+    append_space=1
+    while IFS= read -r m; do
+      [ -n "$m" ] && matches+=("$m")
+    done < <(_tui_get_cmd_candidates "$cmd" "$cur")
+
+    # Fallback per percorsi relativi/assoluti se il comando non ha una lista chiusa
+    if [ "${#matches[@]}" -eq 0 ] && { [[ "$cur" == ./* ]] || [[ "$cur" == ~/* ]] || [[ "$cur" == /* ]]; }; then
+      append_space=0
+      while IFS= read -r m; do
+        if [ -n "$m" ]; then
+          if [ -d "$m" ]; then
+            matches+=("${m%/}/")
+          else
+            matches+=("$m ")
+          fi
+        fi
+      done < <(compgen -f -- "$cur" 2>/dev/null)
+    fi
+  fi
+
+  if [ "$_glob_was_set" -eq 0 ]; then set +f; fi
+
+  local num_matches="${#matches[@]}"
+  if [ "$num_matches" -eq 0 ]; then
+    # Suggerimenti di sintassi contestuali per comandi ad argomento libero
+    if [ "$cmd" = "/system" ] && [ "$trailing_space" -eq 1 ] && [ -z "$cur" ]; then
+      printf '\n  Sintassi: /system <testo del prompt di sistema>\n' >&2
+    fi
+    return 0
+  elif [ "$num_matches" -eq 1 ]; then
+    local match="${matches[0]}"
+    if [ "$append_space" -eq 1 ]; then
+      match="${match} "
+    fi
+    local prefix="${line:0:$(( ${#line} - ${#cur} ))}"
+    READLINE_LINE="${prefix}${match}${rest}"
+    READLINE_POINT=$(( ${#prefix} + ${#match} ))
+
+    # SUGGERIMENTO AUTOMATICO UNIFICATO: Quando si completa QUALSIASI comando slash,
+    # mostra immediatamente le opzioni/argomenti disponibili per quel comando!
+    if [[ "$match" == /*[[:space:]] ]]; then
+      local completed_cmd="${match// /}"
+      local -a sub_cands=()
+      while IFS= read -r cand; do
+        [ -n "$cand" ] && sub_cands+=("$cand")
+      done < <(_tui_get_cmd_candidates "$completed_cmd" "")
+
+      if [ "${#sub_cands[@]}" -gt 0 ]; then
+        printf '\n  Opzioni per %s: %s\n' "$completed_cmd" "${sub_cands[*]}" >&2
+      elif [ "$completed_cmd" = "/file" ]; then
+        printf '\n  Uso: /file <percorso_file>\n' >&2
+      elif [ "$completed_cmd" = "/system" ]; then
+        printf '\n  Uso: /system <testo_prompt_sistema>\n' >&2
+      fi
+    fi
+  else
+    local lcp="${matches[0]}"
+    local match_item
+    for match_item in "${matches[@]}"; do
+      while [ -n "$lcp" ] && [[ "${match_item}" != "${lcp}"* ]]; do
+        lcp="${lcp:0:$(( ${#lcp} - 1 ))}"
+      done
+    done
+
+    if [ "${#lcp}" -gt "${#cur}" ]; then
+      local prefix="${line:0:$(( ${#line} - ${#cur} ))}"
+      READLINE_LINE="${prefix}${lcp}${rest}"
+      READLINE_POINT=$(( ${#prefix} + ${#lcp} ))
+    else
+      printf '\n  Opzioni: %s\n' "${matches[*]}" >&2
+    fi
+  fi
+}
+
 # --- PHASE 6: SEQUENTIAL RENDERING UTILITIES ---
 
 # Render the stylized main header banner of the application
@@ -679,6 +914,7 @@ select_provider_wizard() {
   if [ "$prev_provider" != "$PROVIDER" ]; then
     sync_models_file_path "$PROVIDER"
     resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-}"
+    _tui_load_models_cache
   fi
 
   printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
@@ -1013,10 +1249,11 @@ show_config_menu() {
           sleep 1
         fi
         ;;
-      9)
+       9)
         printf '\n  %s\n' "$(_msg config_refresh_start)" >&2
         if ensure_api_key_for_provider "$PROVIDER"; then
           if refresh_models_dispatch; then
+            _tui_load_models_cache
             printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_refresh_success)" "${C_RST:-}" >&2
           else
             printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_refresh_failed)" "${C_RST:-}" >&2
@@ -1198,6 +1435,10 @@ run_repl() {
   fi
 
   print_banner
+
+  # Pre-load in-memory model cache and register dynamic TUI Readline TAB completion
+  _tui_load_models_cache
+  bind -x '"\t": _tui_readline_complete' 2>/dev/null || true
 
   # Bind standard signal handler to manage SIGINT during inactive input states
   trap handle_sigint INT
