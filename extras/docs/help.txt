@@ -66,8 +66,13 @@ Text User Interface:
 Security Vault & Shell Autocompletion:
   --vault                Launch interactive console tool to manage encrypted API keys
 
-  Enable Shell Autocompletion & Unlock Vault Session in active shell:
-  `. ./bash4llm`         (exports _B4L_RT_CTX & auto-loads bash4llm-completion.sh)
+Enable Shell Autocompletion & Unlock Vault Session in active shell:
+  `. ./bash4llm` or `source ./bash4llm`
+  (exports _B4L_RT_CTX & auto-loads bash4llm-completion.sh)
+
+  Direct Sourcing of Completion Script:
+  `. bash4llm.d/extras/docs/bash4llm-completion.sh`
+  or `source bash4llm.d/extras/docs/bash4llm-completion.sh`
 
   Enforce Mandatory Vault Policy (blocks non-vault API keys):
   `export BASH4LLM_REQUIRE_VAULT=1`      (rejects env keys not loaded from Vault)
