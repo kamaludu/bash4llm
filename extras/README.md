@@ -17,6 +17,7 @@ extras/
 │   ├── SPEC-TUI.md
 │   └── tui-repl.sh           # Interactive TUI REPL CLI entrypoint (chmod 700)
 ├── docs/                     # Core Documentation & Reference Notes
+│   ├── bash4llm-completion.sh  # Native Shell Autocompletion Module
 │   ├── core-notes.sh
 │   ├── help.txt
 │   ├── manual-en.txt
