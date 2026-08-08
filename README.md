@@ -3,59 +3,59 @@
 [![CLI](https://img.shields.io/badge/CLI-green?&logo=gnu-bash&logoColor=grey)](#)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE) [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases) [![Bash](https://img.shields.io/badge/TUI-Bash4LLM-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](extras/chat/SPEC-TUI.md)  
 
-<!-- Release & General CI Badges -->
+<!-- Release & Badges CI Generali -->
 [![ShellCheck](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/shellcheck.yml)
 [![Smoke Tests](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/smoke.yml)
 [![Cross-Platform Tests](https://github.com/kamaludu/bash4llm/actions/workflows/cross-platform.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/cross-platform.yml)
-[![Bash Compatibility](https://github.com/kamaludu/bash4llm/actions/workflows/bash-compatibility.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/bash-compatibility.yml)  
+[![Bash Compatibility](https://github.com/kamaludu/bash4llm/actions/workflows/bash-compatibility.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/bash-compatibility.yml)
 
-<!-- Core Hardening & Security Audits (Strictly targeting bash4llm executable) -->
+<!-- Hardening del Core e Audit di sicurezza (mirati esclusivamente al Core bash4llm) -->
 [![API Chaos & Resilience Mock Suite](https://github.com/kamaludu/bash4llm/actions/workflows/api-mock-chaos.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/api-mock-chaos.yml)
 [![Extras SHA-256 Manifest Integrity](https://github.com/kamaludu/bash4llm/actions/workflows/extras-integrity-manifest.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/extras-integrity-manifest.yml)
 [![Security & Process List Leak Audit](https://github.com/kamaludu/bash4llm/actions/workflows/security-hardening.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/security-hardening.yml)
 [![Sourcing Isolation & Namespace Audit](https://github.com/kamaludu/bash4llm/actions/workflows/sourcing-isolation.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/sourcing-isolation.yml)
 [![Section Marker Integrity Audit](https://github.com/kamaludu/bash4llm/actions/workflows/section-integrity.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/section-integrity.yml)  
-> 🛡️ **Core Verification Note:** The bottom row of security, sourcing isolation, section integrity, and API chaos badges executes **strictly and exclusively** on the `./bash4llm` executable core file to guarantee Zero-Leakage, Flat Architecture compliance, and Superior Resilience.
+> 🛡️ **Nota sulla Verifica del Core:** La riga inferiore dei badge dedicati a sicurezza, isolamento dello sourcing, integrità delle sezioni e chaos test API viene eseguita **rigorosamente ed esclusivamente** sul file eseguibile core `./bash4llm` per garantire Zero-Leakage, conformità all'Architettura Piatta e una resilienza superiore.
 
-# Bash4LLM⁺   [🇮🇹](README.md) 🇬🇧
+# Bash4LLM⁺ 🇮🇹 [🇬🇧](README-en.md)
 
-Bash environment CLI wrapper for interfacing with OpenAI standard compatible LLM APIs. Integrates a default provider (Groq) and is extensible to other providers via additional modules.
+Wrapper CLI in ambiente Bash per l'interfacciamento con API LLM compatibili con lo standard OpenAI. Integra un provider predefinito (Groq) ed è estendibile ad altri provider tramite moduli aggiuntivi.
 
-The project is structured as a standalone Bash script with no external dependencies beyond standard POSIX commands and basic shell utilities.
+Il progetto è strutturato come uno script Bash autonomo senza dipendenze esterne oltre ai comandi POSIX standard e alle utilità di base della shell.
 
-Native compatibility: Linux, macOS, WSL, Cygwin, Termux (Android), and BSD.
-
----
-
-## Technical features
-
-* **Dynamic model management**  
-  Querying user endpoints (`GET /v1/models`) to update the list of supported models, without hardcoded identifiers in the main script.
-* **Filesystem-level isolation**  
-  Temporary files are managed within dedicated process directories (`RUN_TMPDIR`) with restrictive `0700` permissions (`umask 077`). Shared directories like `/tmp` are not used.
-* **API key encryption (`--vault`)**  
-  Optional OpenSSL integration for local API key encryption. Uses the AES-256-CBC algorithm with key derivation via PBKDF2 (100,000 iterations) and Master Password. Supports an offline recovery key, session context reuse (`_B4L_RT_CTX`), and the mandatory vault policy `BASH4LLM_REQUIRE_VAULT`.
-* **Termux / Android support**  
-  Detection of the Android Termux environment with locking mechanism adaptation: where `flock` has system limitations, concurrency management is redirected to atomic directory locks (`mkdir`).
-* **State data integration (`ui_state`)**  
-  Atomic writing of JSON files containing runtime operational metadata into the `ui_state` folder, for integration with external control panels or monitoring scripts.
-* **Session management, history, and PII protection**  
-  Management of multi-turn conversational context with history saving in NDJSON format and cryptographic anonymization of thread IDs (`anonymize_thread_id`) to prevent personal data leaks. With the optional `session-engine.sh` module, token tracking, rotation/compression of history segments, and local TTL caching are enabled.
-* **Extensible modules and cryptographic signature**  
-  Dynamic loading of external provider modules (`builtin`, `vendor`, `local`) into an anti-TOCTOU staging copy, with SHA-256 hash integrity verification and validation of the manifest's Ed25519 cryptographic signature (`manifest.sha256.sig`).
-* **Deterministic validation and Scintilla-Ready Extensions**  
-  Native support for response syntax validation (`--validate-sml` for SML v2.0, `--validate-regex`), zero-eval ANSI sanitization (`--sanitize`), structured JSON diagnostics (`--json-diagnostics`), function immutability guards (`readonly -f`), and local sliding-window rate limiting (30s).
-
-📘 **Architectural Documentation**: For a detailed analysis of macro-sections, isolation mechanisms and memory layout, see the **[Bash4LLM System Technical Specification⁺ (v2.8.5)](docs/bash4llm-arch-spec-en.md)**.
+Compatibilità nativa: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
 
 ---
 
-## System requirements
+## Caratteristiche tecniche
 
-Required packages in `PATH`:
+* **Gestione dinamica dei modelli**  
+  Interrogazione degli endpoint degli utenti (`GET /v1/models`) per l'aggiornamento dell'elenco dei modelli supportati, senza identificatori hardcoded nello script principale.
+* **Isolamento a livello di filesystem**  
+  I file temporanei sono gestiti all'interno di directory di processo dedicate (`RUN_TMPDIR`) con permessi restrittivi `0700` (`umask 077`). Non vengono usate directory condivise come `/tmp`.
+* **Cifratura delle chiavi API (`--vault`)**  
+  Integrazione opzionale tramite OpenSSL per la cifratura locale delle chiavi API. Utilizza l'algoritmo AES-256-CBC con derivazione della chiave tramite PBKDF2 (100.000 iterazioni) e Master Password. Supporta una chiave di ripristino offline, il riutilizzo del contesto di sessione (`_B4L_RT_CTX`) e la policy di obbligatorietà `BASH4LLM_REQUIRE_VAULT`.
+* **Supporto Termux / Android**  
+  Rilevamento dell'ambiente Android Termux con adattamento dei meccanismi di locking: dove `flock` presenta limitazioni di sistema, la gestione della concorrenza è reindirizzata su atomic directory lock (`mkdir`).
+* **Integrazione dati di stato (`ui_state`)**  
+  Scrittura atomica di file JSON contenenti i metadati operativi del runtime nella cartella `ui_state`, per l'integrazione con pannelli di controllo esterni o script di monitoraggio.
+* **Gestione sessioni, cronologia e protezione PII**  
+  Gestione del contesto conversazionale multi-turno con salvataggio dello storico in formato NDJSON e anonimizzazione crittografica degli ID di thread (`anonymize_thread_id`) per prevenire fughe di dati personali. Con il modulo opzionale `session-engine.sh` vengono abilitati il tracciamento dei token, la rotazione/compressione dei segmenti di storico e il caching locale con TTL.
+* **Moduli estendibili e firma crittografica**  
+  Caricamento dinamico dei moduli provider esterni (`builtin`, `vendor`, `local`) in copia di staging anti-TOCTOU, con verifica di integrità dell'hash SHA-256 e convalida della firma crittografica Ed25519 del manifesto (`manifest.sha256.sig`).
+* **Validazione deterministica e Scintilla-Ready Extensions**  
+  Supporto nativo per la validazione sintattica delle risposte (`--validate-sml` per SML v2.0, `--validate-regex`), sanitizzazione ANSI zero-eval (`--sanitize`), diagnostica JSON strutturata (`--json-diagnostics`), guardie di immutabilità delle funzioni (`readonly -f`) e rate limiting locale a finestra scorrevole (30s).
 
-* **bash** (version 4.0 or higher)
-* **coreutils** (`stat`, `chmod`, `mkdir`, `mv`, `rm`, `cp`, `mktemp`, `base64`, etc.)
+📘 **Documentazione Architetturale**: Per l'analisi dettagliata delle macro-sezioni, dei meccanismi di isolamento e del layout di memoria, consulta la **[Specifica Tecnica del Sistema Bash4LLM⁺ (v2.8.5)](docs/bash4llm-arch-spec.md)**.
+
+---
+
+## Requisiti di sistema
+
+Pacchetti richiesti nel `PATH`:
+
+* **bash** (versione 4.0 o superiore)
+* **coreutils** (`stat`, `chmod`, `mkdir`, `mv`, `rm`, `cp`, `mktemp`, `base64`, ecc.)
 * **findutils**
 * **util-linux**
 * **awk**
@@ -64,66 +64,67 @@ Required packages in `PATH`:
 
 ---
 
-## Installation guide
+## Guida all'installazione
 
-### Quick installation ⏩
-With *Installation of optional Extras:*
+### Installazione rapida ⏩
+Con *Installazione degli Extras opzionali:*
 
 ```sh
-# 1. Clone the repository
+# 1. Clona il repository
 git clone --depth 1 --branch main https://github.com/kamaludu/bash4llm.git repo-bash4llm  
 
-# 2. Copy executable to working folder
+# 2. Copia l'eseguibile nella cartella di lavoro
 mkdir -p bash4llm
 cp repo-bash4llm/bin/bash4llm bash4llm/
 chmod +x bash4llm/bash4llm
 
-# 3. Initialization and model refresh
+# 3. Inizializzazione e aggiornamento modelli
 cd bash4llm 
 ./bash4llm --refresh-models
 
-# 4. Optional installation of Extras (additional providers, TUI, modules)
+# 4. Installazione opzionale degli Extras (provider aggiuntivi, TUI, moduli)
 ./bash4llm --install-extras ../repo-bash4llm/extras/
 ```
 
-On first launch without an environment variable set, the script will prompt for interactive input of the API key (hidden input on screen).
+Al primo avvio senza variabile d'ambiente impostata, lo script chiederà l'inserimento interattivo della chiave API (input nascosto a schermo).
 
-Detailed instructions are available in **[INSTALL](INSTALL-en.md)**.
+
+Istruzioni dettagliate sono disponibili in **[INSTALL](INSTALL.md)**.
 
 ---
 
-## Usage examples
+## Esempi d'uso
 
-Command-line prompt:
+Prompt da linea di comando:
 ```sh
 ./bash4llm "Fornisci una spiegazione del protocollo SSH."
 ```
 
-Input from standard input (pipe):
+Input da standard input (pipe):
 ```sh
 cat codice.sh | ./bash4llm "Analizza questo script"
 ```
 
-Selection of a specific model:
+Selezione di un modello specifico:
 ```sh
 ./bash4llm -m llama-3.3-70b-versatile "Spiega il paradosso di Fermi."
 ```
 
-Test execution without network calls (Dry-Run):
+Esecuzione di prova senza chiamate di rete (Dry-Run):
 ```sh
 ./bash4llm --dry-run "Test di generazione payload"
 ```
 
-Use of a secondary provider:
+Uso di un provider secondario:
 ```sh
 ./bash4llm --provider gemini "Traduci il testo in inglese"
 ```
 
 ---
 
-## Security and filesystem permissions 🚨
+## Sicurezza e permessi del filesystem 🚨
 
-To protect the `bash4llm` script from unauthorized modifications in shared environments, appropriate read/execution permissions can be set for the operating system in use:
+Per proteggere lo script `bash4llm` da modifiche non autorizzate in ambienti condivisi, è possibile impostare i permessi di sola lettura/esecuzione appropriati per il sistema operativo in uso:
 
 * **Linux (GNU/Linux):**
   ```bash
@@ -145,149 +146,149 @@ To protect the `bash4llm` script from unauthorized modifications in shared envir
   chmod 755 /path/to/bash4llm
   ```
 
-For detailed information on security policies, consult **[SECURITY](SECURITY-en.md)**.
+Per informazioni dettagliate sulle politiche di sicurezza, consultare **[SECURITY.md](SECURITY.md)**.
 
 ---
 
-## Security checks and automated tests 🛡️
+## Verifiche di sicurezza e test automatizzati 🛡️
 
-The `./bash4llm` executable integrates continuous checks on code and execution environment:
+L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente di esecuzione:
 
-1. **[Section marking check](.github/workflows/section-integrity.yml)**: Check of section anchors and delimiters structure of the main file.
-2. **[Sourcing environment isolation](.github/workflows/sourcing-isolation.yml)**: Test of the `_cleanup_sourced_env` function to verify that inclusion via `source` leaves no residual functions in the calling shell.
-3. **[Secret leak check in `argv`](.github/workflows/security-hardening.yml)**: Verification of the absence of API keys and Bearer tokens in the operating system process table during `curl` execution. Check of POSIX `0700` and `0600` permissions.
-4. **[API resilience test](.github/workflows/api-mock-chaos.yml)**: Simulation of HTTP error responses, rate limits, and edge cases via mock server.
-5. **[`extras` manifest integrity](.github/workflows/extras-integrity-manifest.yml)**: Check of SHA-256 hashes and Ed25519 cryptographic signature (`manifest.sha256.sig`) of optional modules against the `extras/manifest.sha256` file.
+1. **[Verifica marcatura sezioni](.github/workflows/section-integrity.yml)**: Controllo della struttura ad ancoraggi e delimitatori di sezione del file principale.
+2. **[Isolamento ambiente di sourcing](.github/workflows/sourcing-isolation.yml)**: Test della funzione `_cleanup_sourced_env` per verificare che l'inclusione via `source` non lasci funzioni residue nella shell chiamante.
+3. **[Verifica secret leak in `argv`](.github/workflows/security-hardening.yml)**: Verifica della mancata presenza di chiavi API e token Bearer nella tabella dei processi del sistema operativo durante l'esecuzione di `curl`. Controllo permessi POSIX `0700` e `0600`.
+4. **[Test di resilienza API](.github/workflows/api-mock-chaos.yml)**: Simulazione di risposte di errore HTTP, rate limit e casi limite tramite server mock.
+5. **[Integrità del manifest `extras`](.github/workflows/extras-integrity-manifest.yml)**: Controllo degli hash SHA-256 e della firma crittografica Ed25519 (`manifest.sha256.sig`) dei moduli opzionali rispetto al file `extras/manifest.sha256`.
 
 ---
 
-## Command and option reference
+## Riferimento comandi e opzioni
 
-### Models and providers
-| Flag | Argument | Description |
+### Modelli e provider
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `--refresh-models`, `--refresh-model` | No | Synchronizes the model list of the active provider. |
-| `--list-models` | No | Lists available models for the active provider. |
-| `--list-models-raw` | No | Prints the model list in raw text format. |
-| `--list-providers` | No | Lists installed providers. |
-| `--list-providers-raw` | No | Prints the provider list in raw text format. |
-| `--set-default <model>` | Yes | Sets default model for active provider. |
-| `-m <model>`, `--model <model>` | Yes | Specifies model for current execution. |
-| `--provider <name>` | Yes | Selects active provider for current execution. |
-| `--provider` | No | Opens interactive provider selection menu. |
+| `--refresh-models`, `--refresh-model` | No | Sincronizza l'elenco dei modelli del provider attivo. |
+| `--list-models` | No | Elenca i modelli disponibili per il provider attivo. |
+| `--list-models-raw` | No | Stampa l'elenco dei modelli in formato testo grezzo. |
+| `--list-providers` | No | Elenca i provider installati. |
+| `--list-providers-raw` | No | Stampa l'elenco dei provider in formato testo grezzo. |
+| `--set-default <modello>` | Sì | Imposta il modello predefinito per il provider attivo. |
+| `-m <modello>`, `--model <modello>` | Sì | Specifica il modello per l'esecuzione corrente. |
+| `--provider <nome>` | Sì | Seleziona il provider attivo per l'esecuzione corrente. |
+| `--provider` | No | Apre il menu interattivo di selezione del provider. |
 
 ### Input
-| Flag | Argument | Description |
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `-f <file>` | Yes | Adds file content to input prompt. |
-| `--json-input <json>` | Yes | Sends direct JSON structure with message array. |
-| `--template <name>` | Yes | Applies a template file from templates folder. |
-| `--batch <file>` | Yes | Executes a series of prompts from file (one prompt per line). |
+| `-f <file>` | Sì | Aggiunge il contenuto del file al prompt di input. |
+| `--json-input <json>` | Sì | Invia una struttura JSON diretta con l'array dei messaggi. |
+| `--template <nome>` | Sì | Applica un file di modello dalla cartella dei template. |
+| `--batch <file>` | Sì | Esegue una serie di prompt da file (un prompt per riga). |
 
-### Thread and context management
-| Flag | Argument | Description |
+### Gestione thread e contesto
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `--thread <id>` | Yes | Activates conversational context for specified ID. |
-| `--thread-window [n]` | Optional | Sets maximum number of historical messages to include (default: 10). |
-| `--init-thread` | No | Initializes context files for a new thread and exits. |
-| `--delete-thread <id>` | Yes | Atomically deletes thread history and metadata. |
-| `--rename-thread <id>` | Yes | Renames metadata title for specified thread. |
-| `--title <title>` | Yes | Specifies new title in combination with `--rename-thread`. |
+| `--thread <id>` | Sì | Attiva il contesto conversazionale per l'ID specificato. |
+| `--thread-window [n]` | Opzionale | Imposta il numero massimo di messaggi storici da includere (default: 10). |
+| `--init-thread` | No | Inizializza i file di contesto per un nuovo thread ed esce. |
+| `--delete-thread <id>` | Sì | Elimina in modo atomico lo storico e i metadati del thread. |
+| `--rename-thread <id>` | Sì | Rinombra il titolo dei metadati per il thread specificato. |
+| `--title <titolo>` | Sì | Specifica il nuovo titolo in combinazione con `--rename-thread`. |
 
-### Generation parameters
-| Flag | Argument | Description |
+### Parametri di generazione
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `--system <text>` | Yes | Sets system prompt for execution. |
-| `--ture <n>`, `--temperature <n>` | Yes | Sets temperature value (from 0.0 to 2.0). |
-| `--max <n>` | Yes | Sets maximum response token limit (default: 4096). |
+| `--system <testo>` | Sì | Imposta il prompt di sistema per l'esecuzione. |
+| `--ture <n>`, `--temperature <n>` | Sì | Imposta il valore di temperatura (da 0.0 a 2.0). |
+| `--max <n>` | Sì | Imposta il limite massimo dei token della risposta (default: 4096). |
 
-### Output and saving
-| Flag | Argument | Description |
+### Output e salvataggio
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `--save` | No | Forces saving response in history. |
-| `--nosave` | No | Disables saving response in history. |
-| `--out <path>` | Yes | Saves output in specified file or directory. |
-| `--threshold <n>` | Yes | Minimum byte threshold for automatic saving (default: 1000). |
-| `--json` | No | Returns complete API JSON payload. |
-| `--pretty` | No | Returns formatted JSON payload. |
-| `--text` | No | Returns text-only response (default). |
-| `--raw` | No | Returns raw text without trailing newline. |
-| `--sanitize` | No | Filters and elides ANSI escape sequences and non-printable characters from output. |
+| `--save` | No | Forza il salvataggio della risposta nella cronologia. |
+| `--nosave` | No | Disabilita il salvataggio della risposta nella cronologia. |
+| `--out <percorso>` | Sì | Salva l'output nel file o nella directory specificata. |
+| `--threshold <n>` | Sì | Soglia minima in byte per il salvataggio automatico (default: 1000). |
+| `--json` | No | Restituisce il payload JSON completo dell'API. |
+| `--pretty` | No | Restituisce il payload JSON formattato. |
+| `--text` | No | Restituisce il solo testo della risposta (predefinito). |
+| `--raw` | No | Restituisce il testo grezzo senza a capo finale. |
+| `--sanitize` | No | Filtra ed elide le sequenze di escape ANSI e i caratteri non stampabili dall'output. |
 
-### Operating modes
-| Flag | Argument | Description |
+### Modalità operative
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `--dry-run` | No | Simulates execution without making network calls. |
-| `--quiet` | No | Omits non-essential informational messages on stderr. |
-| `--stream` | No | Enables streaming reception (Server-Sent Events). |
-| `--no-stream` | No | Disables streaming for current request. |
-| `--chat` | No | Launches interactive TUI/REPL interface. |
-| `--bootstrap-only` | No | Executes startup phase and checks filesystem, then exits. |
-| `--test`, `--run-all-tests` | No | Invokes the automated test suite orchestrator. |
+| `--dry-run` | No | Simula l'esecuzione senza effettuare chiamate di rete. |
+| `--quiet` | No | Omette i messaggi informativi non essenziali su stderr. |
+| `--stream` | No | Abilita la ricezione in streaming (Server-Sent Events). |
+| `--no-stream` | No | Disabilita lo streaming per la richiesta corrente. |
+| `--chat` | No | Avvia l'interfaccia interattiva TUI/REPL. |
+| `--bootstrap-only` | No | Esegue la fase di avvio e verificate filesystem, poi termina. |
+| `--test`, `--run-all-tests` | No | Invoca l'orchestratore della suite di test automatizzati. |
 
-### Configuration and diagnostics
-| Flag | Argument | Description |
+### Configurazione e diagnostica
+| Flag | Argomento | Descrizione |
 |------|-----------|-------------|
-| `--check-config` | No | Performs permission checks and configuration linter. |
-| `--explain-error <code>` | Yes | Shows definition and mitigations for entered error code. |
-| `--show-config` | No | Prints active configuration variables. |
-| `--diagnostics` | No | Executes system diagnostic tests and TLS check. |
-| `--vault` | No | Launches encrypted Key Vault management console. |
-| `--validate-sml` | No | Validates LLM response against SML v2.0 syntax standard. |
-| `--validate-regex <regex>` | Yes | Validates response against provided POSIX ERE regular expression. |
-| `--json-diagnostics` | No | Emits system and network errors in structured JSON format. |
-| `--print-config-dir` | No | Prints canonical path of configuration directory on screen. |
-| `--print-provider-file` | No | Prints path of active provider persistence file on screen. |
-| `--print-model-file [provider]` | Optional | Prints path of model file for provider on screen. |
-| `--version` | No | Shows script version. |
-| `-h`, `--help` | No | Shows inline help. |
+| `--check-config` | No | Esegue la verifica dei permessi e il linter della configurazione. |
+| `--explain-error <codice>` | Sì | Mostra la definizione e le mitigazioni per il codice d'errore inserito. |
+| `--show-config` | No | Stampa le variabili di configurazione attive. |
+| `--diagnostics` | No | Esegue i test diagnostici di sistema e la verifica TLS. |
+| `--vault` | No | Avvia la console di gestione del Key Vault cifrato. |
+| `--validate-sml` | No | Valida la risposta dell'LLM rispetto allo standard sintattico SML v2.0. |
+| `--validate-regex <regex>` | Sì | Valida la risposta rispetto all'espressione regolare POSIX ERE fornita. |
+| `--json-diagnostics` | No | Emette gli errori di sistema e di rete in formato JSON strutturato. |
+| `--print-config-dir` | No | Stampa a schermo il percorso canonico della directory di configurazione. |
+| `--print-provider-file` | No | Stampa a schermo il percorso del file di persistenza del provider attivo. |
+| `--print-model-file [provider]` | Opzionale | Stampa a schermo il percorso del file di modello per il provider. |
+| `--version` | No | Mostra la versione dello script. |
+| `-h`, `--help` | No | Mostra l'aiuto in linea. |
 
 ---
 
-## UI state structure (`ui_state`)
+## Struttura dello stato UI (`ui_state`)
 
-The runtime atomically updates state metadata in the directory:
+Il runtime aggiorna in modo atomico i metadati di stato nella directory:
 
 `bash4llm.d/config/ui_state/`
 
-Generated files:
-* `threads/<thread_id>.json`: Active thread state and metadata.
-* `threads/index.json`: Index of saved threads.
-* `last_api.json`: Metadata of last API call (HTTP status, request ID, time).
-* `last_history.json`: Information on last file written in history.
-* `provider_capabilities.json`: Features supported by active provider.
+File generati:
+* `threads/<thread_id>.json`: Stato e metadati del thread attivo.
+* `threads/index.json`: Indice dei thread salvati.
+* `last_api.json`: Metadati dell'ultima chiamata API (stato HTTP, ID richiesta, tempo).
+* `last_history.json`: Informazioni sull'ultimo file scritto in cronologia.
+* `provider_capabilities.json`: Funzionalità supportate dal provider attivo.
 
 ---
 
-## Exit codes
+## Codici di uscita (Exit Codes)
 
-| Code | Constant | Description |
+| Codice | Costante | Descrizione |
 |:---:|:---|:---|
-| **0** | - | Execution completed successfully. |
-| **10** | `BASH4LLM_ERR_NO_API_KEY` | API key not found for active provider. |
-| **11** | `BASH4LLM_ERR_BAD_MODEL` | Invalid model or unsupported format. |
-| **12** | `BASH4LLM_ERR_CURL_FAILED` | Error executing HTTP request (`curl`). |
-| **13** | `BASH4LLM_ERR_PARSE` | JSON parsing error, or response syntax/SML/REGEX validation failure. |
-| **14** | `BASH4LLM_ERR_NO_PROMPT` | Empty prompt or input payload. |
-| **15** | `BASH4LLM_ERR_TMP` | Filesystem, temporary allocation, or lock error. |
-| **16** | `BASH4LLM_ERR_API` | Error returned by API or empty completion. |
-| **17** | `BASH4LLM_ERR_SEC` | Security policy violation or module hash/signature mismatch. |
+| **0** | - | Esecuzione completata con successo. |
+| **10** | `BASH4LLM_ERR_NO_API_KEY` | Chiave API non trovata per il provider attivo. |
+| **11** | `BASH4LLM_ERR_BAD_MODEL` | Modello non valido o formato non supportato. |
+| **12** | `BASH4LLM_ERR_CURL_FAILED` | Errore durante l'esecuzione della richiesta HTTP (`curl`). |
+| **13** | `BASH4LLM_ERR_PARSE` | Errore di parsing JSON, o fallimento della validazione sintattica/SML/REGEX della risposta. |
+| **14** | `BASH4LLM_ERR_NO_PROMPT` | Prompt o payload di input vuoto. |
+| **15** | `BASH4LLM_ERR_TMP` | Errore di filesystem, allocazione temporanea o lock. |
+| **16** | `BASH4LLM_ERR_API` | Errore restituito dall'API o completamento vuoto. |
+| **17** | `BASH4LLM_ERR_SEC` | Violazione della politica di sicurezza o mancata corrispondenza dell'hash/firma del modulo. |
 
 ---
 
-## License and Contacts
+## Licenza e Contatti
 
-* **License:** GNU General Public License v3.0 ([LICENSE](LICENSE))
-* **Author:** Cristian Evangelisti  
+* **Licenza:** GNU General Public License v3.0 ([LICENSE](LICENSE))
+* **Autore:** Cristian Evangelisti  
 * **Email:** `opensource@cevangel.anonaddy.me`  
 * **Repository:** [GitHub kamaludu/bash4llm](https://github.com/kamaludu/bash4llm)
 
-### Use of Artificial Intelligence tools in development
+### Uso di strumenti di Intelligenza Artificiale nello sviluppo
 
-Bash4LLM is a work developed by the author with **extensive use of generative Artificial Intelligence (LLM)** tools for design, implementation, analysis, debugging, review, and documentation.
+Bash4LLM è un'opera sviluppata dall'autore con un **uso esteso di strumenti di Intelligenza Artificiale generativa (LLM)** per progettazione, implementazione, analisi, debugging, revisione e documentazione.
 
-LLMs were used as **development tools**, not as autonomous generators of the project. The author defined the architecture, requirements, and design choices, orchestrating the work across different models and sessions and using the LLMs themselves to examine, question, and critique work produced by other models.
+Gli LLM sono stati utilizzati come **strumenti di sviluppo**, non come generatori autonomi del progetto. L'autore ha definito l'architettura, i requisiti e le scelte progettuali, orchestrando il lavoro attraverso modelli e sessioni differenti e utilizzando gli stessi LLM anche per esaminare, mettere in discussione e criticare il lavoro prodotto da altri modelli.
 
-The code and documentation are therefore the result of an **iterative and supervised process**, in which proposals generated by LLMs were evaluated, compared, modified, or discarded by the author. The final decisions and overall project result belong to the author.
+Il codice e la documentazione sono quindi il risultato di un **processo iterativo e supervisionato**, nel quale le proposte generate dagli LLM sono state valutate, confrontate, modificate o scartate dall'autore. Le decisioni finali e il risultato complessivo del progetto sono dell'autore.
 
-The use of LLMs offers significant advantages in terms of productivity, analysis, and review, but also introduces risks: **no verification process can guarantee that every error or omission is identified**. This notice is intended to make transparent both the extent of LLM usage and their actual role in the development process.
+L'uso degli LLM offre significativi vantaggi in termini di produttività, analisi e revisione, ma introduce anche rischi: **nessun processo di verifica può garantire che ogni errore o omissione venga individuato**. Questa informativa intende rendere trasparente sia l'ampiezza dell'utilizzo degli LLM sia il loro ruolo effettivo nel processo di sviluppo.
