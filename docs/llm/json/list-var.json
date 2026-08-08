@@ -1,8 +1,8 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.8.0",
-    "date": "2026-07-24"
+    "version": "2.8.5",
+    "date": "2026-08-07"
   },
   "variables": [
     {
@@ -15,13 +15,19 @@
       "name": "SCRIPT_VERSION",
       "category": "PRECORE_BOOT",
       "description": "Versione corrente del software.",
-      "value_definition": "Impostata a \"2.8.0\"."
+      "value_definition": "Impostata a \"2.8.5\"."
     },
     {
       "name": "SCRIPT_DATE",
       "category": "PRECORE_BOOT",
       "description": "Data di rilascio dello script.",
-      "value_definition": "Impostata a \"2026-07-24\"."
+      "value_definition": "Impostata a \"2026-08-07\"."
+    },
+    {
+      "name": "BASH4LLM_SUPPORTED_PROVIDER_API",
+      "category": "PRECORE_BOOT",
+      "description": "Versione del contratto API supportata per i moduli provider di estensione esterni.",
+      "value_definition": "Esportata come valore 1."
     },
     {
       "name": "BASH4LLM_PLAT_ANDROID",
@@ -66,6 +72,30 @@
       "value_definition": "Hard-reset a 0 all'avvio; impostato a 1 su inserimento TTY interattivo."
     },
     {
+      "name": "VALIDATE_SML",
+      "category": "PRECORE_BOOT",
+      "description": "Flag booleano che richiede la validazione formale della sintassi SML v2.0 nell'output generato dal modello.",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
+      "name": "VALIDATE_REGEX",
+      "category": "PRECORE_BOOT",
+      "description": "Espressione regolare POSIX ERE per convalidare il formato del testo restituito.",
+      "value_definition": "Stringa vuota di default, configurata via --validate-regex."
+    },
+    {
+      "name": "SANITIZE_OUTPUT",
+      "category": "PRECORE_BOOT",
+      "description": "Flag booleano per abilitare la pulizia e la rimozione delle sequenze ANSI dall'output.",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
+      "name": "JSON_DIAGNOSTICS",
+      "category": "PRECORE_BOOT",
+      "description": "Flag booleano per forzare l'emissione dei messaggi di errore su stderr in formato JSON invece che in testo formattato.",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
       "name": "BASH4LLM_REQUIRE_VAULT",
       "category": "PRECORE_BOOT",
       "description": "Politica di sicurezza facoltativa. Se impostato a 1, impone il recupero delle chiavi API esclusivamente dal Vault cifrato, bloccando le variabili d'ambiente in chiaro con exit code 17.",
@@ -94,6 +124,12 @@
       "category": "PRECORE_BOOT",
       "description": "Costante numerica di errore associata al fallimento della chiamata di rete curl.",
       "value_definition": "Valore 12."
+    },
+    {
+      "name": "BASH4LLM_ERR_PARSE",
+      "category": "PRECORE_BOOT",
+      "description": "Costante numerica di errore associata al fallimento della validazione sintattica della risposta (SML/regex).",
+      "value_definition": "Valore 13."
     },
     {
       "name": "BASH4LLM_ERR_NO_PROMPT",
@@ -136,6 +172,12 @@
       "category": "PRECORE_BOOT",
       "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_CURL_FAILED.",
       "value_definition": "Valore di BASH4LLM_ERR_CURL_FAILED (12)."
+    },
+    {
+      "name": "BASH4LLMERR_PARSE",
+      "category": "PRECORE_BOOT",
+      "description": "Mappatura alias diretta del valore di BASH4LLM_ERR_PARSE.",
+      "value_definition": "Valore di BASH4LLM_ERR_PARSE (13)."
     },
     {
       "name": "BASH4LLMERR_NO_PROMPT",
@@ -216,9 +258,21 @@
       "value_definition": "Impostata a BASH4LLM_TMPDIR di ambiente o posizionata sotto $BASH4LLM_DIR/tmp."
     },
     {
+      "name": "BASH4LLM_RUN_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory isolata di runtime destinata ai file di stato correnti.",
+      "value_definition": "Impostata a BASH4LLM_RUN_DIR di ambiente o posizionata sotto $BASH4LLM_DIR/var/run."
+    },
+    {
+      "name": "BASH4LLM_LOCKS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory isolata contenente i file di lock per la concorrenza multi-processo.",
+      "value_definition": "Posizionata sotto $BASH4LLM_RUN_DIR/locks."
+    },
+    {
       "name": "CANONICAL_EXTRAS_DIR",
       "category": "PRECORE_BOOT",
-      "description": "Percorso della directory canonica delle estensioni.",
+      "description": "Percorso della directory canonica delle estensioni ufficiali.",
       "value_definition": "Calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras."
     },
     {
@@ -230,20 +284,38 @@
     {
       "name": "BASH4LLM_EXTRAS_DIR",
       "category": "PRECORE_BOOT",
-      "description": "Directory attiva per l'accesso alle risorse aggiuntive dello script.",
+      "description": "Directory attiva per l'accesso alle risorse ufficiali del dominio vendor.",
       "value_definition": "Assegnata a CANONICAL_EXTRAS_DIR."
     },
     {
       "name": "PROVIDERS_DIR",
       "category": "PRECORE_BOOT",
-      "description": "Percorso assoluto o relativo dei moduli esterni dei provider.",
-      "value_definition": "Impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto la directory delle estensioni alla voce /providers."
+      "description": "Percorso della directory dei moduli provider ufficiali del dominio vendor.",
+      "value_definition": "Impostato su PROVIDERS_DIR di ambiente o sotto $BASH4LLM_EXTRAS_DIR/providers."
+    },
+    {
+      "name": "BASH4LLM_LOCAL_EXTRAS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory per le estensioni gestite dall'utente nel dominio locale.",
+      "value_definition": "Impostata a BASH4LLM_LOCAL_EXTRAS_DIR o $BASH4LLM_DIR/local-extras."
+    },
+    {
+      "name": "LOCAL_PROVIDERS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory contenente i moduli provider locali definiti dall'utente.",
+      "value_definition": "Impostata su LOCAL_PROVIDERS_DIR o sotto $BASH4LLM_LOCAL_EXTRAS_DIR/providers."
     },
     {
       "name": "THREAD_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory dedicata alla registrazione dei log storici NDJSON dei thread.",
       "value_definition": "Posizionata sotto $BASH4LLM_HISTORY_DIR/threads."
+    },
+    {
+      "name": "BASH4LLM_RATES_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory usata dal rate-limiter per tracciare le transazioni attive per thread.",
+      "value_definition": "Posizionata sotto $BASH4LLM_TMPDIR/rates."
     },
     {
       "name": "BASH4LLM_VAULT_ENABLED",
@@ -260,7 +332,7 @@
     {
       "name": "MODELS_FILE",
       "category": "PRECORE_BOOT",
-      "description": "File di testo locale in cui memorizzare la lista dei modelli recuperati.",
+      "description": "File di testo locale in cui memorizzare la lista dei modelli recuperati per il provider attivo.",
       "value_definition": "Dichiarato come $BASH4LLM_MODELS_DIR/<provider>.txt."
     },
     {
@@ -279,7 +351,7 @@
       "name": "MODELS_LOCK",
       "category": "PRECORE_BOOT",
       "description": "Percorso del file di lock di sincronizzazione per l'accesso ai modelli.",
-      "value_definition": "Impostato su MODELS_LOCK di ambiente o localizzato sotto $BASH4LLM_MODELS_DIR/models.lock."
+      "value_definition": "Impostato su MODELS_LOCK di ambiente o localizzato sotto $BASH4LLM_LOCKS_DIR/models.lock."
     },
     {
       "name": "HISTORY_LOCK",
@@ -291,7 +363,7 @@
       "name": "TMP_LOCK",
       "category": "PRECORE_BOOT",
       "description": "Percorso del file di lock esclusivo per la gestione sicura della directory temporanea dello script.",
-      "value_definition": "Impostato su TMP_LOCK di ambiente o localizzato sotto $BASH4LLM_TMPDIR/tmp.lock."
+      "value_definition": "Impostato su TMP_LOCK di ambiente o localizzato sotto $BASH4LLM_LOCKS_DIR/tmp.lock."
     },
     {
       "name": "BASH4LLM_LOCK_TIMEOUT_TMP",
@@ -310,6 +382,60 @@
       "category": "PRECORE_BOOT",
       "description": "Timeout in secondi per acquisire il lock sullo storico dei messaggi e delle sessioni.",
       "value_definition": "Eredita BASH4LLM_LOCK_TIMEOUT_HISTORY o imposta 10."
+    },
+    {
+      "name": "BASH4LLM_IGNORE_SEC_CHECKS",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di override per disabilitare i controlli stringenti di permessi e proprietà del filesystem (es. su ambienti WSL/Cygwin).",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
+      "name": "BASH4LLM_REQUIRE_MANIFEST_SIG",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di politica che rende obbligatoria la verifica della firma crittografica Ed25519 del manifest degli extras.",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
+      "name": "BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET",
+      "category": "PRECORE_BOOT",
+      "description": "Politica di sicurezza che disabilita le chiamate di rete esterne quando lo script viene eseguito in modalità --quiet.",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
+      "name": "BASH4LLM_SKIP_NETWORK",
+      "category": "PRECORE_BOOT",
+      "description": "Flag di ambiente per disabilitare tutte le chiamate HTTP di rete nel runtime.",
+      "value_definition": "Valore 0 o 1, default 0."
+    },
+    {
+      "name": "SAFE_THREAD_ID",
+      "category": "PRECORE_BOOT",
+      "description": "Versione anonimizzata dell'ID del thread per evitare l'esposizione di PII nel filesystem.",
+      "value_definition": "Generata via anonymize_thread_id come stringa esadecimale SHA-256 a 64 caratteri."
+    },
+    {
+      "name": "RUN_TMPDIR",
+      "category": "PRECORE_BOOT",
+      "description": "Directory temporanea isolata della sessione corrente generata dinamicamente in $BASH4LLM_TMPDIR.",
+      "value_definition": "Assegnata dinamicamente da ensure_run_tmpdir."
+    },
+    {
+      "name": "PAYLOAD",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso del file di payload temporaneo della chiamata API corrente.",
+      "value_definition": "Assegnato dinamicamente sotto $RUN_TMPDIR/payload."
+    },
+    {
+      "name": "RESP",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso del file di risposta JSON grezza ricevuta dall'API.",
+      "value_definition": "Assegnato dinamicamente sotto $RUN_TMPDIR/resp.json."
+    },
+    {
+      "name": "ERRF",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso del file di log per catturare gli errori cURL o di sistema.",
+      "value_definition": "Assegnato dinamicamente sotto $RUN_TMPDIR/err.log."
     },
     {
       "name": "BASH4LLM_ROTATE_HISTORY",
@@ -482,8 +608,8 @@
     {
       "name": "SUPPORTED_PROVIDERS",
       "category": "PRECORE_RUN",
-      "description": "Elenco testuale dei provider supportati.",
-      "value_definition": "Default \"groq gemini huggingface\"."
+      "description": "Elenco testuale dei provider supportati identificati dal runtime.",
+      "value_definition": "Generato dinamicamente scansionando i domini vendor e locali; default \"groq\"."
     },
     {
       "name": "PROVIDER",
@@ -498,10 +624,58 @@
       "value_definition": "Contiene: --silent, --show-error, --no-buffer, --max-time 120."
     },
     {
+      "name": "BASH4LLM_EDGE_EMPTY",
+      "category": "PRECORE_RUN",
+      "description": "Flag diagnostico interno impostato a 1 quando viene intercettata una risposta vuota anomala dall'API.",
+      "value_definition": "Valore 0 o 1, aggiornato da detect_empty_edge_case."
+    },
+    {
+      "name": "BASH4LLM_EDGE_REQ_ID",
+      "category": "PRECORE_RUN",
+      "description": "ID di tracciamento della richiesta per scopi di diagnosi in caso di edge case.",
+      "value_definition": "Estratto dall'header x_groq o id del JSON di risposta."
+    },
+    {
+      "name": "BASH4LLM_EDGE_FINISH_REASON",
+      "category": "PRECORE_RUN",
+      "description": "Motivo di completamento della risposta (finish_reason) rilevato nell'edge case.",
+      "value_definition": "Estratto dalla risposta del provider."
+    },
+    {
+      "name": "BASH4LLM_EDGE_COMPLETION_TOKENS",
+      "category": "PRECORE_RUN",
+      "description": "Numero di token generati durante la risposta per controlli di diagnostica.",
+      "value_definition": "Estratto dal campo usage del JSON."
+    },
+    {
       "name": "GROQ_API_KEY",
       "category": "PROVIDER",
       "description": "Chiave API deputata all'autenticazione delle chiamate di rete verso i servizi del provider Groq.",
       "value_definition": "Eredita ${GROQ_API_KEY}."
+    },
+    {
+      "name": "LOADED_PROVIDER_NAME",
+      "category": "CORE_SETUP",
+      "description": "Nome dell'ultimo provider il cui modulo è stato caricato in memoria.",
+      "value_definition": "Aggiornato da load_provider_module."
+    },
+    {
+      "name": "PROVIDER_MODULE_LOADED",
+      "category": "CORE_SETUP",
+      "description": "Flag booleano interno che attesta se il modulo del provider attivo è caricato ed operativo.",
+      "value_definition": "Valore 0 o 1."
+    },
+    {
+      "name": "PROVIDER_MODULE_PATH",
+      "category": "CORE_SETUP",
+      "description": "Percorso fisico del file contenente il modulo del provider caricato.",
+      "value_definition": "Risolto da _resolve_provider_module_path."
+    },
+    {
+      "name": "BASH4LLM_PROVIDER_URL",
+      "category": "CORE_SETUP",
+      "description": "URL completo dell'endpoint API del provider attualmente configurato.",
+      "value_definition": "Risolto da resolve_provider_url."
     },
     {
       "name": "JSON_INPUT",
@@ -656,7 +830,7 @@
     {
       "name": "BOOTSTRAP_ONLY",
       "category": "CORE_SETUP",
-      "description": "Flag booleano per arrestare lo script immediatamente dopo la fase di bootstrap e importazione dei moduli (senza elaborare input o effettuare chiamate API).",
+      "description": "Flag booleano per arrestare lo script immediatamente dopo la fase di bootstrap e importazione dei moduli.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
@@ -729,7 +903,7 @@
       "name": "_supported_providers_arr",
       "category": "CORE_PROVIDER",
       "description": "Array interno per l'indicizzazione dei provider rilevati.",
-      "value_definition": "Mappato durante la scansione della directory."
+      "value_definition": "Mappato durante la scansione delle directory vendor e locali."
     },
     {
       "name": "SUPPORTED_PROVIDERS",
