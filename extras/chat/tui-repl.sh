@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/chat/tui-repl.sh
-# Component: TUI REPL Interactive Module (Refactored Thread Version - Part 1)
+# Component: TUI REPL Interactive Module
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
