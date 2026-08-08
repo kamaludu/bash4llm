@@ -1,4 +1,5 @@
-# SPECIFICA TECNICA DEL SISTEMA BASH4LLM⁺ (v2.8.0)
+
+# SPECIFICA TECNICA DEL SISTEMA BASH4LLM⁺ (v2.8.5)
 
 ## SEZIONE 1: ARCHITETTURA GENERALE E RELAZIONI TRA MACRO-SEZIONI
 
@@ -10,11 +11,11 @@ Il sistema Bash4LLM⁺ è strutturato su un'architettura **Lean & Flat** compost
 ```
 
 ### 1.1 Dipendenze tra Sezioni
-* **PRECORE_RUN**: Dipende da `PRECORE_BOOT` per la bonifica dell'ambiente, il caricamento dei percorsi canonici, la gestione delle variabili di ambiente, gli helper di sicurezza/integrità (`BOOT_SECURITY`), la funzione centrale di mediazione di rete `_exec_curl_secure`, l'utilità di acquisizione dei lock esclusivi (`lock_exec`), la verifica di integrità dei moduli (`verify_module_integrity`) e l'inizializzazione sicura della directory temporanea (`ensure_run_tmpdir`).
-* **SECURITY EXTENSION (openssl-helper.sh)**: Estensione facoltativa caricata durante il bootstrap se abilitata da `BASH4LLM_VAULT_ENABLED`. Fornisce la decrittografia in memoria delle chiavi API e i servizi di hashing/diagnostica SSL.
+* **PRECORE_RUN**: Dipende da `PRECORE_BOOT` per la bonifica dell'ambiente, il caricamento dei percorsi canonici, la gestione delle variabili di ambiente, gli helper di sicurezza/integrità (`BOOT_SECURITY`), la funzione centrale di mediazione di rete `_exec_curl_secure`, l'utilità di acquisizione dei lock esclusivi (`lock_exec`), la verifica di integrità dei moduli (`verify_module_integrity`), la validazione della firma del manifesto Ed25519 (`_verify_manifest_signature`) e l'inizializzazione sicura della directory temporanea (`ensure_run_tmpdir`).
+* **SECURITY EXTENSION (openssl-helper.sh)**: Estensione facoltativa caricata durante il bootstrap se abilitata da `BASH4LLM_VAULT_ENABLED`. Fornisce la decrittografia in memoria delle chiavi API, l'enforcement della policy Vault obbligatorio (`BASH4LLM_REQUIRE_VAULT`) e i servizi di hashing/diagnostica SSL.
 * **SESSION ENGINE EXTENSION (session-engine.sh)**: Estensione facoltativa caricata durante la configurazione iniziale per la gestione avanzata dei thread (segmentazione, compressione e caching). Se assente o disabilitata, il sistema esegue un fallback trasparente sulla logica NDJSON del core.
 * **PROVIDER**: Dipende da `PRECORE_BOOT` e `PRECORE_RUN` per la risoluzione degli URL degli endpoint, la verifica delle autorizzazioni di rete, l'esecuzione HTTP sicura tramite `_exec_curl_secure`, lo staging transazionale dei payload, il buffering dell'I/O e la scrittura atomica dei log e degli stati della UI.
-* **CORE_SETUP**: Dipende da `PRECORE_BOOT`, `PRECORE_RUN` e `PROVIDER` per il dispatching delle chiamate specifiche dei provider, la convalida formale dei parametri CLI, l'estrazione sintattica delle whitelist, l'esecuzione delle guardie di inizializzazione (`_lock_security_guards`) e l'integrazione delle estensioni esterne.
+* **CORE_SETUP**: Dipende da `PRECORE_BOOT`, `PRECORE_RUN` e `PROVIDER` per il dispatching delle chiamate specifiche dei provider, la risoluzione dei domini di fiducia (`builtin`, `vendor`, `local`), la convalida formale dei parametri CLI, l'estrazione sintattica delle whitelist, l'esecuzione delle guardie di inizializzazione (`_lock_security_guards`) e l'integrazione delle estensioni esterne.
 * **CORE_PROVIDER**: Dipende da tutte le sezioni precedenti per il caricamento protetto dei moduli provider esterni, l'inizializzazione del menu interattivo, l'allineamento dei modelli, l'assemblaggio del prompt (`PROMPT_ASSEMBLY`) e la gestione dello smistamento delle pipeline di esecuzione (`PIPELINE_EXEC`).
 
 ### 1.2 Requisiti Obbligatori di Sistema
@@ -27,8 +28,8 @@ Il runtime di Bash4LLM⁺ impone regole di isolamento e protezione dei dati pers
 * **Mediazione Rete Unificata e Zero Secret Exposure (`argv`) [INV-1]**: Tutte le chiamate HTTP (sincrone, streaming, refresh dei modelli e validazione chiavi) sono convogliate nella funzione centrale `_exec_curl_secure()`. Gli header di autenticazione contenenti token Bearer o chiavi API vengono scritti esclusivamente in file temporanei di header isolati (`0600`) e inoltrati a `curl` tramite reindirizzamento di File Descriptor (`/dev/fd/3`), prevenendo l'esposizione delle credenziali nei vettori d'argomento del processo (`ps aux` / `/proc/<pid>/cmdline`).
 * **Isolamento dei File Temporanei e delle Directory di Runtime [INV-2]**: La directory principale `$BASH4LLM_TMPDIR` deve risiedere interamente all'interno della cartella radice `$BASH4LLM_DIR`. È vietato l'uso della cartella globale `/tmp` del sistema operativo. Le operazioni di processo risiedono in `$BASH4LLM_RUN_DIR` (`var/run`), i file di lock in `$BASH4LLM_LOCKS_DIR` (`var/run/locks`) e il tracciamento del rate limiting in `$BASH4LLM_RATES_DIR` (`tmp/rates`).
 * **Bonifica dell'Ambiente all'Avvio ed Divieto di `eval` [INV-3]**: All'avvio del bootstrap, il Core esegue la bonifica preventiva dell'ambiente rimuovendo le variabili a rischio (`unset BASH_ENV ENV CDPATH GLOBIGNORE`). È vietata l'introduzione di nuovi costrutti `eval`. L'unico `eval` preesistente per il ripristino delle trap dei segnali è isolato e documentato.
-* **Integrità Crittografica dei Moduli Fail-Closed [INV-4]**: Qualunque estensione, modulo provider esterno o script di hook deve appartenere all'utente esecutore corrente, non deve presentare permessi di scrittura pubblici o di gruppo (`group/world-writable`) e deve superare la verifica dell'hash SHA-256 contro `extras/manifest.sha256`. Qualsiasi discrepanza o fallimento nel calcolo dell'hash causa un arresto immediato del runtime con codice d'errore `BASH4LLM_ERR_SEC` (17).
-* **Guardie di Inizializzazione Read-Only**: Al termine della fase di bootstrap, la funzione `_lock_security_guards()` marca tutte le funzioni di sicurezza, mediazione e gestione del filesystem come `readonly -f`, impedendone la sovrascittura o cancellazione in memoria.
+* **Integrità Crittografica dei Moduli Fail-Closed e Firma Ed25519 [INV-4]**: Qualunque estensione, modulo provider esterno o script di hook deve appartenere all'utente esecutore corrente, non deve presentare permessi di scrittura pubblici o di gruppo (`group/world-writable`), deve superare la verifica dell'hash SHA-256 contro `extras/manifest.sha256` e la convalida della firma crittografica Ed25519 (`manifest.sha256.sig`). Qualsiasi discrepanza causa un arresto immediato del runtime con codice d'errore `BASH4LLM_ERR_SEC` (17).
+* **Guardie di Inizializzazione Read-Only**: Al termine della fase di bootstrap, la funzione `_lock_security_guards()` marca tutte le funzioni di sicurezza, mediazione e gestione del filesystem (`_exec_curl_secure`, `verify_module_integrity`, `validate_path_security`, `atomic_write`, `check_local_rate_limit`, `read_secure_input`, `enforce_network_policy`, `execute_isolated_hook`) come `readonly -f`, impedendone la sovrascittura o cancellazione in memoria.
 * **Invariante del File-System per Atomicità [INV-5]**: Ogni operazione di scrittura atomica viene eseguita scrivendo in un file temporaneo situato all'interno dello stesso file-system (stessa partizione fisica) del file di destinazione finale. Questo assicura che lo spostamento (`mv`) si traduca in una singola chiamata di sistema atomica a livello di inode.
 
 ---
@@ -39,30 +40,34 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, la bonifi
 
 ### 2.1 Variabili di PRECORE_BOOT
 * **SCRIPT_NAME**: Nome identificativo del programma (costante: `"bash4llm"`).
-* **SCRIPT_VERSION**: Versione corrente del software (costante: `"2.8.0"`).
-* **SCRIPT_DATE**: Data di rilascio del software (costante: `"2026-07-24"`).
+* **SCRIPT_VERSION**: Versione corrente del software (costante: `"2.8.5"`).
+* **SCRIPT_DATE**: Data di rilascio del software (costante: `"2026-08-07"`).
+* **BASH4LLM_SUPPORTED_PROVIDER_API**: Contratto di versione dell'API dei provider supportato dal core (costante esportata: `1`).
 * **Costanti d'Errore Globali**:
     * `BASH4LLM_ERR_NO_API_KEY` (Valore `10`): Assenza di una chiave API valida.
     * `BASH4LLM_ERR_BAD_MODEL` (Valore `11`): Modello non supportato, non valido o escluso.
     * `BASH4LLM_ERR_CURL_FAILED` (Valore `12`): Fallimento di rete o errore di curl.
+    * `BASH4LLM_ERR_PARSE` (Valore `13`): Errore di parsing JSON, o fallimento della validazione sintattica/SML della risposta.
     * `BASH4LLM_ERR_NO_PROMPT` (Valore `14`): Assenza di prompt testuale o JSON di input.
     * `BASH4LLM_ERR_TMP` (Valore `15`): Errore di I/O, permessi o lock sui file temporanei.
     * `BASH4LLM_ERR_API` (Valore `16`): Errore applicativo o codice HTTP non valido inviato dalle API.
-    * `BASH4LLM_ERR_SEC` (Valore `17`): Violazione delle politiche di sicurezza, permessi o fallimento di integrità.
-* **Alias delle Costanti**: `BASH4LLMERR_NO_API_KEY` (10), `BASH4LLMERR_BAD_MODEL` (11), `BASH4LLMERR_CURL_FAILED` (12), `BASH4LLMERR_NO_PROMPT` (14), `BASH4LLMERR_TMP` (15), `BASH4LLMERR_API` (16), `BASH4LLMERR_SEC` (17).
+    * `BASH4LLM_ERR_SEC` (Valore `17`): Violazione delle politiche di sicurezza, permessi, firmamento o fallimento di integrità.
+* **Alias delle Costanti**: `BASH4LLMERR_NO_API_KEY` (10), `BASH4LLMERR_BAD_MODEL` (11), `BASH4LLMERR_CURL_FAILED` (12), `BASH4LLMERR_PARSE` (13), `BASH4LLMERR_NO_PROMPT` (14), `BASH4LLMERR_TMP` (15), `BASH4LLMERR_API` (16), `BASH4LLMERR_SEC` (17).
 * **Variabili Lette**:
     * `DEBUG`, `BASH4LLM_DEBUG`: Configurazione dei tracciamenti di sviluppo.
     * `BASH4LLM_DIR`, `BASH4LLM_ROOT`: Percorso radice di installazione.
-    * `BASH4LLM_CONFIG_DIR`, `BASH4LLM_MODELS_DIR`, `BASH4LLM_TEMPLATES_DIR`, `BASH4LLM_HISTORY_DIR`, `BASH4LLM_TMPDIR`, `BASH4LLM_RUN_DIR`, `BASH4LLM_LOCKS_DIR`, `BASH4LLM_RATES_DIR`, `BASH4LLM_EXTRAS_DIR`, `PROVIDERS_DIR`: Directory di lavoro operative.
+    * `BASH4LLM_CONFIG_DIR`, `BASH4LLM_MODELS_DIR`, `BASH4LLM_TEMPLATES_DIR`, `BASH4LLM_HISTORY_DIR`, `BASH4LLM_TMPDIR`, `BASH4LLM_RUN_DIR`, `BASH4LLM_LOCKS_DIR`, `BASH4LLM_RATES_DIR`, `BASH4LLM_EXTRAS_DIR`, `PROVIDERS_DIR`, `BASH4LLM_LOCAL_EXTRAS_DIR`, `LOCAL_PROVIDERS_DIR`: Directory di lavoro operative (vendor e local).
     * `MAX_STAGE_BYTES`: Soglia massima di byte per i payload Base64 (default `10485760` byte, pari a 10MB).
     * `MAX_MODELS`: Limite massimo di modelli locali (default `200`).
     * `BASH4LLM_LOG`: Percorso del file di tracciamento centralizzato.
     * `BASH4LLM_LOCK_TIMEOUT_TMP`, `BASH4LLM_LOCK_TIMEOUT_MODELS`, `BASH4LLM_LOCK_TIMEOUT_HISTORY`: Timeout per i lock esclusivi (default `10` secondi).
     * `BASH4LLM_VAULT_ENABLED`: Controlla l'attivazione dell'estensione del Vault crittografato OpenSSL (default `1`).
+    * `BASH4LLM_REQUIRE_VAULT`: Se impostato a 1, impone il recupero vincolante delle chiavi dal Vault cifrato.
+    * `BASH4LLM_REQUIRE_MANIFEST_SIG`: Se impostato a 1, rende obbligatoria la presenza e validità della firma Ed25519 del manifesto.
     * `BASH4LLM_IGNORE_SEC_CHECKS`: Ignora i controlli di proprietà POSIX se impostato a 1 (utile per WSL/Cygwin).
 * **Variabili Scritte/Modificate**:
     * `SCRIPTDIR`: Risoluzione assoluta del percorso dello script.
-    * `CANONICAL_EXTRAS_DIR`, `LEGACY_EXTRAS_DIR`: Percorsi normalizzati delle estensioni.
+    * `CANONICAL_EXTRAS_DIR`, `LEGACY_EXTRAS_DIR`, `CANONICAL_LOCAL_EXTRAS_DIR`: Percorsi normalizzati delle estensioni fisiche e locali.
     * `MODELS_FILE`: File locale della whitelist dei modelli (`<provider>.txt`).
     * `PROVIDER_FILE`: File locale contenente l'ultimo provider selezionato (`provider`).
     * `THREAD_DIR`: Cartella di registrazione dei log NDJSON dei thread (`history/threads`).
@@ -70,23 +75,25 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, la bonifi
     * `B64_WRAP_OPT`, `B64_DECODE_OPT`: Opzioni e flag di formattazione rilevati per il comando `base64`.
     * `RUN_TMPDIR`, `PAYLOAD`, `RESP`, `ERRF`: Canali e cartelle temporanee del runtime di istanza.
     * `BASH4LLM_OPENSSL_ACTIVE`: Flag booleano che attesta la disponibilità operativa del modulo OpenSSL.
-    * `SAFE_THREAD_ID`: Identificatore del thread anonimizzato crittograficamente tramite SHA-256.
+    * `SAFE_THREAD_ID`: Identificatore del thread anonimizzato crittograficamente tramite SHA-256/MD5.
+    * `BASH4LLM_KEY_MANUAL_PROMPT`: Traccia l'inserimento manuale da TTY della chiave API per attivare il promemoria di persistenza.
+    * `VALIDATE_SML`, `VALIDATE_REGEX`, `SANITIZE_OUTPUT`, `JSON_DIAGNOSTICS`: Flag di abilitazione delle estensioni deterministiche Scintilla-Ready.
 
 ### 2.2 Mappatura Funzionale per Sezione in PRECORE_BOOT
 
 #### Sezione 1: `PRECORE_BOOT_SETUP_SHELL`
-* **Attività**: Imposta `set -euo pipefail` solo se lo script è eseguito direttamente per non inquinare la shell interattiva dell'utente in caso di sourcing. Esegue la bonifica dell'ambiente (`unset BASH_ENV ENV CDPATH GLOBIGNORE`), disabilita i core dumps (`ulimit -c 0`), esegue l'autodetect della piattaforma (Android/Termux, macOS, WSL, Cygwin, BSD, Linux), resetta i flag d'ambiente e definisce le costanti degli errori e i codici colore ANSI.
+* **Attività**: Imposta `set -euo pipefail` solo se lo script è eseguito direttamente per non inquinare la shell interattiva dell'utente in caso di sourcing. Esegue la bonifica dell'ambiente (`unset BASH_ENV ENV CDPATH GLOBIGNORE`), disabilita i core dumps (`ulimit -c 0`), esegue l'autodetect della piattaforma (Android/Termux, macOS, WSL, Cygwin, BSD, Linux), resetta lo stato delle estensioni deterministiche e definisce le costanti degli errori e i codici colore ANSI (con supporto a `NO_COLOR`).
 
 #### Sezione 2: `PRECORE_BOOT_SETUP_ENV_CMDS`
 * **Attività**: Verifica la versione di Bash ($\ge 4.0$) e la presenza nel `PATH` dei 23 binari obbligatori.
 
 #### Sezione 3: `PRECORE_BOOT_EARLY_UTILITIES`
-* **Funzioni**: `resolve_script_dir`, `safe_mkdir`, `check_required_arg`, `canonical_config_dir`, `canonical_provider_file`, `canonical_model_file`, `canonical_provider_url_file`, `trim_space`, `sync_models_file_path`, `_normalize_model_name`, `is_truthy`, `_extract_notes_section`, `log_prefix`, `log_info`, `log_warn`, `log_error`, `log_info_user`, `dbg`.
-* **Attività**: Utility fondamentali di calcolo percorsi, manipolazione stringhe, cache associativa di normalizzazione modelli, parsing Zero-Eval della documentazione e motore di logging strutturato.
+* **Funzioni**: `resolve_script_dir`, `safe_mkdir`, `check_required_arg`, `canonical_config_dir`, `canonical_provider_file`, `canonical_model_file`, `canonical_provider_url_file`, `trim_space`, `_is_readonly_func`, `sync_models_file_path`, `_normalize_model_name`, `is_truthy`, `_extract_notes_section`, `emit_json_diagnostics`, `log_prefix`, `log_info`, `log_warn`, `log_error`, `log_info_user`, `dbg`.
+* **Attività**: Utility fondamentali di calcolo percorsi, manipolazione stringhe, cache associativa di normalizzazione modelli (`BASH4LLM_MODEL_CACHE`), parsing Zero-Eval della documentazione, emissione della diagnostica JSON strutturata (`emit_json_diagnostics`) e motore di logging coordinato.
 
 #### Sezione 4: `PRECORE_BOOT_SECURITY`
-* **Funzioni**: `validate_file_input`, `read_secure_input`, `_get_perm_string`, `_get_owner`, `validate_path_security`, `_core_sha256`, `verify_module_integrity`, `ensure_api_key_for_provider`, `enforce_network_policy`.
-* **Attività**: Isolamento completo dei meccanismi di sicurezza: validazione byte nulli/caratteri di controllo, prompt TTY silenziato (`stty -echo`), controlli di proprietà e permessi POSIX, verifica crittografica SHA-256 strictly *fail-closed* contro il manifesto, risoluzione sicura della chiave API (con integrazione Key Vault) ed enforcement della politica di rete.
+* **Funzioni**: `read_secure_input`, `validate_file_input`, `_get_perm_string`, `_get_owner`, `validate_path_security`, `_core_sha256`, `verify_module_integrity`, `_provider_env_snapshot`, `_provider_env_restore`, `_verify_manifest_signature`, `ensure_api_key_for_provider`, `enforce_network_policy`.
+* **Attività**: Isolamento completo dei meccanismi di sicurezza: validazione byte nulli/caratteri di controllo, prompt TTY silenziato (`stty -echo`), controlli di proprietà e permessi POSIX, verifica crittografica SHA-256 e firma Ed25519 strictly *fail-closed* contro il manifesto, snapshot/restore dell'ambiente di esecuzione, risoluzione sicura della chiave API (con integrazione Key Vault) ed enforcement delle politiche di rete.
 
 #### Sezione 5: `PRECORE_BOOT_DIR_PATH`
 * **Funzioni**: `ensure_config_dir`, `write_provider_url_if_missing`, `resolve_provider_url`.
@@ -97,8 +104,8 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, la bonifi
 * **Attività**: Gestione delle primitive I/O ad alte prestazioni: codifica/decodifica Base64, staging dei payload, locking atomico cross-processo (`lock_exec`), gestione del ciclo di vita di `$RUN_TMPDIR`, scritture atomiche sul filesystem, estrazione del testo dalle risposte, linter statico di configurazione e spiegazione formale dei codici d'errore.
 
 #### Sezione 7: `PRECORE_BOOT_CLI_HELPERS`
-* **Funzioni**: `load_provider_module`, `_detect_base64_opts`, `list_files_sorted_by_mtime`, `tac_fallback`, `_file_mtime`, `jq_safe`.
-* **Attività**: Intercettazione precoce dei flag CLI di diagnostica (`--check-config`, `--explain-error`, `--print-*`), rilevamento opzioni `base64`, definizione delle costanti di lock e caricamento in sandbox isolata dei moduli provider esterni (`load_provider_module`).
+* **Funzioni**: `_resolve_provider_module_path`, `load_provider_module`, `_detect_base64_opts`, `_file_mtime`, `jq_safe`.
+* **Attività**: Intercettazione precoce dei flag CLI di diagnostica (`--check-config`, `--explain-error`, `--print-*`), rilevamento opzioni `base64`, risoluzione dei domini dei provider (`builtin`, `vendor`, `local`), definizione delle costanti di lock e caricamento in copia di staging anti-TOCTOU dei moduli provider esterni con filtro whitelist sulle funzioni esportate (`load_provider_module`).
 
 ---
 
@@ -111,11 +118,12 @@ Questa macro-sezione gestisce la persistenza a lungo termine, la rotazione dello
     * `BASH4LLM_ROTATE_HISTORY`: Attiva la rotazione e manutenzione automatica dello storico (default `0`).
     * `BASH4LLM_HISTORY_MAX_FILES` (default `100`), `BASH4LLM_HISTORY_MAX_BYTES` (default 100MB), `BASH4LLM_HISTORY_KEEP_DAYS` (default `90`).
     * `THREAD_ID`: Identificatore del thread attivo.
-    * `SAFE_THREAD_ID`: Identificatore del thread anonimizzato crittograficamente tramite SHA-256.
+    * `SAFE_THREAD_ID`: Identificatore del thread anonimizzato crittograficamente tramite SHA-256/MD5.
     * `THREAD_WINDOW`: Dimensione della finestra dei messaggi storici da recuperare (default `10`).
     * `BASH4LLM_RATE_LIMIT`: Limite di richieste API per thread nella finestra di 30s (default `unlimited`).
     * `BASH4LLM_AUTH_TOKEN`: Token autorizzato per scavalcare il limitatore di frequenza locale.
     * `FALLBACK_PAYLOAD`: Payload di riserva codificato in Base64 restituito dagli hook in caso di errori API.
+    * `TRANSFORMED_PAYLOAD`: Payload trasformato in Base64 restituito dagli hook post-esecuzione.
     * `BASH4LLM_SESSION_ENGINE`: Controlla l'attivazione del modulo avanzato di gestione sessioni (default `"on"`).
 * **Variabili Scritte/Modificate**:
     * `THREAD_DIR`: Percorso della directory contenente i file NDJSON dei thread (`history/threads`).
@@ -134,7 +142,7 @@ Questa macro-sezione gestisce la persistenza a lungo termine, la rotazione dello
 
 #### Sezione 3: `PRECORE_RUN_UTIL_HELPERS`
 * **Funzioni**: `anonymize_thread_id`, `execute_isolated_hook`, `_get_file_signature`, `getfile_signature`, `_is_world_writable`, `_locked_history_save`, `_locked_manifest_create`, `_locked_manifest_add_part`, `check_local_rate_limit`, `make_tmpdir`, `_tmpf`.
-* **Attività**: Anonimizzazione rigorosa delle PII (hashing SHA-256 di `THREAD_ID`), sandbox per l'esecuzione degli hook `pre`/`post`, controllo delle firme di stato dei file, limitatore di frequenza locale a finestra scorrevole (30s) e allocazione temporanea protetta.
+* **Attività**: Anonimizzazione rigorosa delle PII (hashing SHA-256 di `THREAD_ID`), sandbox per l'esecuzione degli hook `pre`/`post` con parsing whitelist Zero-Eval, controllo delle firme di stato dei file, limitatore di frequenza locale a finestra scorrevole (30s) e allocazione temporanea protetta.
 
 #### Sezione 4: `PRECORE_RUN_THREAD_ENGINE`
 * **Funzioni**: `thread_validate_id`, `thread_now_ts`, `thread_messages_tmp_path`, `thread_sanitize_cmd`, `_update_thread_index`, `_thread_delete_locked`, `thread_delete_core`, `_thread_rename_locked`, `thread_rename_core`, `acquire_thread_lock`, `release_thread_lock`, `_thread_read_window_locked`, `thread_read_window`, `thread_append`, `_thread_hash`, `thread_cache_key`, `thread_cache_get`, `thread_cache_set`, `thread_cache_invalidate`.
@@ -210,24 +218,24 @@ Gestisce il parsing dei parametri da riga di comando (CLI), l'interfaccia di dis
 * **Attività**: Interfaccia di dispatching dinamico ed esecuzione di **`_lock_security_guards()`** per marcare le funzioni di sicurezza e mediazione come `readonly -f` al termine del bootstrap.
 
 #### Sezione 2: `CORE_SETUP_API_CALL`
-* **Funzioni**: `resolve_model`, `build_payload_from_vars`, `call_api_once`, `call_api_streaming`, `extract_api_error`, `detect_empty_edge_case`, `finalize_and_output`, `perform_request_once`.
-* **Attività**: Involucro di esecuzione delle richieste: risolve il modello finale da adottare (`FINAL_MODEL`), gestisce i cicli di re-invio lineare in caso di errore (`$MAX_RETRIES`), intercetta le risposte vuote e gestisce la formattazione di output (`json`, `pretty`, `text`, `raw`) con salvataggio automatico se supera `$THRESHOLD`.
+* **Funzioni**: `resolve_model`, `build_payload_from_vars`, `call_api_once`, `call_api_streaming`, `extract_api_error`, `detect_empty_edge_case`, `finalize_and_output`, `validate_response_syntax`, `perform_request_once`.
+* **Attività**: Involucro di esecuzione delle richieste: risolve il modello finale da adottare (`FINAL_MODEL`), gestisce i cicli di re-invio lineare in caso di errore (`$MAX_RETRIES`), esegue la validazione sintattica della risposta (`validate_response_syntax` con verifica SML v2.0 o REGEX), intercetta le risposte vuote e gestisce la formattazione di output (`json`, `pretty`, `text`, `raw`) con applicazione del filtro di sanitizzazione (`--sanitize`) e salvataggio automatico se supera `$THRESHOLD`.
 
 #### Sezione 3: `CORE_SETUP_INPUT_HELPERS`
-* **Funzioni**: `collect_input_from_files`, `expand_args_to_content`, `file_readable`, `trim`, `is_number`, `is_supported_model`, `list_models_cli`, `validate_model_core`, `load_local_config`, `load_whitelist`, `is_tty_out`, `_cleanup_sourced_env`.
+* **Funzioni**: `collect_input_from_files`, `expand_args_to_content`, `file_readable`, `is_supported_model`, `list_models_cli`, `validate_model_core`, `load_local_config`, `load_whitelist`, `is_tty_out`, `_cleanup_sourced_env`.
 * **Attività**: Raccolta ed espansione degli argomenti da file `-f`, verifica della leggibilità e sicurezza dell'input (`validate_file_input`), linter dei modelli supportati, caricamento della configurazione locale e blocco di protezione per il sourcing interattivo con sblocco del Vault.
 
 #### Sezione 4: `CORE_SETUP_CLI_PARSE`
-* **Attività**: Ciclo principale di parsing degli argomenti CLI (`while [ $# -gt 0 ]`), interpretazione dei flag, anonimizzazione immediata degli ID thread ricevuti (`anonymize_thread_id`), risoluzione e persistenza atomica del provider attivo in `canonical_provider_file` e caricamento automatico del rispettivo modulo.
+* **Attività**: Ciclo principale di parsing degli argomenti CLI (`while [ $# -gt 0 ]`), interpretazione dei flag, anonimizzazione immediata degli ID thread ricevuti (`anonymize_thread_id`), gestione delle opzioni di validazione e diagnostica (`--validate-sml`, `--validate-regex`, `--sanitize`, `--json-diagnostics`), risoluzione e persistenza atomica del provider attivo in `canonical_provider_file` e caricamento automatico del rispettivo modulo.
 
 #### Sezione 5: `CORE_SETUP_SESSION_ENGINE`
 * **Attività**: Tenta l'importazione e la verifica di integrità di `extras/session/session-engine.sh`. Se verificato con successo, attiva il flag `_engine_available=1`, altrimenti attiva il fallback automatico sulla logica NDJSON del core.
 
 #### Sezione 6: `CORE_SETUP_NORM_FLAGS`
-* **Attività**: Normalizzazione delle opzioni CLI di esportazione grezza e listing dei provider o modelli locali (`--list-providers-raw`, `--list-models-raw`).
+* **Attività**: Normalizzazione delle opzioni CLI di esportazione grezza e listing dei provider o modelli locali (`--list-providers`, `--list-providers-raw`, `--list-models-raw`).
 
 #### Sezione 7: `CORE_SETUP_ACTIONS`
-* **Attività**: Gestione ed esecuzione immediata dei comandi CLI brevi che non richiedono chiamate di rete ai modelli LLM: cancellazione thread (`--delete-thread`), rinomina thread (`--rename-thread`), inizializzazione manuale (`--init-thread`), listing provider e modelli, salvataggio del modello predefinito (`--set-default`), esecuzione della Master Test Suite (`--run-all-tests` con verifica del Modulo 9) ed installazione/sincronizzazione del pacchetto `extras` con verifica di integrità del manifesto SHA-256 e blindatura dei permessi (`700`/`600`).
+* **Attività**: Gestione ed esecuzione immediata dei comandi CLI brevi che non richiedono chiamate di rete ai modelli LLM: cancellazione thread (`--delete-thread`), rinomina thread (`--rename-thread`), inizializzazione manuale (`--init-thread`), listing provider e modelli, salvataggio del modello predefinito (`--set-default`), avvio console Vault (`--vault`), esecuzione della Master Test Suite (`--run-all-tests`) ed installazione/sincronizzazione del pacchetto `extras` con verifica di integrità del manifesto SHA-256 e firma Ed25519 con blindatura dei permessi (`700`/`600`).
 
 ---
 
@@ -241,7 +249,7 @@ Gestisce l'interazione interattiva, l'assemblaggio dei prompt complessi e lo smi
 * **Attività**: Gestisce la selezione interattiva del provider in caso di invio della flag `--provider` senza argomenti o valore `list`. Presenta un menu numerato a terminale, persiste la scelta e carica il modulo provider selezionato.
 
 #### Sezione 2: `CORE_PROVIDER_SHOW`
-* **Attività**: Esegue i comandi CLI di visualizzazione preventiva ed arresta l'esecuzione: stampa percorsi configurazione (`--print-*`), mostra le variabili attive (`--show-config`) o esegue il bilancio di diagnostica completo con test di handshake TLS verso l'endpoint del provider (`--diagnostics`).
+* **Attività**: Esegue i comandi CLI di visualizzazione preventiva ed arresta l'esecuzione: stampa percorsi configurazione (`--print-*`), mostra le variabili attive (`--show-config`) o esegue il bilancio di diagnostica completo con test di handshake TLS verso l'endpoint del provider e stato delle estensioni (`--diagnostics`).
 
 #### Sezione 3: `CORE_PROVIDER_PROMPT_ASSEMBLY`
 * **Funzioni**: `assemble_content`.
@@ -257,15 +265,15 @@ Gestisce l'interazione interattiva, l'assemblaggio dei prompt complessi e lo smi
 
 #### Sezione 4: `CORE_PROVIDER_PIPELINE_EXEC`
 * **Attività**: **Smistamento ed Esecuzione della Pipeline**:
-    * **Ramo A - Ciclo BATCH (`--batch`)**: Scansiona il file riga per riga, recupera la finestra di sessione del thread tramite Session Engine o NDJSON fallback, compila il payload ed esegue le richieste in sequenza stampando il promemoria di persistenza.
+    * **Ramo A - Ciclo BATCH (`--batch`)**: Scansiona il file riga per riga, recupera la finestra di sessione del thread tramite Session Engine o NDJSON fallback, compila il payload ed esegue le richieste in sequenza stampando il promemoria di persistenza (`print_persistence_reminder`).
     * **Ramo B - Modalità CHAT (`--chat`/`--tui`)**: Verifica l'integrità crittografica del modulo `extras/chat/tui-repl.sh` via `verify_module_integrity`, esporta le variabili d'ambiente ed esegue il passaggio del processo (`exec bash`) all'interfaccia REPL interattiva.
-    * **Ramo C - Richiesta Singola (SSE Streaming / Synchronous)**: Prepara il file dei messaggi storici del thread, compila il payload via `build_payload_from_vars`, assicura la presenza della chiave API, ed esegue la chiamata HTTP (streaming via `call_api_streaming` o sincrona via `perform_request_once`). Al rientro positivo, accoda in sicurezza il messaggio utente e la risposta dell'assistente nel registro del thread.
+    * **Ramo C - Richiesta Singola (SSE Streaming / Synchronous)**: Prepara il file dei messaggi storici del thread, compila il payload via `build_payload_from_vars`, assicura la presenza della chiave API (tramite Vault o prompt TTY), ed esegue la chiamata HTTP (streaming via `call_api_streaming` o sincrona via `perform_request_once`). Al rientro positivo, accoda in sicurezza il messaggio utente e la risposta dell'assistente nel registro del thread.
 
 ---
 
 ## SEZIONE 9: STRUTTURA DEL FILE-SYSTEM E LAYOUT DI MEMORIA
 
-Per assicurare la persistenza delle informazioni e l'integrazione di sicurezza, la directory di runtime `bash4llm.d/` è organizzata come segue:
+Per assicurare la persistenza delle informazioni, l'isolamento dei domini e l'integrazione di sicurezza, la directory di runtime `bash4llm.d/` e i domini di estensione sono organizzati come segue:
 
 ```text
 bash4llm.d/
@@ -277,6 +285,7 @@ bash4llm.d/
 │   ├── keys.enc                           # Chiave Vault cifrata con Master Password (600)
 │   ├── keys.rec                           # Chiave Vault cifrata con Recovery Key offline (600)
 │   ├── keys.dat                           # Database cifrato contenente il JSON delle chiavi API (600)
+│   ├── thread_cache/                      # Cache isolata con TTL delle finestre di thread (700)
 │   ├── providers/                         # Cartella per configurazioni avanzate (700)
 │   │   └── hf_endpoints                   # Mappatura modelli/endpoint di Hugging Face
 │   └── ui_state/                          # Cartella di stato per GUI ed automazioni (700)
@@ -305,13 +314,17 @@ bash4llm.d/
 ├── tmp/                                   # Area sicura ad accesso esclusivo (700)
 │   └── rates/                             # Tracciamento transazioni rate limiting (700)
 │       └── <safe_thread_id>/              # Timestamp delle richieste per finestra scorrevole
-└── extras/                                # Estensioni installate tramite l'installer (700)
+├── local-extras/                          # Estensioni utente non tracciate dal manifesto di rete (700)
+│   └── providers/                         # Moduli provider locali utente (domain local:<name>) (700)
+└── extras/                                # Estensioni ufficiali Vendor installate tramite installer (700)
     ├── manifest.sha256                    # Manifesto dell'integrità crittografica SHA-256 (600)
-    ├── chat/                              # Interfaccia di chat interattiva (tui-repl.sh)
-    ├── hooks/                             # Moduli di estensione pre/post esecuzione (hook.sh)
-    ├── security/                          # Sicurezza (openssl-helper.sh, output-sanitizer.sh)
-    ├── test/                              # Suite di test e diagnostica automatica (run-all-tests.sh)
-    ├── docs/                              # Documentazione (core-notes.sh, help.txt, manual-it.txt, manual-en.txt)
-    ├── providers/                         # Provider aggiuntivi (gemini.sh, huggingface.sh, mistral.sh)
+    ├── manifest.sha256.sig                # Firma crittografica Ed25519 del manifesto (600)
+    ├── official-ed25519.pub               # Chiave pubblica ufficiale per verifica firma Ed25519 (600)
+    ├── chat/                              # Interfaccia di chat interattiva (tui-repl.sh, SPEC-TUI.md, langs/)
+    ├── hooks/                             # Moduli di estensione pre/post esecuzione (sml-gate.sh, hook.sh)
+    ├── security/                          # Sicurezza (openssl-helper.sh, output-sanitizer.sh, generate-manifest.sh)
+    ├── test/                              # Suite di test automatizzata (run-all-tests.sh, scintilla-t3.sh, stress.sh, ecc.)
+    ├── docs/                              # Documentazione (core-notes.sh, help.txt, manual-it.txt, bash4llm-completion.sh)
+    ├── providers/                         # Provider aggiuntivi Vendor (gemini.sh, huggingface.sh, mistral.sh)
     └── session/                           # Ottimizzazione e sessioni (session-engine.sh)
 ```
