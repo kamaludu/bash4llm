@@ -70,7 +70,7 @@ tui_cleanup() {
   # Delete temporary files tied to the current execution process
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "$RUN_TMPDIR" ]; then
     case "$RUN_TMPDIR" in
-      "$BASH4LLM_TMPDIR"/*)
+      "${BASH4LLM_TMPDIR:-}"/*)
         rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
         ;;
     esac
@@ -122,11 +122,11 @@ sanitize_llm_output() {
   # Protects the terminal emulator by removing OSC (Operating System Command)
   # and DCS (Device Control String) sequences and escapes that are dangerous to terminal 
   # security, while preserving native ANSI SGR color code formatting (\e[...m).
-  sed -E '
-    s/\x1b\][0-9]*;[^\x07]*(\x07|\x1b\\)//g;
-    s/\x1bP[0-9]*;[^\x1b]*\x1b\\//g;
-    s/\x1b\[[0-9;?]*[a-df-gi-ln-xzAD-Z]//g
-  '
+  local esc=$'\x1b'
+  sed -E \
+    -e "s/${esc}\\][0-9]*;[^${esc}\x07]*(${esc}\x07|${esc}\\\\)//g" \
+    -e "s/${esc}P[0-9]*;[^${esc}]*${esc}\\\\//g" \
+    -e "s/${esc}\\[[0-9;?]*[a-df-gijln-xzAD-Z]//g"
 }
 
 # --- PHASE 3: REPL STATE AND VARIABLE INITIALIZATION ---
@@ -181,12 +181,27 @@ _tui_load_models_cache() {
   fi
 }
 
+# Helper function to list thread files sorted by mtime ascending
+# Combined with tac_fallback, this delivers descending mtime order (newest thread first)
+_tui_list_files_sorted_by_mtime() {
+  local dir="${1:-}"
+  [ -d "$dir" ] || return 0
+  local f mtime
+  for f in "$dir"/*.ndjson; do
+    [ -f "$f" ] || continue
+    mtime=$(_file_mtime "$f")
+    [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+    printf '%s|%s\n' "$mtime" "$f"
+  done | sort -n -t'|' -k1,1
+}
+
 # --- PHASE 4: DECLARATIVE DICTIONARIES & SECURE i18n PARSER ---
 declare -A T_MSG
 
 # Load translation properties file with strict alphanumeric key validation
 load_lang_secure() {
   local lang_code="${1:-en}"
+  T_MSG=()
   local lang_dir
   lang_dir="$(dirname "${BASH_SOURCE[0]}")/langs"
   local lang_file="${lang_dir}/${lang_code}.properties"
@@ -414,19 +429,25 @@ _tui_get_cmd_candidates() {
 }
 
 _tui_readline_complete() {
-  # Forza IFS standard locale per prevenire l'eredità di IFS="" da read -e
+  # Force standard local IFS to prevent inheriting IFS="" from read -e
   local IFS=$' \t\n'
 
   local line="${READLINE_LINE:0:$READLINE_POINT}"
   local rest="${READLINE_LINE:$READLINE_POINT}"
 
-  # 1. GESTIONE UNIVERSIALE /file (Spazi e virgolette nel filesystem)
+  # 1. Universal /file handling (spaces and quotes in filesystem)
   if [[ "$line" =~ ^/file([[:space:]]+(.*))?$ ]]; then
     local raw_arg="${BASH_REMATCH[2]:-}"
     local clean_arg="${raw_arg#\"}"
     clean_arg="${clean_arg%\"}"
     clean_arg="${clean_arg#\'}"
     clean_arg="${clean_arg%\'}"
+
+    # Expand tilde ~ to $HOME if followed by / or at end of string
+    local expanded_arg="$clean_arg"
+    if [[ "$clean_arg" =~ ^~(/|$) ]]; then
+      expanded_arg="${clean_arg/#\~/$HOME}"
+    fi
 
     local -a file_matches=()
     local f_item
@@ -438,7 +459,7 @@ _tui_readline_complete() {
           file_matches+=("${f_item} ")
         fi
       fi
-    done < <(compgen -f -- "$clean_arg" 2>/dev/null)
+    done < <(compgen -f -- "$expanded_arg" 2>/dev/null)
 
     local num_f="${#file_matches[@]}"
     if [ "$num_f" -eq 0 ]; then
@@ -466,7 +487,7 @@ _tui_readline_complete() {
     return 0
   fi
 
-  # 2. MOTORE UNIVERSIALE PER TUTTI GLI ALTRI COMANDI E ARGOMENTI
+  # 2. Universal engine for all other commands and arguments
   local _glob_was_set=0
   if [[ $- == *f* ]]; then _glob_was_set=1; fi
   set -f
@@ -499,9 +520,9 @@ _tui_readline_complete() {
   local -a matches=()
   local append_space=1
 
-  # Dispatcher di contesto
+  # Context dispatcher
   if [ "$num_words" -le 1 ] || { [ "$num_words" -eq 2 ] && [ "$trailing_space" -eq 0 ] && [[ "$cur" == /* ]]; }; then
-    # Completamento NOME del comando slash
+    # Slash command name completion
     local -a tui_cmds=(/help /exit /quit /clear /thread /threads /private /config /undo /status /system /model /temperature /ture /max /threshold /format /file /block /edit)
     local item
     for item in "${tui_cmds[@]}"; do
@@ -510,13 +531,13 @@ _tui_readline_complete() {
       fi
     done
   else
-    # Completamento ARGOMENTI per qualsiasi comando tramite dispatcher universale
+    # Argument completion for any command via universal dispatcher
     append_space=1
     while IFS= read -r m; do
       [ -n "$m" ] && matches+=("$m")
     done < <(_tui_get_cmd_candidates "$cmd" "$cur")
 
-    # Fallback per percorsi relativi/assoluti se il comando non ha una lista chiusa
+    # Fallback for relative/absolute paths if command has no closed list
     if [ "${#matches[@]}" -eq 0 ] && { [[ "$cur" == ./* ]] || [[ "$cur" == ~/* ]] || [[ "$cur" == /* ]]; }; then
       append_space=0
       while IFS= read -r m; do
@@ -535,9 +556,9 @@ _tui_readline_complete() {
 
   local num_matches="${#matches[@]}"
   if [ "$num_matches" -eq 0 ]; then
-    # Suggerimenti di sintassi contestuali per comandi ad argomento libero
+    # Contextual syntax hints for free-form argument commands
     if [ "$cmd" = "/system" ] && [ "$trailing_space" -eq 1 ] && [ -z "$cur" ]; then
-      printf '\n  Sintassi: /system <testo del prompt di sistema>\n' >&2
+      printf '\n  Syntax: /system <system prompt text>\n' >&2
     fi
     return 0
   elif [ "$num_matches" -eq 1 ]; then
@@ -549,8 +570,8 @@ _tui_readline_complete() {
     READLINE_LINE="${prefix}${match}${rest}"
     READLINE_POINT=$(( ${#prefix} + ${#match} ))
 
-    # SUGGERIMENTO AUTOMATICO UNIFICATO: Quando si completa QUALSIASI comando slash,
-    # mostra immediatamente le opzioni/argomenti disponibili per quel comando!
+    # Unified automatic hint: when completing ANY slash command,
+    # show available options/arguments for that command immediately!
     if [[ "$match" == /*[[:space:]] ]]; then
       local completed_cmd="${match// /}"
       local -a sub_cands=()
@@ -559,11 +580,11 @@ _tui_readline_complete() {
       done < <(_tui_get_cmd_candidates "$completed_cmd" "")
 
       if [ "${#sub_cands[@]}" -gt 0 ]; then
-        printf '\n  Opzioni per %s: %s\n' "$completed_cmd" "${sub_cands[*]}" >&2
+        printf '\n  Options for %s: %s\n' "$completed_cmd" "${sub_cands[*]}" >&2
       elif [ "$completed_cmd" = "/file" ]; then
-        printf '\n  Uso: /file <percorso_file>\n' >&2
+        printf '\n  Usage: /file <file_path>\n' >&2
       elif [ "$completed_cmd" = "/system" ]; then
-        printf '\n  Uso: /system <testo_prompt_sistema>\n' >&2
+        printf '\n  Usage: /system <system_prompt_text>\n' >&2
       fi
     fi
   else
@@ -580,7 +601,7 @@ _tui_readline_complete() {
       READLINE_LINE="${prefix}${lcp}${rest}"
       READLINE_POINT=$(( ${#prefix} + ${#lcp} ))
     else
-      printf '\n  Opzioni: %s\n' "${matches[*]}" >&2
+      printf '\n  Options: %s\n' "${matches[*]}" >&2
     fi
   fi
 }
@@ -698,12 +719,12 @@ load_threads_wizard() {
     if [ -f "$f" ] && [ "${f##*.}" = "ndjson" ]; then
       files+=("$f")
     fi
-  done < <(list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
+  done < <(_tui_list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
 
   local total_threads="${#files[@]}"
 
   # Instantly generate a new thread if no historical logs are found
-  if [ "$total_threads" -eq 0 ] || [ -z "${files:-}" ]; then
+  if [ "$total_threads" -eq 0 ]; then
     THREAD_ID="thread-$(date +%Y%m%d-%H%M%S)-${RANDOM}"
     local new_thread_file="${thread_dir}/${THREAD_ID}.ndjson"
     : > "$new_thread_file"
@@ -1354,7 +1375,7 @@ show_thread_menu() {
           if [ -f "$f" ] && [ "${f##*.}" = "ndjson" ]; then
             files+=("$f")
           fi
-        done < <(list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
+        done < <(_tui_list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
 
         if [ "${#files[@]}" -eq 0 ]; then
           printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg tools_err_no_threads)" "${C_RST:-}" >&2
@@ -1750,13 +1771,21 @@ run_repl() {
         fi
 
         local file_path file_prompt file_content combined_prompt
-        file_path="${file_cmd_args%% *}"
-        file_prompt="${file_cmd_args#* }"
-        if [ "$file_path" = "$file_cmd_args" ]; then
-          file_prompt=""
+        if [[ "$file_cmd_args" =~ ^\"([^\"]+)\"[[:space:]]*(.*)$ ]]; then
+          file_path="${BASH_REMATCH[1]}"
+          file_prompt="${BASH_REMATCH[2]}"
+        elif [[ "$file_cmd_args" =~ ^\'([^\']+)\'[[:space:]]*(.*)$ ]]; then
+          file_path="${BASH_REMATCH[1]}"
+          file_prompt="${BASH_REMATCH[2]}"
         else
-          file_prompt="$(trim_space "$file_prompt")"
+          file_path="${file_cmd_args%% *}"
+          if [ "$file_path" = "$file_cmd_args" ]; then
+            file_prompt=""
+          else
+            file_prompt="${file_cmd_args#* }"
+          fi
         fi
+        file_prompt="$(trim_space "$file_prompt")"
 
         validate_file_input "$file_path"
         local check_rc=$?
