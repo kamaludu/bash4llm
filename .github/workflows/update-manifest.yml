@@ -24,14 +24,14 @@ jobs:
         env:
           ED25519_PRIVATE_KEY: ${{ secrets.ED25519_SIGNING_KEY }}
         run: |
-          chmod +x extras/tools/generate-manifest.sh
+          chmod +x extras/security/generate-manifest.sh
           if [ -n "$ED25519_PRIVATE_KEY" ]; then
             echo "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
             chmod 600 /tmp/ci-private-key.pem
-            ./extras/tools/generate-manifest.sh --key /tmp/ci-private-key.pem
+            ./extras/security/generate-manifest.sh --key /tmp/ci-private-key.pem
             rm -f /tmp/ci-private-key.pem
           else
-            ./extras/tools/generate-manifest.sh --no-sign-if-missing-key
+            ./extras/security/generate-manifest.sh --no-sign-if-missing-key
           fi
 
       - name: Commit & Push Changes
