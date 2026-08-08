@@ -7,6 +7,26 @@
  * Additional documentation alignment for Timeless Specifications.
  * Optional enhancements for extras and test suites.
 
+## [2.8.5] – 2026‑08‑07 - RELEASE NOTES
+### Added
+ * **Firma Crittografica Ed25519 del Manifesto (`_verify_manifest_signature`)**: Convalida nativa della firma d'autore su `extras/manifest.sha256.sig` tramite la chiave pubblica `official-ed25519.pub` (gestita via OpenSSL o `ssh-keygen`), con supporto alla variabile di policy `BASH4LLM_REQUIRE_MANIFEST_SIG`.
+ * **Isolamento Anti-TOCTOU tramite Staging Copy**: Copia temporanea isolata in `$RUN_TMPDIR` (permessi `0600`) per l'analisi sintattica e la verifica di integrità dei moduli esterni prima dell'importazione.
+ * **Anonimizzazione Crittografica PII degli ID Thread (`anonymize_thread_id`)**: Hashing SHA-256/MD5 degli identificatori di conversazione (`SAFE_THREAD_ID`) per impedire la scrittura di dati personali o percorsi riservati nei log, file NDJSON e lock.
+ * **Estensioni Deterministiche Scintilla-Ready**: Validazione sintattica della risposta (`--validate-sml` per SML v2.0 e `--validate-regex <expr>`), sanitizzazione ANSI zero-eval (`--sanitize`), diagnostica JSON strutturata (`--json-diagnostics`) e nuova costante d'errore canonica `13` (`BASH4LLM_ERR_PARSE`).
+ * **Architettura Provider a Domini di Fiducia & Contratto API**: Supporto esplicito per i domini `builtin:`, `vendor:` e `local:` (directory `local-extras/providers/`), e verifica della versione dell'interfaccia provider (`BASH4LLM_SUPPORTED_PROVIDER_API=1` vs `BASH4LLM_PROVIDER_API_VERSION`).
+ * **Comandi CLI per Gestione Thread e Ispezione Percorsi**: Nuove flag `--init-thread`, `--delete-thread <id>`, `--rename-thread <id> --title <titolo>`, opzioni di query per i percorsi canonici (`--print-config-dir`, `--print-provider-file`, `--print-model-file`) e output grezzo (`--list-providers-raw`, `--list-models-raw`).
+ * **Caching locale dei Thread & Autocompletamento Shell**: Sistema di cache isolata con TTL in `config/thread_cache/` e modulo di completamento automatico per Bash (`extras/docs/bash4llm-completion.sh`).
+ * **Modulo SCINTILLA Core T3 (`scintilla-t3.sh`)**: Inserita la nuova suite di test automatizzata nell'orchestratore Master (`--run-all-tests`) per la validazione delle flag deterministiche.
+### Changed
+ * **Filtro Whitelist sulle Funzioni Esportate dai Provider (`comm -13`)**: Restrizione del caricamento dinamico dei moduli tramite `load_provider_module` per esportare nel processo principale esclusivamente le 8 funzioni dell'interfaccia autorizzata, bloccando qualsiasi iniezione di codice.
+ * **Inasprimento delle Guardie Read-Only (`_lock_security_guards`)**: Esteso il blocco `readonly -f` a 8 funzioni critiche di sicurezza, rete e filesystem (`_exec_curl_secure`, `verify_module_integrity`, `validate_path_security`, `atomic_write`, `check_local_rate_limit`, `read_secure_input`, `enforce_network_policy`, `execute_isolated_hook`).
+ * **Enforcement della Policy Vault Obbligatorio (`BASH4LLM_REQUIRE_VAULT=1`)**: Inasprito il controllo delle credenziali che vieta il fallback su variabili d'ambiente in chiaro se la policy è attiva.
+ * **Allineamento della Documentazione e delle Specifiche Timeless**: Aggiornamento integrale della documentazione ufficiale (`docs/bash4llm-arch-spec.md`, `README`, `INSTALL`, `SECURITY`, `PROVIDERS`, `llms.txt` e specifiche Timeless) alla versione **v2.8.5**.
+### Fixed
+ * Risolto il rischio di vulnerabilità TOCTOU durante l'importazione dei moduli provider eseguendo l'analisi sintattica e la verifica di integrità su una copia di staging temporanea `0600` in `$RUN_TMPDIR` e non sul file sorgente.
+ * Eliminato il rischio di persistenza di dati sensibili o PII nei nomi dei file storici e lock mediante anonimizzazione SHA-256/MD5 forzata dell'identificatore del thread.
+ * Rafforzata la sanificazione dei file di input in `validate_file_input`, bloccando immediatamente l'esecuzione in presenza di byte nulli (`\x00`) o caratteri di controllo binari.
+
 ## [2.8.0] – 2026‑07‑26 - RELEASE NOTES
 ### Added
  * **Authoritative Secure Network Engine (`_exec_curl_secure`)**: Funzione centrale di mediazione HTTP per la gestione unificata di tutte le chiamate di rete (sincrone, streaming, refresh dei modelli e validazione chiavi) per tutti i provider (Groq, Gemini, Hugging Face, Mistral).
