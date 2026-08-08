@@ -43,7 +43,7 @@ Compatibilità nativa: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
   Gestione del contesto conversazionale multi-turno con salvataggio dello storico in formato NDJSON e anonimizzazione crittografica degli ID di thread (`anonymize_thread_id`) per prevenire fughe di dati personali. Con il modulo opzionale `session-engine.sh` vengono abilitati il tracciamento dei token, la rotazione/compressione dei segmenti di storico e il caching locale con TTL.
 * **Moduli estendibili e firma crittografica**  
   Caricamento dinamico dei moduli provider esterni (`builtin`, `vendor`, `local`) in copia di staging anti-TOCTOU, con verifica di integrità dell'hash SHA-256 e convalida della firma crittografica Ed25519 del manifesto (`manifest.sha256.sig`).
-* **Validazione deterministica e Scintilla-Ready Extensions**  
+* **Validazione deterministica**  
   Supporto nativo per la validazione sintattica delle risposte (`--validate-sml` per SML v2.0, `--validate-regex`), sanitizzazione ANSI zero-eval (`--sanitize`), diagnostica JSON strutturata (`--json-diagnostics`), guardie di immutabilità delle funzioni (`readonly -f`) e rate limiting locale a finestra scorrevole (30s).
 
 📘 **Documentazione Architetturale**: Per l'analisi dettagliata delle macro-sezioni, dei meccanismi di isolamento e del layout di memoria, consulta la **[Specifica Tecnica del Sistema Bash4LLM⁺ (v2.8.5)](docs/bash4llm-arch-spec.md)**.
