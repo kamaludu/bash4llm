@@ -27,9 +27,16 @@ unset BASH_ENV ENV CDPATH GLOBIGNORE
 # Disable writing of core dumps to prevent leaking API keys in RAM to disk on crash
 ulimit -c 0 2>/dev/null || true
 
+# ======================================
+# RELEASE VERSION METADATA
+# ======================================
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.3"
-SCRIPT_DATE="2026-08-05"
+SCRIPT_VERSION="2.8.5"
+SCRIPT_DATE="2026-08-07"
+
+# Core Provider API Contract Version
+BASH4LLM_SUPPORTED_PROVIDER_API=1
+export BASH4LLM_SUPPORTED_PROVIDER_API
 
 # ======================================
 # ENVIRONMENT AUTO-DETECTION (Bootstrap)
@@ -698,53 +705,66 @@ _core_sha256() {
 
 # --------------------------------------------------
 # Function: verify_module_integrity
-# Purpose: Verify file path permissions and cryptographic integrity against extras/manifest.sha256
-# Returns: 0 on success, BASH4LLM_ERR_SEC (17) on security or hash verification failure
+# Purpose: Verify file path permissions and cryptographic integrity against manifest
+# Policy: Strict Fail-Closed enforcement for vendor domain modules
+# Returns: 0 on success, BASH4LLM_ERR_SEC (17) on failure
 # --------------------------------------------------
 if ! _is_readonly_func verify_module_integrity; then
 verify_module_integrity() {
   local target_file="${1:-}"
+  local domain="${2:-vendor}"
+  local logical_rel_path="${3:-}"
   local rel_path="" manifest_file="" expected_hash="" actual_hash=""
 
   [ -f "$target_file" ] || return 1
 
-  # 1. Enforce strict POSIX file system path security and ownership
+  # 1. Enforce strict POSIX file system path security and ownership for all domains
   if ! validate_path_security "$target_file"; then
     log_error "SEC" "Security validation failed for file path: $target_file"
     return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
-  # 2. Check for the official integrity manifest file
-  local extras_base="${BASH4LLM_EXTRAS_DIR%/}"
-  manifest_file="${extras_base}/manifest.sha256"
-  if [ ! -f "$manifest_file" ] || [ ! -r "$manifest_file" ]; then
-    return 0
-  fi
-
-  # Resolve path relative to extras base directory without trailing slash
-  local canonical_extras="" canonical_target=""
-  canonical_extras="$(cd "${extras_base:-.}" >/dev/null 2>&1 && pwd -P || echo "${extras_base}")"
-  canonical_extras="${canonical_extras%/}"
-  canonical_target="$(cd "$(dirname "$target_file")" >/dev/null 2>&1 && pwd -P || echo "")/$(basename "$target_file")"
-
-  if [[ "$canonical_target" == "${canonical_extras}/"* ]]; then
-    rel_path="${canonical_target#"${canonical_extras}/"}"
-  else
-    rel_path="${target_file#"${extras_base}/"}"
-  fi
-
-  # 3. Lookup expected hash in manifest
-  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); sub(/^\*/,"",$2); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
-
-  # Fallback for custom user modules not present in the official manifest
-  if [ -z "$expected_hash" ]; then
+  # 2. Local domain bypasses manifest check after passing strict filesystem path security
+  if [ "$domain" = "local" ]; then
     if [ "${DEBUG:-0}" -eq 1 ]; then
-      log_info "SEC" "Module not listed in official manifest: $rel_path. Permitting load via path security policy."
+      log_info "SEC" "Local domain module verified via path security policy: $target_file"
     fi
     return 0
   fi
 
-  # 4. Calculate actual file digest and verify match
+  # 3. Vendor Domain Enforcement: Manifest presence is MANDATORY (Fail-Closed)
+  local extras_base="${BASH4LLM_EXTRAS_DIR%/}"
+  manifest_file="${extras_base}/manifest.sha256"
+  if [ ! -f "$manifest_file" ] || [ ! -r "$manifest_file" ]; then
+    log_error "SEC" "POLICY VIOLATION: Integrity manifest missing or unreadable: $manifest_file"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  # Resolve path relative to extras base directory
+  if [ -n "$logical_rel_path" ]; then
+    rel_path="$logical_rel_path"
+  else
+    local canonical_extras="" canonical_target=""
+    canonical_extras="$(cd "${extras_base:-.}" >/dev/null 2>&1 && pwd -P || echo "${extras_base}")"
+    canonical_extras="${canonical_extras%/}"
+    canonical_target="$(cd "$(dirname "$target_file")" >/dev/null 2>&1 && pwd -P || echo "")/$(basename "$target_file")"
+
+    if [[ "$canonical_target" == "${canonical_extras}/"* ]]; then
+      rel_path="${canonical_target#"${canonical_extras}/"}"
+    else
+      rel_path="${target_file#"${extras_base}/"}"
+    fi
+  fi
+
+  # 4. Lookup expected hash in manifest (Fail-Closed if not listed)
+  expected_hash="$(awk -v rel="$rel_path" '{sub(/\r$/,""); sub(/^\*/,"",$2); if ($2 == rel) {print $1; exit}}' "$manifest_file" 2>/dev/null || true)"
+
+  if [ -z "$expected_hash" ]; then
+    log_error "SEC" "POLICY VIOLATION: Vendor module not registered in manifest: $rel_path"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  # 5. Calculate actual file digest and verify match
   actual_hash="$(_core_sha256 "$target_file" 2>/dev/null || true)"
   if [ -z "$actual_hash" ]; then
     log_error "SEC" "Unable to compute SHA-256 hash for module integrity check: $target_file"
@@ -760,6 +780,87 @@ verify_module_integrity() {
   return 0
 }
 fi
+
+# --------------------------------------------------
+# Functions: _provider_env_snapshot & _provider_env_restore
+# Purpose: Protect global shell execution context from ambient pollution by provider modules
+# --------------------------------------------------
+_provider_env_snapshot() {
+  _B4L_SAVED_PATH="${PATH:-}"
+  _B4L_SAVED_IFS="${IFS:-}"
+  _B4L_SAVED_PWD="${PWD:-}"
+  _B4L_SAVED_CDPATH="${CDPATH:-}"
+  _B4L_SAVED_LANG="${LANG:-}"
+  _B4L_SAVED_LC_ALL="${LC_ALL:-}"
+}
+
+_provider_env_restore() {
+  [ -n "${_B4L_SAVED_PATH+x}" ] && export PATH="$_B4L_SAVED_PATH"
+  [ -n "${_B4L_SAVED_IFS+x}" ] && export IFS="$_B4L_SAVED_IFS"
+  [ -n "${_B4L_SAVED_PWD+x}" ] && cd "$_B4L_SAVED_PWD" 2>/dev/null || true
+  [ -n "${_B4L_SAVED_CDPATH+x}" ] && export CDPATH="$_B4L_SAVED_CDPATH" || unset CDPATH 2>/dev/null || true
+  [ -n "${_B4L_SAVED_LANG+x}" ] && export LANG="$_B4L_SAVED_LANG" || unset LANG 2>/dev/null || true
+  [ -n "${_B4L_SAVED_LC_ALL+x}" ] && export LC_ALL="$_B4L_SAVED_LC_ALL" || unset LC_ALL 2>/dev/null || true
+  unset _B4L_SAVED_PATH _B4L_SAVED_IFS _B4L_SAVED_PWD _B4L_SAVED_CDPATH _B4L_SAVED_LANG _B4L_SAVED_LC_ALL 2>/dev/null || true
+}
+
+# --------------------------------------------------
+# Function: _verify_manifest_signature
+# Purpose: Verify Ed25519 cryptographic signature of extras manifest
+# Returns: 0 on valid signature or missing optional sig file, BASH4LLM_ERR_SEC (17) on failure
+# --------------------------------------------------
+_verify_manifest_signature() {
+  local manifest_file="${1:-}"
+  local sig_file="${manifest_file}.sig"
+  local pubkey_file="${BASH4LLM_EXTRAS_DIR%/}/official-ed25519.pub"
+  local errf="" rc=1
+
+  [ -f "$manifest_file" ] || return 1
+
+  # If signature file is not present, enforce optional/mandatory policy
+  if [ ! -f "$sig_file" ]; then
+    if is_truthy "${BASH4LLM_REQUIRE_MANIFEST_SIG:-0}"; then
+      log_error "SEC" "POLICY VIOLATION: Mandatory manifest signature missing: $sig_file"
+      return "${BASH4LLM_ERR_SEC:-17}"
+    fi
+    return 0
+  fi
+
+  if [ ! -f "$pubkey_file" ]; then
+    log_error "SEC" "Manifest signature present but public key missing: $pubkey_file"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  # Path security validation on key and signature files
+  if ! validate_path_security "$sig_file" || ! validate_path_security "$pubkey_file"; then
+    log_error "SEC" "Path security check failed for signature or public key file"
+    return "${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  errf="$(_tmpf file "$BASH4LLM_TMPDIR" sig_err 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+
+  if command -v openssl >/dev/null 2>&1; then
+    if openssl pkeyutl -verify -pubin -inkey "$pubkey_file" -rawin -in "$manifest_file" -sigfile "$sig_file" >"$errf" 2>&1; then
+      rc=0
+    else
+      log_error "SEC" "CRYPTOGRAPHIC SIGNATURE FAILURE! Manifest signature verification failed via OpenSSL"
+      rc="${BASH4LLM_ERR_SEC:-17}"
+    fi
+  elif command -v ssh-keygen >/dev/null 2>&1; then
+    if ssh-keygen -Y verify -f "$pubkey_file" -I "bash4llm-manifest" -n "file" -s "$sig_file" < "$manifest_file" >"$errf" 2>&1; then
+      rc=0
+    else
+      log_error "SEC" "CRYPTOGRAPHIC SIGNATURE FAILURE! Manifest signature verification failed via ssh-keygen"
+      rc="${BASH4LLM_ERR_SEC:-17}"
+    fi
+  else
+    log_error "SEC" "No Ed25519 cryptographic verifier (openssl or ssh-keygen) found in PATH"
+    rc="${BASH4LLM_ERR_SEC:-17}"
+  fi
+
+  rm -f "$errf" 2>/dev/null || true
+  return "$rc"
+}
 
 # --------------------------------------------------
 # Function: ensure_api_key_for_provider
@@ -887,6 +988,7 @@ enforce_network_policy() {
 }
 fi
 #--4<---[ /SECTION: PRECORE_BOOT_SECURITY ]--->4--
+
 #--5<---[ SECTION: PRECORE_BOOT_DIR_PATH ]--->5--
 SCRIPTDIR="$(resolve_script_dir)"
 if [ -n "${BASH4LLM_DIR:-}" ]; then
@@ -903,18 +1005,25 @@ BASH4LLM_TEMPLATES_DIR="${BASH4LLM_TEMPLATES_DIR:-${BASH4LLM_DIR}/templates}"
 BASH4LLM_HISTORY_DIR="${BASH4LLM_HISTORY_DIR:-${BASH4LLM_DIR}/history}"
 BASH4LLM_TMPDIR="${BASH4LLM_TMPDIR:-${BASH4LLM_DIR}/tmp}"
 
-# New isolated runtime and lock directories
+# Isolated runtime and lock directories
 BASH4LLM_RUN_DIR="${BASH4LLM_RUN_DIR:-${BASH4LLM_DIR}/var/run}"
 BASH4LLM_LOCKS_DIR="${BASH4LLM_LOCKS_DIR:-${BASH4LLM_RUN_DIR}/locks}"
 
 sync_models_file_path
 MAX_MODELS="${MAX_MODELS:-200}"
 
+# Official Vendor Extras Domain
 CANONICAL_EXTRAS_DIR="${BASH4LLM_DIR}/extras"
 LEGACY_EXTRAS_DIR="${SCRIPTDIR%/}/extras"
 BASH4LLM_EXTRAS_DIR="${BASH4LLM_EXTRAS_DIR:-${CANONICAL_EXTRAS_DIR}}"
 PROVIDERS_DIR="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}"
-export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BASH4LLM_RUN_DIR BASH4LLM_LOCKS_DIR
+
+# Local User-Managed Extras Domain
+CANONICAL_LOCAL_EXTRAS_DIR="${BASH4LLM_DIR}/local-extras"
+BASH4LLM_LOCAL_EXTRAS_DIR="${BASH4LLM_LOCAL_EXTRAS_DIR:-${CANONICAL_LOCAL_EXTRAS_DIR}}"
+LOCAL_PROVIDERS_DIR="${LOCAL_PROVIDERS_DIR:-${BASH4LLM_LOCAL_EXTRAS_DIR}/providers}"
+
+export BASH4LLM_EXTRAS_DIR PROVIDERS_DIR BASH4LLM_LOCAL_EXTRAS_DIR LOCAL_PROVIDERS_DIR BASH4LLM_RUN_DIR BASH4LLM_LOCKS_DIR
 
 if [ -z "${BASH4LLM_DIR:-}" ]; then
   printf 'bash4llm: ERROR: BASH4LLM_DIR is empty; cannot derive directories\n' >&2
@@ -938,6 +1047,9 @@ if [ "${BASH4LLM_SOURCE_ONLY:-0}" -ne 1 ] && [ "${BASH_SOURCE[0]}" = "$0" ]; the
   safe_mkdir "$BASH4LLM_RUN_DIR" 700
   safe_mkdir "$BASH4LLM_LOCKS_DIR" 700
   safe_mkdir "$BASH4LLM_EXTRAS_DIR" 700
+  safe_mkdir "$PROVIDERS_DIR" 700
+  safe_mkdir "$BASH4LLM_LOCAL_EXTRAS_DIR" 700
+  safe_mkdir "$LOCAL_PROVIDERS_DIR" 700
   safe_mkdir "$BASH4LLM_CONFIG_DIR/providers" 700
   safe_mkdir "$BASH4LLM_HISTORY_DIR/threads" 700
 fi
@@ -1860,96 +1972,166 @@ BASH4LLM_LOCK_TIMEOUT_TMP="${BASH4LLM_LOCK_TIMEOUT_TMP:-10}"
 BASH4LLM_LOCK_TIMEOUT_MODELS="${BASH4LLM_LOCK_TIMEOUT_MODELS:-10}"
 BASH4LLM_LOCK_TIMEOUT_HISTORY="${BASH4LLM_LOCK_TIMEOUT_HISTORY:-10}"
 
+# --------------------------------------------------
+# Function: _resolve_provider_module_path
+# Purpose: Resolve raw provider string into physical path, domain, and canonical name
+# Trust Domains: builtin:<prov> | vendor:<prov> | local:<prov> | <prov> (implicit)
+# Returns: Output via stdout "path|domain|canonical_name" and status 0, or non-zero on error
+# --------------------------------------------------
+_resolve_provider_module_path() {
+  local raw_prov="${1:-}"
+  local domain="" name="" vendor_path="" local_path=""
+
+  [ -n "$raw_prov" ] || return 1
+
+  if [[ "$raw_prov" == *":"* ]]; then
+    domain="${raw_prov%%:*}"
+    name="${raw_prov#*:}"
+    name="${name//[^a-zA-Z0-9_-]/}"
+    [ -n "$name" ] || return 1
+
+    case "$domain" in
+      builtin)
+        printf '%s|builtin|%s' "embedded" "$name"
+        return 0
+        ;;
+      vendor)
+        vendor_path="${PROVIDERS_DIR}/${name}.sh"
+        if [ ! -f "$vendor_path" ]; then
+          log_error "PROVIDER" "Vendor provider '$name' module not found at: $vendor_path"
+          return 1
+        fi
+        printf '%s|vendor|%s' "$vendor_path" "$name"
+        return 0
+        ;;
+      local)
+        local_path="${LOCAL_PROVIDERS_DIR}/${name}.sh"
+        if [ ! -f "$local_path" ]; then
+          log_error "PROVIDER" "Local provider '$name' module not found at: $local_path"
+          return 1
+        fi
+        printf '%s|local|%s' "$local_path" "$name"
+        return 0
+        ;;
+      *)
+        log_error "PROVIDER" "Invalid provider domain prefix: $domain"
+        return 1
+        ;;
+    esac
+  else
+    name="${raw_prov//[^a-zA-Z0-9_-]/}"
+    [ -n "$name" ] || return 1
+
+    vendor_path="${PROVIDERS_DIR}/${name}.sh"
+    local_path="${LOCAL_PROVIDERS_DIR}/${name}.sh"
+
+    # Detect shadowing conflict and warn user
+    if [ -f "$vendor_path" ] && [ -f "$local_path" ]; then
+      log_warn "PROVIDER" "Local provider shadows vendor provider. Using vendor provider. Use '--provider local:${name}' or '--provider vendor:${name}' to disambiguate."
+    fi
+
+    # Fallback order for implicit syntax: 1. Vendor -> 2. Local -> 3. Builtin
+    if [ -f "$vendor_path" ]; then
+      printf '%s|vendor|%s' "$vendor_path" "$name"
+      return 0
+    elif [ -f "$local_path" ]; then
+      printf '%s|local|%s' "$local_path" "$name"
+      return 0
+    else
+      printf '%s|builtin|%s' "embedded" "$name"
+      return 0
+    fi
+  fi
+}
+
+# --------------------------------------------------
+# Function: load_provider_module
+# Purpose: Load provider module under TOCTOU staging copy isolation, domain check, and whitelist filtering
+# --------------------------------------------------
 load_provider_module() {
-  local provider="${1:-}"
-  local current_user="" owner="" file_owner="" perms="" group_write="" others_write="" beforesig="" aftersig="" dump_file="" rc=0 _nounset_was_on=0 supports_streaming=0 supports_refresh_models=0 loaded_from="" prov_json=""
+  local provider_raw="${1:-}"
+  local resolved="" resolved_path="" resolved_domain="" provider=""
+  local current_user="" beforesig="" aftersig="" dump_file="" staged_file="" rc=0 _nounset_was_on=0
+  local supports_streaming=0 supports_refresh_models=0 loaded_from="" prov_json="" logical_rel_path="" prov_api_ver=""
+
+  _provider_env_snapshot
+
+  resolved="$(_resolve_provider_module_path "$provider_raw" 2>/dev/null || true)"
+  if [ -z "$resolved" ]; then
+    log_error "PROVIDER" "Failed to resolve provider path for: $provider_raw"
+    _provider_env_restore
+    return 1
+  fi
+
+  IFS='|' read -r resolved_path resolved_domain provider <<EOF
+$resolved
+EOF
 
   if [ "${LOADED_PROVIDER_NAME:-}" = "$provider" ] && [ "${PROVIDER_MODULE_LOADED:-0}" -eq 1 ]; then
+    PROVIDER="$provider"
     sync_models_file_path "$provider"
+    _provider_env_restore
     return 0
   fi
 
   LOADED_PROVIDER_NAME="$provider"
+  PROVIDER="$provider"
   PROVIDER_MODULE_LOADED=0
-  PROVIDER_MODULE_PATH="$PROVIDERS_DIR/${provider}.sh"
-  PROVIDER_DIR="$PROVIDERS_DIR"
 
-  safe_mkdir "$PROVIDER_DIR" 700
-
-  local ignore_sec=0
-  if [ "${BASH4LLM_PLAT_WSL:-0}" -eq 1 ] || is_truthy "${BASH4LLM_IGNORE_SEC_CHECKS:-0}"; then
-    ignore_sec=1
+  # Handle embedded builtin provider (e.g. groq)
+  if [ "$resolved_domain" = "builtin" ]; then
+    PROVIDER_MODULE_LOADED=1
+    sync_models_file_path "$provider"
+    _provider_env_restore
+    return 0
   fi
 
-  if _is_world_writable "$PROVIDER_DIR"; then
-    if [ "$ignore_sec" -eq 1 ]; then
-      log_warn "SEC" "provider directory is world-writable (ignored due to WSL/policy)."
-    else
-      log_error "SEC" "provider directory is world-writable."
+  PROVIDER_MODULE_PATH="$resolved_path"
+
+  # Validate manifest Ed25519 signature if manifest exists
+  if [ "$resolved_domain" = "vendor" ]; then
+    if ! _verify_manifest_signature "${BASH4LLM_EXTRAS_DIR%/}/manifest.sha256"; then
+      log_error "SEC" "Manifest signature verification failed for vendor domain"
+      _provider_env_restore
       return "${BASH4LLM_ERR_SEC:-17}"
     fi
+    logical_rel_path="providers/${provider}.sh"
   fi
 
-  current_user="$(id -un 2>/dev/null || printf '')"
-  owner="$(_get_owner "$PROVIDER_DIR")"
-  [ -n "$owner" ] && [ "$owner" != "$current_user" ] && log_warn "SEC" "provider directory owned by $owner"
-
-  if [ ! -f "$PROVIDER_MODULE_PATH" ]; then
-    if [ "$provider" != "groq" ]; then
-      log_error "PROVIDER" "Provider '$provider' module is not installed."
-      PROVIDER_MODULE_LOADED=0
-      return 0
-    else
-      PROVIDER_MODULE_LOADED=1
-      return 0
-    fi
+  # Anti-TOCTOU Staging Copy: Copy file to secure runtime temp before checking and sourcing
+  staged_file="$(_tmpf file "$BASH4LLM_TMPDIR" "staged.${provider}" 2>/dev/null)"
+  if [ -z "$staged_file" ]; then
+    log_error "TMP" "Failed to allocate staging copy file for provider $provider"
+    _provider_env_restore
+    return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  # --- INTEGRITY CHECK ---
-  if ! verify_module_integrity "$PROVIDER_MODULE_PATH"; then
-    log_error "SEC" "Provider module failed integrity check: $PROVIDER_MODULE_PATH"
+  if ! cp -f "$PROVIDER_MODULE_PATH" "$staged_file" 2>/dev/null; then
+    rm -f "$staged_file" 2>/dev/null || true
+    log_error "TMP" "Failed to create staging copy of provider module: $PROVIDER_MODULE_PATH"
+    _provider_env_restore
+    return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+  chmod 600 "$staged_file" 2>/dev/null || true
+
+  # Domain Integrity & Path Security Verification on the Staged Copy
+  if ! verify_module_integrity "$staged_file" "$resolved_domain" "$logical_rel_path"; then
+    rm -f "$staged_file" 2>/dev/null || true
+    log_error "SEC" "Staged provider module failed $resolved_domain domain verification: $PROVIDER_MODULE_PATH"
+    _provider_env_restore
     return "${BASH4LLM_ERR_SEC:-17}"
   fi
 
-  if [ -L "$PROVIDER_MODULE_PATH" ]; then
-    log_error "SEC" "provider file is symlink."
-    return "${BASH4LLM_ERR_SEC:-17}"
-  fi
-
-  file_owner="$(_get_owner "$PROVIDER_MODULE_PATH")"
-  if [ -n "$file_owner" ] && [ "$file_owner" != "$current_user" ]; then
-    if [ "$ignore_sec" -eq 1 ]; then
-      log_warn "SEC" "wrong owner for provider file: $file_owner (ignored due to WSL/policy)."
-    else
-      log_error "SEC" "wrong owner for provider file."
-      return "${BASH4LLM_ERR_SEC:-17}"
-    fi
-  fi
-
-  perms="$(_get_perm_string "$PROVIDER_MODULE_PATH")"
-  group_write="$(printf '%s' "$perms" | awk '{print substr($0,6,1)}')"
-  others_write="$(printf '%s' "$perms" | awk '{print substr($0,9,1)}')"
-  if [ "$group_write" = "w" ] || [ "$others_write" = "w" ]; then
-    if [ "$ignore_sec" -eq 1 ]; then
-      log_warn "SEC" "provider file writable by group/world (ignored due to WSL/policy)."
-    else
-      log_error "SEC" "provider file writable by group/world."
-      return "${BASH4LLM_ERR_SEC:-17}"
-    fi
-  fi
-
-  beforesig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-
-  if bash -n "$PROVIDER_MODULE_PATH" 2>/dev/null; then
+  if bash -n "$staged_file" 2>/dev/null; then
     dump_file="$(_mktemp_in_dir "$BASH4LLM_TMPDIR" "provdump.${provider}.XXXXXX" 2>/dev/null)"
-    [ -z "$dump_file" ] && { log_error "SEC" "cannot create provider dump file"; return "${BASH4LLM_ERR_SEC:-17}"; }
+    [ -z "$dump_file" ] && { rm -f "$staged_file" 2>/dev/null || true; log_error "SEC" "Cannot create provider dump file"; _provider_env_restore; return "${BASH4LLM_ERR_SEC:-17}"; }
 
     (
       set -e
       trap 'rm -f "$dump_file.before.$$" "$dump_file.after.$$" "$dump_file.funcs.$$" 2>/dev/null' EXIT
 
       declare -F | awk '{print $3}' | sort > "$dump_file.before.$$" 2>/dev/null || true
-      . "$PROVIDER_MODULE_PATH"
+      . "$staged_file"
       declare -F | awk '{print $3}' | sort > "$dump_file.after.$$" 2>/dev/null || true
       comm -13 "$dump_file.before.$$" "$dump_file.after.$$" > "$dump_file.funcs.$$" 2>/dev/null || true
 
@@ -1964,19 +2146,46 @@ load_provider_module() {
         fi
       done
 
+      # Check Provider API Version Contract if declared by provider
+      if [ -n "${BASH4LLM_PROVIDER_API_VERSION:-}" ]; then
+        if [ "$BASH4LLM_PROVIDER_API_VERSION" -gt "${BASH4LLM_SUPPORTED_PROVIDER_API:-1}" ]; then
+          log_error "PROVIDER" "Provider '$provider' requires unsupported API version $BASH4LLM_PROVIDER_API_VERSION (Core supports max ${BASH4LLM_SUPPORTED_PROVIDER_API:-1})"
+          exit 98
+        fi
+      fi
+
+      # Whitelist Filter to prevent Function Hijacking attacks
       : > "$dump_file"
       while IFS= read -r fn; do
         [ -z "$fn" ] && continue
-        if type "$fn" >/dev/null 2>&1; then
-          declare -f "$fn" >> "$dump_file"
-        fi
+        case "$fn" in
+          buildpayload_${provider}|\
+          call_api_${provider}|\
+          call_api_streaming_${provider}|\
+          refresh_models_${provider}|\
+          validate_model_${provider}|\
+          validate_key_${provider}|\
+          auto_select_model_${provider}|\
+          normalize_model_${provider})
+            if type "$fn" >/dev/null 2>&1; then
+              declare -f "$fn" >> "$dump_file"
+            fi
+            ;;
+          *)
+            log_warn "SECURITY" "Blocked unauthorized function export from provider '$provider': $fn"
+            ;;
+        esac
       done < "$dump_file.funcs.$$"
     )
     rc=$?
 
+    # Remove staging copy immediately after loading functions into dump
+    rm -f "$staged_file" 2>/dev/null || true
+
     if [ "$rc" -ne 0 ]; then
-      log_error "PROVIDER" "provider module failed isolation load (rc=$rc)"
+      log_error "PROVIDER" "Provider module failed isolated import (rc=$rc)"
       rm -f "$dump_file" 2>/dev/null || true
+      _provider_env_restore
       return "${BASH4LLM_ERR_SEC:-17}"
     fi
 
@@ -1995,25 +2204,24 @@ load_provider_module() {
     PROVIDER_MODULE_LOADED=1
     rm -f "$dump_file" 2>/dev/null || true
 
-    aftersig="$(getfile_signature "$PROVIDER_MODULE_PATH" 2>/dev/null || true)"
-    [ "$beforesig" != "$aftersig" ] && { log_error "SEC" "provider file changed."; return "${BASH4LLM_ERR_SEC:-17}"; }
-
   else
-    log_warn "PROVIDER" "provider module invalid; falling back to embedded provider."
+    rm -f "$staged_file" 2>/dev/null || true
+    log_warn "PROVIDER" "Provider module invalid syntax; falling back to embedded provider."
     PROVIDER_MODULE_LOADED=0
   fi
 
   if [ -n "${provider:-}" ]; then
     supports_streaming=0
     supports_refresh_models=0
-    if type "call_api_streaming_groq" >/dev/null 2>&1 || type "call_api_streaming_${provider}" >/dev/null 2>&1; then supports_streaming=1; fi
+    if type "call_api_streaming_${provider}" >/dev/null 2>&1; then supports_streaming=1; fi
     if type "refresh_models_${provider}" >/dev/null 2>&1; then supports_refresh_models=1; fi
     loaded_from="${PROVIDER_MODULE_PATH:-embedded}"
-    prov_json="$(jq -c -n --arg p "$provider" --arg loaded "$loaded_from" --argjson sstream "$supports_streaming" --argjson srefresh "$supports_refresh_models" '{provider:$p, supports_streaming:$sstream, supports_refresh_models:$srefresh, loaded_from:$loaded}')"
-    ui_state_write "provider_capabilities.json" "$prov_json" || log_warn "UI_STATE" "failed to write provider_capabilities for $provider"
+    prov_json="$(jq -c -n --arg p "$provider" --arg domain "$resolved_domain" --arg loaded "$loaded_from" --argjson sstream "$supports_streaming" --argjson srefresh "$supports_refresh_models" '{provider:$p, domain:$domain, supports_streaming:$sstream, supports_refresh_models:$srefresh, loaded_from:$loaded}')"
+    ui_state_write "provider_capabilities.json" "$prov_json" || log_warn "UI_STATE" "Failed to write provider_capabilities for $provider"
   fi
 
   sync_models_file_path "$provider"
+  _provider_env_restore
   return 0
 }
 
@@ -2038,29 +2246,6 @@ _detect_base64_opts() {
   export B64_WRAP_OPT B64_DECODE_OPT
 }
 _detect_base64_opts
-
-list_files_sorted_by_mtime() {
-  local dir="${1:-}" mtime="" f=""
-  find "$dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
-    mtime=""
-    if [ "${BASH4LLM_PLAT_MACOS:-0}" -eq 1 ] || [ "${BASH4LLM_PLAT_BSD:-0}" -eq 1 ]; then
-      mtime="$(stat -f %m "$f" 2>/dev/null || echo 0)"
-    else
-      mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
-    fi
-    printf '%s|%s\n' "$mtime" "$f"
-  done | sort -n
-}
-
-tac_fallback() {
-  local f="${1:-}"
-  if command -v tac >/dev/null 2>&1; then
-    tac "$f"
-    return $?
-  fi
-  awk ' { lines[NR] = $0 } END { for (i=NR; i>0; i--) print lines[i] } ' "$f"
-  return 0
-}
 
 _file_mtime() {
   local f="${1:-}"
@@ -2134,6 +2319,8 @@ rotate_history() {
     done | sort -t'|' -k1,1n
   )
 
+  local count="${#entries[@]}"
+
   # 3. Trim oldest entries to respect maximum allowed byte size (guarded against unbound variables when the array is empty)
   if [ "$total" -gt "$max_bytes" ] && [ "${#entries[@]}" -gt 0 ]; then
     for entry in ${entries[@]+"${entries[@]}"}; do
@@ -2141,13 +2328,13 @@ rotate_history() {
       oldest_path="${entry#*|}"
       if [ -f "$oldest_path" ] && lock_exec "$HISTORY_LOCK" "$timeout" -- rm -f -- "$oldest_path"; then
         total=$(( total - oldest_size ))
+        count=$(( count - 1 ))
         [ "$total" -le "$max_bytes" ] && break
       fi
     done
   fi
 
   # 4. Trim oldest entries to respect maximum allowed file count limit (guarded against unbound variables when the array is empty)
-  local count="${#entries[@]}"
   if [ "$count" -gt "$max_files" ] && [ "${#entries[@]}" -gt 0 ]; then
     for entry in ${entries[@]+"${entries[@]}"}; do
       oldest_path="${entry#*|}"
@@ -2320,15 +2507,22 @@ manifest_read() {
   return 1
 }
 #--2<---[ /SECTION: PRECORE_RUN_MANIFEST ]--->2--
+
 #--3<---[ SECTION: PRECORE_RUN_UTIL_HELPERS ]--->3--
 # CORE SECURITY & HOOK ISOLATION ENGINE
 # Cryptographically anonymizes the thread ID in-memory to prevent PII exposure.
-# Falls back to alternative hashing utilities to maximize portability.
-# Aborts execution if no unidirectional hash utility is found to protect data.
+# Idempotent: Returns existing 64-character SHA-256 hex string directly if already hashed.
 anonymize_thread_id() {
   local raw_id="${1:-}"
   if [ -z "$raw_id" ]; then
     SAFE_THREAD_ID=""
+    export SAFE_THREAD_ID
+    return 0
+  fi
+
+  # Idempotency Check: Avoid re-hashing an already anonymized 64-character hex hash
+  if [[ "$raw_id" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    SAFE_THREAD_ID="$raw_id"
     export SAFE_THREAD_ID
     return 0
   fi
@@ -3297,6 +3491,7 @@ thread_cache_invalidate() {
   return 0
 }
 #--4<---[ /SECTION: PRECORE_RUN_THREAD_ENGINE ]--->4--
+
 #--5<---[ SECTION: PRECORE_RUN_RUNTIME_GLOBALS ]--->5--
 # Runtime globals and normalization (non-destructive defaults)
 # --------------------------------------------------
@@ -3329,9 +3524,6 @@ OUTPUT_MODE="${OUTPUT_MODE:-text}"
 THRESHOLD="${THRESHOLD:-1000}"
 
 MAX_RETRIES="${MAX_RETRIES:-1}"
-
-SUPPORTED_PROVIDERS="${SUPPORTED_PROVIDERS:-groq gemini huggingface}"
-export SUPPORTED_PROVIDERS
 
 if type ensure_config_dir >/dev/null 2>&1; then
   ensure_config_dir >/dev/null 2>&1 || true
@@ -3403,7 +3595,7 @@ _exec_curl_secure() {
 
   # 2. FD Redirection: Hide header file path from process inspection if supported
   hdr_target="$hdr_file"
-  if exec 3< "$hdr_file" 2>/dev/null; then
+  if [ "${BASH4LLM_PLAT_CYGWIN:-0}" -eq 0 ] && exec 3< "$hdr_file" 2>/dev/null; then
     if [ -e "/dev/fd/3" ]; then
       hdr_target="/dev/fd/3"
       rm -f "$hdr_file" 2>/dev/null || true
@@ -3436,9 +3628,8 @@ _exec_curl_secure() {
   fi
 
   if [ -n "$extra_opts_ref" ]; then
-    local -n _extra_ref="$extra_opts_ref" 2>/dev/null || true
-    if [ "${#_extra_ref[@]}" -gt 0 ]; then
-      cmd+=("${_extra_ref[@]}")
+    if [ "$#" -ge 8 ]; then
+      cmd+=("${@:8}")
     fi
   fi
 
@@ -3650,7 +3841,7 @@ call_api_groq() {
   fi
 
   local -a extra_w_opts=(-w "%{http_code}")
-  http_code="$(_exec_curl_secure "POST" "$provider_url" "$api_key" "$payload_dec" "$tmp_resp" "$tmp_err" 0 extra_w_opts)"
+  http_code="$(_exec_curl_secure "POST" "$provider_url" "$api_key" "$payload_dec" "$tmp_resp" "$tmp_err" 0 "${extra_w_opts[@]}")"
   rc=$?
 
   if [ "$payload_dec" != "$PAYLOAD" ]; then
@@ -3684,7 +3875,7 @@ call_api_groq() {
 # Purpose:  Execute SSE streaming API call securing Bearer token from process list.
 # --------------------------------------------------
 call_api_streaming_groq() {
-  local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 stderr_head="" now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" CURL_CMD=() http_code="" json="" content="" resp_size=0 errf_size=0 resp_json_tmp="" p_dir="" api_json="" ui_last=""
+  local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" http_code="" resp_json_tmp="" api_json=""
   local curl_err_log="" _line="" hdr_file="" hdr_target="" api_key="" custom_key_var=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
@@ -4027,7 +4218,7 @@ validate_key_groq() {
 
   # Execute API key validation GET request through the secure authoritative path
   local -a key_val_opts=(--max-time 10 -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 "${key_val_opts[@]}" || echo "CURL_ERR")"
   curl_rc=$?
 
   # Immediately cleanup diagnostic temporary files
@@ -4756,10 +4947,6 @@ expand_args_to_content() {
 }
 
 file_readable() { [ -r "$1" ] && [ -f "$1" ]; }
-    
-trim() { printf '%s' "$1" | awk '{$1=$1; print}'; }
-
-is_number() { printf '%s\n' "$1" | awk 'BEGIN{exit 0} {exit !( $0+0 == $0+0 )}'; }
 
 is_supported_model() {
   local m="${1:-}" l=""
@@ -4905,8 +5092,8 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
              file_size is_valid_json_file stage_b64 lock_exec _mktemp_in_dir show_payload_head \
              atomic_write extract_text_from_resp cleanup_run_tmp_on_exit ensure_run_tmpdir \
              b64_atomic_write b64_atomic_read ui_state_write run_static_config_check \
-             explain_error_code load_provider_module _detect_base64_opts list_files_sorted_by_mtime \
-             tac_fallback _file_mtime jq_safe rotate_history save_to_history manifest_create \
+             explain_error_code load_provider_module _detect_base64_opts \
+             _file_mtime jq_safe rotate_history save_to_history manifest_create \
              manifest_add_part manifest_read _get_perm_string _get_owner anonymize_thread_id \
              validate_path_security execute_isolated_hook _get_file_signature getfile_signature \
              _is_world_writable _locked_history_save _locked_manifest_create _locked_manifest_add_part \
@@ -4921,7 +5108,7 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
              refresh_models_dispatch validate_model_dispatch auto_select_model_dispatch \
              resolve_model build_payload_from_vars call_api_once call_api_streaming \
              extract_api_error detect_empty_edge_case finalize_and_output perform_request_once \
-             collect_input_from_files expand_args_to_content file_readable trim is_number \
+             collect_input_from_files expand_args_to_content file_readable \
              is_supported_model list_models_cli validate_model_core load_local_config \
              load_whitelist is_tty_out assemble_content read_secure_input \
              _core_sha256 verify_module_integrity \
@@ -4961,6 +5148,14 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
       fi
     else
       printf "%bSession is already unlocked.%b\n" "${C_BGREEN:-}" "${C_RST:-}" >&2
+    fi
+  fi
+
+  # Auto-load shell completion script if available in extras
+  _comp_file="${BASH4LLM_EXTRAS_DIR:-}/docs/bash4llm-completion.sh"
+  if [ -f "$_comp_file" ] && [ -r "$_comp_file" ]; then
+    if . "$_comp_file" 2>/dev/null; then
+      log_info_user "COMPLETION" "Shell autocompletion enabled for current session."
     fi
   fi
 
@@ -5318,18 +5513,31 @@ fi
 
 _supported_providers_arr=()
 _supported_providers_arr+=("groq")
-extras_prov_dir="${PROVIDERS_DIR:-${BASH4LLM_EXTRAS_DIR}/providers}"
-if [ -z "${extras_prov_dir:-}" ]; then
-  extras_prov_dir="$(canonical_config_dir)/providers"
-fi
-if [ -d "$extras_prov_dir" ]; then
-  for pf in "$extras_prov_dir"/*.sh; do
+
+# Scan official vendor domain
+if [ -d "${PROVIDERS_DIR:-}" ]; then
+  for pf in "${PROVIDERS_DIR}"/*.sh; do
     [ -e "$pf" ] || continue
     base="$(basename "$pf" .sh)"
     [ "$base" = "groq" ] && continue
     _supported_providers_arr+=("$base")
   done
 fi
+
+# Scan local user domain
+if [ -d "${LOCAL_PROVIDERS_DIR:-}" ]; then
+  for pf in "${LOCAL_PROVIDERS_DIR}"/*.sh; do
+    [ -e "$pf" ] || continue
+    base="$(basename "$pf" .sh)"
+    # Avoid duplicates in array if already present in vendor
+    already_present=0
+    for existing in ${_supported_providers_arr[@]+"${_supported_providers_arr[@]}"}; do
+      if [ "$existing" = "$base" ]; then already_present=1; break; fi
+    done
+    [ "$already_present" -eq 0 ] && _supported_providers_arr+=("$base")
+  done
+fi
+
 SUPPORTED_PROVIDERS="$(printf '%s ' "${_supported_providers_arr[@]}" | sed 's/ $//')"
 export SUPPORTED_PROVIDERS
 
@@ -5381,14 +5589,20 @@ fi
 
 if [ "$LIST_PROVIDERS" -eq 1 ]; then
   printf 'Available providers:\n' >&2
-  printf '  - groq (embedded)\n' >&2
-  extras_prov_dir="$PROVIDERS_DIR"
-  if [ -d "$extras_prov_dir" ]; then
-    for f in "$extras_prov_dir"/*.sh; do
+  printf '  - groq (builtin)\n' >&2
+  if [ -d "$PROVIDERS_DIR" ]; then
+    for f in "$PROVIDERS_DIR"/*.sh; do
       [ -e "$f" ] || continue
       base="$(basename "$f" .sh)"
       [ "$base" = "groq" ] && continue
-      printf '  - %s\n' "$base" >&2
+      printf '  - %s (vendor)\n' "$base" >&2
+    done
+  fi
+  if [ -d "$LOCAL_PROVIDERS_DIR" ]; then
+    for f in "$LOCAL_PROVIDERS_DIR"/*.sh; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f" .sh)"
+      printf '  - %s (local)\n' "$base" >&2
     done
   fi
   exit 0
@@ -5587,7 +5801,7 @@ EOF
     printf 'No selection made.\n' >&2
     exit "$BASH4LLM_ERR_TMP"
   fi
-  sel="$(trim "$sel")"
+  sel="$(trim_space "$sel")"
 
   if [ -z "$sel" ]; then
     chosen="$current_default"

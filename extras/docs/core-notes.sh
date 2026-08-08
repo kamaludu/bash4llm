@@ -57,7 +57,9 @@ Key primitives (documented)
 - canonical_provider_url_file()
   Return the path to the active provider API URL file under config.
 - trim_space(string)
-  Pure POSIX/Bash space trimmer removing leading/trailing whitespaces and tabs.
+  Pure POSIX/Bash space trimmer removing leading/trailing whitespaces and tabs via native parameter expansion.
+- _is_readonly_func(fn)
+  Check whether a function exists and is marked read-only in the current shell execution space.
 - read_secure_input(target_var, [prompt_msg], [min_len], [allow_verify])
   Prompt for sensitive values with hidden TTY input when interactive ([ -t 0 ]),
   or read seamlessly from standard input when invoked in automated pipes.
@@ -69,15 +71,23 @@ Key primitives (documented)
 - _normalize_model_name(name)
   Normalize model names natively (removing provider prefixes/spaces) and cache results
   in the associative array BASH4LLM_MODEL_CACHE to bypass expensive subshell parsing.
+- _get_perm_string(path) / _get_owner(path)
+  Retrieve file symbolic permissions and user ownership portably.
 - validate_path_security(target_file)
   Enforce strict POSIX file system path security, verifying ownership matches current user
   and disallowing world or group writable permissions on target files and parent directories.
-- _core_sha256(file) / calc_sha256(input)
+- _core_sha256(file)
   Calculate SHA-256 digest portably using native system binaries (sha256sum, openssl, or shasum).
 - verify_module_integrity(target_file)
   Verify file path security and cryptographic SHA-256 digest against extras/manifest.sha256.
   Supports path normalization without trailing slashes and handles Windows CRLF and binary mode asterisk prefixes (*).
   Return 0 on match, or BASH4LLM_ERR_SEC (17) on tamper detection or permission failure.
+- _verify_manifest_signature(manifest_file)
+  Verify Ed25519 cryptographic signature of extras manifest using openssl or ssh-keygen.
+  Return 0 on valid signature or missing optional sig file, BASH4LLM_ERR_SEC (17) on failure.
+- _provider_env_snapshot() / _provider_env_restore()
+  Snapshot and restore global shell environment variables (PATH, IFS, PWD, CDPATH, LANG, LC_ALL)
+  to protect global execution context from ambient pollution by provider modules.
 - ensure_api_key_for_provider(provider)
   Validate API key presence in Vault or Environment. If BASH4LLM_REQUIRE_VAULT=1 is set,
   reject non-vault keys and fail with BASH4LLM_ERR_SEC (17). In interactive TTY, prompt,
@@ -91,6 +101,8 @@ Key primitives (documented)
   Respects DRY_RUN, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET.
 - _extract_notes_section(header)
   Extract a documentation block from core-notes.sh matching the specified header literally.
+- emit_json_diagnostics(status_type, err_code, reason_code, msg)
+  Emit structured JSON error diagnostic to stderr when JSON_DIAGNOSTICS=1 is active.
 - log_prefix()
   Return unified log header prefix: bash4llm:.
 - log_info(code, msg), log_warn(code, msg), log_error(code, msg)
@@ -144,16 +156,14 @@ Key primitives (documented)
   Perform safe, atomic read and real-time Base64 decoding of a file.
 - ui_state_write(filename, json_content)
   Atomically write state files to the UI state directory under lock with permissions 600.
+- _resolve_provider_module_path(raw_prov)
+  Resolve raw provider string into physical path, trust domain (builtin, vendor, local), and canonical name.
 - load_provider_module(provider)
   Safe-load external provider modules with checks (no group/world writable, belongs to owner, `bash -n` check,
   cryptographic signatures check). Source in a subshell, verify interface functions buildpayload_<p> and call_api_<p>,
   import into main environment, and write provider_capabilities.json via ui_state_write. Failures return BASH4LLM_ERR_SEC (17).
 - _detect_base64_opts()
   Detect system base64 flags (B64_WRAP_OPT and B64_DECODE_OPT) dynamically for GNU and macOS/BSD.
-- list_files_sorted_by_mtime(dir)
-  List directory files sorted by modification time (ascending) portably.
-- tac_fallback(file)
-  Invert file line order using tac or an awk-based fallback.
 - _file_mtime(file)
   Get file modification time as a Unix timestamp.
 - jq_safe(filter, json_file)
@@ -203,10 +213,9 @@ Key primitives (documented)
   hook inside an isolated cleaned subshell (stripping API keys), and parse allowed environment variables.
 - check_local_rate_limit()
   Enforce sliding window rate limiting per thread ID inside BASH4LLM_RATES_DIR.
-- _get_perm_string(path) / _get_owner(path)
-  Retrieve file symbolic permissions and user ownership portably.
 - getfile_signature(path)
-  Generate integrity footprint: hash and/or file system metadata (device, inode, size, mtime, permissions, uid, gid).
+  Generate integrity footprint: file system metadata (device, inode, size, mtime, permissions, uid, gid)
+  and optional SHA-256 hash when BASH4LLM_SIG_HASH is enabled (default 1).
 - _is_world_writable(path)
   Check if a path is group/world writable (vulnerable to external writing).
 - make_tmpdir()
@@ -266,7 +275,7 @@ emergency disaster recovery, offline recovery keys, session caching, and
 cryptographic host diagnostics.
 
 Key primitives (documented)
-- _vault_read_password([prompt])
+- _vault_read_password([var_name], [prompt], [min_len], [allow_verify])
   Securely read silent password input bypassing process trace using stty echo suppression.
 - _vault_set_opts([mode])
   Configure openssl enc parameters using AES-256-CBC, PBKDF2 (100,000 iterations), and salt.
@@ -334,12 +343,18 @@ Normalize CLI and env flags, resolve FINAL_MODEL, dispatch to provider functions
 handle retries, extract text from RESP, detect edge cases, and finalize output.
 
 Key flows and functions (documented)
+- validate_provider_interface(provider)
+  Verify that the loaded provider module defines the mandatory buildpayload_<p> and call_api_<p> functions; exits with BASH4LLM_ERR_SEC (17) on failure.
 - call_provider(function_name, ...)
   Execute dynamic provider-specific function; returns status 127 if function is not loaded.
+- validate_provider_key_dispatch(key)
+  Dispatch API key validation to provider-specific validate_key_<provider> function.
 - refresh_models_dispatch([models_file])
   Dispatch model refresh routine to active provider, with fallback for backward-compatible signatures.
 - validate_model_dispatch(model)
   Dispatch model validation; fall back to a permissive warning if provider validation is not implemented.
+- auto_select_model_dispatch()
+  Dispatch auto-selection of default model to provider-specific auto_select_model_<provider> function.
 - resolve_model()
   Determine FINAL_MODEL by resolving priorities (highest to lowest):
     1) CLI -m/--model
@@ -361,6 +376,8 @@ Key flows and functions (documented)
 - finalize_and_output(mode, text)
   Format output (json/pretty/raw/text). Automatically save results via save_to_history if content exceeds character
   THRESHOLD or if FORCE_SAVE_MODE is active.
+- validate_response_syntax(text)
+  Validate response text against SML v2.0 structure (VALIDATE_SML) or POSIX Extended Regular Expression (VALIDATE_REGEX).
 - perform_request_once()
   Execute call_api_once with linear backoff retry loops (up to MAX_RETRIES). Extract text, detect empty completions,
   parse errors, update last_api.json, and finalize outputs. In DRY_RUN or BASH4LLM_SKIP_NETWORK mode, short-circuits to return 0.
@@ -370,10 +387,8 @@ Key flows and functions (documented)
   Read existing files or append arguments literally to build prompt content.
 - file_readable(path)
   Confirm file is regular and readable.
-- trim(string)
-  Remove leading and trailing whitespaces and tabs via awk.
-- is_number(val)
-  Verify string is a valid numeric value (integer or decimal).
+- trim_space(string)
+  Remove leading and trailing whitespaces and tabs via native parameter expansion.
 - is_supported_model(model)
   Filter out non-textual model formats (vision, audio, whisper, tts, embedding, multimodal) to prevent errors.
 - list_models_cli()
@@ -386,15 +401,17 @@ Key flows and functions (documented)
   Load allowed models into the global whitelist string $ALLOWED_MODELS.
 - is_tty_out()
   Check if stdout is a real interactive terminal (TTY).
+- _cleanup_sourced_env()
+  Unset internal core helper functions when script is sourced in interactive shell sessions to prevent namespace pollution.
 
 Blocks of Code / Flows
 - CORE_SETUP_DISPATCH_HELPERS: Module interface validators and dynamic provider callers.
 - CORE_SETUP_API_CALL: Handles resolving models, compiling payloads, retries, and formatting outputs.
-- CORE_SETUP_INPUT_HELPERS: Trim, is_number, config loaders, whitelist filters, and sourcing guards.
+- CORE_SETUP_INPUT_HELPERS: Trim space, config loaders, whitelist filters, and sourcing guards.
 - CORE_SETUP_CLI_PARSE: Evaluation of arguments and parameter mapping.
 - CORE_SETUP_SESSION_ENGINE: Pre-checks syntax and sources the external session-engine script.
 - CORE_SETUP_NORM_FLAGS: Validates API callers, normalizes flag booleans, and dynamically populates provider lists.
-- CORE_SETUP_ACTIONS: Execution of static listings, configuration check, installations (--install-extras with Least-Privilege chmod), --run-all-tests master suite, and thread creations.
+- CORE_SETUP_ACTIONS: Execution of static listings, raw listing flags (--list-providers-raw, --list-models-raw), configuration check, installations (--install-extras with Least-Privilege chmod), --run-all-tests master suite, and thread creations.
 
 ----------------------------------------
 CORE_PROVIDER (discovery, selection, persistence)
@@ -505,33 +522,33 @@ Key points
 CANONICAL VARIABLES (reference)
 ----------------------------------------
 Important names (use exact names):
-BASH4LLM_LANG, BASH4LLM_DIR, BASH4LLM_EXTRAS_DIR, PROVIDERS_DIR, BASH4LLM_CONFIG_DIR,
-MODELS_FILE, MODELS_LOCK, PROVIDER_FILE, RUN_TMPDIR, BASH4LLM_TMP_PAYLOAD,
-PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG, QUIET, THREAD_ID, SAFE_THREAD_ID,
-THREAD_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
-BASH4LLM_TMPDIR, BASH4LLM_HISTORY_DIR, BASH4LLM_RUN_DIR, BASH4LLM_LOCKS_DIR,
-BASH4LLM_RATES_DIR, BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD, BASH4LLM_AUTH_TOKEN,
-BASH4LLM_LOCK_TIMEOUT_*, BASH4LLM_ROTATE_HISTORY, BASH4LLM_HISTORY_MAX_FILES,
-BASH4LLM_HISTORY_MAX_BYTES, BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS,
-CURL_BASE_OPTS, FORMAT, BASH4LLM_API_KEY, BASH4LLM_API_URL, B64_WRAP_OPT, B64_DECODE_OPT,
-GROQ_API_KEY, PROVIDER_API_ENV_groq, SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE,
-SCRIPTDIR, CANONICAL_EXTRAS_DIR, LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR,
-BASH4LLM_TEMPLATES_DIR, THREAD_DIR, HISTORY_LOCK, TMP_LOCK,
-BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS,
-BASH4LLM_LOCK_TIMEOUT_HISTORY, LAST_CHECK_LINES, BOOTSTRAP_ONLY, _engine_path,
-_engine_available, BASH4LLM_SESSION_ENGINE, BASH4LLM_SESSION_TARGET_BYTES,
-BASH4LLM_ROOT, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET,
-ALLOW_API_CALLS, BASH4LLM_LOG, BASH4LLM_IGNORE_SEC_CHECKS, BASH4LLM_SIG_HASH,
-BASH4LLM_PLAT_ANDROID, BASH4LLM_PLAT_MACOS, BASH4LLM_PLAT_WSL,
-BASH4LLM_PLAT_CYGWIN, BASH4LLM_PLAT_BSD, BASH4LLM_PLAT_LINUX,
-FINAL_MODEL, CONTENT, JSON_INPUT, BATCH_FILE, CHAT_MODE, SET_DEFAULT_MODEL,
-REFRESH_MODELS, LIST_MODELS, OUT_PATH, SYSTEM_PROMPT, MAX_TOKENS, MODEL,
-AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER, TURE (temperature alias),
-TEMPERATURE (recommended alias), BASH4LLM_VAULT_ENABLED, BASH4LLM_REQUIRE_VAULT,
-_B4L_RT_CTX, BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON,
-C_BOLD, C_NOBOLD, C_UNDERLINE, C_NOUNDERLINE, BASH4LLM_KEY_MANUAL_PROMPT,
-DELETE_THREAD, DELETE_THREAD_ID, RENAME_THREAD, RENAME_THREAD_ID, RENAME_TITLE,
-INIT_THREAD, RUN_SUITE, VALIDATE_SML, VALIDATE_REGEX, SANITIZE_OUTPUT, JSON_DIAGNOSTICS, TRANSFORMED_PAYLOAD.
+BASH4LLM_LANG, BASH4LLM_DIR, BASH4LLM_EXTRAS_DIR, PROVIDERS_DIR, BASH4LLM_LOCAL_EXTRAS_DIR,
+LOCAL_PROVIDERS_DIR, CANONICAL_LOCAL_EXTRAS_DIR, BASH4LLM_CONFIG_DIR, MODELS_FILE, MODELS_LOCK,
+PROVIDER_FILE, RUN_TMPDIR, BASH4LLM_TMP_PAYLOAD, PAYLOAD, RESP, ERRF, STREAM_MODE, DRY_RUN, DEBUG,
+QUIET, THREAD_ID, SAFE_THREAD_ID, THREAD_WINDOW, OUTPUT_MODE, FORCE_SAVE_MODE, THRESHOLD, MAX_RETRIES,
+BASH4LLM_TMPDIR, BASH4LLM_HISTORY_DIR, BASH4LLM_RUN_DIR, BASH4LLM_LOCKS_DIR, BASH4LLM_RATES_DIR,
+BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD, BASH4LLM_AUTH_TOKEN, BASH4LLM_LOCK_TIMEOUT_*, BASH4LLM_ROTATE_HISTORY,
+BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES, BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS,
+CURL_BASE_OPTS, FORMAT, BASH4LLM_API_KEY, BASH4LLM_API_URL, BASH4LLM_PROVIDER_URL, B64_WRAP_OPT,
+B64_DECODE_OPT, GROQ_API_KEY, PROVIDER_API_ENV_groq, SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE, SCRIPTDIR,
+CANONICAL_EXTRAS_DIR, LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR, BASH4LLM_TEMPLATES_DIR, THREAD_DIR,
+HISTORY_LOCK, TMP_LOCK, BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS, BASH4LLM_LOCK_TIMEOUT_HISTORY,
+LAST_CHECK_LINES, BOOTSTRAP_ONLY, _engine_path, _engine_available, BASH4LLM_SESSION_ENGINE,
+BASH4LLM_SESSION_TARGET_BYTES, BASH4LLM_ROOT, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET,
+ALLOW_API_CALLS, BASH4LLM_LOG, BASH4LLM_IGNORE_SEC_CHECKS, BASH4LLM_SIG_HASH, BASH4LLM_REQUIRE_MANIFEST_SIG,
+BASH4LLM_SUPPORTED_PROVIDER_API, BASH4LLM_PROVIDER_API_VERSION, BASH4LLM_SOURCE_ONLY, BASH4LLM_PLAT_ANDROID,
+BASH4LLM_PLAT_MACOS, BASH4LLM_PLAT_WSL, BASH4LLM_PLAT_CYGWIN, BASH4LLM_PLAT_BSD, BASH4LLM_PLAT_LINUX,
+BASH4LLM_EDGE_EMPTY, BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON, BASH4LLM_EDGE_COMPLETION_TOKENS,
+PROVIDER_CLI, PROVIDER_INTERACTIVE, PROVIDER_INTERACTIVE_SELECTED, PROVIDER_MODULE_LOADED,
+PROVIDER_MODULE_PATH, LOADED_PROVIDER_NAME, FINAL_MODEL, CONTENT, JSON_INPUT, MESSAGES_JSON,
+BUILD_MESSAGES_FILE, BATCH_FILE, CHAT_MODE, SET_DEFAULT_MODEL, REFRESH_MODELS, LIST_MODELS,
+LIST_PROVIDERS, LIST_PROVIDERS_RAW, LIST_MODELS_RAW, SHOW_CONFIG, DIAGNOSTICS, OUT_PATH, SYSTEM_PROMPT,
+MAX_TOKENS, MODEL, AUTO_POLICY, SUPPORTED_PROVIDERS, PROVIDER, TURE (temperature alias),
+TEMPERATURE (recommended alias), BASH4LLM_VAULT_ENABLED, BASH4LLM_REQUIRE_VAULT, _B4L_RT_CTX,
+BASH4LLM_OPENSSL_ACTIVE, BASH4LLM_VAULT_PASS, BASH4LLM_DECRYPTED_VAULT_JSON, C_BOLD, C_NOBOLD,
+C_UNDERLINE, C_NOUNDERLINE, BASH4LLM_KEY_MANUAL_PROMPT, DELETE_THREAD, DELETE_THREAD_ID, RENAME_THREAD,
+RENAME_THREAD_ID, RENAME_TITLE, INIT_THREAD, RUN_SUITE, VALIDATE_SML, VALIDATE_REGEX, SANITIZE_OUTPUT,
+JSON_DIAGNOSTICS, TRANSFORMED_PAYLOAD.
 
 Error Code Constants & Direct Alias Mappings:
 - BASH4LLM_ERR_NO_API_KEY (10) / BASH4LLMERR_NO_API_KEY
@@ -561,7 +578,7 @@ OPERATIONAL TIPS (concise)
 CHANGE NOTES (summary)
 ----------------------------------------
 This document provides the reference core notes aligned to:
-- bash4llm (v2.8.0)
+- bash4llm (v2.8.5)
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 ----------------------------------------

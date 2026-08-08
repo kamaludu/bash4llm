@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/chat/tui-repl.sh
-# Component: TUI REPL Interactive Module (Refactored Thread Version - Part 1)
+# Component: TUI REPL Interactive Module
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
@@ -47,12 +47,17 @@ fi
 
 # --- PHASE 2: TERMINAL CLEANUP AND SIGNAL LIFECYCLE MANAGEMENT ---
 
-# Clean up terminal state, disable bracketed paste, and release concurrency locks on exit
 tui_cleanup() {
   local rc=$?
   
   # Ensure terminal echo is restored in case of abnormal interruption
   stty echo 2>/dev/null || true
+
+  # Restore standard Readline TAB binding and remove completion function/cache
+  bind -r '\t' 2>/dev/null || true
+  unset -f _tui_readline_complete 2>/dev/null || true
+  unset -f _tui_load_models_cache 2>/dev/null || true
+  unset _TUI_MODELS_CACHE 2>/dev/null || true
   
   # Disable Bracketed Paste Mode safely before exiting to restore standard TTY state
   printf '\e[?2004l' >&2
@@ -65,7 +70,7 @@ tui_cleanup() {
   # Delete temporary files tied to the current execution process
   if [ -n "${RUN_TMPDIR:-}" ] && [ -d "$RUN_TMPDIR" ]; then
     case "$RUN_TMPDIR" in
-      "$BASH4LLM_TMPDIR"/*)
+      "${BASH4LLM_TMPDIR:-}"/*)
         rm -rf -- "$RUN_TMPDIR" 2>/dev/null || true
         ;;
     esac
@@ -117,11 +122,11 @@ sanitize_llm_output() {
   # Protects the terminal emulator by removing OSC (Operating System Command)
   # and DCS (Device Control String) sequences and escapes that are dangerous to terminal 
   # security, while preserving native ANSI SGR color code formatting (\e[...m).
-  sed -E '
-    s/\x1b\][0-9]*;[^\x07]*(\x07|\x1b\\)//g;
-    s/\x1bP[0-9]*;[^\x1b]*\x1b\\//g;
-    s/\x1b\[[0-9;?]*[a-df-gi-ln-xzAD-Z]//g
-  '
+  local esc=$'\x1b'
+  sed -E \
+    -e "s/${esc}\\][0-9]*;[^${esc}\x07]*(${esc}\x07|${esc}\\\\)//g" \
+    -e "s/${esc}P[0-9]*;[^${esc}]*${esc}\\\\//g" \
+    -e "s/${esc}\\[[0-9;?]*[a-df-gijln-xzAD-Z]//g"
 }
 
 # --- PHASE 3: REPL STATE AND VARIABLE INITIALIZATION ---
@@ -159,12 +164,44 @@ ensure_run_tmpdir >/dev/null 2>&1 || {
   exit "$BASH4LLM_ERR_TMP"
 }
 
+# Variable for in-memory model caching to prevent I/O during TAB completion
+_TUI_MODELS_CACHE=""
+
+_tui_load_models_cache() {
+  _TUI_MODELS_CACHE=""
+  if [ -f "${MODELS_FILE:-}" ] && [ -s "${MODELS_FILE:-}" ]; then
+    local m_line norm_m
+    while IFS= read -r m_line || [ -n "$m_line" ]; do
+      [ -z "$m_line" ] && continue
+      norm_m="$(_normalize_model_name "$m_line")"
+      if is_supported_model "$norm_m"; then
+        _TUI_MODELS_CACHE="${_TUI_MODELS_CACHE} ${norm_m}"
+      fi
+    done < "$MODELS_FILE"
+  fi
+}
+
+# Helper function to list thread files sorted by mtime ascending
+# Combined with tac_fallback, this delivers descending mtime order (newest thread first)
+_tui_list_files_sorted_by_mtime() {
+  local dir="${1:-}"
+  [ -d "$dir" ] || return 0
+  local f mtime
+  for f in "$dir"/*.ndjson; do
+    [ -f "$f" ] || continue
+    mtime=$(_file_mtime "$f")
+    [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+    printf '%s|%s\n' "$mtime" "$f"
+  done | sort -n -t'|' -k1,1
+}
+
 # --- PHASE 4: DECLARATIVE DICTIONARIES & SECURE i18n PARSER ---
 declare -A T_MSG
 
 # Load translation properties file with strict alphanumeric key validation
 load_lang_secure() {
   local lang_code="${1:-en}"
+  T_MSG=()
   local lang_dir
   lang_dir="$(dirname "${BASH_SOURCE[0]}")/langs"
   local lang_file="${lang_dir}/${lang_code}.properties"
@@ -350,6 +387,225 @@ fi
 # Escape sequences wrapping readline-rendered non-printing characters to prevent cursor desync
 RL_START=$'\001'
 RL_END=$'\002'
+
+# --- PHASE 5.1: UNIVERSAL READLINE TAB COMPLETION ENGINE ---
+
+# Dispatcher generico dei candidati per TUTTI i comandi della TUI
+_tui_get_cmd_candidates() {
+  local cmd="$1" cur="$2"
+  case "$cmd" in
+    /format)
+      local item
+      for item in text raw json pretty; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /model)
+      if [ -z "${_TUI_MODELS_CACHE:-}" ]; then _tui_load_models_cache; fi
+      local item
+      for item in ${_TUI_MODELS_CACHE:-}; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /temperature|/ture)
+      local item
+      for item in 0.2 0.5 0.7 1.0 1.2 1.5 2.0; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /max)
+      local item
+      for item in 1024 2048 4096 8192 16384 32768; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+    /threshold)
+      local item
+      for item in 500 1000 5000 10000 50000 100000 1048576; do
+        [[ "$item" == "$cur"* ]] && printf '%s\n' "$item"
+      done
+      ;;
+  esac
+}
+
+_tui_readline_complete() {
+  # Force standard local IFS to prevent inheriting IFS="" from read -e
+  local IFS=$' \t\n'
+
+  local line="${READLINE_LINE:0:$READLINE_POINT}"
+  local rest="${READLINE_LINE:$READLINE_POINT}"
+
+  # 1. Universal /file handling (spaces and quotes in filesystem)
+  if [[ "$line" =~ ^/file([[:space:]]+(.*))?$ ]]; then
+    local raw_arg="${BASH_REMATCH[2]:-}"
+    local clean_arg="${raw_arg#\"}"
+    clean_arg="${clean_arg%\"}"
+    clean_arg="${clean_arg#\'}"
+    clean_arg="${clean_arg%\'}"
+
+    # Expand tilde ~ to $HOME if followed by / or at end of string
+    local expanded_arg="$clean_arg"
+    if [[ "$clean_arg" =~ ^~(/|$) ]]; then
+      expanded_arg="${clean_arg/#\~/$HOME}"
+    fi
+
+    local -a file_matches=()
+    local f_item
+    while IFS= read -r f_item; do
+      if [ -n "$f_item" ]; then
+        if [ -d "$f_item" ]; then
+          file_matches+=("${f_item%/}/")
+        else
+          file_matches+=("${f_item} ")
+        fi
+      fi
+    done < <(compgen -f -- "$expanded_arg" 2>/dev/null)
+
+    local num_f="${#file_matches[@]}"
+    if [ "$num_f" -eq 0 ]; then
+      return 0
+    elif [ "$num_f" -eq 1 ]; then
+      local match="${file_matches[0]}"
+      READLINE_LINE="/file ${match}${rest}"
+      READLINE_POINT=$(( 6 + ${#match} ))
+    else
+      local lcp="${file_matches[0]}"
+      local item
+      for item in "${file_matches[@]}"; do
+        while [ -n "$lcp" ] && [[ "${item}" != "${lcp}"* ]]; do
+          lcp="${lcp:0:$(( ${#lcp} - 1 ))}"
+        done
+      done
+
+      if [ "${#lcp}" -gt "${#clean_arg}" ]; then
+        READLINE_LINE="/file ${lcp}${rest}"
+        READLINE_POINT=$(( 6 + ${#lcp} ))
+      else
+        printf '\n  File: %s\n' "${file_matches[*]}" >&2
+      fi
+    fi
+    return 0
+  fi
+
+  # 2. Universal engine for all other commands and arguments
+  local _glob_was_set=0
+  if [[ $- == *f* ]]; then _glob_was_set=1; fi
+  set -f
+
+  local -a words=()
+  read -r -a words <<< "$line" 2>/dev/null || true
+
+  local trailing_space=0
+  if [[ "$line" =~ [[:space:]]$ ]]; then
+    trailing_space=1
+  fi
+
+  local cmd="" cur=""
+  if [ "${#words[@]}" -gt 0 ]; then
+    cmd="${words[0]}"
+  fi
+
+  if [ "$trailing_space" -eq 1 ] || [ "${#words[@]}" -eq 0 ]; then
+    cur=""
+  else
+    local last_idx=$((${#words[@]} - 1))
+    cur="${words[$last_idx]}"
+  fi
+
+  local num_words="${#words[@]}"
+  if [ "$trailing_space" -eq 1 ]; then
+    num_words=$((num_words + 1))
+  fi
+
+  local -a matches=()
+  local append_space=1
+
+  # Context dispatcher
+  if [ "$num_words" -le 1 ] || { [ "$num_words" -eq 2 ] && [ "$trailing_space" -eq 0 ] && [[ "$cur" == /* ]]; }; then
+    # Slash command name completion
+    local -a tui_cmds=(/help /exit /quit /clear /thread /threads /private /config /undo /status /system /model /temperature /ture /max /threshold /format /file /block /edit)
+    local item
+    for item in "${tui_cmds[@]}"; do
+      if [[ "$item" == "$cur"* ]]; then
+        matches+=("$item")
+      fi
+    done
+  else
+    # Argument completion for any command via universal dispatcher
+    append_space=1
+    while IFS= read -r m; do
+      [ -n "$m" ] && matches+=("$m")
+    done < <(_tui_get_cmd_candidates "$cmd" "$cur")
+
+    # Fallback for relative/absolute paths if command has no closed list
+    if [ "${#matches[@]}" -eq 0 ] && { [[ "$cur" == ./* ]] || [[ "$cur" == ~/* ]] || [[ "$cur" == /* ]]; }; then
+      append_space=0
+      while IFS= read -r m; do
+        if [ -n "$m" ]; then
+          if [ -d "$m" ]; then
+            matches+=("${m%/}/")
+          else
+            matches+=("$m ")
+          fi
+        fi
+      done < <(compgen -f -- "$cur" 2>/dev/null)
+    fi
+  fi
+
+  if [ "$_glob_was_set" -eq 0 ]; then set +f; fi
+
+  local num_matches="${#matches[@]}"
+  if [ "$num_matches" -eq 0 ]; then
+    # Contextual syntax hints for free-form argument commands
+    if [ "$cmd" = "/system" ] && [ "$trailing_space" -eq 1 ] && [ -z "$cur" ]; then
+      printf '\n  Syntax: /system <system prompt text>\n' >&2
+    fi
+    return 0
+  elif [ "$num_matches" -eq 1 ]; then
+    local match="${matches[0]}"
+    if [ "$append_space" -eq 1 ]; then
+      match="${match} "
+    fi
+    local prefix="${line:0:$(( ${#line} - ${#cur} ))}"
+    READLINE_LINE="${prefix}${match}${rest}"
+    READLINE_POINT=$(( ${#prefix} + ${#match} ))
+
+    # Unified automatic hint: when completing ANY slash command,
+    # show available options/arguments for that command immediately!
+    if [[ "$match" == /*[[:space:]] ]]; then
+      local completed_cmd="${match// /}"
+      local -a sub_cands=()
+      while IFS= read -r cand; do
+        [ -n "$cand" ] && sub_cands+=("$cand")
+      done < <(_tui_get_cmd_candidates "$completed_cmd" "")
+
+      if [ "${#sub_cands[@]}" -gt 0 ]; then
+        printf '\n  Options for %s: %s\n' "$completed_cmd" "${sub_cands[*]}" >&2
+      elif [ "$completed_cmd" = "/file" ]; then
+        printf '\n  Usage: /file <file_path>\n' >&2
+      elif [ "$completed_cmd" = "/system" ]; then
+        printf '\n  Usage: /system <system_prompt_text>\n' >&2
+      fi
+    fi
+  else
+    local lcp="${matches[0]}"
+    local match_item
+    for match_item in "${matches[@]}"; do
+      while [ -n "$lcp" ] && [[ "${match_item}" != "${lcp}"* ]]; do
+        lcp="${lcp:0:$(( ${#lcp} - 1 ))}"
+      done
+    done
+
+    if [ "${#lcp}" -gt "${#cur}" ]; then
+      local prefix="${line:0:$(( ${#line} - ${#cur} ))}"
+      READLINE_LINE="${prefix}${lcp}${rest}"
+      READLINE_POINT=$(( ${#prefix} + ${#lcp} ))
+    else
+      printf '\n  Options: %s\n' "${matches[*]}" >&2
+    fi
+  fi
+}
+
 # --- PHASE 6: SEQUENTIAL RENDERING UTILITIES ---
 
 # Render the stylized main header banner of the application
@@ -463,12 +719,12 @@ load_threads_wizard() {
     if [ -f "$f" ] && [ "${f##*.}" = "ndjson" ]; then
       files+=("$f")
     fi
-  done < <(list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
+  done < <(_tui_list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
 
   local total_threads="${#files[@]}"
 
   # Instantly generate a new thread if no historical logs are found
-  if [ "$total_threads" -eq 0 ] || [ -z "${files:-}" ]; then
+  if [ "$total_threads" -eq 0 ]; then
     THREAD_ID="thread-$(date +%Y%m%d-%H%M%S)-${RANDOM}"
     local new_thread_file="${thread_dir}/${THREAD_ID}.ndjson"
     : > "$new_thread_file"
@@ -679,6 +935,7 @@ select_provider_wizard() {
   if [ "$prev_provider" != "$PROVIDER" ]; then
     sync_models_file_path "$PROVIDER"
     resolve_model >/dev/null 2>&1 && MODEL="${FINAL_MODEL:-}"
+    _tui_load_models_cache
   fi
 
   printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_provider_success "$PROVIDER")" "${C_RST:-}" >&2
@@ -1013,10 +1270,11 @@ show_config_menu() {
           sleep 1
         fi
         ;;
-      9)
+       9)
         printf '\n  %s\n' "$(_msg config_refresh_start)" >&2
         if ensure_api_key_for_provider "$PROVIDER"; then
           if refresh_models_dispatch; then
+            _tui_load_models_cache
             printf '\n  %s%s%s\n' "${C_GREEN:-}" "$(_msg config_refresh_success)" "${C_RST:-}" >&2
           else
             printf '\n  %s%s%s\n' "${C_RED:-}" "$(_msg config_refresh_failed)" "${C_RST:-}" >&2
@@ -1117,7 +1375,7 @@ show_thread_menu() {
           if [ -f "$f" ] && [ "${f##*.}" = "ndjson" ]; then
             files+=("$f")
           fi
-        done < <(list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
+        done < <(_tui_list_files_sorted_by_mtime "$thread_dir" | tac_fallback)
 
         if [ "${#files[@]}" -eq 0 ]; then
           printf '\n  %s%s%s\n' "${C_YELLOW:-}" "$(_msg tools_err_no_threads)" "${C_RST:-}" >&2
@@ -1198,6 +1456,10 @@ run_repl() {
   fi
 
   print_banner
+
+  # Pre-load in-memory model cache and register dynamic TUI Readline TAB completion
+  _tui_load_models_cache
+  bind -x '"\t": _tui_readline_complete' 2>/dev/null || true
 
   # Bind standard signal handler to manage SIGINT during inactive input states
   trap handle_sigint INT
@@ -1509,13 +1771,21 @@ run_repl() {
         fi
 
         local file_path file_prompt file_content combined_prompt
-        file_path="${file_cmd_args%% *}"
-        file_prompt="${file_cmd_args#* }"
-        if [ "$file_path" = "$file_cmd_args" ]; then
-          file_prompt=""
+        if [[ "$file_cmd_args" =~ ^\"([^\"]+)\"[[:space:]]*(.*)$ ]]; then
+          file_path="${BASH_REMATCH[1]}"
+          file_prompt="${BASH_REMATCH[2]}"
+        elif [[ "$file_cmd_args" =~ ^\'([^\']+)\'[[:space:]]*(.*)$ ]]; then
+          file_path="${BASH_REMATCH[1]}"
+          file_prompt="${BASH_REMATCH[2]}"
         else
-          file_prompt="$(trim_space "$file_prompt")"
+          file_path="${file_cmd_args%% *}"
+          if [ "$file_path" = "$file_cmd_args" ]; then
+            file_prompt=""
+          else
+            file_prompt="${file_cmd_args#* }"
+          fi
         fi
+        file_prompt="$(trim_space "$file_prompt")"
 
         validate_file_input "$file_path"
         local check_rc=$?

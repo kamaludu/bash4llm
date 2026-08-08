@@ -34,15 +34,19 @@ Compatibilità nativa: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
 * **Isolamento a livello di filesystem**  
   I file temporanei sono gestiti all'interno di directory di processo dedicate (`RUN_TMPDIR`) con permessi restrittivi `0700` (`umask 077`). Non vengono usate directory condivise come `/tmp`.
 * **Cifratura delle chiavi API (`--vault`)**  
-  Integrazione opzionale tramite OpenSSL per la cifratura locale delle chiavi API. Utilizza l'algoritmo AES-256-CBC con derivazione della chiave tramite PBKDF2 (100.000 iterazioni) e Master Password. Supporta una chiave di ripristino offline e il riutilizzo del contesto di sessione (`_B4L_RT_CTX`).
+  Integrazione opzionale tramite OpenSSL per la cifratura locale delle chiavi API. Utilizza l'algoritmo AES-256-CBC con derivazione della chiave tramite PBKDF2 (100.000 iterazioni) e Master Password. Supporta una chiave di ripristino offline, il riutilizzo del contesto di sessione (`_B4L_RT_CTX`) e la policy di obbligatorietà `BASH4LLM_REQUIRE_VAULT`.
 * **Supporto Termux / Android**  
   Rilevamento dell'ambiente Android Termux con adattamento dei meccanismi di locking: dove `flock` presenta limitazioni di sistema, la gestione della concorrenza è reindirizzata su atomic directory lock (`mkdir`).
 * **Integrazione dati di stato (`ui_state`)**  
   Scrittura atomica di file JSON contenenti i metadati operativi del runtime nella cartella `ui_state`, per l'integrazione con pannelli di controllo esterni o script di monitoraggio.
-* **Gestione sessioni e cronologia**  
-  Gestione del contesto conversazionale multi-turno con salvataggio dello storico in formato NDJSON. Con il modulo opzionale `session-engine.sh` vengono abilitati il tracciamento dei token, la rotazione/compressione dei segmenti di storico e il caching locale con TTL.
-* **Moduli estendibili**  
-  Caricamento dinamico dei moduli provider esterni (Gemini, Hugging Face, Mistral) con verifica di integrità crittografica dell'hash SHA-256 rispetto al manifest.
+* **Gestione sessioni, cronologia e protezione PII**  
+  Gestione del contesto conversazionale multi-turno con salvataggio dello storico in formato NDJSON e anonimizzazione crittografica degli ID di thread (`anonymize_thread_id`) per prevenire fughe di dati personali. Con il modulo opzionale `session-engine.sh` vengono abilitati il tracciamento dei token, la rotazione/compressione dei segmenti di storico e il caching locale con TTL.
+* **Moduli estendibili e firma crittografica**  
+  Caricamento dinamico dei moduli provider esterni (`builtin`, `vendor`, `local`) in copia di staging anti-TOCTOU, con verifica di integrità dell'hash SHA-256 e convalida della firma crittografica Ed25519 del manifesto (`manifest.sha256.sig`).
+* **Validazione deterministica**  
+  Supporto nativo per la validazione sintattica delle risposte (`--validate-sml` per SML v2.0, `--validate-regex`), sanitizzazione ANSI zero-eval (`--sanitize`), diagnostica JSON strutturata (`--json-diagnostics`), guardie di immutabilità delle funzioni (`readonly -f`) e rate limiting locale a finestra scorrevole (30s).
+
+📘 **Documentazione Architetturale**: Per l'analisi dettagliata delle macro-sezioni, dei meccanismi di isolamento e del layout di memoria, consulta la **[Specifica Tecnica del Sistema Bash4LLM⁺ (v2.8.5)](docs/bash4llm-arch-spec.md)**.
 
 ---
 
@@ -51,7 +55,7 @@ Compatibilità nativa: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
 Pacchetti richiesti nel `PATH`:
 
 * **bash** (versione 4.0 o superiore)
-* **coreutils** (`stat`, `chmod`, `mkdir`, `mv`, `rm`, ecc.)
+* **coreutils** (`stat`, `chmod`, `mkdir`, `mv`, `rm`, `cp`, `mktemp`, `base64`, ecc.)
 * **findutils**
 * **util-linux**
 * **awk**
@@ -154,7 +158,7 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 2. **[Isolamento ambiente di sourcing](.github/workflows/sourcing-isolation.yml)**: Test della funzione `_cleanup_sourced_env` per verificare che l'inclusione via `source` non lasci funzioni residue nella shell chiamante.
 3. **[Verifica secret leak in `argv`](.github/workflows/security-hardening.yml)**: Verifica della mancata presenza di chiavi API e token Bearer nella tabella dei processi del sistema operativo durante l'esecuzione di `curl`. Controllo permessi POSIX `0700` e `0600`.
 4. **[Test di resilienza API](.github/workflows/api-mock-chaos.yml)**: Simulazione di risposte di errore HTTP, rate limit e casi limite tramite server mock.
-5. **[Integrità del manifest `extras`](.github/workflows/extras-integrity-manifest.yml)**: Controllo degli hash SHA-256 dei moduli opzionali rispetto al file `extras/manifest.sha256`.
+5. **[Integrità del manifest `extras`](.github/workflows/extras-integrity-manifest.yml)**: Controllo degli hash SHA-256 e della firma crittografica Ed25519 (`manifest.sha256.sig`) dei moduli opzionali rispetto al file `extras/manifest.sha256`.
 
 ---
 
@@ -187,6 +191,9 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 | `--thread <id>` | Sì | Attiva il contesto conversazionale per l'ID specificato. |
 | `--thread-window [n]` | Opzionale | Imposta il numero massimo di messaggi storici da includere (default: 10). |
 | `--init-thread` | No | Inizializza i file di contesto per un nuovo thread ed esce. |
+| `--delete-thread <id>` | Sì | Elimina in modo atomico lo storico e i metadati del thread. |
+| `--rename-thread <id>` | Sì | Rinombra il titolo dei metadati per il thread specificato. |
+| `--title <titolo>` | Sì | Specifica il nuovo titolo in combinazione con `--rename-thread`. |
 
 ### Parametri di generazione
 | Flag | Argomento | Descrizione |
@@ -206,6 +213,7 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 | `--pretty` | No | Restituisce il payload JSON formattato. |
 | `--text` | No | Restituisce il solo testo della risposta (predefinito). |
 | `--raw` | No | Restituisce il testo grezzo senza a capo finale. |
+| `--sanitize` | No | Filtra ed elide le sequenze di escape ANSI e i caratteri non stampabili dall'output. |
 
 ### Modalità operative
 | Flag | Argomento | Descrizione |
@@ -216,6 +224,7 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 | `--no-stream` | No | Disabilita lo streaming per la richiesta corrente. |
 | `--chat` | No | Avvia l'interfaccia interattiva TUI/REPL. |
 | `--bootstrap-only` | No | Esegue la fase di avvio e verificate filesystem, poi termina. |
+| `--test`, `--run-all-tests` | No | Invoca l'orchestratore della suite di test automatizzati. |
 
 ### Configurazione e diagnostica
 | Flag | Argomento | Descrizione |
@@ -225,6 +234,12 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 | `--show-config` | No | Stampa le variabili di configurazione attive. |
 | `--diagnostics` | No | Esegue i test diagnostici di sistema e la verifica TLS. |
 | `--vault` | No | Avvia la console di gestione del Key Vault cifrato. |
+| `--validate-sml` | No | Valida la risposta dell'LLM rispetto allo standard sintattico SML v2.0. |
+| `--validate-regex <regex>` | Sì | Valida la risposta rispetto all'espressione regolare POSIX ERE fornita. |
+| `--json-diagnostics` | No | Emette gli errori di sistema e di rete in formato JSON strutturato. |
+| `--print-config-dir` | No | Stampa a schermo il percorso canonico della directory di configurazione. |
+| `--print-provider-file` | No | Stampa a schermo il percorso del file di persistenza del provider attivo. |
+| `--print-model-file [provider]` | Opzionale | Stampa a schermo il percorso del file di modello per il provider. |
 | `--version` | No | Mostra la versione dello script. |
 | `-h`, `--help` | No | Mostra l'aiuto in linea. |
 
@@ -253,10 +268,11 @@ File generati:
 | **10** | `BASH4LLM_ERR_NO_API_KEY` | Chiave API non trovata per il provider attivo. |
 | **11** | `BASH4LLM_ERR_BAD_MODEL` | Modello non valido o formato non supportato. |
 | **12** | `BASH4LLM_ERR_CURL_FAILED` | Errore durante l'esecuzione della richiesta HTTP (`curl`). |
+| **13** | `BASH4LLM_ERR_PARSE` | Errore di parsing JSON, o fallimento della validazione sintattica/SML/REGEX della risposta. |
 | **14** | `BASH4LLM_ERR_NO_PROMPT` | Prompt o payload di input vuoto. |
 | **15** | `BASH4LLM_ERR_TMP` | Errore di filesystem, allocazione temporanea o lock. |
 | **16** | `BASH4LLM_ERR_API` | Errore restituito dall'API o completamento vuoto. |
-| **17** | `BASH4LLM_ERR_SEC` | Violazione della politica di sicurezza o mancata corrispondenza dell'hash del modulo. |
+| **17** | `BASH4LLM_ERR_SEC` | Violazione della politica di sicurezza o mancata corrispondenza dell'hash/firma del modulo. |
 
 ---
 
@@ -266,3 +282,13 @@ File generati:
 * **Autore:** Cristian Evangelisti  
 * **Email:** `opensource@cevangel.anonaddy.me`  
 * **Repository:** [GitHub kamaludu/bash4llm](https://github.com/kamaludu/bash4llm)
+
+### Uso di strumenti di Intelligenza Artificiale nello sviluppo
+
+Bash4LLM è un'opera sviluppata dall'autore con un **uso esteso di strumenti di Intelligenza Artificiale generativa (LLM)** per progettazione, implementazione, analisi, debugging, revisione e documentazione.
+
+Gli LLM sono stati utilizzati come **strumenti di sviluppo**, non come generatori autonomi del progetto. L'autore ha definito l'architettura, i requisiti e le scelte progettuali, orchestrando il lavoro attraverso modelli e sessioni differenti e utilizzando gli stessi LLM anche per esaminare, mettere in discussione e criticare il lavoro prodotto da altri modelli.
+
+Il codice e la documentazione sono quindi il risultato di un **processo iterativo e supervisionato**, nel quale le proposte generate dagli LLM sono state valutate, confrontate, modificate o scartate dall'autore. Le decisioni finali e il risultato complessivo del progetto sono dell'autore.
+
+L'uso degli LLM offre significativi vantaggi in termini di produttività, analisi e revisione, ma introduce anche rischi: **nessun processo di verifica può garantire che ogni errore o omissione venga individuato**. Questa informativa intende rendere trasparente sia l'ampiezza dell'utilizzo degli LLM sia il loro ruolo effettivo nel processo di sviluppo.
