@@ -1,8 +1,8 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.8.0",
-    "date": "2026-07-24"
+    "version": "2.8.5",
+    "date": "2026-08-07"
   },
   "functions": [
     {
@@ -24,9 +24,9 @@
     {
       "name": "refresh_models_dispatch",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando la routine dedicata del provider attivo (es. refresh_models_groq). Tenta prioritariamente l'invocazione passando il percorso del file di destinazione, ed esegue un fallback sulla versione senza argomenti in caso di firme non compatibili del metodo. Al rientro con successo, invoca print_persistence_reminder.",
+      "purpose": "Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando la routine dedicata del provider attivo (es. refresh_models_groq). Tenta prioritariamente l'invocazione passando il percorso del file di destinazione ed esegue un fallback sulla versione senza argomenti se necessario. Al rientro con successo, invoca print_persistence_reminder.",
       "input": "$1 (opzionale: percorso del file di modelli, default $MODELS_FILE).",
-      "output": "Lista locale dei modelli aggiornata sul disco. Ritorna stato 0 se completato con successo, o codici di errore in caso di fallimenti del provider o di interfaccia non definita (127).",
+      "output": "Lista locale dei modelli aggiornata sul disco. Ritorna stato 0 se completato con successo, o codice d'errore in caso di fallimenti del provider o se la funzione non è implementata (127).",
       "dependencies": ["type", "log_error", "log_info", "print_persistence_reminder"]
     },
     {
@@ -56,10 +56,10 @@
     {
       "name": "resolve_model",
       "category": "CORE_SETUP",
-      "purpose": "Risolve ed assegna il modello LLM finale da adottare seguendo un rigoroso ordine di precedenza sequenziale: 1. Se impostato esplicitamente via parametro CLI (-m/--model), adotta direttamente tale scelta. 2. Identifica il provider attivo (analizzando parametri CLI, leggendo il file canonico del provider $PROVIDER_FILE o adottando il fallback standard 'groq'). 3. Tenta di leggere la prima riga del file di configurazione specifico del modello per tale provider (model.<provider>). Se presente, valido e supportato, lo adotta dopo averlo normalizzato. 4. Tenta di richiamare la funzione di auto-selezione nativa del provider (auto_select_model_dispatch). Se restituisce un modello valido, lo adotta. 5. Esegue una scansione riga per riga del file dei modelli locali ($MODELS_FILE) fino alla soglia limite $MAX_MODELS alla ricerca del primo modello valido e supportato. 6. Tenta di recuperare il modello inserito all'interno del file di configurazione globale (config). 7. Cerca all'interno dell'elenco di modelli autorizzati accumulati nella whitelist $ALLOWED_MODELS. Se tutte le ricerche falliscono, restituisce un errore di selezione.",
+      "purpose": "Risolve ed assegna il modello LLM finale da adottare seguendo un ordine di precedenza sequenziale: 1. Se impostato via parametro CLI (-m/--model), adotta direttamente tale scelta. 2. Identifica il provider attivo. 3. Tenta di leggere la prima riga del file di configurazione del modello per tale provider (model.<provider>). Se presente, valido e supportato, lo adotta dopo averlo normalizzato. 4. Tenta di richiamare auto_select_model_dispatch. 5. Scansiona il file dei modelli locali ($MODELS_FILE) fino al limite $MAX_MODELS alla ricerca del primo modello valido. 6. Tenta di recuperare il modello dal file di configurazione globale (config). 7. Cerca nella whitelist $ALLOWED_MODELS. Se tutte le ricerche falliscono, restituisce un errore.",
       "input": "Nessuno.",
-      "output": "Ritorna stato 0 se risolto (assegnando il nome del modello alla variabile globale $MODEL), 1 in caso di totale fallimento di risoluzione.",
-      "side_effects": "Letture multiple sul file-system, invocazione di validatori.",
+      "output": "Ritorna stato 0 se risolto (assegnando il nome del modello a $MODEL), 1 in caso di fallimento.",
+      "side_effects": "Letture sul filesystem, invocazione dei validatori.",
       "dependencies": ["canonical_model_file", "canonical_provider_file", "sed", "awk", "validate_model_core", "validate_model_dispatch", "auto_select_model_dispatch", "_normalize_model_name", "is_supported_model", "log_warn", "log_error"]
     },
     {
@@ -67,13 +67,13 @@
       "category": "CORE_SETUP",
       "purpose": "Dispaccia ed orchestra la costruzione del file JSON di richiesta API richiamando dinamicamente la routine dedicata del provider attivo (buildpayload_<provider>).",
       "input": "Nessuno.",
-      "output": "Generazione del file di payload. Ritorna stato 0, o termina lo script con codice d'errore BASH4LLM_ERR_API se la funzione non è implementata nel modulo.",
+      "output": "Generazione del file di payload. Ritorna stato 0, o termina lo script con codice d'errore BASH4LLM_ERR_API se la funzione non è implementata.",
       "dependencies": ["ensure_run_tmpdir", "call_provider", "log_error"]
     },
     {
       "name": "call_api_once",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione di una singola chiamata API sincrona non-streaming richiamando la routine dedicata del provider attivo (call_api_<provider>). Se è attiva la simulazione dry-run, esclude la chiamata reale e visualizza a schermo a scopo diagnostico l'intestazione del payload d'invio.",
+      "purpose": "Dispaccia l'esecuzione di una singola chiamata API sincrona non-streaming richiamando la routine dedicata del provider attivo (call_api_<provider>). Se è attiva la simulazione dry-run, esclude la chiamata reale e visualizza l'intestazione del payload d'invio.",
       "input": "Nessuno.",
       "output": "Ritorna lo stato dell'esecuzione della chiamata o 0 se operato in simulazione.",
       "dependencies": ["call_provider", "show_payload_head", "log_info", "log_error"]
@@ -81,10 +81,10 @@
     {
       "name": "call_api_streaming",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione della chiamata API in streaming richiamando la routine dedicata del provider attivo (call_api_streaming_<provider>) sotto lock di thread esclusivo. Implementa un meccanismo di ripristino dei segnali per catturare in sicurezza l'interruzione utente (SIGINT/Ctrl+C) rilasciando tempestivamente il lock di concorrenza del database.",
+      "purpose": "Dispaccia l'esecuzione della chiamata API in streaming richiamando la routine dedicata del provider attivo (call_api_streaming_<provider>) sotto lock di thread esclusivo. Applica il controllo del rate-limiting e ripristina i segnali per catturare in sicurezza l'interruzione utente (SIGINT/Ctrl+C) rilasciando il lock.",
       "input": "Nessuno.",
       "output": "Ritorna lo stato dell'esecuzione o 0 se simulato via dry-run.",
-      "dependencies": ["acquire_thread_lock", "release_thread_lock", "call_provider", "show_payload_head", "log_info", "log_error"]
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "check_local_rate_limit", "call_provider", "show_payload_head", "log_info", "log_error"]
     },
     {
       "name": "extract_api_error",
@@ -97,29 +97,37 @@
     {
       "name": "detect_empty_edge_case",
       "category": "CORE_SETUP",
-      "purpose": "Algoritmo diagnostico per rilevare ed intercettare 'risposte vuote' anomale dei provider (situazioni in cui l'API restituisce stato HTTP 200 e termina la generazione con motivo 'stop' o assenza di token, ma senza produrre alcun testo utile). Analizza il file di risposta $RESP ed estrae metadati come l'ID richiesta, il finish reason e il conteggio dei token generati per classificare l'evento.",
+      "purpose": "Rileva ed intercetta 'risposte vuote' anomale dei provider (situazioni in cui l'API restituisce HTTP 200 e termina la generazione con motivo 'stop' o assenza di token, ma senza produrre testo utile). Analizza $RESP ed estrae metadati come ID richiesta, finish reason e conteggio token.",
       "input": "Nessuno.",
-      "output": "Assegna il verdetto booleano a $BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli in variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).",
-      "side_effects": "Duplicazione temporanea del file per l'analisi sicura.",
+      "output": "Assegna il verdetto a $BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli nelle variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).",
+      "side_effects": "Duplicazione temporanea del file per l'analisi.",
       "dependencies": ["_tmpf", "cp", "is_valid_json_file", "jq", "rm"]
     },
     {
       "name": "finalize_and_output",
       "category": "CORE_SETUP",
-      "purpose": "Formatta e visualizza i risultati finali generati in base alla modalità selezionata in $OUTPUT_MODE (testo, raw, json o pretty). Inoltre, se l'output testuale supera la soglia di caratteri $THRESHOLD o se è forzato dall'utente via --save, si occupa di salvare i risultati nel file-system in modo transazionale e concorrenziale tramite un file di staging temporaneo e lock esclusivi sul file storico di destinazione.",
+      "purpose": "Applica la sanitizzazione dell'output se SANITIZE_OUTPUT=1 (via security/output-sanitizer.sh o fallback POSIX), quindi formatta e visualizza i risultati secondo $OUTPUT_MODE (testo, raw, json o pretty). Se l'output testuale supera $THRESHOLD o se è richiesto via --save, salva i risultati su disco in modo transazionale tramite staging temporaneo e lock esclusivi.",
       "input": "$1 (formato: json, pretty, raw, text), $2 (stringa di testo del risultato).",
-      "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato fisicamente su disco se abilitato. Ritorna stato 0 o codice d'errore BASH4LLM_ERR_TMP.",
-      "side_effects": "Scrittura a schermo, generazione e spostamento atomico di file storici temporanei, creazione sicura di directory.",
-      "dependencies": ["_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "safe_mkdir", "dirname", "lock_exec", "log_error"]
+      "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato su disco se abilitato. Ritorna stato 0 o codice d'errore BASH4LLM_ERR_TMP.",
+      "side_effects": "Scrittura a schermo, generazione e spostamento atomico di file storici, creazione sicura di directory.",
+      "dependencies": ["is_truthy", "verify_module_integrity", "_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "safe_mkdir", "dirname", "lock_exec", "log_error"]
+    },
+    {
+      "name": "validate_response_syntax",
+      "category": "CORE_SETUP",
+      "purpose": "Esegue la validazione sintattica della risposta restituita dal modello. Quando VALIDATE_SML=1, verifica la presenza delle intestazioni obbligatorie dello standard SML v2.0 (SML_VERSION: 2.0, LISTEN_SUMMARY:, CONVERSATION_OUTCOME:, PROPOSED_TRANSITION:, EVIDENCE_TYPE:). Quando VALIDATE_REGEX è definita, verifica che la risposta rispetti l'espressione regolare POSIX ERE fornita.",
+      "input": "$1 (testo della risposta da convalidare).",
+      "output": "Ritorna stato 0 se la sintassi è valida, 1 altrimenti.",
+      "dependencies": ["is_truthy", "grep"]
     },
     {
       "name": "perform_request_once",
       "category": "CORE_SETUP",
-      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, applicando una logica concorrente protetta da lock sul thread attivo e ripristino sicuro dei segnali d'interruzione. Gestisce i retry automatici in caso di errori temporanei di rete (fino a $MAX_RETRIES tentativi con backoff), gli hook pre/post esecuzione (execute_isolated_hook), il controllo di rate-limiting (check_local_rate_limit), l'estrazione testuale, la diagnostica dei casi vuoti anomali (detect_empty_edge_case) e l'aggiornamento dello stato UI in last_api.json.",
+      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, protetta da lock sul thread attivo e ripristino sicuro dei segnali. Gestisce i retry automatici in caso di errori di rete (fino a $MAX_RETRIES), gli hook pre/post esecuzione (execute_isolated_hook), il controllo di rate-limiting (check_local_rate_limit), la validazione sintattica (validate_response_syntax), l'estrazione testuale, la diagnostica delle risposte vuote e l'aggiornamento dello stato UI in last_api.json.",
       "input": "Nessuno.",
-      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata con successo, o codice d'errore BASH4LLM_ERR_API in caso di fallimento definitivo.",
-      "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo (sleep), aggiornamenti dello stato UI, messaggi diagnostici su stderr, gestione dei file lock di concorrenza del database dei thread.",
-      "dependencies": ["acquire_thread_lock", "release_thread_lock", "execute_isolated_hook", "check_local_rate_limit", "call_api_once", "extract_text_from_resp", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
+      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata con successo, o codice d'errore BASH4LLM_ERR_API in caso di fallimento.",
+      "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo, aggiornamenti dello stato UI, messaggi diagnostici su stderr, gestione dei file lock di concorrenza.",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "execute_isolated_hook", "check_local_rate_limit", "call_api_once", "extract_text_from_resp", "validate_response_syntax", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
     },
     {
       "name": "collect_input_from_files",
@@ -145,22 +153,6 @@
       "output": "Ritorna stato 0 se leggibile, 1 in caso contrario."
     },
     {
-      "name": "trim",
-      "category": "CORE_SETUP",
-      "purpose": "Rimuove in modo efficiente gli spazi vuoti, i tabulatori e i caratteri di a capo dall'inizio e dalla fine di una stringa testuale passata.",
-      "input": "$1 (stringa da pulire).",
-      "output": "Stringa pulita stampata su stdout.",
-      "dependencies": ["awk", "printf"]
-    },
-    {
-      "name": "is_number",
-      "category": "CORE_SETUP",
-      "purpose": "Verifica se il valore testuale fornito rappresenta un valore numerico valido (intero o decimale).",
-      "input": "$1 (stringa da analizzare).",
-      "output": "Ritorna stato 0 se numerico, 1 altrimenti.",
-      "dependencies": ["awk", "printf"]
-    },
-    {
       "name": "is_supported_model",
       "category": "CORE_SETUP",
       "purpose": "Analizza il nome del modello e ne convalida la compatibilità con Bash4LLM⁺. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
@@ -181,8 +173,8 @@
       "category": "CORE_SETUP",
       "purpose": "Algoritmo centrale di validazione dei modelli. Normalizza il nome rimuovendo prefissi e spazi tramite il normalizzatore nativo del core. Controlla se è registrato nel file dei modelli locali e verifica se è escluso per via di formati non testuali via is_supported_model.",
       "input": "$1 (nome modello).",
-      "output": "Ritorna stato 0 se valido, 1 in caso d'errore (emettendo dettagli su stderr).",
-      "dependencies": ["_normalize_model_name", "grep", "awk", "is_supported_model", "printf"]
+      "output": "Ritorna stato 0 se valido, 1 in caso d'errore (emettendo dettagli tramite log_error).",
+      "dependencies": ["_normalize_model_name", "grep", "is_supported_model", "log_error"]
     },
     {
       "name": "load_local_config",
@@ -215,9 +207,17 @@
       "dependencies": ["type", "log_error", "log_info"]
     },
     {
+      "name": "_cleanup_sourced_env",
+      "category": "CORE_SETUP",
+      "purpose": "Pulisce lo spazio dei nomi della shell rimuovendo le funzioni interne private esportate durante l'integrazione interattiva via sourcing (quando BASH_SOURCE[0] != $0), prevenendo l'inquinamento dell'ambiente interattivo dell'utente.",
+      "input": "Nessuno.",
+      "output": "Effettua l'unset delle funzioni di runtime interne.",
+      "dependencies": ["unset"]
+    },
+    {
       "name": "assemble_content",
       "category": "CORE_PROVIDER",
-      "purpose": "Compila ed organizza la stringa del prompt di input principale $CONTENT che verrà inviata al modello LLM. Segue una catena di priorità esclusive: 1. Se è configurato un JSON utente in $JSON_INPUT, pulisce la variabile $CONTENT ed esce (in quanto il JSON di input definisce autonomamente i messaggi). 2. Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne raccoglie ed unifica i contenuti via collect_input_from_files. Se sono presenti argomenti posizionali aggiuntivi, li annette in coda come frammenti testuali. 3. Se è richiesto l'uso di un template ($TEMPLATE), preleva il file del modello dalla directory dei template, esegue la sostituzione della stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito (proveniente da file, da stdin o da argomenti posizionali) usando awk con file di staging intermedi temporanei, e assegna il testo risultante a $CONTENT. 4. Se è presente dell'input catturato dallo standard input ($STDIN_CONTENT), lo adotta come prompt principale, allegando in coda eventuali argomenti posizionali. 5. Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed unisce nel prompt testuale principale via expand_args_to_content.",
+      "purpose": "Compila ed organizza la stringa del prompt di input principale $CONTENT che verrà inviata al modello LLM. Segue una catena di priorità esclusive: 1. Se è configurato un JSON utente in $JSON_INPUT, pulisce $CONTENT ed esce. 2. Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne raccoglie ed unifica i contenuti via collect_input_from_files. Se sono presenti argomenti posizionali aggiuntivi, li annette in coda. 3. Se è richiesto l'uso di un template ($TEMPLATE), sostituisce la stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito. 4. Se è presente dell'input catturato dallo standard input ($STDIN_CONTENT), lo adotta come prompt principale. 5. Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed unisce via expand_args_to_content.",
       "input": "Nessuno.",
       "output": "Stringa compilata assegnata alla variabile globale $CONTENT.",
       "side_effects": "Lettura file, generazione e distruzione di file di staging temporanei sul disco.",
