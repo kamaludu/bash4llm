@@ -76,7 +76,7 @@ This macro-section handles primary shell initialization, environment sanitizatio
     * `BASH4LLM_OPENSSL_ACTIVE`: Boolean flag attesting operational availability of the OpenSSL module.
     * `SAFE_THREAD_ID`: Thread identifier cryptographically anonymized via SHA-256/MD5.
     * `BASH4LLM_KEY_MANUAL_PROMPT`: Tracks manual TTY insertion of the API key to trigger the persistence reminder.
-    * `VALIDATE_SML`, `VALIDATE_REGEX`, `SANITIZE_OUTPUT`, `JSON_DIAGNOSTICS`: Enable flags for Scintilla-Ready deterministic extensions.
+    * `VALIDATE_SML`, `VALIDATE_REGEX`, `SANITIZE_OUTPUT`, `JSON_DIAGNOSTICS`: Enable flags for Deterministic extensions.
 
 ### 2.2 Functional Mapping by Section in PRECORE_BOOT
 
