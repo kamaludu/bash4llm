@@ -1,153 +1,227 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.8.0",
-    "date": "2026-07-24"
+    "version": "2.8.5",
+    "date": "2026-08-07"
   },
-  "code_blocks": [
+  "functions": [
     {
-      "name": "PRECORE_BOOT_SETUP_SHELL",
-      "category": "PRECORE_BOOT",
-      "phase": "Inizializzazione primaria assoluta dello script.",
-      "action": "Imposta i parametri operativi restrittivi della shell Bash (set -euo pipefail) esclusivamente in caso di esecuzione diretta per prevenire l'inquinamento della shell interattiva chiamante. Esegue la bonifica dell'ambiente (unset BASH_ENV ENV CDPATH GLOBIGNORE), disabilita la scrittura dei file di core dump per proteggere le chiavi API in RAM, imposta l'identità del software alla versione 2.8.0 e inizializza i flag di piattaforma."
-    },
-    {
-      "name": "PRECORE_BOOT_ENVIRONMENT_AUTODETECTION",
-      "category": "PRECORE_BOOT",
-      "phase": "Rilevamento dell'ambiente ospite.",
-      "action": "Esegue un'analisi nativa del sistema operativo ospite (identificando macOS/Darwin, BSD, Termux/Android, WSL, Cygwin/MSYS o Linux generico) ed esporta globalmente i corrispondenti flag booleani BASH4LLM_PLAT_... Inizializza inoltre l'array associativo BASH4LLM_MODEL_CACHE adibito a cache in memoria per i nomi dei modelli normalizzati."
-    },
-    {
-      "name": "PRECORE_BOOT_SETUP_ENV_CMDS",
-      "category": "PRECORE_BOOT",
-      "phase": "Validazione dei requisiti software di sistema.",
-      "action": "Esegue una scansione del percorso di sistema per accertarsi che tutte le utilità essenziali richieste siano installate nel sistema (bash, jq, curl, mktemp, stat, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf, comm). Se un'utilità risulta assente, emette un messaggio di errore fatale ed interrompe l'esecuzione con stato 15. Il comando flock è intenzionalmente escluso da questo controllo preventivo per consentire il fallback nativo su macOS, BSD e Android."
-    },
-    {
-      "name": "PRECORE_BOOT_DIR_PATH",
-      "category": "PRECORE_BOOT",
-      "phase": "Determinazione della directory di runtime.",
-      "action": "Risolve il percorso radice dell'installazione del software ($BASH4LLM_DIR) adottando in ordine di priorità la variabile d'ambiente dedicata, il percorso derivato da $BASH4LLM_ROOT o la cartella predefinita in $SCRIPTDIR/bash4llm.d (escludendo l'uso di percorsi sotto /tmp). Crea transazionalmente e in sicurezza la gerarchia di directory operative tramite safe_mkdir (config, models, templates, history, tmp, var/run, var/run/locks, extras, providers, history/threads) impostando permessi restrittivi (700) e mitigando minacce di symlink attack."
-    },
-    {
-      "name": "PRECORE_BOOT_CRYPTOGRAPHIC_VAULT_LOAD",
-      "category": "PRECORE_BOOT",
-      "phase": "Inizializzazione del Key Vault crittografico.",
-      "action": "Verifica se il modulo crittografico è abilitato dall'utente (BASH4LLM_VAULT_ENABLED=1). In caso positivo, valida l'integrità del modulo openssl-helper.sh tramite verify_module_integrity contro manifest.sha256 e lo importa nel runtime impostando BASH4LLM_OPENSSL_ACTIVE a 1."
-    },
-    {
-      "name": "PRECORE_BOOT_CLI_HELPERS",
-      "category": "PRECORE_BOOT",
-      "phase": "Intercettazione opzioni diagnostiche rapide ed umask.",
-      "action": "Ispeziona in modo preventivo gli argomenti a riga di comando per intercettare ed eseguire immediatamente comandi diagnostici che non richiedono l'avvio del runtime complessivo: linter di sicurezza (--check-config), spiegazione dei codici d'errore (--explain-error <codice>) o ispezione dei percorsi fisici della suite. Imposta la maschera dei permessi di creazione file a umask 077."
-    },
-    {
-      "name": "PRECORE_BOOT_DETECT_B64_OPTS",
-      "category": "PRECORE_BOOT",
-      "phase": "Configurazione runtime delle dipendenze di codifica.",
-      "action": "Invoca la funzione _detect_base64_opts per configurare le opzioni corrette di Base64 in base all'architettura di sistema ospite."
-    },
-    {
-      "name": "block_mkdir_thread_cache",
-      "category": "PRECORE_RUN",
-      "phase": "Avvio del sistema di cache di Bash4LLM⁺.",
-      "action": "Alloca e configura sul file-system la cartella dedicata a ospitare la cache temporanea dei messaggi e dei parametri dei thread ($THREAD_CACHE_DIR), blindandone i permessi d'accesso a 700."
-    },
-    {
-      "name": "block_ensure_config_dir",
-      "category": "PRECORE_RUN",
-      "phase": "Validazione dell'ambiente transazionale di runtime.",
-      "action": "Garantisce l'esistenza e l'accessibilità della directory di configurazione, richiamando ensure_config_dir o creando la cartella qualora non si operi in esecuzione esclusiva."
-    },
-    {
-      "name": "block_ensure_run_tmpdir",
-      "category": "PRECORE_RUN",
-      "phase": "Inizializzazione dell'ambiente provvisorio di istanza.",
-      "action": "Se non si è in modalità 'solo caricamento sorgenti' ($BASH4LLM_SOURCE_ONLY == 0), invoca ensure_run_tmpdir. In caso di fallimento nella creazione dei percorsi temporanei del runtime, emette un log di errore fatale ed interrompe l'esecuzione con codice d'uscita BASH4LLM_ERR_TMP (15)."
-    },
-    {
-      "name": "block_normalize_bool_env_call",
-      "category": "PRECORE_RUN",
-      "phase": "Normalizzazione delle configurazioni d'ambiente.",
-      "action": "Esegue _normalize_bool_env per uniformare i flag booleani prima di processare la logica dello script."
-    },
-    {
-      "name": "block_last_check_lines_default",
-      "category": "PRECORE_RUN",
-      "phase": "Impostazione delle variabili di controllo.",
-      "action": "Definisce il valore di default a 50 per la variabile $LAST_CHECK_LINES (utilizzata per scansioni e verifiche storiche) qualora questa non sia pre-configurata in ambiente dall'utente."
-    },
-    {
-      "name": "GROQ_API_KEY_override",
-      "category": "PROVIDER",
-      "phase": "Avvio ed autenticazione delle richieste del provider.",
-      "action": "Verifica in modo sicuro (tramite declare -p per evitare errori in modalità nounset) se è impostata una variabile d'ambiente personalizzata per la chiave API di Groq (PROVIDER_API_ENV_groq). Se presente e valorizzata, estrae e sovrascrive il valore all'interno della variabile globale $GROQ_API_KEY per l'autenticazione delle richieste."
-    },
-    {
-      "name": "parse_cli_arguments",
+      "name": "call_provider",
       "category": "CORE_SETUP",
-      "phase": "Parsing iniziale dei parametri a riga di comando.",
-      "action": "Analizza in modo iterativo tutti gli argomenti passati da CLI. Registra e configura le opzioni booleane e i parametri complessi, comprese le direttive concorrenti per i thread (--thread, --thread-window, --init-thread, --delete-thread, --rename-thread, --title), la Master Test Suite (--run-all-tests) ed il Key Vault crittografico (--vault). Raggruppa i parametri posizionali o i prompt liberi all'interno dell'array $ARGS."
+      "purpose": "Esegue in modo dinamico una specifica funzione dichiarata da un modulo provider esterno, a patto che la funzione risulti regolarmente caricata in memoria.",
+      "input": "$1 (nome della funzione da richiamare), seguito in coda dai relativi parametri da inoltrare.",
+      "output": "Restituisce lo stato d'uscita della funzione eseguita, o il codice di errore 127 se la funzione non è definita nel runtime.",
+      "dependencies": ["type"]
     },
     {
-      "name": "source_session_engine",
+      "name": "validate_provider_key_dispatch",
       "category": "CORE_SETUP",
-      "phase": "Integrazione ed attivazione dei moduli estesi.",
-      "action": "Rileva e tenta di importare lo script del Session Engine esterno (session-engine.sh). Esegue la verifica di integrità SHA-256 tramite verify_module_integrity ed un dry-run di analisi sintattica (bash -n). Se i controlli hanno successo e l'engine non è disabilitato da configurazione utente, attiva la flag _engine_available=1, altrimenti imposta il fallback automatico sui metodi storici legacy integrati."
+      "purpose": "Dispaccia l'esecuzione della validazione formale della chiave API richiamando la routine dedicata del provider attivo (es. validate_key_groq).",
+      "input": "$1 (chiave API da convalidare).",
+      "output": "Ritorna lo stato d'uscita del validatore specifico, o 127 se la funzione non è implementata dal provider.",
+      "dependencies": ["type"]
     },
     {
-      "name": "verify_api_calls_and_rebuild_providers",
+      "name": "refresh_models_dispatch",
       "category": "CORE_SETUP",
-      "phase": "Convalida delle chiamate esterne e mappatura dei plug-in.",
-      "action": "Blocca l'esecuzione dello script se è configurata la chiave API ma le chiamate esterne sono inibite senza essere in modalità di simulazione dry-run. Esegue una scansione dei file all'interno della directory dei provider (providers/*.sh) per raccogliere dinamicamente tutti i moduli dei provider installati e comporre la stringa globale aggiornata $SUPPORTED_PROVIDERS."
+      "purpose": "Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando la routine dedicata del provider attivo (es. refresh_models_groq). Tenta prioritariamente l'invocazione passando il percorso del file di destinazione ed esegue un fallback sulla versione senza argomenti se necessario. Al rientro con successo, invoca print_persistence_reminder.",
+      "input": "$1 (opzionale: percorso del file di modelli, default $MODELS_FILE).",
+      "output": "Lista locale dei modelli aggiornata sul disco. Ritorna stato 0 se completato con successo, o codice d'errore in caso di fallimenti del provider o se la funzione non è implementata (127).",
+      "dependencies": ["type", "log_error", "log_info", "print_persistence_reminder"]
     },
     {
-      "name": "raw_listings",
+      "name": "validate_model_dispatch",
       "category": "CORE_SETUP",
-      "phase": "Elaborazione delle interrogazioni rapide.",
-      "action": "Intercetta le richieste di visualizzazione cruda dei provider (--list-providers-raw) o dei modelli locali (--list-models-raw), le stampa riga per riga su stdout ed esce immediatamente con stato 0 (o codici di errore in caso di elenchi vuoti o assenti) senza procedere oltre con l'esecuzione dello script."
+      "purpose": "Dispaccia la validazione sintattica e di compatibilità del modello richiamando la routine dedicata del provider attivo (es. validate_model_groq). Se il provider non supporta la convalida specializzata, emette un avvertimento una tantum ed esegue una convalida permissiva di fallback.",
+      "input": "$1 (nome del modello).",
+      "output": "Ritorna lo stato di uscita del validatore o 0 se opera in convalida permissiva.",
+      "dependencies": ["type", "log_warn"]
     },
     {
-      "name": "immediate_actions",
+      "name": "auto_select_model_dispatch",
       "category": "CORE_SETUP",
-      "phase": "Esecuzione comandi immediati ed installazione estensioni.",
-      "action": "Elabora ed esegue le azioni amministrative che non richiedono l'avvio delle chiamate API: eliminazione fisica ed atomica di un thread database (--delete-thread), ridenominazione transazionale dei metadati di un thread (--rename-thread), elenco dei provider installati, elenco dei modelli, configurazione del modello di default per il provider attivo, esecuzione della Master Test Suite automatizzata (--run-all-tests previa verifica di integrità), sincronizzazione e blindatura dei permessi delle estensioni locali (--install-extras con verifica manifest.sha256) ed inizializzazione formale di un nuovo thread (--init-thread)."
+      "purpose": "Dispaccia la selezione automatica del modello chiamando la routine nativa del provider attivo (es. auto_select_model_groq).",
+      "input": "Nessuno.",
+      "output": "Stampa il nome del modello selezionato su stdout. Ritorna stato 0 in caso di successo, 127 se non supportato.",
+      "dependencies": ["type"]
     },
     {
-      "name": "normalize_boolean_flags",
+      "name": "_lock_security_guards",
       "category": "CORE_SETUP",
-      "phase": "Normalizzazione e allineamento logico dei flag booleani.",
-      "action": "Scorre una lista predefinita di variabili di controllo booleane dello script, converte i loro valori in stati numerici puri 0 o 1 tramite is_truthy, uniformandone l'elaborazione interna."
+      "purpose": "Marca le funzioni critiche di sicurezza, mediazione di rete e gestione del filesystem come 'readonly -f' al termine del bootstrap, impedendone il hijacking o la ridefinizione in memoria da parte di script o sotto-shell.",
+      "input": "Nessuno.",
+      "output": "Funzioni bloccate come read-only nel contesto di memoria dello script.",
+      "dependencies": ["readonly"]
     },
     {
-      "name": "CORE_PROVIDER_PRO_LOAD_INITIALIZATION",
+      "name": "resolve_model",
+      "category": "CORE_SETUP",
+      "purpose": "Risolve ed assegna il modello LLM finale da adottare seguendo un ordine di precedenza sequenziale: 1. Se impostato via parametro CLI (-m/--model), adotta direttamente tale scelta. 2. Identifica il provider attivo. 3. Tenta di leggere la prima riga del file di configurazione del modello per tale provider (model.<provider>). Se presente, valido e supportato, lo adotta dopo averlo normalizzato. 4. Tenta di richiamare auto_select_model_dispatch. 5. Scansiona il file dei modelli locali ($MODELS_FILE) fino al limite $MAX_MODELS alla ricerca del primo modello valido. 6. Tenta di recuperare il modello dal file di configurazione globale (config). 7. Cerca nella whitelist $ALLOWED_MODELS. Se tutte le ricerche falliscono, restituisce un errore.",
+      "input": "Nessuno.",
+      "output": "Ritorna stato 0 se risolto (assegnando il nome del modello a $MODEL), 1 in caso di fallimento.",
+      "side_effects": "Letture sul filesystem, invocazione dei validatori.",
+      "dependencies": ["canonical_model_file", "canonical_provider_file", "sed", "awk", "validate_model_core", "validate_model_dispatch", "auto_select_model_dispatch", "_normalize_model_name", "is_supported_model", "log_warn", "log_error"]
+    },
+    {
+      "name": "build_payload_from_vars",
+      "category": "CORE_SETUP",
+      "purpose": "Dispaccia ed orchestra la costruzione del file JSON di richiesta API richiamando dinamicamente la routine dedicata del provider attivo (buildpayload_<provider>).",
+      "input": "Nessuno.",
+      "output": "Generazione del file di payload. Ritorna stato 0, o termina lo script con codice d'errore BASH4LLM_ERR_API se la funzione non è implementata.",
+      "dependencies": ["ensure_run_tmpdir", "call_provider", "log_error"]
+    },
+    {
+      "name": "call_api_once",
+      "category": "CORE_SETUP",
+      "purpose": "Dispaccia l'esecuzione di una singola chiamata API sincrona non-streaming richiamando la routine dedicata del provider attivo (call_api_<provider>). Se è attiva la simulazione dry-run, esclude la chiamata reale e visualizza l'intestazione del payload d'invio.",
+      "input": "Nessuno.",
+      "output": "Ritorna lo stato dell'esecuzione della chiamata o 0 se operato in simulazione.",
+      "dependencies": ["call_provider", "show_payload_head", "log_info", "log_error"]
+    },
+    {
+      "name": "call_api_streaming",
+      "category": "CORE_SETUP",
+      "purpose": "Dispaccia l'esecuzione della chiamata API in streaming richiamando la routine dedicata del provider attivo (call_api_streaming_<provider>) sotto lock di thread esclusivo. Applica il controllo del rate-limiting e ripristina i segnali per catturare in sicurezza l'interruzione utente (SIGINT/Ctrl+C) rilasciando il lock.",
+      "input": "Nessuno.",
+      "output": "Ritorna lo stato dell'esecuzione o 0 se simulato via dry-run.",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "check_local_rate_limit", "call_provider", "show_payload_head", "log_info", "log_error"]
+    },
+    {
+      "name": "extract_api_error",
+      "category": "CORE_SETUP",
+      "purpose": "Ispeziona ed estrae in modo strutturato l'eventuale messaggio d'errore formale restituito dal provider all'interno del file di risposta $RESP (ricercando campi errore standard nel JSON o leggendo la prima riga di testo crudo).",
+      "input": "Nessuno (analizza $RESP).",
+      "output": "Messaggio d'errore stampato su standard output.",
+      "dependencies": ["jq", "awk"]
+    },
+    {
+      "name": "detect_empty_edge_case",
+      "category": "CORE_SETUP",
+      "purpose": "Rileva ed intercetta 'risposte vuote' anomale dei provider (situazioni in cui l'API restituisce HTTP 200 e termina la generazione con motivo 'stop' o assenza di token, ma senza produrre testo utile). Analizza $RESP ed estrae metadati come ID richiesta, finish reason e conteggio token.",
+      "input": "Nessuno.",
+      "output": "Assegna il verdetto a $BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli nelle variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).",
+      "side_effects": "Duplicazione temporanea del file per l'analisi.",
+      "dependencies": ["_tmpf", "cp", "is_valid_json_file", "jq", "rm"]
+    },
+    {
+      "name": "finalize_and_output",
+      "category": "CORE_SETUP",
+      "purpose": "Applica la sanitizzazione dell'output se SANITIZE_OUTPUT=1 (via security/output-sanitizer.sh o fallback POSIX), quindi formatta e visualizza i risultati secondo $OUTPUT_MODE (testo, raw, json o pretty). Se l'output testuale supera $THRESHOLD o se è richiesto via --save, salva i risultati su disco in modo transazionale tramite staging temporaneo e lock esclusivi.",
+      "input": "$1 (formato: json, pretty, raw, text), $2 (stringa di testo del risultato).",
+      "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato su disco se abilitato. Ritorna stato 0 o codice d'errore BASH4LLM_ERR_TMP.",
+      "side_effects": "Scrittura a schermo, generazione e spostamento atomico di file storici, creazione sicura di directory.",
+      "dependencies": ["is_truthy", "verify_module_integrity", "_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "safe_mkdir", "dirname", "lock_exec", "log_error"]
+    },
+    {
+      "name": "validate_response_syntax",
+      "category": "CORE_SETUP",
+      "purpose": "Esegue la validazione sintattica della risposta restituita dal modello. Quando VALIDATE_SML=1, verifica la presenza delle intestazioni obbligatorie dello standard SML v2.0 (SML_VERSION: 2.0, LISTEN_SUMMARY:, CONVERSATION_OUTCOME:, PROPOSED_TRANSITION:, EVIDENCE_TYPE:). Quando VALIDATE_REGEX è definita, verifica che la risposta rispetti l'espressione regolare POSIX ERE fornita.",
+      "input": "$1 (testo della risposta da convalidare).",
+      "output": "Ritorna stato 0 se la sintassi è valida, 1 altrimenti.",
+      "dependencies": ["is_truthy", "grep"]
+    },
+    {
+      "name": "perform_request_once",
+      "category": "CORE_SETUP",
+      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, protetta da lock sul thread attivo e ripristino sicuro dei segnali. Gestisce i retry automatici in caso di errori di rete (fino a $MAX_RETRIES), gli hook pre/post esecuzione (execute_isolated_hook), il controllo di rate-limiting (check_local_rate_limit), la validazione sintattica (validate_response_syntax), l'estrazione testuale, la diagnostica delle risposte vuote e l'aggiornamento dello stato UI in last_api.json.",
+      "input": "Nessuno.",
+      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata con successo, o codice d'errore BASH4LLM_ERR_API in caso di fallimento.",
+      "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo, aggiornamenti dello stato UI, messaggi diagnostici su stderr, gestione dei file lock di concorrenza.",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "execute_isolated_hook", "check_local_rate_limit", "call_api_once", "extract_text_from_resp", "validate_response_syntax", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
+    },
+    {
+      "name": "collect_input_from_files",
+      "category": "CORE_SETUP",
+      "purpose": "Legge e concatena in un'unica stringa i contenuti di una lista di file di input previa validazione di sicurezza via validate_file_input, inserendo delimitatori visivi strutturati tra i file per consentire al modello LLM di distinguere nettamente le sorgenti.",
+      "input": "Array di percorsi di file ($@).",
+      "output": "Stringa di testo unificata stampata su stdout. Interrompe lo script con codice d'uscita 17 (BASH4LLM_ERR_SEC) se un file contiene byte nulli o dati binari non sicuri, o BASH4LLM_ERR_TMP se un file non è leggibile.",
+      "dependencies": ["file_readable", "validate_file_input", "cat", "log_error"]
+    },
+    {
+      "name": "expand_args_to_content",
+      "category": "CORE_SETUP",
+      "purpose": "Converte gli argomenti CLI posizionali in frammenti di prompt. Se un argomento corrisponde a un percorso file esistente e leggibile, ne valida la sicurezza via validate_file_input, ne legge e ne riversa il contenuto formattato all'interno del prompt complessivo, altrimenti lo accoda direttamente come testo letterale.",
+      "input": "Elementi accumulati nell'array $ARGS.",
+      "output": "Stringa di prompt unificata stampata su stdout.",
+      "dependencies": ["file_readable", "validate_file_input", "cat", "log_error"]
+    },
+    {
+      "name": "file_readable",
+      "category": "CORE_SETUP",
+      "purpose": "Convalida se il percorso indicato corrisponde a un file regolare effettivamente leggibile dall'utente corrente.",
+      "input": "$1 (percorso file).",
+      "output": "Ritorna stato 0 se leggibile, 1 in caso contrario."
+    },
+    {
+      "name": "is_supported_model",
+      "category": "CORE_SETUP",
+      "purpose": "Analizza il nome del modello e ne convalida la compatibilità con Bash4LLM⁺. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
+      "input": "$1 (nome del modello).",
+      "output": "Ritorna stato 0 se supportato, 1 se escluso.",
+      "dependencies": ["tr"]
+    },
+    {
+      "name": "list_models_cli",
+      "category": "CORE_SETUP",
+      "purpose": "Formatta e visualizza sulla console l'elenco dei modelli disponibili memorizzati in locale, evidenziando chiaramente quali modelli non sono supportati (perché richiedono input non-testuali) in modo che l'utente non selezioni configurazioni non ammesse.",
+      "input": "Nessuno (scansiona $MODELS_FILE).",
+      "output": "Elenco stampato su stderr. Ritorna stato 0 se completato, 1 se il file dei modelli è assente o vuoto.",
+      "dependencies": ["_normalize_model_name", "is_supported_model", "printf"]
+    },
+    {
+      "name": "validate_model_core",
+      "category": "CORE_SETUP",
+      "purpose": "Algoritmo centrale di validazione dei modelli. Normalizza il nome rimuovendo prefissi e spazi tramite il normalizzatore nativo del core. Controlla se è registrato nel file dei modelli locali e verifica se è escluso per via di formati non testuali via is_supported_model.",
+      "input": "$1 (nome modello).",
+      "output": "Ritorna stato 0 se valido, 1 in caso d'errore (emettendo dettagli tramite log_error).",
+      "dependencies": ["_normalize_model_name", "grep", "is_supported_model", "log_error"]
+    },
+    {
+      "name": "load_local_config",
+      "category": "CORE_SETUP",
+      "purpose": "Carica in memoria i parametri di configurazione definiti dall'utente nel file di configurazione locale (config all'interno della cartella $BASH4LLM_CONFIG_DIR), interpretando le righe chiave/valore e impostando le variabili globali corrispondenti (MODEL, TEMPERATURE/TURE, MAX_TOKENS, OUTPUT_MODE/FORMAT, THRESHOLD). Ignora commenti e righe vuote.",
+      "input": "Nessuno.",
+      "output": "Assegnazione di variabili globali di ambiente."
+    },
+    {
+      "name": "load_whitelist",
+      "category": "CORE_SETUP",
+      "purpose": "Carica in memoria e normalizza l'elenco di tutti i modelli autorizzati presenti nel file dei modelli locali per comporre la stringa globale di whitelist $ALLOWED_MODELS usata per i filtri di convalida dei modelli.",
+      "input": "Nessuno.",
+      "output": "Popola la variabile globale $ALLOWED_MODELS con i nomi normalizzati separati da a capo.",
+      "dependencies": ["_normalize_model_name"]
+    },
+    {
+      "name": "is_tty_out",
+      "category": "CORE_SETUP",
+      "purpose": "Verifica se lo standard output (stdout) dello script è collegato a un terminale interattivo (TTY) reale anziché essere ridiretto a un file o pipeline.",
+      "input": "Nessuno.",
+      "output": "Ritorna stato 0 se TTY, 1 in caso contrario."
+    },
+    {
+      "name": "validate_provider_interface",
+      "category": "CORE_SETUP",
+      "purpose": "Convalida che il modulo del provider caricato in memoria implementi correttamente le specifiche dell'interfaccia di Bash4LLM⁺. Verifica la presenza fisica delle funzioni obbligatorie (buildpayload_<provider> e call_api_<provider>), e traccia a scopo informativo la presenza o assenza di metodi opzionali (streaming, validazione modelli, auto-selezione, refresh modelli).",
+      "input": "$1 (nome identificativo del provider da analizzare).",
+      "output": "Ritorna stato 0 se l'interfaccia obbligatoria è pienamente implementata, 1 in caso contrario (emettendo errori critici loggati).",
+      "dependencies": ["type", "log_error", "log_info"]
+    },
+    {
+      "name": "_cleanup_sourced_env",
+      "category": "CORE_SETUP",
+      "purpose": "Pulisce lo spazio dei nomi della shell rimuovendo le funzioni interne private esportate durante l'integrazione interattiva via sourcing (quando BASH_SOURCE[0] != $0), prevenendo l'inquinamento dell'ambiente interattivo dell'utente.",
+      "input": "Nessuno.",
+      "output": "Effettua l'unset delle funzioni di runtime interne.",
+      "dependencies": ["unset"]
+    },
+    {
+      "name": "assemble_content",
       "category": "CORE_PROVIDER",
-      "phase": "Selezione e caricamento del modulo provider attivo.",
-      "action": "Scansiona la directory dei provider esterni per mappare i moduli installati. Determina il provider attivo leggendolo dai parametri CLI o dal file canonico del provider $PROVIDER_FILE (adottando 'groq' in caso di assenza). Se configurato un nuovo provider da CLI, lo salva nel file $PROVIDER_FILE con permessi 600, cancella il vecchio file dei modelli e il vecchio URL per forzare il nuovo allineamento delle API. In caso di selezione interattiva, visualizza il menu dei provider, acquisisce la scelta dell'utente tramite stdin, la memorizza e ne configura l'URL predefinito nel file canonico. Infine, invoca load_provider_module ed esegue la risoluzione dell'URL API."
-    },
-    {
-      "name": "CORE_PROVIDER_PRO_LOAD_VALIDATION_REFRESH",
-      "category": "CORE_PROVIDER",
-      "phase": "Validazione del modulo provider ed allineamento modelli.",
-      "action": "Verifica che il modulo del provider sia stato correttamente importato ed esegue la convalida della conformità della sua interfaccia via validate_provider_interface; in caso di errori strutturali termina con codice d'errore BASH4LLM_ERR_API (16). Se è stato richiesto esplicitamente il refresh dei modelli, richiede la chiave API ed avvia l'allineamento dei modelli locali tramite refresh_models_dispatch, terminando con stato 0. In subordine, se il file dei modelli locali $MODELS_FILE è assente o vuoto, tenta di eseguire un allineamento automatico dei modelli in background senza bloccare lo script."
-    },
-    {
-      "name": "CORE_PROVIDER_SHOW",
-      "category": "CORE_PROVIDER",
-      "phase": "Esecuzione delle risposte diagnostiche immediate.",
-      "action": "Gestisce e soddisfa le richieste diagnostiche e di ispezione dei percorsi dello script, terminando l'esecuzione con stato 0 dopo la visualizzazione dei dati: stampa della directory di configurazione, del file canonico del provider o del file del modello canonico. Gestisce inoltre SHOW_CONFIG (mostrando un riepilogo tabulare dettagliato dei parametri di runtime) e DIAGNOSTICS (avviando un'analisi di integrità completa del sistema controllando l'accessibilità fisica delle cartelle, lo stato di sblocco della sessione vault, l'esito dei test crittografici di PBKDF2 e l'esito del test di TLS Handshake verso l'endpoint remoto attivo)."
-    },
-    {
-      "name": "CORE_PROVIDER_MAIN_RESOLVE",
-      "category": "CORE_PROVIDER",
-      "phase": "Risoluzione del modello e cattura standard input.",
-      "action": "Se l'avvio è per solo bootstrap ($BOOTSTRAP_ONLY), esce immediatamente con stato 0. Altrimenti, carica la configurazione locale e le whitelist dei modelli, garantisce la stabilità della directory temporanea $RUN_TMPDIR, risolve il modello LLM finale da adottare via resolve_model ed esegue su di esso le convalide sintattiche e di interfaccia del provider (uscendo con codice BASH4LLM_ERR_BAD_MODEL se falliscono). Infine, cattura l'eventuale flusso di standard input (cat -) e, in presenza di un JSON strutturato, ne estrae transazionalmente la chiave API interna e i prompt d'ingresso, riversando l'input non strutturato in $STDIN_CONTENT."
-    },
-    {
-      "name": "CORE_PROVIDER_MAIN_EXECUTION",
-      "category": "CORE_PROVIDER",
-      "phase": "Esecuzione principale del prompt (Core Execution loop).",
-      "action": "Invoca assemble_content per generare il prompt definitivo. Gestisce i tre flussi di esecuzione principali della versione 2.8.0: 1) Elaborazione BATCH, leggendo il file batch riga per riga, definendo le finestre storiche dei thread via Session Engine o modulo legacy, compilando il payload ed inoltrando le chiamate; 2) Chat REPL, convalidando l'integrità crittografica via verify_module_integrity e delegando l'esecuzione a tui-repl.sh via exec bash; 3) Esecuzione Standard di Singolo Prompt, gestendo le finestre di contesto sotto lock atomico di concorrenza, compilando il payload ed eseguendo la chiamata HTTP tramite l'engine sicuro _exec_curl_secure() (streaming SSE via call_api_streaming o sincrona via perform_request_once) con relativo accodamento transazionale dei messaggi sul file NDJSON storico del thread."
+      "purpose": "Compila ed organizza la stringa del prompt di input principale $CONTENT che verrà inviata al modello LLM. Segue una catena di priorità esclusive: 1. Se è configurato un JSON utente in $JSON_INPUT, pulisce $CONTENT ed esce. 2. Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne raccoglie ed unifica i contenuti via collect_input_from_files. Se sono presenti argomenti posizionali aggiuntivi, li annette in coda. 3. Se è richiesto l'uso di un template ($TEMPLATE), sostituisce la stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito. 4. Se è presente dell'input catturato dallo standard input ($STDIN_CONTENT), lo adotta come prompt principale. 5. Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed unisce via expand_args_to_content.",
+      "input": "Nessuno.",
+      "output": "Stringa compilata assegnata alla variabile globale $CONTENT.",
+      "side_effects": "Lettura file, generazione e distruzione di file di staging temporanei sul disco.",
+      "dependencies": ["collect_input_from_files", "expand_args_to_content", "cat", "ensure_run_tmpdir", "_mktemp_in_dir", "awk", "mv", "rm", "printf"]
     }
   ]
 }
