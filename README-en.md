@@ -43,7 +43,7 @@ Native compatibility: Linux, macOS, WSL, Cygwin, Termux (Android), and BSD.
   Management of multi-turn conversational context with history saving in NDJSON format and cryptographic anonymization of thread IDs (`anonymize_thread_id`) to prevent personal data leaks. With the optional `session-engine.sh` module, token tracking, rotation/compression of history segments, and local TTL caching are enabled.
 * **Extensible modules and cryptographic signature**  
   Dynamic loading of external provider modules (`builtin`, `vendor`, `local`) into an anti-TOCTOU staging copy, with SHA-256 hash integrity verification and validation of the manifest's Ed25519 cryptographic signature (`manifest.sha256.sig`).
-* **Deterministic validation and Scintilla-Ready Extensions**  
+* **Deterministic validation**  
   Native support for response syntax validation (`--validate-sml` for SML v2.0, `--validate-regex`), zero-eval ANSI sanitization (`--sanitize`), structured JSON diagnostics (`--json-diagnostics`), function immutability guards (`readonly -f`), and local sliding-window rate limiting (30s).
 
 📘 **Architectural Documentation**: For a detailed analysis of macro-sections, isolation mechanisms and memory layout, see the **[TECHNICAL SPECIFICATION OF THE BASH4LLM⁺ SYSTEM (v2.8.5)](docs/bash4llm-arch-spec-en.md)**.
