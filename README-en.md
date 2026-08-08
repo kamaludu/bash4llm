@@ -46,7 +46,7 @@ Native compatibility: Linux, macOS, WSL, Cygwin, Termux (Android), and BSD.
 * **Deterministic validation and Scintilla-Ready Extensions**  
   Native support for response syntax validation (`--validate-sml` for SML v2.0, `--validate-regex`), zero-eval ANSI sanitization (`--sanitize`), structured JSON diagnostics (`--json-diagnostics`), function immutability guards (`readonly -f`), and local sliding-window rate limiting (30s).
 
-📘 **Architectural Documentation**: For a detailed analysis of macro-sections, isolation mechanisms and memory layout, see the **[Bash4LLM System Technical Specification⁺ (v2.8.5)](docs/bash4llm-arch-spec-en.md)**.
+📘 **Architectural Documentation**: For a detailed analysis of macro-sections, isolation mechanisms and memory layout, see the **[TECHNICAL SPECIFICATION OF THE BASH4LLM⁺ SYSTEM (v2.8.5)](docs/bash4llm-arch-spec-en.md)**.
 
 ---
 
