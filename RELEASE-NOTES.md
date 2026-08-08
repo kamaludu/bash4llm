@@ -5,7 +5,7 @@
 # Bash4LLM v2.8.5 — Release Notes  [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
 
 **Data / Date:** 2026-08-07  
-**Stato / Status:** Stable – Ed25519 Cryptographic Verification, Scintilla Deterministic Extensions & Domain Isolation Release (Upgrade from v2.8.0)
+**Stato / Status:** Stable – Ed25519 Cryptographic Verification, Deterministic Extensions & Domain Isolation Release (Upgrade from v2.8.0)
 
 ---
 
@@ -20,7 +20,7 @@
 * **Filtro di Sicurezza sugli Input File (`validate_file_input`)**: Convalida preventiva dei file caricati con `-f` o argomenti posizionali, con rifiuto immediato in caso di file vuoti, byte nulli o dati binari non stampabili.
 * **Estensione delle Guardie Read-Only (`_lock_security_guards`)**: Blocco `readonly -f` esteso a 8 funzioni critiche di sicurezza, rete e filesystem (`_exec_curl_secure`, `verify_module_integrity`, `validate_path_security`, `atomic_write`, `check_local_rate_limit`, `read_secure_input`, `enforce_network_policy`, `execute_isolated_hook`).
 
-### Estensioni Deterministiche (Scintilla-Ready)
+### Estensioni Deterministiche
 * **Validazione Sintattica SML v2.0 (`--validate-sml`)**: Verifica deterministica dell'output dell'LLM rispetto allo standard sintattico EBNF SML v2.0 (`SML_VERSION: 2.0`, `LISTEN_SUMMARY:`, `CONVERSATION_OUTCOME:`, `PROPOSED_TRANSITION:`, `EVIDENCE_TYPE:`).
 * **Validazione REGEX (`--validate-regex <expr>`)**: Convalida formale della risposta rispetto a un'espressione regolare POSIX Extended.
 * **Codice d'Errore Canonico 13 (`BASH4LLM_ERR_PARSE`)**: Inserita la costante di errore `13` (`BASH4LLMERR_PARSE`) per segnalare fallimenti di parsing JSON o il mancato superamento dei controlli sintattici SML/REGEX.
@@ -59,7 +59,7 @@
 * **Input File Binary Filter (`validate_file_input`)**: Preventive validation of files loaded via `-f` or positional arguments, with immediate rejection if empty, containing null bytes, or unprintable binary control characters.
 * **Expanded Read-Only Function Guards (`_lock_security_guards`)**: Extended `readonly -f` locking to 8 critical security, network, and filesystem functions (`_exec_curl_secure`, `verify_module_integrity`, `validate_path_security`, `atomic_write`, `check_local_rate_limit`, `read_secure_input`, `enforce_network_policy`, `execute_isolated_hook`).
 
-### Scintilla-Ready Deterministic Extensions
+### Deterministic Extensions
 * **SML v2.0 Syntax Validation (`--validate-sml`)**: Deterministic verification of LLM output against the SML v2.0 EBNF syntax standard (`SML_VERSION: 2.0`, `LISTEN_SUMMARY:`, `CONVERSATION_OUTCOME:`, `PROPOSED_TRANSITION:`, `EVIDENCE_TYPE:`).
 * **REGEX Validation (`--validate-regex <expr>`)**: Formal response validation against a POSIX Extended Regular Expression.
 * **Canonical Error Code 13 (`BASH4LLM_ERR_PARSE`)**: Introduced constant error code `13` (`BASH4LLMERR_PARSE`) to signal JSON parse errors or failed SML/REGEX syntax checks.
