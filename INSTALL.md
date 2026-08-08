@@ -8,10 +8,10 @@ Bash4LLM⁺ è un wrapper CLI in ambiente Bash progettato per l'interfacciamento
 
 ## 1. Requisiti di Sistema
 
-Bash4LLM⁺ richiede che i seguenti pacchetti ed utilità di sistema siano installati ed accessibili nel `PATH`:
+Bash4LLM⁺ richiede che i seguenti pacchetti ed utilità di sistema siano installati ed accessibili nel `PATH` (verificati tassativamente all'avvio dal core):
 
 - **bash** (versione 4.0 o superiore per il supporto agli array associativi)
-- **coreutils** (`cat`, `chmod`, `cp`, `date`, `head`, `mktemp`, `mv`, `printf`, `rm`, `sort`, `stat`, `tr`, `wc`, `tee`)
+- **coreutils** (`cat`, `chmod`, `cp`, `date`, `head`, `mktemp`, `mv`, `printf`, `rm`, `sort`, `stat`, `tr`, `wc`, `tee`, `base64`)
 - **findutils** (`find`)
 - **util-linux** (`xargs`)
 - **awk**, **sed**, **grep**, **comm**
@@ -71,8 +71,8 @@ I moduli aggiuntivi (provider secondari come Gemini, Mistral e Hugging Face, la 
 ```
 
 ### Meccanismi di Sicurezza dell'Installer:
-1. **Verifica Integrità SHA-256**: I moduli copiati vengono verificati rispetto al manifesto crittografico `extras/manifest.sha256`. Discrepanze o file alterati arrestano il processo con codice di uscita `17` (`BASH4LLM_ERR_SEC`).
-2. **Permessi del Filesystem**: I file vengono scritti applicando permessi restrittivi `0700` per le directory e `0600` per i file di configurazione e modulo.
+1. **Verifica Integrità SHA-256 e Firma Ed25519**: I moduli copiati vengono verificati rispetto al manifesto crittografico `extras/manifest.sha256` e alla firma d'autore Ed25519 (`manifest.sha256.sig`) tramite la chiave pubblica `official-ed25519.pub`. Discrepanze, file alterati o firme non valide arrestano il processo con codice di uscita `17` (`BASH4LLM_ERR_SEC`).
+2. **Principio del Minimo Privilegio e Permessi del Filesystem**: I file vengono scritti applicando permessi restrittivi `0700` per le directory e `0600` per i file di configurazione e modulo. Il bit di esecuzione (`700`) viene concesso in modo granulare solo agli entrypoint CLI autorizzati (`security/output-sanitizer.sh`, `chat/tui-repl.sh`, test scripts).
 3. **Rifiuto Symlink**: L'installer rifiuta la copia di collegamenti simbolici per prevenire vulnerabilità di attraversamento directory (*Directory Traversal*).
 
 ---
@@ -83,30 +83,31 @@ Alla prima esecuzione, lo script crea la directory di lavoro isolata `bash4llm.d
 
 ```text
 bash4llm.d/
-├── config/                                # Configurazione e persistenza provider
-│   ├── config                             # Variabili e parametri globali utente
-│   ├── provider                           # Nome del provider attivo
-│   ├── provider-url                       # URL dell'API del provider attivo
-│   ├── model.<provider>                   # Modello predefinito per il provider
-│   ├── keys.enc                           # Database cifrato della chiave Master (Vault)
-│   ├── keys.rec                           # Chiave di ripristino offline cifrata (Vault)
-│   ├── keys.dat                           # Payload cifrato delle chiavi API (Vault)
-│   ├── providers/                         # Configurazioni avanzate dei provider
+├── config/                                # Configurazione e persistenza provider (700)
+│   ├── config                             # Variabili e parametri globali utente (600)
+│   ├── provider                           # Nome del provider attivo (600)
+│   ├── provider-url                       # URL dell'API del provider attivo (600)
+│   ├── model.<provider>                   # Modello predefinito per il provider (600)
+│   ├── keys.enc                           # Database cifrato della chiave Master (Vault) (600)
+│   ├── keys.rec                           # Chiave di ripristino offline cifrata (Vault) (600)
+│   ├── keys.dat                           # Payload cifrato delle chiavi API (Vault) (600)
+│   ├── thread_cache/                      # Cache isolata con TTL per finestre dei thread (700)
+│   ├── providers/                         # Configurazioni avanzate dei provider (700)
 │   │   └── hf_endpoints                   # Mappatura modelli ed endpoint Hugging Face
-│   └── ui_state/                          # File JSON di stato per GUI ed automazioni
-│       ├── last_api.json                  # Stato dell'ultima chiamata API
-│       ├── last_history.json              # Stato dell'ultimo output salvato
-│       ├── provider_capabilities.json     # Capacità del provider attivo
-│       └── threads/                       # Metadati ed indici dei thread
-│           ├── index.json                 # Elenco dei thread registrati
+│   └── ui_state/                          # File JSON di stato per GUI ed automazioni (700)
+│       ├── last_api.json                  # Stato dell'ultima chiamata API (600)
+│       ├── last_history.json              # Stato dell'ultimo output salvato (600)
+│       ├── provider_capabilities.json     # Capacità del provider attivo (600)
+│       └── threads/                       # Metadati ed indici dei thread (700)
+│           ├── index.json                 # Elenco dei thread registrati (600)
 │           └── <safe_thread_id>.json      # Metadati di stato del thread (SHA-256)
-├── models/                                # Cache locale dei modelli per provider
-│   └── <provider>.txt                     # Elenco modelli approvati
-├── templates/                             # Prompt template riutilizzabili
-├── history/                               # Cronologia delle risposte salvate
-│   └── threads/                           # Storico conversazionale (.ndjson)
-│       └── <safe_thread_id>.ndjson        # Registro conversazione in NDJSON
-├── var/                                   # Processi e file di runtime isolati
+├── models/                                # Cache locale dei modelli per provider (700)
+│   └── <provider>.txt                     # Elenco modelli approvati (600)
+├── templates/                             # Prompt template riutilizzabili (700)
+├── history/                               # Cronologia delle risposte salvate (700)
+│   └── threads/                           # Storico conversazionale (.ndjson) (700)
+│       └── <safe_thread_id>.ndjson        # Registro conversazione in NDJSON (600)
+├── var/                                   # Processi e file di runtime isolati (700)
 │   └── run/                              # Directory di esecuzione del processo (0700)
 │       └── locks/                         # File di blocco della concorrenza (0700)
 │           ├── models.lock                # Lock per l'aggiornamento dei modelli
@@ -115,12 +116,18 @@ bash4llm.d/
 ├── tmp/                                   # Cartella temporanea sicura e isolata (0700)
 │   └── rates/                             # Tracciamento transazioni rate limiting (0700)
 │       └── <safe_thread_id>/              # Timestamp per finestra scorrevole
-└── extras/                                # Componenti ed estensioni opzionali
-    ├── manifest.sha256                    # Manifesto dell'integrità crittografica
-    ├── chat/                              # Interfaccia REPL TUI (tui-repl.sh)
-    ├── hooks/                             # Moduli hook pre/post esecuzione
-    ├── security/                          # Helper di sicurezza OpenSSL (openssl-helper.sh)
-    ├── providers/                         # Provider esterni (Gemini, Hugging Face, Mistral)
+├── local-extras/                          # Estensioni utente non tracciate dal manifesto di rete (700)
+│   └── providers/                         # Moduli provider locali utente (domain local:<name>) (700)
+└── extras/                                # Componenti ed estensioni opzionali Vendor (700)
+    ├── manifest.sha256                    # Manifesto dell'integrità crittografica (600)
+    ├── manifest.sha256.sig                # Firma crittografica Ed25519 del manifesto (600)
+    ├── official-ed25519.pub               # Chiave pubblica ufficiale per verifica firma (600)
+    ├── chat/                              # Interfaccia REPL TUI (tui-repl.sh, SPEC-TUI.md, langs/)
+    ├── hooks/                             # Moduli hook pre/post esecuzione (sml-gate.sh, hook.sh)
+    ├── security/                          # Helper di sicurezza OpenSSL (openssl-helper.sh, output-sanitizer.sh)
+    ├── test/                              # Suite di test automatizzata (run-all-tests.sh, scintilla-t3.sh, stress.sh)
+    ├── docs/                              # Documentazione (core-notes.sh, help.txt, manual-it.txt, bash4llm-completion.sh)
+    ├── providers/                         # Provider esterni Vendor (Gemini, Hugging Face, Mistral)
     └── session/                           # Gestore di sessione avanzato (session-engine.sh)
 ```
 
@@ -141,7 +148,9 @@ Se la cartella `extras/` è installata ed è presente il binario `openssl`, è p
   . ./bash4llm
   ```
   L'operazione esporta temporaneamente il token di contesto `_B4L_RT_CTX` nella memoria della shell, evitando richieste di password fino alla chiusura della sessione.
-* **Disabilitazione del Vault**: Per disattivare la ricerca delle chiavi nel Vault, impostare `BASH4LLM_VAULT_ENABLED=0`.
+* **Politiche di Sicurezza Avanzate**:
+  * Per disattivare la ricerca delle chiavi nel Vault, impostare `BASH4LLM_VAULT_ENABLED=0`.
+  * Per rendere il Vault **obbligatorio** (impedendo il recupero di chiavi da variabili d'ambiente non cifrate), impostare `export BASH4LLM_REQUIRE_VAULT=1`.
 
 ---
 
@@ -151,7 +160,8 @@ Se la cartella `extras/` è installata ed è presente il binario `openssl`, è p
 Se lo script termina con codice di uscita `17`, è stata rilevata un'anomalia di sicurezza:
 * **Permessi non restrittivi**: File di configurazione o cartelle scrivibili da gruppi o terzi (`group/world-writable`).
 * **Symlink rilevato**: Presenza di un collegamento simbolico non consentito in una directory di lavoro.
-* **Mancata corrispondenza Hash**: Un file nella cartella `extras/` è stato modificato rispetto a `manifest.sha256`.
+* **Mancata corrispondenza Hash/Firma**: Un file nella cartella `extras/` è stato modificato rispetto a `manifest.sha256` o la firma Ed25519 (`manifest.sha256.sig`) risulta non valida.
+* **Violazione Policy Vault**: La variabile `BASH4LLM_REQUIRE_VAULT=1` è attiva ma la chiave del provider non è presente nel Vault cifrato.
 
 Ripristino dei permessi POSIX standard:
 ```sh

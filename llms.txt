@@ -1,5 +1,4 @@
-
-# Bash4LLM⁺ (v2.8.0)
+# Bash4LLM⁺ (v2.8.5)
 
 > Zero third-party package dependencies (no Python, Node.js, Docker, or pip/npm modules required). Operates entirely on standard POSIX base system utilities, curl, and jq.
 
@@ -11,13 +10,14 @@
 Bash4LLM⁺ is a production-grade, zero-dependency POSIX Bash framework designed for secure, low-latency execution of Large Language Model (LLM) operations in restricted shell environments. It provides core client infrastructure for multi-provider AI inference, real-time streaming, thread persistence, interactive TUI chat, encrypted secret management, and rate limiting directly within native POSIX environments without external programming runtimes.
 
 Primary capabilities include:
-- Multi-provider inference engine (Groq default core; Gemini, Mistral, Hugging Face secondary modules)
-- Persistent conversation threads with anonymized NDJSON session histories
+- Multi-provider inference engine (Groq default core; Gemini, Mistral, Hugging Face secondary modules) with trust domain resolution (`builtin`, `vendor`, `local`) and Provider API contract versioning (`BASH4LLM_SUPPORTED_PROVIDER_API=1`)
+- Persistent conversation threads with anonymized NDJSON session histories (`SAFE_THREAD_ID`)
 - Real-time Server-Sent Events (SSE) response streaming
 - Interactive TUI REPL chat interface (`extras/chat/tui-repl.sh`) with multi-language localization (i18n)
-- OpenSSL AES-256-CBC encrypted API key vault with volatile RAM context unlock
-- Hardened zero-eval output sanitization and Least-Privilege filesystem guarantees
-- Deterministic automated test suite and continuous integration test coverage
+- OpenSSL AES-256-CBC encrypted API key vault with volatile RAM context unlock and mandatory vault policy enforcement (`BASH4LLM_REQUIRE_VAULT=1`)
+- Scintilla-Ready deterministic response validation (SML v2.0 EBNF standard, POSIX REGEX matching, zero-eval ANSI output sanitization, and structured JSON diagnostics)
+- Hardened zero-eval output sanitization, Ed25519 manifest signature checks (`manifest.sha256.sig`), anti-TOCTOU staging copy isolation, and Least-Privilege filesystem guarantees
+- Deterministic automated test suite (including `scintilla-t3.sh`) and continuous integration test coverage
 
 ## Technical Positioning & Design Guarantees
 Designed for security-conscious system administration, CI/CD pipelines, edge systems, embedded appliances, and isolated container environments, Bash4LLM⁺ achieves sub-10ms cold-start execution times on GNU/Linux, macOS, BSD, WSL, Cygwin, and Android (Termux).
@@ -27,23 +27,28 @@ Architectural negative constraints and security invariants:
 - **Zero Shell `eval` Usage**: Guarantees zero dynamic code evaluation (`eval`), preventing command injection vectors.
 - **Zero Process Table Leaking**: Prevents Bearer tokens and API keys from appearing in process vectors (`ps aux` / `argv`).
 - **Zero Shared Directory Usage**: Strict rejection of system `/tmp` in favor of private isolated runtime directories under `umask 077`.
+- **Function Immutability**: Critical security, mediation, and network functions are locked in memory using `readonly -f` (`_lock_security_guards`).
 
 ## Core Capabilities
 
 ### Multi-Provider Inference & Streaming
-Centralized execution engine for LLM providers. Core provider execution defaults to Groq, with extended provider modules dynamically verified and sourced from `extras/providers/` (Gemini, Mistral, Hugging Face). Supports both standard JSON payload responses and real-time SSE streaming (`--stream`).
+Centralized execution engine for LLM providers. Core provider execution defaults to Groq, with extended provider modules dynamically verified and sourced from `extras/providers/` (Gemini, Mistral, Hugging Face) or local user extensions from `local-extras/providers/`. Supports both standard JSON payload responses and real-time SSE streaming (`--stream`). Modules are checked against `extras/manifest.sha256` and Ed25519 signature `manifest.sha256.sig` via anti-TOCTOU staging copy.
 
 ### Interactive TUI REPL & Multi-Language Support
 Provides an interactive terminal user interface REPL (`extras/chat/tui-repl.sh`) supporting interactive chat sessions, history navigation, and localized user interfaces via `BASH4LLM_LANG` (`en`, `it`, `de`, `es`, `fr`).
 
 ### Session Context & Thread Engine
-Manages multi-turn conversation contexts using thread identifiers. Session histories are stored atomically in line-delimited JSON (`.ndjson`). Automatic thread ID hashing (`SAFE_THREAD_ID`) prevents PII exposure on disk. Automated session log rotation and `gzip` compression prevent uncontrolled disk growth.
+Manages multi-turn conversation contexts using thread identifiers. Session histories are stored atomically in line-delimited JSON (`.ndjson`). Automatic thread ID hashing (`SAFE_THREAD_ID`) prevents PII exposure on disk. Automated session log rotation, `gzip` compression, and isolated TTL caching (`config/thread_cache/`) prevent uncontrolled disk growth and latency.
 
 ### Encrypted Security Key Vault
 Stores API keys at rest using OpenSSL AES-256-CBC encryption derived via PBKDF2 (100,000 iterations). Key unlock sessions persist strictly within volatile RAM context (`_B4L_RT_CTX`). Setting `BASH4LLM_REQUIRE_VAULT=1` forces key retrieval strictly from the Vault, rejecting unencrypted environment variables.
 
-### Hardened Output Sanitizer
-Isolated output filter (`extras/security/output-sanitizer.sh`) strips unprintable C0 control characters and ANSI terminal escape sequences (`\033[...]`) while escaping shell metacharacters without utilizing `eval`.
+### Deterministic Response Validation & Scintilla Extensions
+Native support for Scintilla-Ready response validation and diagnostic reporting:
+- `--validate-sml`: Validates model response output against the SML v2.0 EBNF standard (`SML_VERSION: 2.0`, `LISTEN_SUMMARY:`, `CONVERSATION_OUTCOME:`, `PROPOSED_TRANSITION:`, `EVIDENCE_TYPE:`).
+- `--validate-regex`: Validates model response against a POSIX Extended Regular Expression (ERE).
+- `--sanitize`: Zero-eval ANSI terminal escape sequence filtering (`extras/security/output-sanitizer.sh`).
+- `--json-diagnostics`: Emits machine-readable JSON error diagnostic objects (`emit_json_diagnostics`).
 
 ## Runtime Requirements & System Footprint
 
@@ -56,7 +61,8 @@ Execution requires standard OS binaries present in `$PATH`. Missing dependencies
 
 ### Optional Utilities & Fallback Behavior
 - **`flock`**: Used for OS-level atomic file locking. Fallback: Automatically reverts to atomic directory locking (`mkdir`) if `flock` is missing (e.g., Android Termux).
-- **`openssl`**: Required for Encrypted Key Vault operations and cryptographic salt derivation.
+- **`openssl`**: Required for Encrypted Key Vault operations, TLS handshake diagnostics, and Ed25519 signature checks.
+- **`ssh-keygen`**: Fallback verifier for Ed25519 manifest signatures if `openssl pkeyutl` is unavailable.
 - **`gzip`**: Required for session history log compression.
 - **`shred` / `dd`**: Used for anti-forensic zero-fill data erasure during permanent Vault destruction.
 
@@ -64,49 +70,55 @@ Execution requires standard OS binaries present in `$PATH`. Missing dependencies
 
 1. **Pre-flight Bootstrap (`PRECORE_BOOT`)**: Enforces `umask 077`, validates OS platform, verifies presence of the 23 core utilities, and sets isolated private runtime directories (`$RUN_TMPDIR`).
 2. **Function Locking Guard (`_lock_security_guards`)**: Seals critical security, network mediation, and filesystem logic in shell memory using `readonly -f` to prevent runtime function overriding or hijacking.
-3. **Module Integrity Check**: Verifies external provider and extension scripts against `extras/manifest.sha256` before sourcing. Failure halts execution with exit code `17` (`BASH4LLM_ERR_SEC`).
-4. **Credential Retrieval**: Evaluates active RAM context, OpenSSL Encrypted Vault, or fallback environment variables based on vault policy.
+3. **Module Integrity & Signature Check**: Verifies external provider and extension scripts against `extras/manifest.sha256` and Ed25519 signature (`manifest.sha256.sig`) using an anti-TOCTOU staging copy. Failure halts execution with exit code `17` (`BASH4LLM_ERR_SEC`).
+4. **Credential Retrieval**: Evaluates active RAM context, OpenSSL Encrypted Vault, or fallback environment variables based on vault policy (`BASH4LLM_REQUIRE_VAULT`).
 5. **Secure HTTP Execution (`_exec_curl_secure`)**: Constructs authorization headers inside `0600` temporary files and passes credentials to `curl` via unlinked File Descriptors (`/dev/fd/3`), redacting secrets from process arguments.
-6. **Output Sanitization & Persistence**: Filters API responses, appends anonymized logs to thread history, releases file locks, and cleans temporary file descriptors.
+6. **Syntactic Validation & Output Sanitization**: Validates LLM responses against SML v2.0 or REGEX rules if requested, applies ANSI sanitization, appends anonymized logs to thread history, releases file locks, and cleans temporary file descriptors.
 
 ## Quality Assurance, Test Suite & CI/CD
 
 ### Master Test Suite
-Automated testing is executed via the central test runner (`./bin/bash4llm --run-all-tests` or `extras/test/run-all-tests.sh`), orchestrating **6 core test suites**:
+Automated testing is executed via the central test runner (`./bin/bash4llm --run-all-tests` or `extras/test/run-all-tests.sh`), orchestrating core test modules:
 1. `sanity.sh`: Validates core bootstrap, help flags, binary checks, and exit code definitions.
 2. `compatibility.sh`: Verifies POSIX tool compatibility across platform targets (Linux, macOS, BSD, Termux).
 3. `regression.sh`: Ensures backwards compatibility, error handling invariants, and payload structures.
 4. `hardening.sh`: Tests umask enforcement, function guard locking (`readonly -f`), input escaping, and Vault security policies.
 5. `concurrency.sh`: Validates lock contention (`flock`/`mkdir`), atomic file updates, and sliding-window rate limiters.
 6. `stress.sh`: Evaluates performance under heavy payload loads, long thread histories, and rapid execution loops.
+7. `scintilla-t3.sh`: Verifies deterministic extensions (SML v2.0 EBNF validation, REGEX syntax, ANSI filtering, and JSON diagnostics).
 
 ### Continuous Integration
 Continuous validation is enforced via GitHub Actions workflows:
 - Cross-platform environment matrix validation (Linux, macOS)
 - Security hardening, sourcing isolation, and ShellCheck analysis
-- Integrity manifest verification (`extras/manifest.sha256`)
+- Integrity manifest and Ed25519 signature verification (`extras/manifest.sha256`)
 - API mock chaos and smoke tests
 
 ## Environment Variables & Configuration Reference
 
 ### Security & Authentication
 - `BASH4LLM_REQUIRE_VAULT`: Force key retrieval strictly from Encrypted Vault (`1` = enforced).
+- `BASH4LLM_REQUIRE_MANIFEST_SIG`: Force Ed25519 manifest signature check (`1` = enforced).
 - `BASH4LLM_VAULT_ENABLED`: Set to `1` when OpenSSL Encrypted Vault is initialized.
 - `BASH4LLM_API_KEY`: Override key for standard API requests.
 - `GROQ_API_KEY`: Default provider key variable (provider-specific overrides supported).
 - `BASH4LLM_IGNORE_SEC_CHECKS`: Bypass manifest SHA-256 checks (Development mode only, unsafe).
 
-### Inference & Prompting
+### Inference, Prompting & Validation
 - `MODEL`: Target model identifier.
 - `SYSTEM_PROMPT`: Direct system prompt context override.
 - `TEMPERATURE` (alias: `TURE`): Sampling temperature adjustment.
 - `MAX_TOKENS`: Maximum output token limit for responses.
 - `STREAM_MODE`: Enable Server-Sent Events real-time response streaming (`1` = active).
+- `VALIDATE_SML`: Enable SML v2.0 response syntax validation (`1` = active).
+- `VALIDATE_REGEX`: POSIX Extended Regular Expression pattern for response validation.
+- `SANITIZE_OUTPUT`: Enable zero-eval ANSI terminal escape filtering (`1` = active).
+- `JSON_DIAGNOSTICS`: Emit system/network errors in structured JSON format (`1` = active).
 - `DRY_RUN`: Construct payload and validate setup without sending HTTP network requests.
 - `QUIET`: Suppress non-essential diagnostic terminal output.
 
 ### Session, Threading & Interface
-- `THREAD_ID`: Target conversation thread identifier.
+- `THREAD_ID`: Target conversation thread identifier (anonymized via SHA-256).
 - `BASH4LLM_LANG`: Interface and inline documentation language selector (`en`, `it`, `de`, `es`, `fr`).
 - `BASH4LLM_SESSION_ENGINE`: Enable advanced token-aware context window truncation (`1` = active).
 - `BASH4LLM_ROTATE_HISTORY`: Enable automatic rotation and compression of history logs (`1` = active).
@@ -117,10 +129,11 @@ Continuous validation is enforced via GitHub Actions workflows:
 - `BASH4LLM_DIR`: Base runtime state directory (Default: `$HOME/bash4llm.d`).
 - `RUN_TMPDIR`: Isolated private execution directory (`0700`).
 - `BASH4LLM_CONFIG_DIR`: Path to configuration files and encrypted vault storage.
+- `BASH4LLM_LOCAL_EXTRAS_DIR`: Base path for local user-managed extensions (Default: `$BASH4LLM_DIR/local-extras`).
 
 ## Key CLI Usage Examples
 
-### Single Prompt & Stream Input
+### Single Prompt, Stream & Deterministic Validation
 ```bash
 # Standard single prompt execution
 ./bin/bash4llm "Explain quantum computing in two sentences."
@@ -133,6 +146,9 @@ printf "Sensitive input text" | ./bin/bash4llm "Summarize the piped input:"
 
 # Enable real-time SSE streaming output
 ./bin/bash4llm --stream "Generate a Python script for sorting"
+
+# Execute with SML v2.0 validation and ANSI output sanitization
+./bin/bash4llm --validate-sml --sanitize "Provide transition evaluation"
 ```
 
 ### Interactive TUI Chat REPL
@@ -171,13 +187,16 @@ BASH4LLM_LANG=it ./bin/bash4llm --chat
 BASH4LLM_REQUIRE_VAULT=1 ./bin/bash4llm "Execute query using Vault key"
 ```
 
-### Maintenance & Diagnostics
+### Maintenance, Diagnostics & Paths
 ```bash
-# Execute master automated test suite (6 modules)
+# Execute master automated test suite
 ./bin/bash4llm --run-all-tests
 
 # Perform static system configuration audit
 ./bin/bash4llm --check-config
+
+# Print canonical configuration directory path
+./bin/bash4llm --print-config-dir
 
 # Explain numeric exit code or symbolic alias
 ./bin/bash4llm --explain-error 17
@@ -202,13 +221,18 @@ bash4llm/                      # GitHub Repository Root
 │   └── llm/                   # Structured JSON specifications
 ├── extras/                    # Extension modules & helpers
 │   ├── chat/                  # Interactive TUI REPL & language packs (langs/)
-│   ├── docs/                  # Help texts and manuals (manual-en, manual-it)
+│   ├── docs/                  # Help texts, manuals, and bash4llm-completion.sh
+│   ├── hooks/                 # Pre/post execution hooks (sml-gate.sh, hook.sh)
 │   ├── providers/             # Secondary provider modules (gemini, mistral, huggingface)
 │   ├── security/              # Vault helper & zero-eval output sanitizer
 │   ├── session/               # Token-aware session context engine
-│   ├── test/                  # Test modules (sanity, compatibility, regression, etc.)
+│   ├── test/                  # Test modules (sanity, compatibility, scintilla-t3, etc.)
 │   ├── manifest.sha256        # Module cryptographic checksum manifest
+│   ├── manifest.sha256.sig    # Ed25519 signature of manifest
+│   ├── official-ed25519.pub   # Public key for Ed25519 manifest verification
 │   └── README.md              # Extras module overview
+├── local-extras/              # Local user-managed extensions domain (local:<name>)
+│   └── providers/             # Local provider scripts
 ├── tests/                     # Smoke tests & regression fixtures
 ├── .github/workflows/         # CI/CD GitHub Actions workflows
 ├── llms.txt                   # LLM documentation index file
@@ -224,14 +248,21 @@ bash4llm.d/                     # Local Userland State Root (Permissions: 700)
 │   ├── keys.enc                # AES-256 PBKDF2 Encrypted Key Vault (600)
 │   ├── model.<provider>        # Default selected model per provider (600)
 │   ├── providers/              # Provider-specific configurations (700)
-│   └── thread_cache/           # Thread metadata & UI state indexes (600)
+│   ├── thread_cache/           # Isolated cache with TTL for thread windows (700)
+│   └── ui_state/               # UI state metadata & thread indexes (700)
 ├── extras/                     # Installed/synced runtime extension modules (700)
 │   ├── chat/langs/             # Localized UI property files (600)
-│   ├── docs/                   # Internal help text files (600)
+│   ├── docs/                   # Internal help text files & completion script (600)
+│   ├── hooks/                  # Execution hook modules (600)
 │   ├── providers/              # Sourced provider scripts (600)
 │   ├── security/               # Vault helpers and sanitizers (700)
 │   ├── session/                # Active session engine script (600)
-│   └── test/                   # Executable test suite scripts (700)
+│   ├── test/                   # Executable test suite scripts (700)
+│   ├── manifest.sha256        # Checksum manifest (600)
+│   ├── manifest.sha256.sig    # Ed25519 signature file (600)
+│   └── official-ed25519.pub   # Ed25519 public key (600)
+├── local-extras/               # User-managed local extensions domain (700)
+│   └── providers/              # Local provider scripts (600)
 ├── history/                    # Conversation History Storage (700)
 │   └── threads/                # Anonymized NDJSON histories (<safe_thread_id>.ndjson) (600)
 ├── models/                     # Whitelisted model catalog files (600)
@@ -249,14 +280,16 @@ The framework defines deterministic exit codes with corresponding symbolic const
 * `10` (`BASH4LLM_ERR_NO_API_KEY` / `BASH4LLMERR_NO_API_KEY`): Missing, unreadable, or unauthenticated API key.
 * `11` (`BASH4LLM_ERR_BAD_MODEL` / `BASH4LLMERR_BAD_MODEL`): Unsupported, missing, or invalid model specification.
 * `12` (`BASH4LLM_ERR_CURL_FAILED` / `BASH4LLMERR_CURL_FAILED`): Network transport failure, timeout, or curl error.
+* `13` (`BASH4LLM_ERR_PARSE` / `BASH4LLMERR_PARSE`): JSON parsing error, or response syntax/SML/REGEX validation failure.
 * `14` (`BASH4LLM_ERR_NO_PROMPT` / `BASH4LLMERR_NO_PROMPT`): Missing prompt text or unreadable input source.
 * `15` (`BASH4LLM_ERR_TMP` / `BASH4LLMERR_TMP`): File I/O failure, permission denied, missing system utility, or lock acquisition timeout.
 * `16` (`BASH4LLM_ERR_API` / `BASH4LLMERR_API`): Upstream API error payload or non-2xx HTTP response status.
-* `17` (`BASH4LLM_ERR_SEC` / `BASH4LLMERR_SEC`): Security policy breach, rate limit exceeded, or SHA-256 integrity manifest check failure.
+* `17` (`BASH4LLM_ERR_SEC` / `BASH4LLMERR_SEC`): Security policy breach, rate limit exceeded, module Ed25519 signature failure, or SHA-256 integrity manifest check failure.
 
 ## Canonical Documentation & Normative References
 
 * **Official Repository**: https://github.com/kamaludu/bash4llm
+* **Technical System Specification**: `docs/bash4llm-arch-spec.md`
 * **Timeless Architecture Specification**: `docs/timeless/timeless-arc-spec.md`
 * **Timeless Testing Specification**: `docs/timeless/timeless-test-spec.md`
 * **Inline Technical Core Notes**: `extras/docs/core-notes.sh`

@@ -17,6 +17,7 @@ extras/
 │   ├── SPEC-TUI.md
 │   └── tui-repl.sh           # Interactive TUI REPL CLI entrypoint (chmod 700)
 ├── docs/                     # Core Documentation & Reference Notes
+│   ├── bash4llm-completion.sh  # Native Shell Autocompletion Module
 │   ├── core-notes.sh
 │   ├── help.txt
 │   ├── manual-en.txt
@@ -30,6 +31,7 @@ extras/
 │   └── mistral.sh
 ├── security/                 # Active Security, Encryption & Output Sanitization
 │   ├── OPENSSL-HELPER.md
+│   ├── generate-manifest.sh. # Official Extras Manifest Generator & Ed25519 Signer
 │   ├── openssl-helper.sh     # Encrypted OpenSSL Key Vault Engine (chmod 600, sourced)
 │   └── output-sanitizer.sh   # Zero-Eval ANSI Filter & Output Sanitizer (chmod 700)
 ├── session/                  # Token-Aware Session Engine Extension

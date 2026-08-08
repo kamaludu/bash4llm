@@ -22,3 +22,11 @@
 # Directory temporanee create da mktemp
 groq.*/ 
 groq-refresh.*/
+
+*.pem
+*.key
+extras/security/*.pem
+
+# Ignore all local user extras except directory placeholder
+local-extras/providers/*
+!local-extras/providers/.gitkeep

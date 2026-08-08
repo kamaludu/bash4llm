@@ -14,25 +14,28 @@ Bash4LLM 2.x
 Questo documento definisce il **contratto ufficiale** per la creazione o l'integrazione di provider esterni compatibili con Bash4LLM⁺.  
 Un *provider* è un modulo Bash che implementa un adattatore per un'API LLM specifica (es. Gemini, HuggingFace, Mistral, ecc.).
 
-I provider vengono caricati in modalità isolata dal percorso degli extras:
-
-`bash4llm.d/extras/providers/nome.sh`
-
----
-
-## 1. Caricamento e Isolamento (Sandbox)
-
-Per garantire l'isolamento dell'ambiente di esecuzione:
-
-1. Il file del provider viene analizzato in una sotto-shell isolata tramite `load_provider_module`.
-2. Vengono estratte ed esportate nel runtime principale **esclusivamente le definizioni delle funzioni** (tramite `declare -f`).
-3. **Variabili globali o codice di inizializzazione posizionati al di fuori delle funzioni non persistono nel runtime principale.** Ogni parametro, URL o costante deve essere definito internamente alle funzioni o gestito tramite i meccanismi di risoluzione del CORE.
+I provider vengono caricati in modalità isolata e risolti in base ai domini di fiducia:
+- **Builtin**: Provider integrati nel core (es. `groq`).
+- **Vendor**: `bash4llm.d/extras/providers/nome.sh` (moduli opzionali distribuiti e firmati).
+- **Local**: `bash4llm.d/local-extras/providers/nome.sh` (moduli locali gestiti dall'utente).
 
 ---
 
-## 2. Requisiti di Sicurezza del File
+## 1. Caricamento, Isolamento (Sandbox Anti-TOCTOU) e Contratto API
 
-Ogni modulo provider deve superare la verifica di integrità del percorso e dell'hash SHA-256 rispetto al file `extras/manifest.sha256` e soddisfare i seguenti requisiti:
+Per garantire l'isolamento dell'ambiente di esecuzione e la protezione contro attacchi Time-of-Check to Time-of-Use:
+
+1. Il file del provider viene copiato in una **copia di staging temporanea isolata** (`0600`) all'interno di `$RUN_TMPDIR`.
+2. La copia di staging viene analizzata e convalidata sintatticamente (`bash -n`) in una sotto-shell isolata tramite `load_provider_module`.
+3. **Contratto di Versione API:** Il provider può dichiarare la variabile `BASH4LLM_PROVIDER_API_VERSION`. Se tale versione supera il valore supportato dal Core (`BASH4LLM_SUPPORTED_PROVIDER_API=1`), il caricamento viene interrotto con codice di errore `98`.
+4. **Filtro Whitelist Anti-Hijacking:** Vengono estratte ed esportate nel runtime principale **esclusivamente le definizioni delle funzioni autorizzate dall'interfaccia** (tramite `declare -f`). Qualsiasi altra funzione non autorizzata definita nel modulo viene bloccata ed elisa.
+5. **Variabili globali o codice di inizializzazione posizionati al di fuori delle funzioni non persistono nel runtime principale.** Ogni parametro, URL o costante deve essere definito internamente alle funzioni o gestito tramite i meccanismi di risoluzione del CORE.
+
+---
+
+## 2. Requisiti di Sicurezza del File e Firma Ed25519
+
+Ogni modulo provider del dominio Vendor deve superare la verifica di integrità del percorso (`validate_path_security`), la convalida della **firma crittografica Ed25519** (`manifest.sha256.sig`) tramite la chiave pubblica `official-ed25519.pub` e il controllo dell'hash SHA-256 rispetto al file `extras/manifest.sha256`. I moduli del dominio Local superano i controlli del filesystem e devono soddisfare i seguenti requisiti:
 
 - Essere un file regolare (`-f`).
 - Non essere un collegamento simbolico (symlink).
@@ -40,13 +43,13 @@ Ogni modulo provider deve superare la verifica di integrità del percorso e dell
 - Non avere permessi di scrittura per il gruppo o per altri utenti (non world/group-writable).
 - Risiedere in una directory non world-writable con permessi `0700`.
 
-Il nome del provider è derivato dal nome del file senza estensione (es. `gemini.sh` identifica il provider `"gemini"`).
+Il nome del provider è derivato dal nome del file senza estensione (es. `gemini.sh` identifica il provider `"gemini"`). È possibile specificare esplicitamente il dominio CLI tramite prefisso (es. `--provider local:gemini` o `--provider vendor:gemini`).
 
 ---
 
 ## 3. Interfaccia del Provider
 
-Il CORE di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per essere valido, un provider **deve implementare le due funzioni principali obbligatorie** (non-streaming), mentre le funzioni di streaming, refresh dei modelli e validazione chiavi sono opzionali.
+Il CORE di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per essere valido, un provider **deve implementare le due funzioni principali obbligatorie** (non-streaming), mentre le funzioni di streaming, refresh dei modelli, validazione e auto-selezione sono opzionali.
 
 ---
 
@@ -75,7 +78,7 @@ Il CORE di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per
 
 **Responsabilità:**
 - Leggere il payload dal percorso `$PAYLOAD`. Se il file termina con estensione `.b64`, decodificarlo in chiaro in un file temporaneo locale in `$RUN_TMPDIR`.
-- **Mediazione di rete sicura:** Eseguire la chiamata HTTP instradando la richiesta tramite la funzione centrale del Core `_exec_curl_secure()`. **È vietato passare i token di autenticazione come argomenti di riga di comando (`-H "Authorization: Bearer ..."` o `?key=...`)**, poiché risulterebbero visibili nella tabella dei processi (`ps aux`).
+- **Mediazione di rete sicura:** Eseguire la chiamata HTTP instradando la richiesta tramite la funzione centrale del Core `_exec_curl_secure()`. **È vietato passare i token di autenticazione come argomenti di riga di comando (`-H "Authorization: Bearer ..."` o `?key=...")**, poiché risulterebbero visibili nella tabella dei processi (`ps aux`).
 - Salvare la risposta JSON in `$RESP`.
 - Restituire `0` in caso di successo, non-zero (es. `"${BASH4LLM_ERR_API:-16}"` o `"${BASH4LLM_ERR_CURL_FAILED:-12}"`) in caso di errore.
 - Assicurarsi che la risposta JSON in `$RESP` sia formattata secondo lo schema compatibile con la routine di estrazione del Core (`choices[].message.content`).
@@ -118,9 +121,25 @@ Il CORE di Bash4LLM⁺ interagisce con i provider tramite funzioni dedicate. Per
 
 ---
 
+#### ➕ `validate_model_<provider>()`
+
+**Responsabilità:**
+- Verificare se uno specifico modello identificatore fornito in `$1` è valido e supportato per il provider.
+- Restituire `0` se valido, non-zero se non valido o rifiutato.
+
+---
+
+#### ➕ `auto_select_model_<provider>()`
+
+**Responsabilità:**
+- Ispezionare il catalogo locale `$MODELS_FILE` o la configurazione del provider e restituire su `stdout` il nome normalizzato del modello predefinito o del primo modello supportato disponibile.
+- Restituire `0` in caso di successo, `1` se non è stato possibile selezionare alcun modello.
+
+---
+
 ### 3.3. `normalize_model_<provider>()` (Opzionale)
 * **Responsabilità:** Riceve in `$1` il nome grezzo del modello e restituisce su `stdout` il nome normalizzato.
-* **Isolamento:** Eseguita in sotto-shell isolata dal CORE.
+* **Isolamento:** Eseguita in sotto-shell isolata dal CORE con memorizzazione nella cache associativa `BASH4LLM_MODEL_CACHE`.
 
 ---
 
@@ -137,15 +156,18 @@ Il provider non deve sovrascrivere queste variabili nello scope globale del Core
 
 ---
 
-### 4.1. Risoluzione dell'API Key
+### 4.1. Risoluzione dell'API Key e Policy Vault
 
-La chiave di autenticazione viene determinata seguendo questo ordine di priorità:
+La chiave di autenticazione viene determinata gestendo l'integrazione con il Vault cifrato (`ensure_api_key_for_provider`):
 
-1. `PROVIDER_API_ENV_<provider>` (variabile personalizzata)
-2. Variabile specifica del provider (es. `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `HUGGINGFACE_API_KEY`)
-3. `BASH4LLM_API_KEY` (fallback globale)
+1. **Vault Cifrato OpenSSL**: Se il Vault è attivo, tenta la decrittografia della chiave salvata per il provider in `keys.dat`.
+2. `PROVIDER_API_ENV_<provider>` (variabile personalizzata)
+3. Variabile specifica del provider (es. `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `HUGGINGFACE_API_KEY`)
+4. `BASH4LLM_API_KEY` (fallback globale)
 
-L'ispezione della variabile deve avvenire in modo sicuro tramite `declare -p` per garantire compatibilità con `set -u`. In assenza di chiave, restituire `"${BASH4LLM_ERR_NO_API_KEY:-10}"`.
+Se la politica Vault obbligatorio è attiva (`BASH4LLM_REQUIRE_VAULT=1`), il recupero della chiave da variabili d'ambiente in chiaro è vietato e la mancata presenza della chiave nel Vault interrompe l'esecuzione con errore `17` (`BASH4LLM_ERR_SEC`).
+
+L'ispezione delle variabili d'ambiente avviene in modo sicuro tramite `declare -p` per garantire compatibilità con `set -u`. In assenza di chiave e in modalità non interattiva, restituire `"${BASH4LLM_ERR_NO_API_KEY:-10}"`.
 
 ---
 
@@ -160,15 +182,19 @@ L'ispezione della variabile deve avvenire in modo sicuro tramite `declare -p` pe
 - Eseguire chiamate dirette a `flock` (utilizzare sempre le astrazioni `atomic_write` o `lock_exec`).
 
 ⚠️ **Il provider DEVE:**
+- Rispettare il contratto di versione API `BASH4LLM_PROVIDER_API_VERSION`.
 - Generare file JSON sintatticamente validi.
 - Rispettare i permessi restrittivi sui file creati (`umask 077` e `chmod 600`).
-- Rispettare `DRY_RUN`: se attivo, simulare l'operazione scrivendo file `$RESP` o `$PAYLOAD` validi senza effettuare connessioni.
+- Rispettare `DRY_RUN`: se attivo, simulare l'operazione scrivendo file `$RESP` o `$PAYLOAD` validi senza effettuare connessioni di rete.
 
 ---
 
 ## 6. Esempio Minimo di Struttura Compatibile
 
 ```sh
+# Declare Provider API Version Contract (Optional, default 1)
+BASH4LLM_PROVIDER_API_VERSION=1
+
 # -------------------------
 # buildpayload_example
 # -------------------------
@@ -228,25 +254,28 @@ call_api_example() {
 This document defines the **official contract** for creating or integrating external providers compatible with Bash4LLM⁺.  
 A *provider* is a Bash module implementing an adapter for a specific LLM API (e.g., Gemini, HuggingFace, Mistral, etc.).
 
-Providers are loaded in an isolated sandbox from the extras installation path:
-
-`bash4llm.d/extras/providers/name.sh`
-
----
-
-## 1. Loading and Isolation (Sandbox)
-
-To ensure runtime environment isolation:
-
-1. The provider file is parsed in an **isolated subshell sandbox** via `load_provider_module`.
-2. Only **function definitions** are captured and exported into the main shell environment (via `declare -f`).
-3. **Global variables or initialization code outside functions will not persist in the main runtime.** All configuration parameters, URLs, or constants must be defined inside functions or resolved via CORE helpers.
+Providers are loaded in an isolated sandbox and resolved based on trust domains:
+- **Builtin**: Providers embedded directly in core (e.g., `groq`).
+- **Vendor**: `bash4llm.d/extras/providers/name.sh` (optional distributed and signed modules).
+- **Local**: `bash4llm.d/local-extras/providers/name.sh` (local user-managed modules).
 
 ---
 
-## 2. File Security Requirements
+## 1. Loading, Isolation (Anti-TOCTOU Sandbox), and API Contract
 
-Each provider module must pass path validation and SHA-256 integrity checks against `extras/manifest.sha256`, satisfying the following constraints:
+To ensure runtime environment isolation and protection against Time-of-Check to Time-of-Use attacks:
+
+1. The provider file is copied to an **isolated temporary staging copy** (`0600`) inside `$RUN_TMPDIR`.
+2. The staging copy is analyzed and syntactically validated (`bash -n`) in an isolated subshell sandbox via `load_provider_module`.
+3. **API Version Contract:** The provider may declare the `BASH4LLM_PROVIDER_API_VERSION` variable. If this version exceeds the value supported by the Core (`BASH4LLM_SUPPORTED_PROVIDER_API=1`), loading is aborted with error code `98`.
+4. **Anti-Hijacking Whitelist Filter:** Only **authorized interface function definitions** are captured and exported into the main shell environment (via `declare -f`). Any other unauthorized function defined in the module is blocked and discarded.
+5. **Global variables or initialization code outside functions will not persist in the main runtime.** All configuration parameters, URLs, or constants must be defined inside functions or resolved via CORE helpers.
+
+---
+
+## 2. File Security Requirements and Ed25519 Signature
+
+Each provider module in the Vendor domain must pass path security validation (`validate_path_security`), validation of the **Ed25519 cryptographic signature** (`manifest.sha256.sig`) via the public key `official-ed25519.pub`, and SHA-256 integrity checks against `extras/manifest.sha256`. Local domain modules pass filesystem checks and must satisfy the following constraints:
 
 - Be a regular file (`-f`).
 - Not be a symbolic link (symlink).
@@ -254,13 +283,13 @@ Each provider module must pass path validation and SHA-256 integrity checks agai
 - Not have group or world write permissions (non group/world-writable).
 - Reside inside a non world-writable directory with `0700` permissions.
 
-The provider name is derived from the filename without extension (e.g., `gemini.sh` identifies `"gemini"`).
+The provider name is derived from the filename without extension (e.g., `gemini.sh` identifies `"gemini"`). The CLI domain can be explicitly specified via prefix (e.g., `--provider local:gemini` or `--provider vendor:gemini`).
 
 ---
 
 ## 3. Provider Interface
 
-The CORE interacts with providers via dedicated functions. To be valid, a provider **must implement the two mandatory functions** (non-streaming). Streaming, model refresh, and key validation functions are optional.
+The CORE interacts with providers via dedicated functions. To be valid, a provider **must implement the two mandatory functions** (non-streaming). Streaming, model refresh, validation, and auto-selection functions are optional.
 
 ---
 
@@ -325,9 +354,25 @@ The CORE interacts with providers via dedicated functions. To be valid, a provid
 
 ---
 
+#### ➕ `validate_model_<provider>()`
+
+**Responsibilities:**
+- Verify whether a specific model identifier provided in `$1` is valid and supported for the provider.
+- Return `0` if valid, non-zero if invalid or rejected.
+
+---
+
+#### ➕ `auto_select_model_<provider>()`
+
+**Responsibilities:**
+- Inspect local `$MODELS_FILE` catalog or provider configuration and print normalized default or first available supported model name to `stdout`.
+- Return `0` on success, `1` if no model could be selected.
+
+---
+
 ### 3.3. `normalize_model_<provider>()` (Optional)
 * **Responsibilities:** Receives raw model string in `$1` and prints normalized model name to `stdout`.
-* **Isolation:** Executed inside an isolated subshell by CORE.
+* **Isolation:** Executed inside an isolated subshell by CORE with caching in `BASH4LLM_MODEL_CACHE` associative array.
 
 ---
 
@@ -344,15 +389,18 @@ Providers must not overwrite these global variables.
 
 ---
 
-### 4.1. API Key Resolution
+### 4.1. API Key Resolution and Vault Policy
 
-Authentication keys must be resolved in decreasing priority order:
+Authentication keys are resolved managing integration with the Encrypted Vault (`ensure_api_key_for_provider`):
 
-1. `PROVIDER_API_ENV_<provider>` (custom env var)
-2. Provider-specific key (e.g., `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `HUGGINGFACE_API_KEY`)
-3. `BASH4LLM_API_KEY` (global fallback)
+1. **Encrypted OpenSSL Vault**: If Vault is active, attempts decrypting the saved key for the provider in `keys.dat`.
+2. `PROVIDER_API_ENV_<provider>` (custom env var)
+3. Provider-specific key (e.g., `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `HUGGINGFACE_API_KEY`)
+4. `BASH4LLM_API_KEY` (global fallback)
 
-Variable existence must be verified via `declare -p` for `set -u` compatibility. If no key is found, return `"${BASH4LLM_ERR_NO_API_KEY:-10}"`.
+If mandatory Vault policy is active (`BASH4LLM_REQUIRE_VAULT=1`), retrieving keys from unencrypted environment variables is forbidden, and key absence in Vault halts execution with error `17` (`BASH4LLM_ERR_SEC`).
+
+Variable existence is verified via `declare -p` for `set -u` compatibility. If no key is found in non-interactive mode, return `"${BASH4LLM_ERR_NO_API_KEY:-10}"`.
 
 ---
 
@@ -367,6 +415,7 @@ Variable existence must be verified via `declare -p` for `set -u` compatibility.
 - Invoke system `flock` directly (use `atomic_write` or `lock_exec`).
 
 ⚠️ **The provider MUST:**
+- Comply with API version contract `BASH4LLM_PROVIDER_API_VERSION`.
 - Generate valid JSON files.
 - Enforce strict file permissions (`umask 077` and `chmod 600`).
 - Respect `DRY_RUN`: when `DRY_RUN=1`, mock `$RESP` or `$PAYLOAD` files without executing network calls.
@@ -376,6 +425,9 @@ Variable existence must be verified via `declare -p` for `set -u` compatibility.
 ## 6. Minimal Compatible Template
 
 ```sh
+# Declare Provider API Version Contract (Optional, default 1)
+BASH4LLM_PROVIDER_API_VERSION=1
+
 # -------------------------
 # buildpayload_example
 # -------------------------

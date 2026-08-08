@@ -31,7 +31,7 @@ jobs:
           fi
 
           if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
-            echo "❌ ERROR: Executable file '\''bash4llm'\'' not found in repository!"
+            echo "❌ ERROR: Executable file 'bash4llm' not found in repository!"
             exit 1
           fi
 
@@ -43,20 +43,22 @@ jobs:
               exit 1
             fi
             
-            cd extras
-            # Filter comments (#), empty lines, and normalize CRLF line endings safely under pipefail
-            grep -vE '^[[:space:]]*#' manifest.sha256 | grep -vE '^[[:space:]]*$' | tr -d '\r' > manifest_clean.sha256 || true
+            # Create temporary clean manifest in system runner tmp to avoid directory pollution
+            TMP_CLEAN_MANIFEST="$(mktemp)"
+            grep -vE '^[[:space:]]*#' extras/manifest.sha256 | grep -vE '^[[:space:]]*$' | tr -d '\r' > "$TMP_CLEAN_MANIFEST" || true
             
-            if [ ! -s manifest_clean.sha256 ]; then
+            if [ ! -s "$TMP_CLEAN_MANIFEST" ]; then
               echo "❌ ERROR: manifest.sha256 is empty or contains no valid hashes!"
-              rm -f manifest_clean.sha256
+              rm -f "$TMP_CLEAN_MANIFEST"
               exit 1
             fi
 
-            # Verify cryptographic digests strictly
-            sha256sum --strict -c manifest_clean.sha256
-            rm -f manifest_clean.sha256
-            cd ..
+            # Verify cryptographic digests strictly inside extras context
+            (
+              cd extras
+              sha256sum --strict -c "$TMP_CLEAN_MANIFEST"
+            )
+            rm -f "$TMP_CLEAN_MANIFEST"
             
             # Verify native bash4llm extras installer integrity test safely
             INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1 || true)

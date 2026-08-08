@@ -1,4 +1,6 @@
-SPECIFICA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.8.0)
+--- START OF FILE text/markdown ---
+
+SPECIFICA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.8.5)
 
 Questo documento descrive in modo completo e senza perdita di informazioni la
 logica, le variabili, le funzioni e i blocchi strutturali del sistema Bash4LLM⁺,
@@ -9,8 +11,10 @@ suddivisi secondo le cinque macro-sezioni reali.
 VARIABILI
 
   - SCRIPT_NAME: Nome identificativo del programma (impostato a "bash4llm").
-  - SCRIPT_VERSION: Versione corrente del software (impostata a "2.8.0").
-  - SCRIPT_DATE: Data di rilascio dello script (impostata a "2026-07-25").
+  - SCRIPT_VERSION: Versione corrente del software (impostata a "2.8.5").
+  - SCRIPT_DATE: Data di rilascio dello script (impostata a "2026-08-07").
+  - BASH4LLM_SUPPORTED_PROVIDER_API: Versione del contratto d'interfaccia API
+    supportata dal core per i moduli provider (valore numerico 1).
   - BASH4LLM_PLAT_ANDROID: Flag booleano (valore 1 o 0) impostato su bootstrap
     indicante se il runtime è eseguito sotto ambiente Termux/Android.
   - BASH4LLM_PLAT_MACOS: Flag booleano (valore 1 o 0) impostato su bootstrap
@@ -29,6 +33,14 @@ VARIABILI
     tracciare se una chiave API è stata inserita manualmente dall'utente via
     prompt TTY, con reset iniziale a 0 per prevenire leakage di variabili
     d'ambiente.
+  - VALIDATE_SML: Flag di controllo (valore 1 o 0, default 0) per l'attivazione
+    della validazione sintattica dello standard SML v2.0 sulle risposte LLM.
+  - VALIDATE_REGEX: Stringa contenente l'espressione regolare POSIX ERE per la
+    validazione della risposta estratta (default vuoto).
+  - SANITIZE_OUTPUT: Flag di controllo (valore 1 o 0, default 0) per l'attivazione
+    della sanificazione ANSI e caratteri speciali sul testo finale.
+  - JSON_DIAGNOSTICS: Flag di controllo (valore 1 o 0, default 0) per l'emissione
+    della diagnostica di errore in formato JSON strutturato su stderr.
   - BASH4LLM_MODEL_CACHE: Array associativo adibito ad archiviare in memoria i
     nomi dei modelli normalizzati per evitare ricalcoli regex costosi in tempo
     di esecuzione.
@@ -45,6 +57,8 @@ VARIABILI
     alla richiesta di un modello non valido o non supportato.
   - BASH4LLM_ERR_CURL_FAILED: Costante numerica di errore (valore 12) associata
     al fallimento della chiamata di rete curl.
+  - BASH4LLM_ERR_PARSE: Costante numerica di errore (valore 13) associata a
+    fallimenti di parsing JSON o errori sintattici.
   - BASH4LLM_ERR_NO_PROMPT: Costante numerica di errore (valore 14) associata
     alla mancanza di un prompt di input.
   - BASH4LLM_ERR_TMP: Costante numerica di errore (valore 15) associata a
@@ -60,6 +74,8 @@ VARIABILI
     BASH4LLM_ERR_BAD_MODEL con notazione ad underscore.
   - BASH4LLMERR_CURL_FAILED: Mappatura alias diretta del valore di
     BASH4LLM_ERR_CURL_FAILED con notazione ad underscore.
+  - BASH4LLMERR_PARSE: Mappatura alias diretta del valore di BASH4LLM_ERR_PARSE
+    con notazione ad underscore.
   - BASH4LLMERR_NO_PROMPT: Mappatura alias diretta del valore di
     BASH4LLM_ERR_NO_PROMPT con notazione ad underscore.
   - BASH4LLMERR_TMP: Mappatura alias diretta del valore di BASH4LLM_ERR_TMP con
@@ -97,15 +113,19 @@ VARIABILI
     runtime. Impostata sotto $BASH4LLM_DIR/var/run.
   - BASH4LLM_LOCKS_DIR: Directory dedicata alla memorizzazione isolata dei file
     di lock concorrenziali. Impostata sotto $BASH4LLM_RUN_DIR/locks.
-  - CANONICAL_EXTRAS_DIR: Percorso della directory canonica delle estensioni,
+  - CANONICAL_EXTRAS_DIR: Percorso della directory canonica delle estensioni vendor,
     calcolato rimuovendo la barra finale da BASH4LLM_DIR e annettendo /extras.
   - LEGACY_EXTRAS_DIR: Percorso storico di fallback delle estensioni, relativo
     alla cartella dello script (SCRIPTDIR/extras).
   - BASH4LLM_EXTRAS_DIR: Directory attiva per l'accesso alle risorse aggiuntive
-    dello script (assegnata a CANONICAL_EXTRAS_DIR).
-  - PROVIDERS_DIR: Percorso assoluto o relativo dei moduli esterni dei provider
-    (impostato su PROVIDERS_DIR di ambiente o, in alternativa, localizzato sotto
-    la directory delle estensioni alla voce /providers).
+    vendor (assegnata a CANONICAL_EXTRAS_DIR).
+  - PROVIDERS_DIR: Percorso assoluto o relativo dei moduli vendor dei provider
+    (impostato su PROVIDERS_DIR di ambiente o localizzato sotto $BASH4LLM_EXTRAS_DIR/providers).
+  - CANONICAL_LOCAL_EXTRAS_DIR: Percorso della directory canonica delle estensioni
+    utente locali ($BASH4LLM_DIR/local-extras).
+  - BASH4LLM_LOCAL_EXTRAS_DIR: Directory radice per le estensioni utente locali.
+  - LOCAL_PROVIDERS_DIR: Directory contenente i provider definiti localmente
+    dall'utente ($BASH4LLM_LOCAL_EXTRAS_DIR/providers).
   - THREAD_DIR: Directory dedicata alla registrazione dei log storici NDJSON dei
     thread operativi (posizionata in $BASH4LLM_HISTORY_DIR/threads).
   - TMPDIR: Override dell'ambiente di sistema forzato su BASH4LLM_TMPDIR per
@@ -125,7 +145,7 @@ VARIABILI
     sync_models_file_path.
   - MAX_MODELS: Limite numerico massimo di modelli importabili o gestibili
     localmente. Eredita ${MAX_MODELS} o adotta il valore di default di 200.
-  - PROVIDER_FILE: Percorso del file che persiste l'ultimo provider configurato
+  - PROVIDER_FILE: Percorso del file che persists l'ultimo provider configurato
     dall'utente, determinato tramite canonical_provider_file.
   - MODELS_LOCK: Percorso del file di lock di sincronizzazione per l'accesso ai
     modelli, posizionato sotto $BASH4LLM_LOCKS_DIR/models.lock.
@@ -176,6 +196,9 @@ FUNZIONI
   - trim_space: Rimuove spazi e tabulazioni iniziali e finali tramite costrutti
     di scomposizione nativi della shell (senza fork). Input: $1 (stringa).
     Output: Stringa pulita su stdout. Dipendenze: printf.
+  - _is_readonly_func: Verifica se una funzione esiste ed è dichiarata come
+    read-only in memoria tentandone l'unset in una sotto-shell. Input: $1
+    (nome funzione). Output: Stato 0 (read-only) o 1. Dipendenze: declare, unset.
   - sync_models_file_path: Sincronizza il percorso globale di MODELS_FILE
     basandosi sul provider attivo, forzando una sanitizzazione protettiva contro
     directory traversal che esclude caratteri non alfanumerici (eccetto trattino
@@ -193,6 +216,11 @@ FUNZIONI
     di codice) dal file di documentazione core-notes.sh. Input: $1 (titolo
     sezione target). Output: Righe estratte su stdout o stato 1 se assente.
     Dipendenze: awk.
+  - emit_json_diagnostics: Genera ed emette messaggi di errore ed avviso in
+    formato JSON strutturato su stderr quando JSON_DIAGNOSTICS è attivo.
+    Input: $1 (status type, default "ERROR"), $2 (codice errore numerico), $3
+    (reason code), $4 (messaggio). Output: Stringa JSON su stderr. Dipendenze:
+    jq, date, printf.
   - log_prefix: Restituisce il prefisso di log "bash4llm: ". Input: Nessuno.
     Output: Prefisso su stdout. Dipendenze: printf.
   - log_info: Registra messaggi informativi. Se $DEBUG=1 scrive su stderr; se
@@ -202,8 +230,10 @@ FUNZIONI
   - log_warn: Registra messaggi di avviso non critici su stderr e file
     $BASH4LLM_LOG. Input: $1 (modulo), $2 (messaggio). Dipendenze: log_prefix,
     date, printf.
-  - log_error: Registra errori bloccanti su stderr e file $BASH4LLM_LOG. Input:
-    $1 (modulo), $2 (messaggio). Dipendenze: log_prefix, date, printf.
+  - log_error: Registra errori bloccanti su stderr e file $BASH4LLM_LOG. Se
+    JSON_DIAGNOSTICS=1, delega l'emissione a emit_json_diagnostics. Input: $1
+    (modulo), $2 (messaggio). Dipendenze: log_prefix, emit_json_diagnostics,
+    is_truthy, date, printf.
   - log_info_user: Registra messaggi informativi di esecuzione destinati
     all'utente (non silenziati da QUIET) su stderr e file log. Input: $1
     (modulo), $2 (messaggio). Dipendenze: log_prefix, date, printf.
@@ -236,8 +266,20 @@ FUNZIONI
     openssl, shasum, awk.
   - verify_module_integrity: Verifica la sicurezza del percorso e l'integrità
     crittografica SHA-256 di un modulo rispetto al file extras/manifest.sha256.
-    Input: $1 (percorso modulo). Output: Stato 0 o BASH4LLM_ERR_SEC (17).
+    Input: $1 (percorso modulo), $2 (opzionale: dominio "vendor" o "local"), $3
+    (opzionale: percorso relativo). Output: Stato 0 o BASH4LLM_ERR_SEC (17).
     Dipendenze: validate_path_security, _core_sha256, log_error, log_info, awk.
+  - _provider_env_snapshot: Cattura uno snapshot in memoria delle variabili
+    d'ambiente guscio (PATH, IFS, PWD, CDPATH, LANG, LC_ALL) prima dell'importazione
+    di moduli provider. Input: Nessuno. Output: Popola variabili _B4L_SAVED_*.
+  - _provider_env_restore: Ripristina le variabili d'ambiente guscio salvate da
+    _provider_env_snapshot. Input: Nessuno. Output: Ripristina ambiente guscio.
+    Dipendenze: export, unset, cd.
+  - _verify_manifest_signature: Verifica la firma crittografica Ed25519 del file
+    manifesto (manifest.sha256.sig) avvalendosi di OpenSSL o ssh-keygen e della
+    chiave pubblica ufficiale official-ed25519.pub. Input: $1 (file manifesto).
+    Output: Stato 0 o BASH4LLM_ERR_SEC (17). Dipendenze: validate_path_security,
+    _tmpf, log_error, is_truthy, openssl, ssh-keygen, rm.
   - ensure_api_key_for_provider: Valida e acquisisce la chiave API per il
     provider selezionato seguendo la gerarchia: 1) OpenSSL Key Vault in memoria;
     2) Variabile d'ambiente (se BASH4LLM_REQUIRE_VAULT=0); 3) Prompt interattivo
@@ -343,25 +385,27 @@ FUNZIONI
     operative di risoluzione prelevate in modalità zero-eval da core-notes.sh.
     Input: $1 (codice o alias). Output: Definizione strutturata stampata su
     stderr. Dipendenze: printf, _extract_notes_section, grep.
+  - _resolve_provider_module_path: Risolve la stringa grezza del provider
+    identificandone il percorso fisico, il dominio di appartenenza (builtin,
+    vendor o local) e il nome canonico. Input: $1 (provider_raw). Output:
+    Stampa "percorso|dominio|nome" su stdout. Dipendenze: log_error, log_warn,
+    printf.
   - load_provider_module: Importa in sicurezza moduli dei provider esterni.
     Controlla group/world writable (salvo WSL o IGNORE_SEC), convalida owner,
-    esegue dry-run (bash -n), verifica integrità SHA-256 via
-    verify_module_integrity, e convalida la firma del file pre-post source
-    contro Race Condition. Verifica la conformità delle funzioni buildpayload e
-    call_api in sotto-shell isolata prima di importarle nel runtime, gestendo
-    l'opzione nounset. Scrive provider_capabilities.json. Input: $1 (provider).
-    Output: Stato 0 o 1. Dipendenze: safe_mkdir, _is_world_writable, _get_owner,
-    _get_perm_string, verify_module_integrity, getfile_signature, bash,
-    _mktemp_in_dir, awk, sort, comm, grep, type, declare, rm, ui_state_write,
-    jq.
+    esegue copia di staging temporanea anti-TOCTOU, verifica firma Ed25519 del
+    manifesto se dominio vendor, esegue dry-run (bash -n), convalida la versione
+    API BASH4LLM_PROVIDER_API_VERSION, ed esegue in sotto-shell isolata un filtro
+    whitelist esportando solo le funzioni autorizzate (buildpayload_, call_api_,
+    call_api_streaming_, refresh_models_, validate_model_, validate_key_,
+    auto_select_model_, normalize_model_). Scrive provider_capabilities.json.
+    Input: $1 (provider). Output: Stato 0 o 17 (BASH4LLM_ERR_SEC). Dipendenze:
+    _provider_env_snapshot, _provider_env_restore, _resolve_provider_module_path,
+    verify_module_integrity, _verify_manifest_signature, _tmpf, _mktemp_in_dir,
+    sync_models_file_path, ui_state_write, log_error, log_warn, cp, chmod, bash,
+    awk, sort, comm, grep, type, declare, rm, jq.
   - _detect_base64_opts: Rileva le opzioni Base64 native ed esporta
     $B64_WRAP_OPT e $B64_DECODE_OPT. Input: Nessuno. Dipendenze: printf, base64,
     grep.
-  - list_files_sorted_by_mtime: Elenca file ordinati per modifica mtime
-    crescente (portabile Linux/Darwin). Input: $1 (cartella). Dipendenze: find,
-    stat, sort.
-  - tac_fallback: Inverte l'ordine delle righe di un file tramite tac o fallback
-    awk. Input: $1 (file). Dipendenze: command, tac, awk.
   - _file_mtime: Ottiene data ultima modifica file portabile (Unix timestamp, 0
     se assente). Input: $1 (file). Dipendenze: stat.
   - jq_safe: Filtro jq sicuro. Se fallisce scrive i log diagnostici in $ERRF
@@ -373,7 +417,7 @@ BLOCCHI DI CODICE
     Imposta set -euo pipefail solo se eseguito direttamente per evitare shell
     pollution. Disabilita core dumps (ulimit -c 0), pulisce variabili d'ambiente
     ad alto rischio (BASH_ENV, ENV, CDPATH, GLOBIGNORE), ed esporta le proprietà
-    di identità del software (v2.8.0 e data 25 Luglio 2026).
+    di identità del software (v2.8.5 e data 7 Agosto 2026).
   - PRECORE_BOOT_ENVIRONMENT_AUTODETECTION - Fase: Rilevamento piattaforma. -
     Azione: Rileva dinamicamente la piattaforma host (Android, macOS, WSL,
     Cygwin, BSD, Linux) ed esporta globalmente i corrispondenti flag booleani
@@ -390,22 +434,23 @@ BLOCCHI DI CODICE
   - PRECORE_BOOT_SECURITY - Fase: Registrazione routine di sicurezza. - Azione:
     Registra e definisce le routine di sicurezza e gestione credenziali
     (read_secure_input, validate_file_input, validate_path_security,
-    _core_sha256, verify_module_integrity, ensure_api_key_for_provider,
-    enforce_network_policy).
+    _core_sha256, verify_module_integrity, _verify_manifest_signature,
+    ensure_api_key_for_provider, enforce_network_policy).
   - PRECORE_BOOT_DIR_PATH - Fase: Risoluzione gerarchia directory e Vault. -
     Azione: Risolve la gerarchia delle directory (BASH4LLM_DIR, config, models,
-    templates, history, tmp, var/run, locks, extras, rates). Sovrascrive TMPDIR
+    templates, history, tmp, var/run, locks, extras, local-extras). Sovrascrive TMPDIR
     sul percorso isolato locale. Carica in memoria il modulo OpenSSL Vault
     (openssl-helper.sh) previa verifica di integrità SHA-256.
   - PRECORE_BOOT_STORAGE_LOCKS - Fase: Inizializzazione lock, Base64 e linter. -
     Azione: Configura i percorsi dei file di lock in var/run/locks, definisce le
     routine Base64, scrittura atomica, lock_exec, linter di configurazione ed
     analizzatore spiegazione errori.
-  - PRECORE_BOOT_CLI_HELPERS - Fase: Intercettazione diagnostica. - Azione:
-    Cattura ed esegue immediatamente diagnostic offline ad avvio rapido
+  - PRECORE_BOOT_CLI_HELPERS - Fase: Intercettazione diagnostica e plugin. -
+    Azione: Cattura ed esegue immediatamente diagnostic offline ad avvio rapido
     (--check-config, --explain-error, --print-config-dir, --print-provider-file,
     --print-model-file) terminando lo script prima del boot complessivo. Imposta
-    umask 077 e fornisce il loader protetto dei provider esterni.
+    umask 077 e fornisce il loader protetto anti-TOCTOU dei provider esterni nei
+    tre domini di fiducia.
 
 2.  PRECORE_RUN
 
@@ -429,7 +474,7 @@ VARIABILI
     trasformato in hash anonimizzato SAFE_THREAD_ID per la persistenza del
     contesto.
   - SAFE_THREAD_ID: Identificatore anonimizzato crittograficamente in memoria
-    (digest esadecimale) per evitare di scrivere identificativi o PII su disco.
+    (digest esadecimale SHA-256) per evitare di scrivere identificativi o PII su disco.
   - THREAD_WINDOW: Finestra massima di messaggi storici dal log NDJSON del
     thread da accodare come contesto della chat.
   - TEMPLATE: Nome del file di template da applicare per formattare il prompt.
@@ -466,11 +511,19 @@ VARIABILI
   - MAX_RETRIES: Limite di tentativi di connessione per errori temporanei
     (default 1).
   - SUPPORTED_PROVIDERS: Elenco testuale dei provider supportati (default "groq
-    gemini huggingface").
+    gemini huggingface mistral").
   - CURL_BASE_OPTS: Array dei parametri base immutabili passati a curl
     (--silent, --show-error, --no-buffer, --max-time 120).
   - FALLBACK_PAYLOAD: Payload Base64 alternativo impostato da un hook di
     post-esecuzione in caso di fallimento della chiamata API principale.
+  - BASH4LLM_EDGE_EMPTY: Flag booleano diagnostico (1 o 0) che segnala
+    l'intercettazione di un caso limite di risposta vuota dall'API provider.
+  - BASH4LLM_EDGE_REQ_ID: Identificativo della richiesta estratto dalla risposta
+    dell'API per fini diagnostici.
+  - BASH4LLM_EDGE_FINISH_REASON: Motivo di completamento (finish_reason)
+    estratto dalla risposta dell'API.
+  - BASH4LLM_EDGE_COMPLETION_TOKENS: Conteggio numerico dei token di
+    completamento restituiti dall'API nell'oggetto usage.
 
 FUNZIONI
 
@@ -529,10 +582,11 @@ FUNZIONI
     SHA-256 dell'hook rispetto al manifesto. Utilizza un parser Zero-Eval sicuro
     basato su whitelist per importare nel runtime principale esclusivamente
     parametri approvati (BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD,
-    BASH4LLM_AUTH_TOKEN). Input: $1 (tipo hook: "pre" o "post"), $2 (nome modulo
-    hook). Output: Ritorna lo stato di uscita dell'hook o 17 (BASH4LLM_ERR_SEC)
-    se falliscono i controlli di sicurezza. Dipendenze: validate_path_security,
-    verify_module_integrity, log_error, compgen, unset, export.
+    TRANSFORMED_PAYLOAD, BASH4LLM_AUTH_TOKEN). Input: $1 (tipo hook: "pre" o "post"),
+    $2 (nome modulo hook). Output: Ritorna lo stato di uscita dell'hook o 17
+    (BASH4LLM_ERR_SEC) se falliscono i controlli di sicurezza. Dipendenze:
+    validate_path_security, verify_module_integrity, log_error, compgen, unset,
+    export.
   - _get_file_signature: Calcola l'impronta di stato e integrità di un file. Se
     abilitato l'uso degli hash ($BASH4LLM_SIG_HASH attivo ed eseguibile
     sha256sum o openssl presente), calcola l'hash SHA-256 del contenuto; in caso
@@ -910,6 +964,15 @@ VARIABILI
     configurazione corrente del runtime.
   - DIAGNOSTICS: Flag booleano (valore 1 o 0, default 0) per avviare il ciclo di
     diagnostica e autoverifica.
+  - VALIDATE_SML: Flag booleano (valore 1 o 0, default 0) attivato tramite l'opzione
+    --validate-sml per richiedere la validazione sintattica della risposta secondo
+    lo standard SML v2.0.
+  - VALIDATE_REGEX: Stringa contenente l'espressione regolare POSIX ERE passata tramite
+    l'opzione --validate-regex per filtrare e validare il testo di risposta.
+  - SANITIZE_OUTPUT: Flag booleano (valore 1 o 0, default 0) attivato tramite l'opzione
+    --sanitize per la pulizia ANSI dell'output tramite output-sanitizer.sh.
+  - JSON_DIAGNOSTICS: Flag booleano (valore 1 o 0, default 0) attivato tramite l'opzione
+    --json-diagnostics per forzare l'emissione della diagnostica JSON su stderr.
   - FILE_INPUTS: Array vuoto (()) adibito ad accumulare i percorsi dei file
     passati dall'utente con l'opzione -f per essere annessi al contesto del
     prompt.
@@ -1007,35 +1070,41 @@ FUNZIONI
     release_thread_lock, check_local_rate_limit, call_provider,
     show_payload_head, log_info, log_error, trap, printf.
   - extract_api_error: Ispeziona ed estrae il messaggio d'errore formale dal
-    file di risposta
-    RESP (ispezionando campi JSON o prima riga di testo crudo). Input:
-    Nessuno (RESP). Output: Messaggio errore su stdout. Dipendenze: jq, awk,
-    head.
+    file di risposta RESP (ispezionando campi JSON o prima riga di testo crudo).
+    Input: Nessuno (RESP). Output: Messaggio errore su stdout. Dipendenze: jq,
+    awk, head.
   - detect_empty_edge_case: Algoritmo diagnostico per intercettare risposte
     "vuote" anomale (HTTP 200 con finish_reason stop e token <= 1 ma prive di
-    testo). Analizza
-    RESP ed estrae request ID, finish reason e token. Input: Nessuno (RESP).
-    Output: Assegna BASH4LLM_EDGE_EMPTY (0/1) e salva metadati in variabili
-    globali. Dipendenze: _tmpf, is_valid_json_file, cp, jq, rm.
+    testo). Analizza RESP ed estrae request ID, finish reason e token. Input:
+    Nessuno (RESP). Output: Assegna BASH4LLM_EDGE_EMPTY (0/1) e salva metadati in
+    variabili globali. Dipendenze: _tmpf, is_valid_json_file, cp, jq, rm.
   - finalize_and_output: Formatta e visualizza i risultati secondo $OUTPUT_MODE
-    (text, raw, json, pretty) e ne gestisce il salvataggio atomico su disco se
-    la dimensione supera $THRESHOLD o se richiesto (--save) sotto lock
-    concorrenziale con umask 077. Input: $1 (formato), $2 (testo). Output:
-    Output stampato, file archiviato se abilitato, stato 0 o BASH4LLM_ERR_TMP.
-    Dipendenze: _tmpf, safe_mkdir, lock_exec, log_error, log_warn, cp, cat, jq,
-    printf, wc, tr, date, dirname, chmod.
+    (text, raw, json, pretty). Se il flag SANITIZE_OUTPUT è attivo, esegue la
+    sanificazione ANSI/testo tramite output-sanitizer.sh o fallback POSIX nativo.
+    Inoltre, ne gestisce il salvataggio atomico su disco se la dimensione supera
+    $THRESHOLD o se richiesto (--save) sotto lock concorrenziale con umask 077.
+    Input: $1 (formato), $2 (testo). Output: Output stampato, file archiviato se
+    abilitato, stato 0 o BASH4LLM_ERR_TMP. Dipendenze: _tmpf, safe_mkdir,
+    lock_exec, verify_module_integrity, is_truthy, log_error, log_warn, cp, cat,
+    jq, printf, wc, tr, date, dirname, chmod.
+  - validate_response_syntax: Esegue la validazione sintattica del testo estratto
+    dalla risposta. Se VALIDATE_SML è attivo, verifica la conformità allo
+    standard EBNF SML v2.0. Se VALIDATE_REGEX è definita, verifica che il testo
+    soddisfi l'espressione regolare POSIX ERE fornita. Input: $1 (testo).
+    Output: Stato 0 (valido) o 1 (fallito). Dipendenze: is_truthy, grep.
   - perform_request_once: Orchestra l'esecuzione complessiva di una richiesta
     sincrona sotto lock di thread: esegue gli hook isolati pre e post via
-    execute_isolated_hook, verifica il rate limit locale
-    (check_local_rate_limit), ed esegue la chiamata con retry automatico per
-    errori temporanei (fino a $MAX_RETRIES). Diagnostica casi vuoti, notifica
-    errori API e registra i metadati in last_api.json. Input: Nessuno. Output:
-    Output generato su console, stato 0 o BASH4LLM_ERR_API. Dipendenze:
+    execute_isolated_hook, verifica il rate limit locale (check_local_rate_limit),
+    esegue la validazione sintattica della risposta (validate_response_syntax)
+    ed esegue la chiamata con retry automatico per errori temporanei (fino a
+    $MAX_RETRIES). Diagnostica casi vuoti, notifica errori API e registra i
+    metadati in last_api.json. Input: Nessuno. Output: Output generato su
+    console, stato 0, BASH4LLM_ERR_PARSE (13) o BASH4LLM_ERR_API. Dipendenze:
     acquire_thread_lock, release_thread_lock, execute_isolated_hook,
     check_local_rate_limit, call_api_once, extract_text_from_resp,
-    detect_empty_edge_case, ui_state_write, extract_api_error,
-    finalize_and_output, log_info, log_error, log_warn, b64decode, trap, jq,
-    head, sleep, printf.
+    validate_response_syntax, detect_empty_edge_case, ui_state_write,
+    extract_api_error, finalize_and_output, log_info, log_error, log_warn,
+    b64decode, trap, jq, head, sleep, printf.
   - collect_input_from_files: Legge e concatena i file di input passati con -f,
     validandone la sicurezza con validate_file_input ed inserendo delimitatori
     visivi. Input: Array percorsi ($@). Output: Testo unificato su stdout. Esce
@@ -1049,12 +1118,6 @@ FUNZIONI
   - file_readable: Convalida se il percorso indica un file regolare
     effettivamente leggibile dall'utente corrente. Input: $1 (percorso). Output:
     Stato 0 o 1.
-  - trim: Rimuove spazi vuoti, tabulatori e a capo da inizio e fine stringa via
-    awk. Input: $1 (stringa). Output: Stringa pulita su stdout. Dipendenze: awk,
-    printf.
-  - is_number: Verifica se la stringa è un valore numerico valido (intero o
-    decimale). Input: $1 (stringa). Output: Stato 0 o 1. Dipendenze: awk,
-    printf.
   - is_supported_model: Analizza il nome del modello e ne convalida la
     compatibilità, filtrando e scartando formati non-testuali (visione, audio,
     embedding, vettori, multimodali). Input: $1 (modello). Output: Stato 0
@@ -1066,9 +1129,8 @@ FUNZIONI
   - validate_model_core: Algoritmo centrale di validazione modelli. Normalizza
     il nome via _normalize_model_name, controlla la presenza nel file locale e
     verifica la compatibilità con is_supported_model. Input: $1 (modello).
-    Output: Stato 0 o
-    1.  Dipendenze: _normalize_model_name, is_supported_model, grep, awk,
-        printf.
+    Output: Stato 0 o 1. Dipendenze: _normalize_model_name, is_supported_model,
+    grep, awk, printf.
   - load_local_config: Carica i parametri di configurazione dal file config
     sotto $BASH4LLM_CONFIG_DIR in memoria (MODEL, TEMPERATURE/TURE, MAX_TOKENS,
     FORMAT, THRESHOLD), ignorando commenti e pulendo gli spazi. Input: Nessuno.
@@ -1095,16 +1157,19 @@ BLOCCHI DI CODICE
     del sourcing da parent-shell interattiva con sblocco OpenSSL Vault
     (_B4L_RT_CTX) e pulizia namespace (_cleanup_sourced_env).
   - CORE_SETUP_CLI_PARSE - Fase: Parsing argomenti riga di comando. - Azione:
-    Analizza iterativamente le opzioni CLI (thread, vault, test suite master
-    --test/--run-all-tests, estensioni, modelli, provider, bootstrap),
-    anonimizzando immediatamente tutti gli ID thread ricevuti.
+    Analizza iterativamente le opzioni CLI (thread, validazione SML/regex
+    --validate-sml e --validate-regex, sanificazione --sanitize, diagnostica JSON
+    --json-diagnostics, vault, test suite master --test/--run-all-tests,
+    estensioni, modelli, provider, bootstrap), anonimizzando immediatamente
+    tutti gli ID thread ricevuti.
   - CORE_SETUP_SESSION_ENGINE - Fase: Integrazione ed attivazione Session
     Engine. - Azione: Rileva ed importa session-engine.sh previa verifica di
     sicurezza del percorso, integrità SHA-256 e test di sintassi (bash -n),
     abilitando _engine_available=1 o il fallback su metodi legacy.
   - CORE_SETUP_NORM_FLAGS - Fase: Normalizzazione flag e censimento plug-in. -
-    Azione: Imposta i default di ALLOW_API_CALLS e scansiona providers/*.sh per
-    censire i moduli installati ed aggiornare $SUPPORTED_PROVIDERS.
+    Azione: Imposta i default di ALLOW_API_CALLS e scansiona la directory dei
+    provider vendor (providers/*.sh) e locali (local-extras/providers/*.sh) per
+    censire tutti i moduli installati ed aggiornare $SUPPORTED_PROVIDERS.
   - CORE_SETUP_ACTIONS - Fase: Esecuzione comandi amministrativi ed offline. -
     Azione: Elabora ed esegue immediatamente comandi senza chiamate API:
     eliminazione/ ridenominazione thread, listati, impostazione default
@@ -1118,7 +1183,7 @@ VARIABILI
 
   - _supported_providers_arr: Array interno utilizzato per la memorizzazione e
     l'indicizzazione dinamica di tutti i moduli provider rilevati ed installati
-    nella directory delle estensioni.
+    nelle directory delle estensioni vendor e locali.
   - SUPPORTED_PROVIDERS: Elenco testuale unificato dei provider supportati
     separati da caratteri di spazio.
   - PROVIDER: Identificatore del provider attivo (sincronizzato con la selezione
@@ -1148,48 +1213,46 @@ FUNZIONI
   - assemble_content: Compila ed organizza la stringa del prompt di input
     principale $CONTENT che verrà inviata al modello LLM. Segue una catena di
     regole di priorità esclusive: 1. Se è configurato un JSON utente in
-    $JSON_INPUT, pulisce la variabile
-    CONTENT ed esce (in quanto il JSON di input definisce autonomamente
-    i messaggi). 2. Se l'utente ha inserito dei file via parametro -f (FILE_INPUTS),
-    ne raccoglie ed unifica i contenuti via collect_input_from_files (previa
-    validazione di sicurezza validate_file_input). Se sono presenti argomenti
-    posizionali aggiuntivi, li annette in coda come frammenti testuali. 3. Se è
-    richiesto l'uso di un template ($TEMPLATE), preleva il file del modello
-    dalla directory dei template, esegue la sostituzione della stringa
-    segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito (proveniente da
-    file, da stdin o da argomenti posizionali) usando awk con file di staging
-    intermedi temporanei, e assegna il testo risultante a
-    CONTENT. 4. Se è presente dell'input catturato
-    dallo standard input (STDIN_CONTENT), lo adotta come prompt principale,
-    allegando in coda eventuali argomenti posizionali. 5. Se vi sono solo
-    argomenti CLI posizionali in $ARGS, li converte ed unisce nel prompt
-    testuale principale via expand_args_to_content. Input: Nessuno. Output:
-    Stringa compilata assegnata alla variabile globale $CONTENT. Side-effects:
-    Lettura file, generazione e distruzione di file di staging temporanei
-    atomici sul disco tramite _mktemp_in_dir, sostituzione di stringhe via awk.
-    Dipendenze: collect_input_from_files, expand_args_to_content,
-    ensure_run_tmpdir, _mktemp_in_dir, cat, awk, mv, rm, printf.
+    $JSON_INPUT, pulisce la variabile CONTENT ed esce (in quanto il JSON di input
+    definisce autonomamente i messaggi). 2. Se l'utente ha inserito dei file via
+    parametro -f (FILE_INPUTS), ne raccoglie ed unifica i contenuti via
+    collect_input_from_files (previa validazione di sicurezza validate_file_input).
+    Se sono presenti argomenti posizionali aggiuntivi, li annette in coda come
+    frammenti testuali. 3. Se è richiesto l'uso di un template ($TEMPLATE),
+    preleva il file del modello dalla directory dei template, esegue la
+    sostituzione della stringa segnaposto {{CONTENT}} rimpiazzandola con il
+    prompt inserito (proveniente da file, da stdin o da argomenti posizionali)
+    usando awk con file di staging intermedi temporanei, e assegna il testo
+    risultante a CONTENT. 4. Se è presente dell'input catturato dallo standard
+    input (STDIN_CONTENT), lo adotta come prompt principale, allegando in coda
+    eventuali argomenti posizionali. 5. Se vi sono solo argomenti CLI posizionali
+    in $ARGS, li converte ed unisce nel prompt testuale principale via
+    expand_args_to_content. Input: Nessuno. Output: Stringa compilata assegnata
+    alla variabile globale $CONTENT. Side-effects: Lettura file, generazione e
+    distruzione di file di staging temporanei atomici sul disco tramite
+    _mktemp_in_dir, sostituzione di stringhe via awk. Dipendenze:
+    collect_input_from_files, expand_args_to_content, ensure_run_tmpdir,
+    _mktemp_in_dir, cat, awk, mv, rm, printf.
 
 BLOCCHI DI CODICE
 
   - CORE_PROVIDER_PRO_LOAD_INITIALIZATION - Fase: Selezione, persistenza e
-    caricamento del modulo provider attivo. - Azione: Scansiona la directory dei
-    provider esterni per mappare i moduli installati. Determina il provider
-    attivo leggendolo dai parametri CLI o dal file di configurazione canonico
-    del provider
-    PROVIDER_FILE (adottando "groq" in caso di assenza). Se configurato un nuovo
-    provider da CLI (PROVIDER_CLI diverso da "list" e non interattivo):
-    convalida l'appartenenza ai provider supportati, salva transazionalmente la
-    scelta nel file $PROVIDER_FILE con permessi 600 via atomic_write, rimuove il
-    vecchio file URL del provider e risolve il nuovo endpoint. Se richiesta la
-    selezione interattiva (--provider senza argomenti o valore "list"):
-    visualizza a schermo il menu numerato dei provider disponibili evidenziando
-    il predefinito corrente, acquisisce la scelta dell'utente da stdin
-    (accettando l'indice o il nome letterale e adottando il default se premuto
-    invio), scrive in modo atomico la scelta in $PROVIDER_FILE con permessi 600
-    via atomic_write, rimuove il vecchio file URL del provider e risolve il
-    nuovo URL. Se il provider attivo è "groq" e manca il file URL locale, scrive
-    l'URL dell'API predefinito nel file canonico tramite
+    caricamento del modulo provider attivo. - Azione: Scansiona le directory dei
+    provider esterni (vendor e local) per mappare i moduli installati. Determina
+    il provider attivo leggendolo dai parametri CLI o dal file di configurazione
+    canonico del provider PROVIDER_FILE (adottando "groq" in caso di assenza).
+    Se configurato un nuovo provider da CLI (PROVIDER_CLI diverso da "list" e
+    non interattivo): convalida l'appartenenza ai provider supportati, salva
+    transazionalmente la scelta nel file $PROVIDER_FILE con permessi 600 via
+    atomic_write, rimuove il vecchio file URL del provider e risolve il nuovo
+    endpoint. Se richiesta la selezione interattiva (--provider senza argomenti o
+    valore "list"): visualizza a schermo il menu numerato dei provider disponibili
+    evidenziando il predefinito corrente, acquisisce la scelta dell'utente da
+    stdin (accettando l'indice o il nome letterale e adottando il default se
+    premuto invio), scrive in modo atomico la scelta in $PROVIDER_FILE con
+    permessi 600 via atomic_write, rimuove il vecchio file URL del provider e
+    risolve il nuovo URL. Se il provider attivo è "groq" e manca il file URL
+    locale, scrive l'URL dell'API predefinito nel file canonico tramite
     write_provider_url_if_missing. Invoca la funzione di caricamento sicuro
     load_provider_module per importare le funzioni del modulo provider ed esegue
     la risoluzione dell'URL dell'API. Se l'interfaccia interattiva viene

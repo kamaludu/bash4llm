@@ -63,11 +63,16 @@ Generation Parameters:
 Text User Interface:
   --chat, --tui          Launch full-screen TUI interactive REPL session
 
-Security & Vault:
+Security Vault & Shell Autocompletion:
   --vault                Launch interactive console tool to manage encrypted API keys
 
-  Unlock Vault Session in RAM (bypasses password prompts in current shell):
-  `. ./bash4llm`         (exports obfuscated _B4L_RT_CTX)
+Enable Shell Autocompletion & Unlock Vault Session in active shell:
+  `. ./bash4llm` or `source ./bash4llm`
+  (exports _B4L_RT_CTX & auto-loads bash4llm-completion.sh)
+
+  Direct Sourcing of Completion Script:
+  `. bash4llm.d/extras/docs/bash4llm-completion.sh`
+  or `source bash4llm.d/extras/docs/bash4llm-completion.sh`
 
   Enforce Mandatory Vault Policy (blocks non-vault API keys):
   `export BASH4LLM_REQUIRE_VAULT=1`      (rejects env keys not loaded from Vault)
