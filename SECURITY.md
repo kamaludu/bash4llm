@@ -70,7 +70,7 @@ La funzione `check_local_rate_limit` traccia le transazioni dei thread nella car
 ### Validazione dell'input file e filtro dati binari
 Prima dell'elaborazione di file forniti tramite l'opzione `-f` o argomenti posizionali, la funzione `validate_file_input` verifica che il file non sia vuoto e non contenga byte nulli o caratteri di controllo binari non validi, bloccando immediatamente l'esecuzione con errore `17` in caso di anomalie.
 
-### Sanitizzazione Output ed Estensioni Deterministiche (Scintilla-Ready)
+### Sanitizzazione Output ed Estensioni Deterministiche
 Il runtime supporta il filtraggio ANSI zero-eval dell'output (`--sanitize` tramite `output-sanitizer.sh`), la validazione sintattica della risposta dell'LLM (`--validate-sml` per lo standard SML v2.0 e `--validate-regex`), e l'emissione della diagnostica di errore in formato JSON strutturato (`--json-diagnostics`).
 
 ### Gestione della memoria per l'input interattivo (Session Sandboxing)
