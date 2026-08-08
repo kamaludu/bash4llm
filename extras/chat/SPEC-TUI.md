@@ -22,7 +22,7 @@ Il modulo TUI è concepito come un'estensione interattiva opzionale integrata co
 * **Isolamento dei Processi:** Quando l'utente invoca `bash4llm --chat`, il Core rileva la presenza dello script in `bash4llm.d/extras/chat/tui-repl.sh` e lo esegue sostituendo l'immagine del processo principale (`exec bash "$tui_script" "$@"`). Questo garantisce l'isolamento dello scope delle variabili e impedisce che eventuali eccezioni o interruzioni della TUI compromettano il processo padre.
 * **Risoluzione del Percorso del Core:** Il modulo TUI individua il file principale di `bash4llm` leggendo la variabile d'ambiente `BASH4LLM_CORE_SCRIPT` esportata dal Core. In caso di esecuzione autonoma fuori dal Core, implementa un algoritmo di fallback che risale l'albero delle directory fino alla radice del repository.
 * **Sourcing Guard per il Riutilizzo del Codice:** All'avvio, il modulo TUI importa le utility, i lock e le funzioni di rete di `bash4llm` eseguendo il `source` del Core sotto la guardia ambientale:
-  ```bash
+  ```sh
   export BASH4LLM_SOURCE_ONLY=1
   ```
   Questo meccanismo interrompe l'esecuzione del Core prima del parsing degli argomenti CLI, consentendo alla TUI di ereditarne le librerie e le funzioni interne (es. `_exec_curl_secure`, `call_api_streaming`, `thread_append`, `thread_read_window`) senza alcuna duplicazione di codice.
@@ -68,8 +68,8 @@ Il modulo implementa un sistema multilingue isolato che supporta cinque lingue: 
 * **Parser Dichiarativo Isolato:** La lettura dei file di risorsa avviene riga per riga tramite ciclo `while read` nativo senza ricorrere a `source` o `eval`, prevenendo iniezioni di codice.
 * **Sanitizzazione e Validazione:**
   * Il codice lingua viene forzato a due caratteri alfabetici minuscoli (`^[a-z]{2}$`) tramite espressione regolare per prevenire attacchi di *Directory Traversal*.
-  * Le chiavi vengono ripulite mantenendo unicamente caratteri alfanumerici e underscore (`tr -d -c 'A-Za-z0-9_'`).
-* **Lookup delle Stringhe:** Le coppie chiave-valore vengono caricate in memoria all'avvio in un array associativo globale (`declare -A T_MSG`). L'interrogazione avviene tramite la funzione `_msg()`.
+  * Le chiavi vengono ripulite mantenendo unicamente caratteri alfanumerici e underscore (`safe_key="${key//[!A-Za-z0-9_]/}"`).
+* **Lookup delle Stringhe e Reset Memoria:** Le coppie chiave-valore vengono caricate in memoria in un array associativo globale (`declare -A T_MSG`). Ogni caricamento azzera preventivamente l'array (`T_MSG=()`) per evitare che chiavi obsolete permangano in memoria al cambio dinamico di lingua. L'interrogazione avviene tramite la funzione `_msg()`.
 * **Inizializzazione e Fallback:** Se la variabile `BASH4LLM_LANG` non è configurata, viene mostrato il menu di selezione iniziale salvando la preferenza in modo persistente. In caso di chiavi mancanti, il sistema esegue il fallback automatico sulla lingua inglese (`en.properties`).
 
 ---
@@ -79,6 +79,20 @@ Il modulo implementa un sistema multilingue isolato che supporta cinque lingue: 
 * **Scrittura Sequenziale Standard:** L'interfaccia utente evita l'uso di librerie a schermo intero (come `ncurses` o sequenze di posizionamento assoluto ANSI tramite `tput`), affidando il rendering al normale scorrimento verticale (*vertical scrolling*) del terminale.
 * **Resistenza ai Ridimensionamenti (`SIGWINCH`):** L'approccio sequenziale rende la TUI immune a sfarfallii o alterazioni del layout visivo durante il ridimensionamento della finestra o su connessioni SSH ad alta latenza.
 * **Conformità NO_COLOR:** La TUI adotta le variabili di stile ANSI caricate dal Core. Se l'ambiente rileva l'impostazione `NO_COLOR` o se gli output non sono associati a un TTY interattivo, i colori vengono disattivati automaticamente.
+
+---
+
+### 5.1 Motore di Autocompletamento TAB (Readline Engine)
+
+Il modulo integra un motore di completamento avanzato basato su Readline (`_tui_readline_complete`):
+
+* **Integrazione Readline:** La TUI registra dinamicamente un hook nativo Readline (`bind -x '"\t": _tui_readline_complete'`) per gestire l'autocompletamento contestuale tramite la pressione del tasto `TAB`.
+* **Cache dei Modelli in Memoria (`_TUI_MODELS_CACHE`):** All'avvio e ad ogni cambio di provider o ricaricamento modelli, il TUI legge il file dei modelli ed immagazzina la lista dei modelli supportati in una variabile globale in memoria (`_tui_load_models_cache()`), eliminando del tutto le latenze d'I/O su disco durante il completamento interattivo.
+* **Dispatcher Contestuale dei Candidati:**
+  * **Comandi Slash:** Completamento automatico dei nomi di tutti i comandi slash supportati (`/help`, `/config`, `/model`, `/file`, `/private`, `/undo`, `/status`, ecc.).
+  * **Argomenti dei Comandi:** Suggerimento automatico dei valori validi per `/format` (`text`, `raw`, `json`, `pretty`), `/temperature` (`0.2`, `0.5`, `0.7`, `1.0`, ecc.), `/max`, `/threshold` e modelli disponibili per `/model`.
+  * **Completamento Filesystem per `/file` e Percorsi:** Completamento nativo dei percorsi di file e directory, con gestione degli spazi vuoti, virgolette ed espansione automatica della tilde (`~` -> `$HOME`).
+* **Suggerimenti di Sintassi Automatici:** Quando l'utente completa un comando slash premendo `TAB`, l'engine mostra immediatamente sotto la riga di comando le opzioni o i parametri disponibili per quel comando.
 
 ---
 
@@ -100,10 +114,10 @@ Input Utente -> Compilazione Contesto -> Chiamata API (Sincrona/Streaming) -> Ou
 
 ### 7.1 Wizard di Selezione Thread (Startup)
 Se all'avvio `THREAD_ID` non è specificato, lo script esegue `load_threads_wizard` per la gestione guidata dello storico:
-1. Legge i file `.ndjson` presenti nella directory `threads/`, ordinandoli per data di ultima modifica decrescente.
+1. Legge i file `.ndjson` presenti nella directory `threads/`, ordinandoli per data di ultima modifica decrescente tramite l'helper `_tui_list_files_sorted_by_mtime` e `tac_fallback`.
 2. Visualizza l'elenco dei thread paginato a gruppi di 10 elementi per pagina.
 3. Mostra data, titolo del thread ed ID anonimizzato (`SAFE_THREAD_ID`).
-4. Consente la navigazione tra le pagine (`+`/`n`, `-`/`p`), la creazione di un nuovo thread (`c`) o il caricamento di una conversazione tramite indice numerico.
+4. Consente la navigazione tra le pagine (`+`/`n`, `-`/`p`), la creazione di un nuovo thread (`1` / `c` / `new`) o il caricamento di una conversazione tramite indice numerico.
 
 ### 7.2 Menu di Configurazione (`/config`)
 Fornisce un menu interattivo numerato (**1-11**) per modificare i parametri del runtime:
@@ -135,6 +149,7 @@ Sottomenu dedicato al controllo della conversazione attiva (**1-6**):
 * `/exit` o `/quit`: Chiusura della sessione e termine del processo TUI.
 * `/clear`: Pulizia dello schermo e ristampa del banner senza alterare i dati su disco.
 * `/thread` o `/threads`: Apertura del sottomenu di gestione del thread.
+* `/private`: Attivazione/Disattivazione della modalità Incognito (sospende la scrittura della cronologia su disco e modifica il prompt).
 * `/undo`: Rimozione dell'ultimo turno di conversazione (prompt utente e risposta assistente) dal file NDJSON.
 * `/status`: Visualizzazione dei parametri attivi, dei percorsi e delle statistiche del thread.
 * `/system [<prompt>]`: Visualizzazione o impostazione del prompt di sistema.
@@ -143,7 +158,7 @@ Sottomenu dedicato al controllo della conversazione attiva (**1-6**):
 * `/max <value>`: Impostazione del limite massimo di token.
 * `/threshold <value>`: Impostazione della soglia di salvataggio automatico.
 * `/format <format>`: Cambiamento del formato dell'output.
-* `/file <path> [<prompt>]`: Lettura e allegato di un file di testo (limite massimo 100 KB).
+* `/file <path> [<prompt>]`: Lettura e allegato di un file di testo (supporta percorsi con spazi racchiusi da apici doppi o singoli, limite massimo 100 KB).
 * `/block`: Attivazione della modalità di input multilinea (conclusa digitando `/end`).
 * `/edit`: Composizione del prompt tramite l'editor di testo di sistema (`$EDITOR`, `nano` o `vi`).
 * `/help` o `/?`: Visualizzazione della guida dei comandi interattivi.
@@ -158,20 +173,19 @@ Sottomenu dedicato al controllo della conversazione attiva (**1-6**):
 * **Isolamento Cronologia REPL (`tui_history`):**
   * La registrazione automatica delle istruzioni della shell viene disabilitata all'avvio con `set +o history`.
   * La cronologia dei prompt utente viene gestita in modo indipendente e salvata esclusivamente nel file `tui_history`.
-  * In modalità privata (`/private`), la scrittura dello storico delle domande su disco viene sospesa.
+  * In modalità privata (`/private`), la scrittura dello storico delle domande su disco viene sospesa e la variabile `HISTFILE` azzerata.
 
 ---
 
 ## 10. Protezione del Terminale e Sanitizzazione dell'Output
 
-* **Sanitizzazione dell'Output dell'LLM (`sanitize_llm_output`):** Per prevenire attacchi di *Terminal Injection* o la manipolazione dello schermo da parte di risposte dell'LLM contenenti sequenze di controllo malevole, l'output generato dal modello viene filtrato tramite `sanitize_llm_output()` prima della stampa su TTY e del salvataggio. La funzione rimuove sequenze di escape pericolose (OSC/DCS) preservando la formattazione cromatica ANSI standard.
+* **Sanitizzazione dell'Output dell'LLM (`sanitize_llm_output`):** Per prevenire attacchi di *Terminal Injection* o la manipolazione dello schermo da parte di risposte dell'LLM contenenti sequenze di controllo malevole, l'output generato dal modello viene filtrato tramite `sanitize_llm_output()` prima della stampa su TTY e del salvataggio. La funzione rimuove sequenze di escape pericolose (OSC/DCS) in modo portabile tramite ANSI-C quoting (`$'\x1b'`), preservando la formattazione cromatica ANSI standard.
 * **Limitazione File Allegati (/file):** Imposizione di un limite massimo di **100 KB** per i file caricati tramite `/file` per prevenire la saturazione della memoria RAM o crash di `jq`.
 * **Neutralizzazione delle Sotto-shell nei Dizionari i18n:** Le stringhe nei file `.properties` vengono elaborate come costanti letterali senza valutazione di comandi o subshell incorporati.
 
 ---
 
 ## 🇬🇧 English Section 
-
 
 # Technical Specification: TUI REPL Module (`tui-repl.sh`) for Bash4LLM⁺
 
@@ -186,7 +200,7 @@ The TUI module is designed as an optional interactive extension integrated with 
 * **Process Isolation:** When the user invokes `bash4llm --chat`, the Core detects the presence of the script at `bash4llm.d/extras/chat/tui-repl.sh` and executes it by replacing the primary process image (`exec bash "$tui_script" "$@"`). This guarantees variable scope isolation and prevents any TUI exceptions or interruptions from compromising the parent process.
 * **Core Path Resolution:** The TUI module locates the main `bash4llm` file by reading the `BASH4LLM_CORE_SCRIPT` environment variable exported by the Core. In the case of standalone execution outside the Core, it implements a fallback algorithm that traverses up the directory tree to the repository root.
 * **Sourcing Guard for Code Reuse:** At startup, the TUI module imports `bash4llm`'s utilities, locks, and network functions by sourcing the Core under the environmental guard:
-  ```bash
+  ```sh
   export BASH4LLM_SOURCE_ONLY=1
   ```
   This mechanism halts Core execution prior to CLI argument parsing, allowing the TUI to inherit its internal libraries and functions (e.g., `_exec_curl_secure`, `call_api_streaming`, `thread_append`, `thread_read_window`) without any code duplication.
@@ -232,8 +246,8 @@ The module implements an isolated multilingual system supporting five languages:
 * **Isolated Declarative Parser:** Resource files are read line by line using a native `while read` loop without invoking `source` or `eval`, preventing code injection attacks.
 * **Sanitization and Validation:**
   * Language codes are strictly forced to two lowercase alphabetic characters (`^[a-z]{2}$`) via regular expression to prevent *Directory Traversal* attacks.
-  * Keys are sanitized by retaining only alphanumeric characters and underscores (`tr -d -c 'A-Za-z0-9_'`).
-* **String Lookup:** Key-value pairs are loaded into memory at startup within a global associative array (`declare -A T_MSG`). Querying is handled via the `_msg()` function.
+  * Keys are sanitized by retaining only alphanumeric characters and underscores (`safe_key="${key//[!A-Za-z0-9_]/}"`).
+* **String Lookup and Memory Reset:** Key-value pairs are loaded into memory within a global associative array (`declare -A T_MSG`). Every resource load pre-clears the array (`T_MSG=()`) to prevent stale keys from persisting when dynamically switching languages. Querying is handled via the `_msg()` function.
 * **Initialization and Fallback:** If the `BASH4LLM_LANG` variable is unconfigured, an initial selection menu is displayed, and the preference is saved persistently. For missing keys, the system automatically falls back to English (`en.properties`).
 
 ---
@@ -243,6 +257,20 @@ The module implements an isolated multilingual system supporting five languages:
 * **Standard Sequential Writing:** The user interface avoids full-screen libraries (such as `ncurses` or absolute ANSI positioning sequences via `tput`), relying instead on standard vertical terminal scrolling for rendering.
 * **Resize Resilience (`SIGWINCH`):** The sequential approach renders the TUI immune to flickering or visual layout disruptions during window resizing or over high-latency SSH connections.
 * **NO_COLOR Compliance:** The TUI adopts the ANSI style variables loaded by the Core. If the environment detects the `NO_COLOR` setting or if outputs are not attached to an interactive TTY, colors are disabled automatically.
+
+---
+
+### 5.1 Readline TAB Autocompletion Engine
+
+The module integrates an advanced completion engine based on Readline (`_tui_readline_complete`):
+
+* **Readline Integration:** The TUI dynamically registers a native Readline hook (`bind -x '"\t": _tui_readline_complete'`) to handle contextual autocompletion via the `TAB` key.
+* **In-Memory Model Caching (`_TUI_MODELS_CACHE`):** At startup and upon provider changes or model refreshes, the TUI reads the models file and preloads supported models into a global in-memory variable (`_tui_load_models_cache()`), completely eliminating disk I/O latency during interactive completion.
+* **Contextual Candidate Dispatcher:**
+  * **Slash Commands:** Autocompletion of slash command names (`/help`, `/config`, `/model`, `/file`, `/private`, `/undo`, `/status`, etc.).
+  * **Command Arguments:** Dynamic suggestions for valid arguments like `/format` (`text`, `raw`, `json`, `pretty`), `/temperature` (`0.2`, `0.5`, `0.7`, `1.0`, etc.), `/max`, `/threshold`, and cached models for `/model`.
+  * **Filesystem Completion for `/file` & Paths:** Native file and directory completion handling spaces, quotes, and tilde expansion (`~` -> `$HOME`).
+* **Automatic Syntax Hints:** Upon completing a slash command via `TAB`, the engine immediately displays on-screen contextual hints of available options or syntax.
 
 ---
 
@@ -264,10 +292,10 @@ User Input -> Context Compilation -> API Call (Synchronous/Streaming) -> Output 
 
 ### 7.1 Thread Selection Wizard (Startup)
 If `THREAD_ID` is unspecified at startup, the script executes `load_threads_wizard` for guided history management:
-1. Reads `.ndjson` files inside the `threads/` directory, sorting them by last modification date in descending order.
+1. Reads `.ndjson` files inside the `threads/` directory, sorting them by last modification date in descending order via the `_tui_list_files_sorted_by_mtime` helper and `tac_fallback`.
 2. Displays the list of threads paginated in groups of 10 items per page.
 3. Shows the date, thread title, and anonymized ID (`SAFE_THREAD_ID`).
-4. Allows page navigation (`+`/`n`, `-`/`p`), creation of a new thread (`c`), or loading a conversation via a numeric index.
+4. Allows page navigation (`+`/`n`, `-`/`p`), creation of a new thread (`1` / `c` / `new`), or loading a conversation via a numeric index.
 
 ### 7.2 Configuration Menu (`/config`)
 Provides a numbered interactive menu (**1-11**) to adjust runtime parameters:
@@ -299,6 +327,7 @@ Dedicated submenu for controlling the active conversation (**1-6**):
 * `/exit` or `/quit`: Terminate session and exit TUI process.
 * `/clear`: Clear screen and reprint banner without altering data on disk.
 * `/thread` or `/threads`: Open thread management submenu.
+* `/private`: Toggle Incognito Mode (suspends writing prompt history to disk and updates prompt styling).
 * `/undo`: Remove last conversation turn (user prompt and assistant response) from the NDJSON file.
 * `/status`: Display active parameters, paths, and thread statistics.
 * `/system [<prompt>]`: Display or set system prompt.
@@ -307,7 +336,7 @@ Dedicated submenu for controlling the active conversation (**1-6**):
 * `/max <value>`: Set maximum completion token limit.
 * `/threshold <value>`: Set autosave threshold.
 * `/format <format>`: Change output format.
-* `/file <path> [<prompt>]`: Read and attach text file (100 KB maximum limit).
+* `/file <path> [<prompt>]`: Read and attach text file (supports double or single-quoted paths with spaces, 100 KB maximum limit).
 * `/block`: Enable multiline input mode (concluded by typing `/end`).
 * `/edit`: Compose prompt via system text editor (`$EDITOR`, `nano`, or `vi`).
 * `/help` or `/?`: Display interactive command guide.
@@ -322,12 +351,12 @@ Dedicated submenu for controlling the active conversation (**1-6**):
 * **REPL History Isolation (`tui_history`):**
   * Automatic recording of shell commands is disabled at startup using `set +o history`.
   * User prompt history is managed independently and saved exclusively to the `tui_history` file.
-  * In private mode (`/private`), writing prompt history to disk is suspended.
+  * In private mode (`/private`), writing prompt history to disk is suspended and the `HISTFILE` variable is cleared.
 
 ---
 
 ## 10. Terminal Protection and Output Sanitization
 
-* **LLM Output Sanitization (`sanitize_llm_output`):** To prevent *Terminal Injection* attacks or screen manipulation from LLM responses containing malicious control sequences, generated model output is filtered via `sanitize_llm_output()` prior to TTY printing and saving. The function strips dangerous escape sequences (OSC/DCS) while preserving standard ANSI color formatting.
+* **LLM Output Sanitization (`sanitize_llm_output`):** To prevent *Terminal Injection* attacks or screen manipulation from LLM responses containing malicious control sequences, generated model output is filtered via `sanitize_llm_output()` prior to TTY printing and saving. The function strips dangerous escape sequences (OSC/DCS) portably via ANSI-C quoting (`$'\x1b'`) while preserving standard ANSI color formatting.
 * **Attached File Limit (/file):** Enforces a **100 KB** hard ceiling on files loaded via `/file` to prevent RAM saturation or `jq` crashes.
 * **Subshell Neutralization in i18n Dictionaries:** Resource strings in `.properties` files are processed as literal constants without evaluating embedded commands or subshells.
