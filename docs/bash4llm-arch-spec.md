@@ -76,7 +76,7 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, la bonifi
     * `BASH4LLM_OPENSSL_ACTIVE`: Flag booleano che attesta la disponibilità operativa del modulo OpenSSL.
     * `SAFE_THREAD_ID`: Identificatore del thread anonimizzato crittograficamente tramite SHA-256/MD5.
     * `BASH4LLM_KEY_MANUAL_PROMPT`: Traccia l'inserimento manuale da TTY della chiave API per attivare il promemoria di persistenza.
-    * `VALIDATE_SML`, `VALIDATE_REGEX`, `SANITIZE_OUTPUT`, `JSON_DIAGNOSTICS`: Flag di abilitazione delle estensioni deterministiche Scintilla-Ready.
+    * `VALIDATE_SML`, `VALIDATE_REGEX`, `SANITIZE_OUTPUT`, `JSON_DIAGNOSTICS`: Flag di abilitazione delle Estensioni Deterministiche.
 
 ### 2.2 Mappatura Funzionale per Sezione in PRECORE_BOOT
 
