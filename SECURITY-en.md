@@ -2,99 +2,121 @@
 
 # Security Policy for Bash4LLM⁺ [🇮🇹](SECURITY.md) 🇬🇧
 
-This document details the threat model, filesystem assumptions, built-in security mitigations, known limitations, and procedures for private vulnerability disclosure.
+This document describes the threat model, filesystem assumptions, built-in security mitigations, known limitations, and procedures for vulnerability reporting.
 
 ---
 
-## 1. Supported Versions
+## 1. Supported versions
 
-Security maintenance and patch releases are provided exclusively for the latest stable release on the `main` branch of the repository.
+Maintenance and security patch releases are provided exclusively for the latest stable version on the `main` branch of the repository.
 
 ---
 
 ## 2. Threat Model
 
-Bash4LLM⁺ is engineered for operation in controlled, **single-user** environments:
-* Personal desktop and laptop systems.
-* Dedicated servers, private compute nodes, or single-owner container environments.
-* Protected sandboxed terminals such as Termux on personal Android devices.
-* WSL (Windows Subsystem for Linux) environments or standard Unix/Linux/BSD user consoles.
+Bash4LLM⁺ is designed to operate in controlled **single-user** contexts:
+* Personal desktop computers and laptops.
+* Dedicated servers, private compute nodes, or single-owner Docker instances.
+* Sandboxed local terminals such as Termux on personal Android devices.
+* WSL (Windows) development environments or standard Unix/Linux/BSD user consoles.
 
-Bash4LLM⁺ **is not designed for**:
-* Multi-tenant shared servers with untrusted users.
-* Systems where concurrent unauthorized users possess physical write access to the script working directory.
-* Direct execution as the `root` user in exposed network services.
+Bash4LLM⁺ is **not designed** for:
+* Shared multi-tenant server environments with unauthorized users.
+* Systems where concurrent users have physical write access to the script's working directory.
+* Execution by the `root` user in exposed network contexts.
 
-### Filesystem Security Assumptions
-The runtime operates under the assumptions that:
-1. The executing user is the exclusive owner and write-access holder for the root directory (`bash4llm.d/`) and its subdirectories.
-2. External modules placed in `extras/` originate from verified sources and match expected cryptographic digests.
-3. Unprivileged local processes cannot inspect or alter process memory of other user sessions.
-
----
-
-## 3. Built-In Security Mitigations
-
-### Process Argument Secret Redaction (`argv`)
-All HTTP network interactions (synchronous, streaming, model-refresh, and key-validation) route through the authoritative Core function `_exec_curl_secure()`. API keys and Bearer tokens are written strictly to private temporary header files (`0600`) and forwarded to `curl` via File Descriptor redirection (`/dev/fd/3`). Consequently, credentials **never appear in process argument vectors (`argv`)** and are protected against local process inspection interfaces (`ps aux` or `/proc/<pid>/cmdline`).
-
-### Remote Code Execution (RCE) Prevention
-Bash4LLM⁺ handles, displays, and archives textual API outputs. The script **never executes** model-generated text within the active shell interpreter, eliminating Remote Code Execution (RCE) risks stemming from indirect Prompt Injection attacks.
-
-### Prohibition of Dynamic Code Evaluation (`eval`)
-In accordance with Security Invariant **[INV-3]**, introducing new `eval` statements is prohibited. The single pre-existing trap-restoration statement is isolated and documented under technical debt tracking.
-
-### Temporary File Isolation (No Shared `/tmp`)
-Per Invariant **[INV-2]**, the runtime **never writes temporary files to the shared `/tmp` system directory**. All transactions, error logs, and payload buffers are processed inside an isolated temporary directory (`RUN_TMPDIR`), created as a subfolder of `bash4llm.d/tmp/` with exclusive `0700` permissions and `0600` file permissions (`umask 077`).
-
-### Isolated Module Loading and Fail-Closed Verification
-Provider modules and hooks loaded from `extras/` are parsed inside an isolated subshell before importing function definitions. Prior to loading, `verify_module_integrity()` enforces path security validation and SHA-256 digest matching against `extras/manifest.sha256`. Any hash mismatch or computation error triggers an immediate execution halt with exit code `17` (`BASH4LLM_ERR_SEC`).
-
-### Read-Only Security Function Guards (`readonly -f`)
-Upon completion of Core initialization, `_lock_security_guards()` locks all security, network mediation, and filesystem functions as `readonly -f`. This prevents post-initialization function overriding or hijacking in shell memory.
-
-### Encrypted Key Storage (`--vault`)
-Via the OpenSSL helper module (`--vault`), API keys can be stored encrypted on disk (`keys.dat`) using AES-256-CBC with PBKDF2 key derivation (100,000 iterations) and salt. Unlocked session context caching (`_B4L_RT_CTX`) allows continuous execution without storing plaintext keys on disk.
-
-### RAM Session Sandboxing for Interactive Input
-Manual key input uses TTY-level input masking (`stty -echo`). When exporting a key for the current session, the script executes an OS process replacement via `exec "${SHELL:-bash}"`, holding the key in RAM without writing commands to shell history files (`.bash_history`).
-
-### Concurrency Lock Handling on Termux (Android)
-On Android/Termux environments where system `flock` may fail due to SELinux or kernel policies, locking transparently detours to an atomic directory lock mechanism (`mkdir`).
+### Filesystem security assumptions
+The runtime assumes that:
+1. The user executing the script is the exclusive owner and holder of access rights on the main working directory (`bash4llm.d/`) and its subfolders.
+2. External modules located in the `extras/` folder originate from verified sources, match registered cryptographic fingerprints, and pass validation of the author's Ed25519 signature. Local user modules not tracked by the vendor manifest reside in the separate domain `local-extras/`.
+3. The RAM memory space of the user process is not accessible to unprivileged local users.
 
 ---
 
-## 4. Known Limitations
+## 3. Built-in security mitigations
 
-* **POSIX Filesystem Race Condition (TOCTOU):** On standard POSIX filesystems, a theoretical window (Time-of-Check to Time-of-Use) exists between checking file permissions and performing operations. This risk is mitigated by enforcing isolated `0700` parent directories.
-* **Debug File Preservation:** Enabling debug mode (`--debug` or `DEBUG=1`) preserves temporary files in `RUN_TMPDIR` for troubleshooting. Debug mode should be disabled in production environments.
+### Credential redaction in process argument vectors (`argv`)
+All HTTP network calls (synchronous, streaming, model refresh, and key validation) are routed through the central function `_exec_curl_secure()`. API keys and Bearer tokens are written exclusively to temporary header files with `0600` permissions and forwarded to `curl` via File Descriptor redirection (`/dev/fd/3`). In this way, credentials **never appear in command-line argument vectors (`argv`)** and are protected from process table inspection (`ps aux` or `/proc/<pid>/cmdline`).
+
+### Prevention of Remote Code Execution (RCE)
+Bash4LLM⁺ receives, displays, and optionally archives the text output returned by APIs. The script **never executes** the text generated by the model inside the shell interpreter, preventing RCE vulnerabilities arising from Prompt Injection attacks.
+
+### Absence of dynamic evaluation constructs (`eval`)
+In accordance with security invariant **[INV-3]**, the introduction of new `eval` constructs is forbidden. The only pre-existing instruction for restoring signal traps is isolated and documented. Module loading and hook output analysis use a whitelist-based Zero-Eval parser.
+
+### Temporary file isolation and prohibition of `/tmp` usage
+In accordance with invariant **[INV-2]**, the script **never uses the system shared directory `/tmp`**. All temporary files, raw responses, and error files are allocated inside the isolated runtime directory (`RUN_TMPDIR`), created as a local subfolder of `bash4llm.d/tmp/` with restrictive `0700` permissions and files with `0600` permissions (`umask 077`).
+
+### Isolated module loading, Ed25519 signature, and whitelist filter (Fail-Closed)
+Provider modules and hooks loaded from the `extras/` directory are analyzed in an isolated temporary staging copy (anti-TOCTOU protection). Before each loading:
+1. The `verify_module_integrity()` function performs path security verification (`validate_path_security`), validation of the Ed25519 cryptographic signature of the manifest (`_verify_manifest_signature` with `official-ed25519.pub` key), and SHA-256 hash check against `extras/manifest.sha256`.
+2. The provider API version contract (`BASH4LLM_PROVIDER_API_VERSION`) is verified.
+3. Function definitions are filtered via whitelist (`comm -13`) to prevent export of unauthorized functions (function hijacking).
+
+Any tampering, invalid signature, or integrity failure immediately halts execution with exit code `17` (`BASH4LLM_ERR_SEC`). Signing can be made mandatory by setting `BASH4LLM_REQUIRE_MANIFEST_SIG=1`.
+
+### Protection of runtime guard functions (`readonly -f`)
+At the end of Core initialization, the `_lock_security_guards()` function marks security, mediation, network, and filesystem management functions (`_exec_curl_secure`, `verify_module_integrity`, `validate_path_security`, `atomic_write`, `check_local_rate_limit`, `read_secure_input`, `enforce_network_policy`, `execute_isolated_hook`) as `readonly -f`. This prevents any attempt to overwrite or delete guard functions in memory by external modules or derived scripts.
+
+### Local API key encryption and Vault enforcement (`--vault`)
+Through the optional OpenSSL-based module (`--vault`), API keys can be stored in encrypted form on the filesystem (`keys.dat`). Protection uses the AES-256-CBC algorithm with PBKDF2 derivation (100,000 iterations) and Master Password. Reuse of the unlocked session context (`_B4L_RT_CTX`) allows continuous use without writing plaintext credentials to disk. Activating the variable `export BASH4LLM_REQUIRE_VAULT=1`, the system strictly forbids key retrieval from unencrypted environment variables.
+
+### PII anonymization of Thread IDs
+To prevent exposure of personally identifiable information (PII) or confidential paths in metadata and conversation logs, the `anonymize_thread_id` function converts every thread ID into a SHA-256/MD5 cryptographic hash before any write to disk.
+
+### Local sliding-window Rate Limiting
+The `check_local_rate_limit` function tracks thread transactions in the isolated folder `tmp/rates/` and applies a configurable rate limit (30-second window). Exceeding the limit halts the request with exit code `17`.
+
+### File input validation and binary data filter
+Before processing files provided via the `-f` option or positional arguments, the `validate_file_input` function verifies that the file is not empty and contains no null bytes or invalid binary control characters, immediately blocking execution with error `17` in case of anomalies.
+
+### Output Sanitization and Deterministic Extensions (Scintilla-Ready)
+The runtime supports zero-eval ANSI filtering of output (`--sanitize` via `output-sanitizer.sh`), syntactic validation of the LLM response (`--validate-sml` for the SML v2.0 standard and `--validate-regex`), and emission of error diagnostics in structured JSON format (`--json-diagnostics`).
+
+### Memory management for interactive input (Session Sandboxing)
+Manual credential acquisition occurs via TTY input masking (`stty -echo`). When the user chooses to export the key for the current session, the script executes process substitution via `exec "${SHELL:-bash}"`, maintaining the variable exclusively in the sub-shell RAM without writing it to terminal history files (`.bash_history`).
+
+### Concurrency management on Termux (Android)
+In Android/Termux environments, where `flock` may be subject to kernel or SELinux restrictions, lock management is transparently redirected to the atomic directory-based mechanism (`mkdir`).
 
 ---
 
-## 5. Security Configuration Guidelines
+## 4. Known limitations
 
-1. **Install in a restricted user directory:**
+* **Race window on POSIX filesystem (TOCTOU):** On standard POSIX filesystems, a theoretical race window (Time-of-Check to Time-of-Use) exists between checking file permissions and the subsequent read/write operation. This risk is mitigated by the use of isolated `0700` directories under exclusive user control and module loading via temporary staging copies created with `0600` permissions.
+* **Persistence of temporary files in Debug mode:** Enabling debug mode (`--debug` or `DEBUG=1`) preserves transaction temporary files inside `RUN_TMPDIR` to allow inspecting responses. Disabling debug mode in production environments is recommended.
+
+---
+
+## 5. Recommendations for secure configuration
+
+1. **Installation in reserved user directory:**
    ```sh
    mkdir -p "$HOME/.local/bin"
    cp bash4llm "$HOME/.local/bin/"
    chmod 700 "$HOME/.local/bin/bash4llm"
    ```
-2. **Apply restrictive permissions to the data folder:**
+2. **Restrictive permissions on data folder:**
    ```sh
    chmod 700 "$HOME/bash4llm.d"
    chmod 600 "$HOME/bash4llm.d/config/config"
    ```
-3. **Run Configuration Audits:**
-   Periodically verify permissions using the static linter:
+3. **Activation of stringent security policies:**
+   ```sh
+   export BASH4LLM_REQUIRE_VAULT=1         # Forces exclusive use of encrypted Vault
+   export BASH4LLM_REQUIRE_MANIFEST_SIG=1  # Makes manifest Ed25519 signature mandatory
+   ```
+4. **Configuration verification:**
+   Periodically perform static permission checks via command:
    ```sh
    ./bash4llm --check-config
    ```
 
 ---
 
-## 6. Core Binary Protection
+## 6. Protection of main executable
 
-To protect the main script from unauthorized modification by unprivileged processes, set appropriate ownership and immutability controls:
+To prevent unauthorized modifications to the main script by unprivileged processes in the system, appropriate permissions and immutability controls can be applied:
 
 ### Linux (GNU/Linux)
 ```bash
@@ -123,16 +145,16 @@ chmod 755 /path/to/bash4llm
 
 ---
 
-## 7. Private Vulnerability Reporting (Responsible Disclosure)
+## 7. Vulnerability reporting (Responsible Disclosure)
 
-To report potential security vulnerabilities in the Core script or extension modules, submit a confidential report:
+In case of discovering potential security vulnerabilities in the Core or extended modules, please send a confidential report.
 
 * **Email:** `opensource@cevangel.anonaddy.me`
 * **Subject:** `[Bash4LLM Security Report]`
 
-Please include:
+Information required in the report:
 1. Technical description of the vulnerability.
-2. Reproduction steps or Proof of Concept (PoC).
-3. Estimated impact and proposed remediation if available.
+2. Reproduction procedure or Proof of Concept (PoC).
+3. Impact assessment and any proposed remediation.
 
-Initial triage will begin within 72 hours of receipt, with coordinated patch disclosure prior to public release.
+Initial analysis will be initiated within 72 hours of receiving the report, coordinating patch release prior to any public disclosure.
