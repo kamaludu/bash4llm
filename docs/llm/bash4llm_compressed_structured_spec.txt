@@ -1,10 +1,13 @@
-SPECIFICA COMPRESSA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.8.0)
+--- START OF FILE text/markdown ---
+
+SPECIFICA COMPRESSA DELL'ARCHITETTURA E DELLA LOGICA DI BASH4LLM⁺ (v2.8.5)
 
 === PRECORE_BOOT ===
 
 VARIABILI: V:SCRIPT_NAME="bash4llm" (Nome identificativo del programma)
-V:SCRIPT_VERSION="2.8.0" (Versione corrente del software)
-V:SCRIPT_DATE="2026-07-24" (Data di rilascio dello script)
+V:SCRIPT_VERSION="2.8.5" (Versione corrente del software)
+V:SCRIPT_DATE="2026-08-07" (Data di rilascio dello script)
+V:BASH4LLM_SUPPORTED_PROVIDER_API=1 (Versione contratto API provider supportata dal core)
 V:BASH4LLM_PLAT_ANDROID=Flag Termux/Android. Valore 0 o 1, risolto dinamicamente su bootstrap
 V:BASH4LLM_PLAT_MACOS=Flag macOS/Darwin. Valore 0 o 1, risolto dinamicamente su bootstrap
 V:BASH4LLM_PLAT_WSL=Flag Windows Subsystem for Linux. Valore 0 o 1, risolto dinamicamente su bootstrap
@@ -12,10 +15,15 @@ V:BASH4LLM_PLAT_CYGWIN=Flag Windows Cygwin/MSYS2/MinGW. Valore 0 o 1, risolto di
 V:BASH4LLM_PLAT_BSD=Flag varianti BSD (FreeBSD, OpenBSD, ecc). Valore 0 o 1, risolto dinamicamente su bootstrap
 V:BASH4LLM_PLAT_LINUX=Flag Linux generico o WSL. Valore 0 o 1, risolto dinamicamente su bootstrap
 V:BASH4LLM_KEY_MANUAL_PROMPT=Hard reset stato prompt manuale chiave API per prevenire leakage. Default 0
+V:VALIDATE_SML=Flag validazione sintattica SML v2.0 per le risposte. Default 0
+V:VALIDATE_REGEX=Espressione regolare ERE POSIX per la validazione della risposta. Default vuoto
+V:SANITIZE_OUTPUT=Flag per l'attivazione della sanificazione ANSI/testo dell'output. Default 0
+V:JSON_DIAGNOSTICS=Flag per emissione della diagnostica in formato JSON strutturato su stderr. Default 0
 V:BASH4LLM_MODEL_CACHE=Array associativo adibito a cache in memoria per i nomi dei modelli normalizzati
 V:BASH4LLM_ERR_NO_API_KEY=10 (Mancanza di una chiave API valida)
 V:BASH4LLM_ERR_BAD_MODEL=11 (Modello richiesto non valido o non supportato)
 V:BASH4LLM_ERR_CURL_FAILED=12 (Fallimento della chiamata di rete curl)
+V:BASH4LLM_ERR_PARSE=13 (Mancanza/errore parsing o sintassi)
 V:BASH4LLM_ERR_NO_PROMPT=14 (Mancanza di un prompt di input valido)
 V:BASH4LLM_ERR_TMP=15 (Problemi al file-system temporaneo o ai file di lock)
 V:BASH4LLM_ERR_API=16 (Risposta errore o codice HTTP non valido restituito dal provider)
@@ -23,6 +31,7 @@ V:BASH4LLM_ERR_SEC=17 (Vulnerabilità o violazione delle policy di sicurezza sul
 V:BASH4LLMERR_NO_API_KEY=10 (Alias diretto di BASH4LLM_ERR_NO_API_KEY con notazione ad underscore)
 V:BASH4LLMERR_BAD_MODEL=11 (Alias diretto di BASH4LLM_ERR_BAD_MODEL con notazione ad underscore)
 V:BASH4LLMERR_CURL_FAILED=12 (Alias diretto di BASH4LLM_ERR_CURL_FAILED con notazione ad underscore)
+V:BASH4LLMERR_PARSE=13 (Alias diretto di BASH4LLM_ERR_PARSE con notazione ad underscore)
 V:BASH4LLMERR_NO_PROMPT=14 (Alias diretto di BASH4LLM_ERR_NO_PROMPT con notazione ad underscore)
 V:BASH4LLMERR_TMP=15 (Alias diretto di BASH4LLM_ERR_TMP con notazione ad underscore)
 V:BASH4LLMERR_API=16 (Alias diretto di BASH4LLM_ERR_API con notazione ad underscore)
@@ -42,7 +51,10 @@ V:BASH4LLM_RATES_DIR=Dir tracciamento transazioni rate limiter ($BASH4LLM_TMPDIR
 V:CANONICAL_EXTRAS_DIR=Percorso extras canonico (BASH4LLM_DIR + /extras)
 V:LEGACY_EXTRAS_DIR=Percorso storico fallback ($SCRIPTDIR/extras)
 V:BASH4LLM_EXTRAS_DIR=Assegnata a CANONICAL_EXTRAS_DIR per accesso estensioni attive
-V:PROVIDERS_DIR=Dir provider esterni. Eredita env ${PROVIDERS_DIR}, default BASH4LLM_EXTRAS_DIR/providers
+V:PROVIDERS_DIR=Dir provider esterni vendor. Eredita env ${PROVIDERS_DIR}, default BASH4LLM_EXTRAS_DIR/providers
+V:CANONICAL_LOCAL_EXTRAS_DIR=Percorso local-extras canonico ($BASH4LLM_DIR/local-extras)
+V:BASH4LLM_LOCAL_EXTRAS_DIR=Directory radice delle estensioni utente locali
+V:LOCAL_PROVIDERS_DIR=Dir provider locali utente. Eredita env ${LOCAL_PROVIDERS_DIR}, default BASH4LLM_LOCAL_EXTRAS_DIR/providers
 V:THREAD_DIR=Dir log storici chat dei thread (BASH4LLM_HISTORY_DIR/threads)
 V:BASH4LLM_VAULT_ENABLED=Selettore per abilitare/disabilitare l'OpenSSL Vault. Default 1
 V:BASH4LLM_OPENSSL_ACTIVE=Flag indicante il caricamento del modulo openssl-helper.sh nel runtime. Default 0
@@ -64,6 +76,7 @@ F:canonical_provider_file|p:Genera percorso canonico file persistenza provider (
 F:canonical_model_file|p:Genera percorso file modello default del provider (/model.<prov>)|i:1:provider|o:Percorso su stdout|s:Chiama canonical_config_dir|d:printf,canonical_config_dir
 F:canonical_provider_url_file|p:Genera percorso canonico file endpoint del provider (/provider-url)|i:Nessuno|o:Percorso su stdout|s:Chiama canonical_config_dir|d:type,canonical_config_dir,printf
 F:trim_space|p:Rimuove spazi vuoti e tabulazioni iniziali e finali tramite costrutti nativi di parametrizzazione|i:1:stringa|o:Stringa pulita su stdout|s:Nessuno|d:printf
+F:_is_readonly_func|p:Verifica se una funzione esiste ed è contrassegnata come read-only in memoria|i:1:nome_funzione|o:Stato 0 (read-only) o 1|s:Nessuno|d:declare,unset
 F:sync_models_file_path|p:Sincronizza il percorso globale di MODELS_FILE basandosi sul provider attivo con sanitizzazione alfanumerica protettiva contro attacchi di directory traversal|i:1:provider(opzionale)|o:Esporta MODELS_FILE in ambiente|s:Esporta MODELS_FILE|d:export
 F:validate_file_input|p:Validazione locale e cruda di file di testo per evitare byte nulli, DEL o controlli C0 anomali|i:1:percorso|o:Codice stato: 0 (valido), 1 (vuoto), 2 (illeggibile), 3 (0 byte), 4 (binario/controlli non autorizzati)|s:Lettura file locale|d:tr,head,file_size,wc
 F:_normalize_model_name|p:Normalizza i nomi dei modelli rimuovendo prefissi del provider e memorizza i risultati in una cache associativa in memoria per evitare chiamate ripetute a subshell|i:1:nome_modello|o:Nome normalizzato su stdout|s:Aggiorna cache BASH4LLM_MODEL_CACHE|d:normalize_model_provider
@@ -73,20 +86,25 @@ F:_get_owner|p:Ottiene utente proprietario portabile unificando Linux/Darwin tra
 F:validate_path_security|p:Verifica permessi POSIX e proprietà utente corrente del target e delle dir padre, vietando scrittura a gruppi/altri (group/world-writable)|i:1:target_file|o:Stato 0 o 1 (violazione sicurezza)|s:Verifica symlink, owner e permessi|d:dirname,id,_get_owner,_get_perm_string,awk,log_error,log_warn
 F:_core_sha256|p:Calcola digest SHA-256 di un file in modo portabile usando sha256sum, openssl o shasum|i:1:target_file|o:Hash hex su stdout o stato 1|s:Nessuno|d:sha256sum,openssl,shasum,awk
 F:verify_module_integrity|p:Verifica sicurezza percorso via validate_path_security e controlla digest SHA-256 contro extras/manifest.sha256. Strictly fail-closed: arresta con exit code 17 su mismatch o fallimento hash|i:1:target_file|o:Stato 0 o 17 (BASH4LLM_ERR_SEC)|s:Confronto hash manifest|d:validate_path_security,_core_sha256,awk,log_error,log_warn
+F:_provider_env_snapshot|p:Salva lo stato delle variabili d'ambiente guscio prima dell'importazione di plugin provider|i:Nessuno|o:Popola variabili interne _B4L_SAVED_*|s:Nessuno|d:Nessuna
+F:_provider_env_restore|p:Ripristina lo stato salvato delle variabili d'ambiente guscio post-caricamento provider|i:Nessuno|o:Ripristina ambiente guscio|s:Unset variabili _B4L_SAVED_*|d:export,unset,cd
+F:_verify_manifest_signature|p:Verifica la firma crittografica Ed25519 del manifesto delle estensioni via OpenSSL o ssh-keygen|i:1:manifest_file|o:Stato 0 o 17 (BASH4LLM_ERR_SEC)|s:Verifica firma via chiave pubblica|d:validate_path_security,openssl,ssh-keygen,log_error
 F:ensure_api_key_for_provider|p:Valida/acquisisce API key. Cerca nell'ambiente (PROVIDER_API_ENV_<p>), nel Vault se attivo. Se assente e non-interattivo: crash(BASH4LLM_ERR_NO_API_KEY). Interattivo(TTY): prompt stdin silenziato via read_secure_input, export ambiente, imposta BASH4LLM_KEY_MANUAL_PROMPT=1|i:1:provider|o:Stato 0 o BASH4LLM_ERR_NO_API_KEY|s:Esporta key, prompt stderr, decrittazione vault|d:provider_api_env_var_name,vault_exists,vault_load_keys,jq,read_secure_input,printf,export
 F:enforce_network_policy|p:Valuta se connessioni esterne permesse (analizza $DRY_RUN, $BASH4LLM_SKIP_NETWORK, $BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET, QUIET)|i:Nessuno|o:Stato 1 (bloccate/dry-run) o 0 (autorizzate)|s:Log debug se attivo|d:is_truthy,log_info
 F:_extract_notes_section|p:Estrae sezioni testuali formali dal documento core-notes.sh senza eseguire codice (Zero-Eval)|i:1:intestazione_target|o:Righe estratte su stdout o codice d'uscita 1|s:Lettura file di documentazione|d:awk
+F:emit_json_diagnostics|p:Emette diagnostica strutturata JSON su stderr in caso di errore quando JSON_DIAGNOSTICS=1|i:1:status,2:err_code,3:reason_code,4:msg|o:Stringa JSON su stderr|s:Nessuno|d:jq,date,printf
 F:log_prefix|p:Genera prefisso unificato log ("bash4llm: ")|i:Nessuno|o:Stringa prefisso su stdout|s:Nessuno|d:printf
 F:log_info|p:Traccia msg informativi. Scrive su stderr se $DEBUG=1. Se BASH4LLM_LOG valorizzato, appende record con timestamp UTC e categoria|i:1:categoria(default INFO),2:messaggio|o:Nessuno|s:Scrittura log file/stderr|d:log_prefix,date,printf
 F:log_warn|p:Traccia avvisi non critici su stderr e file BASH4LLM_LOG|i:1:modulo(default WARN),2:messaggio|o:Nessuno|s:Scrittura stderr/file|d:log_prefix,date,printf
 F:log_error|p:Traccia errori critici su stderr e file BASH4LLM_LOG|i:1:modulo(default ERROR),2:messaggio|o:Nessuno|s:Scrittura stderr/file|d:log_prefix,date,printf
 F:log_info_user|p:Traccia messaggi informativi utente non intercettati da QUIET su stderr e file log|i:1:categoria,2:messaggio|o:Nessuno|s:Scrittura stderr/file|d:log_prefix,date,printf
 F:dbg|p:Stampa diagnostica rapida su stderr se DEBUG=1|i:Argomenti testuali|o:Testo inviato a stderr|s:Scrittura su stderr|d:printf
+F:read_secure_input|p:Legge un input sensibile (es. API key o password) disabilitando temporaneamente l'echo del terminale su /dev/tty e gestendo i trappaggi di segnali|i:1:var_target,2:prompt_msg,3:min_len,4:allow_verify|o:Stato 0 o 1|s:Modifica stty /dev/tty|d:stty,trap,printf,read
 F:ensure_config_dir|p:Verifica, crea e blinda cartella config usando safe_mkdir, convalida scrivibilità reale scrivendo e rimuovendo immediatamente un file test|i:Nessuno|o:Stato 0 (scrivibile/pronta) o 1|s:Creazione dir, chmod 700, test I/O disco|d:safe_mkdir,chmod,rm,log_error
 F:write_provider_url_if_missing|p:Scrive URL API provider in file canonico se non popolato. Transazionale: scrive in temp, copia/sposta a dest per evitare corruzioni, chmod 600|i:1:provider,2:URL|o:Stato 0 o 1 (fallimento I/O)|s:safe_mkdir, mktemp, copia atomica, chmod 600|d:canonical_provider_url_file,dirname,safe_mkdir,_tmpf,printf,mv,cp,rm,chmod
 F:resolve_provider_url|p:Risolve ed esporta URL API. Priorità: env BASH4LLM_API_URL o BASH4LLM_PROVIDER_URL; in assenza, prima riga file canonico URL. Se manca e provider='groq', esporta endpoint nativo default Groq|i:1:provider(default PROVIDER)|o:Stato 0 o 1, esporta BASH4LLM_PROVIDER_URL|s:Esporta BASH4LLM_PROVIDER_URL|d:canonical_provider_url_file,sed,awk,export
 F:provider_api_env_var_name|p:Standardizza nome env var API key (es. "gemini" -> "GEMINI_API_KEY") tramite costrutto di maiuscolizzazione nativo della shell (no fork)|i:1:provider|o:Nome normalizzato su stdout|s:Nessuno|d:printf
-F:print_persistence_reminder|p:Stampa un avviso di sicurezza ed i comandi per rendere persistente la chiave API inserita manualmente|i:Nessuno|o:Messaggio di advisory su stderr|s:Esporta var ambiente|d:provider_api_env_var_name,printf,export
+F:print_persistence_reminder|p:Stampa un avviso di sicurezza ed i comandi per rendere persistenti le chiavi inserite da prompt|i:Nessuno|o:Messaggio di advisory su stderr|s:Esporta var ambiente|d:provider_api_env_var_name,printf,export
 F:is_valid_json_string|p:Valida sintassi JSON di una stringa|i:1:stringa|o:Stato 0 o 1|s:Nessuno|d:printf,jq
 F:b64encode|p:Codifica stdin in Base64 riga singola in modo portabile integrando openssl enc|i:stdin|o:Stringa codificata su stdout|s:Nessuno|d:openssl,base64,tr
 F:b64decode|p:Decodifica Base64 da stdin con correzione per LibreSSL/BSD (folding righe a 64 char via awk per evitare bug troncamento)|i:stdin|o:Flusso decodificato su stdout|s:Nessuno|d:awk,openssl,base64
@@ -105,21 +123,20 @@ F:b64_atomic_read|p:Legge in sicurezza file Base64, decodifica al volo e stampa|
 F:ui_state_write|p:Scrive atomicamente JSON stato interfaccia (metadati runtime) in file sotto $BASH4LLM_CONFIG_DIR/ui_state o RUN_TMPDIR, chmod 600, lock concorrente|i:1:file,2:JSON|o:Stato 0 o 1|s:Creazione directory, chmod 600, lock, atomic_write|d:safe_mkdir,chmod,atomic_write,wc,log_info,log_warn
 F:run_static_config_check|p:Linter di sicurezza dei permessi del file config e dei tag di dichiarazione variabili contro refusi/typo mappati in core-notes.sh. Se non sicuro esce con errore 17|i:Nessuno|o:Stato 0 o esce con codice 17|s:Esegue stat, legge ed elabora config|d:stat,awk,sed,tr,grep,printf
 F:explain_error_code|p:Associa un codice d'errore numerico o un alias alla sua definizione ed istruzione di mitigazione in core-notes.sh|i:1:codice_errore_o_alias|o:Stampa su stderr|s:Lettura file di documentazione core-notes.sh|d:printf,_extract_notes_section,grep
-F:load_provider_module|p:Carica/importa isolato provider esterno (plugin). Sicurezza: vieta group/world-writable su dir/file (salvo WSL o IGNORE_SEC), verifica owner, dry-run sintattico (bash -n), verifica integrità via verify_module_integrity. Isolamento: source in subshell, convalida buildpayload e call_api, disabilita/ripristina nounset. Salva stato in provider_capabilities.json|i:1:provider|o:Stato 0 o 1|s:Log, file temp dump, source, export f, write UI, disabilita/ripristina nounset|d:safe_mkdir,_is_world_writable,_get_owner,_get_perm_string,verify_module_integrity,getfile_signature,bash,_mktemp_in_dir,awk,sort,comm,grep,type,declare,rm,ui_state_write,jq
+F:_resolve_provider_module_path|p:Risolve la stringa grezza del provider restituendo percorso fisico, dominio di fiducia (builtin, vendor, local) e nome canonico|i:1:provider_raw|o:Stringa "percorso|dominio|nome" su stdout o errore|s:Nessuno|d:log_error,log_warn,printf
+F:load_provider_module|p:Carica/importa isolato provider esterno (plugin). Isolamento anti-TOCTOU via copia temporanea di staging, verifica domini di fiducia (builtin/vendor/local), verifica firma manifesto se vendor, controllo contratto BASH4LLM_PROVIDER_API_VERSION, filtro whitelist sulle funzioni esportabili|i:1:provider|o:Stato 0 o 17 (BASH4LLM_ERR_SEC)|s:Staging copy, verify_module_integrity, dump subshell, Whitelist export, UI capabilities|d:_resolve_provider_module_path,verify_module_integrity,_verify_manifest_signature,_tmpf,cp,chmod,bash,declare,awk,sort,comm,grep,type,ui_state_write,log_error,log_warn
 F:_detect_base64_opts|p:Rileva opzioni base64 portabili sistema (GNU/Linux vs macOS/BSD) per riga singola e decodifica. Esporta in env|i:Nessuno|o:Esporta B64_WRAP_OPT (es -w0 o vuoto) e B64_DECODE_OPT (es -d o -D)|s:Esporta variabili ambiente|d:printf,base64,grep
-F:list_files_sorted_by_mtime|p:Elenca file regolari ordinati per ultima modifica mtime crescente (portabile Linux/Darwin)|i:1:cartella|o:Lista coppie mtime|percorso su stdout|s:Nessuno|d:find,stat,sort
-F:tac_fallback|p:Inverte ordine righe file (dall'ultima alla prima). Fallback awk se tac assente|i:1:percorso|o:Righe invertite su stdout|s:Nessuno|d:command,tac,awk
 F:_file_mtime|p:Ottiene data ultima modifica file portabile (timestamp Unix, 0 se manca)|i:1:percorso|o:Timestamp Unix su stdout|s:Nessuno|d:stat
 F:jq_safe|p:Esegue filtro jq su JSON. Se fallisce/invalido scrive diagnostica in ERRF senza crashare|i:1:filtro,2:JSON|o:Stato 0 o errore jq|s:Scrittura log errore su $ERRF|d:jq
 
 SEZIONI DI CODICE:
-S:BOOT_SETUP_SHELL|p:Inizializzazione primaria|a:Imposta set -euo pipefail solo se eseguito direttamente. Bonifica ambiente (unset BASH_ENV ENV CDPATH GLOBIGNORE), disabilita core dumps (ulimit -c 0), setta version v2.8.0 e date 2026-07-24, esegue autodetect piattaforma (BASH4LLM_PLAT_*), definisce costanti d'errore/alias e codici colore ANSI.
+S:BOOT_SETUP_SHELL|p:Inizializzazione primaria|a:Imposta set -euo pipefail solo se eseguito direttamente. Bonifica ambiente (unset BASH_ENV ENV CDPATH GLOBIGNORE), disabilita core dumps (ulimit -c 0), setta version v2.8.5 e date 2026-08-07, esegue autodetect piattaforma (BASH4LLM_PLAT_*), definisce costanti d'errore/alias e codici colore ANSI.
 S:BOOT_SETUP_ENV_CMDS|p:Verifica requisiti sistema|a:Scansiona presenza delle 23 utilità essenziali di sistema (bash, jq, curl, mktemp, stat, base64, find, awk, sed, grep, xargs, tr, sort, head, wc, tee, date, mv, chmod, cp, rm, printf, comm). Esce 15 se assenti.
 S:BOOT_EARLY_UTILITIES|p:Utility generiche e logging|a:Fornisce risoluzione directory script, safe_mkdir, helper argomenti, percorsi canonici, trimming, cache normalizzazione modelli, parsing Zero-Eval della documentazione, motore di logging strutturato e inizializzazione temi colore ANSI.
-S:BOOT_SECURITY|p:Sicurezza e gestione credenziali|a:Fornisce validazione byte nulli/caratteri di controllo, prompt TTY silenziato (read_secure_input), permessi POSIX e proprietario, verifica crittografica SHA-256 strictly fail-closed contro manifest, gestione credenziali API (con integrazione Vault) ed enforcement della politica di rete.
+S:BOOT_SECURITY|p:Sicurezza e gestione credenziali|a:Fornisce validazione byte nulli/caratteri di controllo, prompt TTY silenziato (read_secure_input), permessi POSIX e proprietario, verifica crittografica SHA-256 strictly fail-closed contro manifest, verifica firma Ed25519, gestione credenziali API (con integrazione Vault) ed enforcement della politica di rete.
 S:BOOT_DIR_PATH|p:Risoluzione cartelle e URL|a:Determina BASH4LLM_DIR ed alloca in sicurezza la gerarchia di directory (var/run, locks, tmp), importa openssl-helper.sh se presente e risolve/registra gli URL delle API dei provider.
 S:BOOT_STORAGE_LOCKS|p:I/O atomico, locks e diagnostica|a:Codifica Base64, staging payload, locking atomico cross-processo (lock_exec), gestione lifecycle $RUN_TMPDIR, scritture atomiche, estrazione testo dalle risposte, linter configurazione ed explainer errori.
-S:BOOT_CLI_HELPERS|p:Intercettazione diagnostiche e plugin|a:Intercetta ed esegue immediatamente opzioni CLI di diagnostica rapida (--check-config, --explain-error, --print-*), imposta umask 077, definisce costanti di lock e gestisce il caricamento sicuro in sandbox dei plugin provider esterni.
+S:BOOT_CLI_HELPERS|p:Intercettazione diagnostiche e plugin|a:Intercetta ed esegue immediatamente opzioni CLI di diagnostica rapida (--check-config, --explain-error, --print-*), imposta umask 077, definisce costanti di lock e gestisce il caricamento sicuro con isolamento anti-TOCTOU dei plugin provider esterni.
 
 === PRECORE_RUN ===
 
@@ -154,8 +171,12 @@ V:STREAM_MODE=Flag abilitazione streaming token SSE in tempo reale. Default 0
 V:OUTPUT_MODE=Stile output (text, raw, json, pretty). Default "text"
 V:THRESHOLD=Soglia caratteri risposta sopra la quale si salva in storico. Default 1000
 V:MAX_RETRIES=Tentativi max rete in caso di errore temporaneo. Default 1
-V:SUPPORTED_PROVIDERS=Elenco provider supportati (default "groq gemini huggingface")
+V:SUPPORTED_PROVIDERS=Elenco provider supportati (default "groq gemini huggingface mistral")
 V:CURL_BASE_OPTS=Array parametri base curl (--silent --show-error --no-buffer --max-time 120)
+V:BASH4LLM_EDGE_EMPTY=Flag rilevamento caso limite risposta vuota dall'API provider (0 o 1)
+V:BASH4LLM_EDGE_REQ_ID=Request ID estratto dalla risposta dell'API per diagnostica
+V:BASH4LLM_EDGE_FINISH_REASON=Motivo di completamento (finish_reason) restituito dall'API
+V:BASH4LLM_EDGE_COMPLETION_TOKENS=Numero di token di completamento restituiti nell'oggetto usage
 
 FUNZIONI: F:rotate_history|p:Manutenzione storico contro saturazione disco. Elimina file > $BASH4LLM_HISTORY_KEEP_DAYS. Se peso complessivo > $BASH4LLM_HISTORY_MAX_BYTES o file > BASH4LLM_HISTORY_MAX_FILES, elimina i più vecchi sotto lock esclusivo|i:1:timeout_lock(default $BASH4LLM_LOCK_TIMEOUT_HISTORY)|o:Stato 0 o errore|s:Lock esclusivo su $HISTORY_LOCK, rimozione fisica file|d:find,lock_exec,sh,rm,sort,file_size,_file_mtime
 F:save_to_history|p:Salva risposta LLM in file unico storico sotto BASH4LLM_HISTORY_DIR. Transazionale via temp file, lock esclusivo, chmod 600. Scrive metadati in last_history.json. Triggera rotate_history|i:1:testo_risposta|o:Stato 0 o errore|s:File temp, lock HISTORY_LOCK, chmod 600, update UI last_history.json, chiama rotate_history|d:date,safe_mkdir,_tmpf,printf,rm,lock_exec,chmod,file_size,basename,jq,ui_state_write,rotate_history,log_error,log_warn
@@ -163,11 +184,14 @@ F:manifest_create|p:Inizializza file manifesto JSON vuoto (array di parti) e cop
 F:manifest_add_part|p:Aggiunge allegato/risorsa a manifesto JSON. Codifica input in Base64 in staging, aggiorna JSON via jq con properties, rigenera copia Base64 del manifesto sotto lock|i:1:manifesto,2:nome_parte,3:sorgente,4:mime,5:timeout|o:Stato 0 o 1|s:Codifica allegato, staging file, aggiorna JSON, rigenera Base64, lock|d:log_error,safe_mkdir,dirname,_tmpf,b64encode,mv,chmod,lock_exec,mktemp,cp,base64,jq,rm
 F:manifest_read|p:Legge e decodifica manifesto JSON direttamente da file o decodificando .b64 di backup|i:1:percorso|o:Contenuto JSON su stdout|s:Nessuno|d:cat,b64decode
 F:anonymize_thread_id|p:Anonimizza ID thread tramite hashing SHA-256 ed esporta SAFE_THREAD_ID. Impedisce la scrittura di PII su disco|i:1:raw_id|o:Stato 0 o 17 (BASH4LLM_ERR_SEC) se hash fallisce, esporta SAFE_THREAD_ID|s:Hashing SHA-256, filtraggio hex|d:openssl,sha256sum,shasum,md5sum,awk,export,log_error
-F:execute_isolated_hook|p:Esegue script di hook pre/post in subshell isolata. Rimuove API keys da memoria subshell, convalida sicurezza percorso e integrità SHA-256 via verify_module_integrity. Estrae variabili autorizzate|i:1:hook_type(pre/post),2:module_name,3:args|o:Stato uscita hook|s:Subshell pulita, parsing Zero-Eval output|d:validate_path_security,verify_module_integrity,compgen,unset,export,log_error
-F:check_local_rate_limit|p:Limitatore frequenza locale a finestra scorrevole (30s). Registra transazioni in $BASH4LLM_RATES_DIR/$SAFE_THREAD_ID. Blocca con errore 17 se supera BASH4LLM_RATE_LIMIT e manca BASH4LLM_AUTH_TOKEN|i:Nessuno|o:Stato 0 (autorizzato) o 1 (limite superato)|s:Rimozione transazioni scadute, conteggio file, registrazione tx|d:safe_mkdir,_file_mtime,rm,find,wc,log_error,chmod
+F:execute_isolated_hook|p:Esegue script di hook pre/post in subshell isolata. Rimuove API keys da memoria subshell, convalida sicurezza percorso e integrità SHA-256 via verify_module_integrity. Estrae variabili autorizzate (BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD, TRANSFORMED_PAYLOAD, BASH4LLM_AUTH_TOKEN)|i:1:hook_type(pre/post),2:module_name,3:args|o:Stato uscita hook|s:Subshell pulita, parsing Zero-Eval output|d:validate_path_security,verify_module_integrity,compgen,unset,export,log_error
 F:_get_file_signature|p:Calcola firma integrità file (SHA-256 + metadati stat) per rilevare manomissioni|i:1:percorso|o:Stringa firma su stdout|s:Nessuno|d:sha256sum,openssl,stat,awk
 F:getfile_signature|p:Wrapper per _get_file_signature|i:1:percorso|o:Stringa firma su stdout|s:Nessuno|d:_get_file_signature
 F:_is_world_writable|p:Verifica se cartella ha permessi non sicuri (scrittura per group o world)|i:1:percorso|o:Stato 0 (vulnerabile) o 1 (sicura)|s:Nessuno|d:_get_perm_string,awk
+F:_locked_history_save|p:Salva transazionalmente un file di storico impostando i permessi a 600 sotto blocco|i:1:sorgente,2:destinazione|o:Stato 0 o 1|s:Spostamento file, chmod 600|d:mv,chmod
+F:_locked_manifest_create|p:Crea e inizializza un nuovo file manifesto JSON e la sua copia b64 sotto blocco|i:1:manifesto|o:Stato 0 o 1|s:Creazione temp, base64, mv atomico, chmod 600|d:mktemp,printf,base64,mv,chmod
+F:_locked_manifest_add_part|p:Aggiunge una parte a un manifesto JSON ed aggiorna la versione b64 sotto blocco|i:1:manifesto,2:part_b64,3:nome,4:mime|o:Stato 0 o 1|s:Parsing jq, base64, mv atomico, chmod 600|d:mktemp,base64,jq,mv,chmod,rm
+F:check_local_rate_limit|p:Limitatore frequenza locale a finestra scorrevole (30s). Registra transazioni in $BASH4LLM_RATES_DIR/$SAFE_THREAD_ID. Blocca con errore 17 se supera BASH4LLM_RATE_LIMIT e manca BASH4LLM_AUTH_TOKEN|i:Nessuno|o:Stato 0 (autorizzato) o 1 (limite superato)|s:Rimozione transazioni scadute, conteggio file, registrazione tx|d:safe_mkdir,_file_mtime,rm,find,wc,log_error,chmod
 F:make_tmpdir|p:Crea dir temporanea protetta (chmod 700) sotto $BASH4LLM_TMPDIR con lock esclusivo $TMP_LOCK|i:Nessuno|o:Percorso directory su stdout o errore|s:Creazione cartella, chmod 700, lock|d:safe_mkdir,chmod,lock_exec,_tmpf,printf
 F:_tmpf|p:Crea file/dir temporanei sicuri. Convalida BASH4LLM_TMPDIR, impedisce Directory Traversal, imposta umask 077, alloca via mktemp|i:1:modalità(file/dir),2:base_dir,3:prefisso|o:Percorso oggetto o BASH4LLM_ERR_TMP|s:Scrittura disco, chmod 600/700|d:log_error,chmod,mktemp,printf
 F:thread_validate_id|p:Valida sintassi ID thread contro path traversal (solo alfanumerici, punto, trattino, underscore, lung 1-128)|i:1:thread_id|o:Stato 0 (valido) o 1|s:Nessuno|d:grep
@@ -236,6 +260,10 @@ V:PROVIDER_CLI=Provider impostato da riga comando. Eredita ${PROVIDER_CLI}
 V:PROVIDER_INTERACTIVE=Flag selezione interattiva provider. Default 0
 V:SHOW_CONFIG=Flag stampa configurazione runtime. Default 0
 V:DIAGNOSTICS=Flag avvio ciclo diagnostica. Default 0
+V:VALIDATE_SML=Flag validazione sintattica SML v2.0 attivato via --validate-sml
+V:VALIDATE_REGEX=Espressione regolare POSIX ERE fornita via --validate-regex
+V:SANITIZE_OUTPUT=Flag attivazione sanificazione output via --sanitize
+V:JSON_DIAGNOSTICS=Flag per diagnostica in formato JSON su stderr via --json-diagnostics
 V:FILE_INPUTS=Array percorsi file input passati con -f da unire al contesto
 V:ARGS=Array argomenti posizionali CLI (prompt o file)
 V:OUTPUT_MODE=Formato visualizzazione output. Eredita ${OUTPUT_MODE}, default "text"
@@ -266,13 +294,12 @@ F:call_api_once|p:Chiamata sincrona non-streaming via provider. Se dry-run, escl
 F:call_api_streaming|p:Chiamata streaming via provider sotto lock di concorrenza del thread attivo. Se dry-run, simula e print head payload|i:Nessuno|o:Stato thread lock, gestione segnali INT, chiamata streaming|d:acquire_thread_lock,release_thread_lock,call_provider,show_payload_head,log_info,log_error
 F:extract_api_error|p:Estrae errore formale da risposta RESP (JSON o testo crudo)|i:Nessuno (usa RESP)|o:Messaggio errore su stdout|s:Nessuno|d:jq,awk
 F:detect_empty_edge_case|p:Rileva risposte vuote anomale API (HTTP 200, finish_reason 'stop', 0/1 token, no testo). Estrae metadati e assegna BASH4LLM_EDGE_*|i:Nessuno|o:Assegna BASH4LLM_EDGE_EMPTY (0/1), BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON, BASH4LLM_EDGE_COMPLETION_TOKENS|s:Copia temporanea file|d:_tmpf,cp,is_valid_json_file,jq,rm
-F:finalize_and_output|p:Formatta, visualizza (text, raw, json, pretty) e salva output su disco se supera THRESHOLD o forzato|i:1:formato,2:testo|o:Output stampato, stato 0 o errore|s:Salvataggio transazionale|d:_tmpf,cp,cat,jq,printf,wc,tr,date,safe_mkdir,dirname,lock_exec,log_error,log_warn
-F:perform_request_once|p:Esegue richiesta sincrona sotto lock concorrenziale di thread con retry automatico fino a MAX_RETRIES. Invoca hook pre/post esecuzione (execute_isolated_hook) ed esegue il check di rate limiting|i:Nessuno|o:Stato 0 o errore BASH4LLM_ERR_API|s:Check rate limit, hook pre/post, retry loop, backoff lineare|d:acquire_thread_lock,release_thread_lock,execute_isolated_hook,check_local_rate_limit,call_api_once,extract_text_from_resp,detect_empty_edge_case,jq,ui_state_write,extract_api_error,finalize_and_output,sleep,log_info,log_error,log_warn
+F:finalize_and_output|p:Formatta, sanifica (se SANITIZE_OUTPUT=1 via output-sanitizer.sh o fallback POSIX), visualizza (text, raw, json, pretty) e salva output su disco se supera THRESHOLD o forzato|i:1:formato,2:testo|o:Output stampato, stato 0 o errore|s:Sanificazione testo, salvataggio transazionale|d:_tmpf,cp,cat,jq,printf,wc,tr,date,safe_mkdir,dirname,lock_exec,log_error,log_warn
+F:validate_response_syntax|p:Valida la sintassi della risposta estratta contro lo standard SML v2.0 (se VALIDATE_SML=1) o contro un'espressione regolare POSIX ERE (se VALIDATE_REGEX è definita)|i:1:testo_risposta|o:Stato 0 (valido) o 1 (fallito)|s:Nessuno|d:grep
+F:perform_request_once|p:Esegue richiesta sincrona sotto lock concorrenziale di thread con retry automatico fino a MAX_RETRIES. Invoca hook pre/post esecuzione (execute_isolated_hook), esegue il check di rate limiting e valida la sintassi della risposta|i:Nessuno|o:Stato 0 o errore BASH4LLM_ERR_API|s:Check rate limit, hook pre/post, validate_response_syntax, retry loop, backoff lineare|d:acquire_thread_lock,release_thread_lock,execute_isolated_hook,check_local_rate_limit,call_api_once,extract_text_from_resp,validate_response_syntax,detect_empty_edge_case,jq,ui_state_write,extract_api_error,finalize_and_output,sleep,log_info,log_error,log_warn
 F:collect_input_from_files|p:Concatena file input (-f) previa validazione di sicurezza via validate_file_input|i:Array percorsi|o:Testo unificato su stdout|s:Nessuno|d:file_readable,validate_file_input,cat,log_error
 F:expand_args_to_content|p:Converte argomenti CLI in prompt previa validazione di sicurezza via validate_file_input|i:Array ARGS|o:Prompt unificato su stdout|s:Nessuno|d:file_readable,validate_file_input,cat,log_error
 F:file_readable|p:Verifica se file esiste ed è regolare e leggibile da utente corrente|i:1:percorso|o:Stato 0 o 1|s:Nessuno|d:Nessuna
-F:trim|p:Rimuove spazi/tab/a capo iniziali e finali|i:1:stringa|o:Stringa pulita su stdout|s:Nessuno|d:awk,printf
-F:is_number|p:Verifica se stringa è valore numerico valido|i:1:stringa|o:Stato 0 o 1|s:Nessuno|d:awk,printf
 F:is_supported_model|p:Filtra/convalida compatibilità modello escludendo formati non-testuali (vision, audio, embedding, ecc)|i:1:modello|o:Stato 0 (testo) o 1 (escluso)|s:Nessuno|d:tr
 F:list_models_cli|p:Visualizza modelli locali in stderr normalizzandoli ed evidenziando i non supportati|i:Nessuno|o:Stato 0 o 1|s:Lettura file MODELS_FILE|d:_normalize_model_name,is_supported_model,printf
 F:validate_model_core|p:Algoritmo centrale validazione modelli (normalizza, controlla presenza locale e is_supported_model)|i:1:modello|o:Stato 0 o 1|s:Nessuno|d:_normalize_model_name,grep,awk,is_supported_model,printf
