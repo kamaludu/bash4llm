@@ -38,7 +38,7 @@ jobs:
           
           if [ -n "${ED25519_PRIVATE_KEY:-}" ]; then
             echo "🔑 Private key secret detected. Generating signed manifest..."
-            echo "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
+            printf '%s\n' "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
             chmod 600 /tmp/ci-private-key.pem
             ./extras/security/generate-manifest.sh --key /tmp/ci-private-key.pem
             rm -f /tmp/ci-private-key.pem
