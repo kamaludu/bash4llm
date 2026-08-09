@@ -2,6 +2,7 @@ name: Update Extras Manifest
 
 on:
   push:
+    branches: [ main ]
     paths:
       - 'extras/**'
       - '!extras/manifest.sha256'
@@ -37,7 +38,6 @@ jobs:
       - name: Commit & Push Changes
         uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
-          commit_message: "chore(security): auto-update extras manifest & signatures [skip ci]"
+          commit_message: "chore(security): auto-update extras manifest & signatures"
           file_pattern: "extras/manifest.sha256 extras/manifest.sha256.sig extras/official-ed25519.pub"
           auto_push_pr: false
-          push_options: '--force'
