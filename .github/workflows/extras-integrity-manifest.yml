@@ -37,15 +37,19 @@ jobs:
           chmod +x extras/security/generate-manifest.sh
           
           if [ -n "${ED25519_PRIVATE_KEY:-}" ]; then
-            echo "🔑 Private key secret detected. Cleaning PEM format and generating signed manifest..."
+            echo "🔑 Private key secret detected. Running diagnostic checks..."
             printf '%s\n' "$ED25519_PRIVATE_KEY" | tr -d '\r' > /tmp/ci-private-key.pem
             chmod 600 /tmp/ci-private-key.pem
-            
-            # Sincronizza la chiave pubblica ufficiale per garantire l'allineamento della coppia
-            openssl pkey -in /tmp/ci-private-key.pem -pubout > extras/official-ed25519.pub 2>/dev/null || true
 
+            echo "--- DIAGNOSTIC 1: OpenSSL Private Key Inspection ---"
+            openssl pkey -in /tmp/ci-private-key.pem -text_pub -noout || true
+
+            echo "--- DIAGNOSTIC 2: Direct OpenSSL Signing Test ---"
+            openssl pkeyutl -sign -inkey /tmp/ci-private-key.pem -rawin -in extras/manifest.sha256 -out /tmp/test.sig || true
+
+            echo "--- RUNNING GENERATE MANIFEST ---"
             ./extras/security/generate-manifest.sh --key /tmp/ci-private-key.pem
-            rm -f /tmp/ci-private-key.pem
+            rm -f /tmp/ci-private-key.pem /tmp/test.sig
           else
             echo "ℹ️ Private key secret not set. Generating manifest without signature..."
             ./extras/security/generate-manifest.sh --no-sign-if-missing-key
