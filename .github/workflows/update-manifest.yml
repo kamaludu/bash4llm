@@ -2,10 +2,7 @@ name: Update Extras Manifest
 
 on:
   push:
-    paths:
-      - 'extras/**'
-      - '!extras/manifest.sha256'
-      - '!extras/manifest.sha256.sig'
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
