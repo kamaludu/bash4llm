@@ -1,51 +1,80 @@
-name: Extras SHA-256 Manifest Integrity
+name: Extras SHA-256 Manifest Integrity & Auto-Update
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'bash4llm'
+      - 'bin/bash4llm'
       - 'extras/**'
+      - '!extras/manifest.sha256'
+      - '!extras/manifest.sha256.sig'
       - '.github/workflows/extras-integrity-manifest.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'bash4llm'
+      - 'bin/bash4llm'
       - 'extras/**'
       - '.github/workflows/extras-integrity-manifest.yml'
   workflow_dispatch:
 
 jobs:
-  verify-manifest:
+  update-and-verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.2
+        with:
+          token: ${{ secrets.GH_AUTOMATION_TOKEN || github.token }}
+          fetch-depth: 0
 
-      - name: Setup Execution Environment
+      - name: 1. Generate and Sign Manifest
+        env:
+          ED25519_PRIVATE_KEY: ${{ secrets.ED25519_SIGNING_KEY }}
         run: |
-          chmod +x bash4llm
+          set -euo pipefail
           chmod +x extras/security/generate-manifest.sh
+          
+          if [ -n "${ED25519_PRIVATE_KEY:-}" ]; then
+            echo "🔑 Private key secret detected. Generating signed manifest..."
+            echo "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
+            chmod 600 /tmp/ci-private-key.pem
+            ./extras/security/generate-manifest.sh --key /tmp/ci-private-key.pem
+            rm -f /tmp/ci-private-key.pem
+          else
+            echo "ℹ️ Private key secret not set. Generating manifest without signature..."
+            ./extras/security/generate-manifest.sh --no-sign-if-missing-key
+          fi
 
-      - name: 1. Direct Cryptographic SHA-256 Verification
+      - name: 2. Commit & Push Official Manifest Updates (Main & Dispatch Only)
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        uses: stefanzweifel/git-auto-commit-action@v5.1.0
+        with:
+          commit_message: "chore(security): auto-update extras manifest & signatures"
+          file_pattern: "extras/manifest.sha256*"
+
+      - name: 3. Direct Cryptographic SHA-256 Verification
         run: |
           set -euo pipefail
           
-          if [ ! -f "extras/manifest.sha256" ]; then
-            echo "❌ CRITICAL ERROR: extras/manifest.sha256 is missing!"
+          MANIFEST_FILE="extras/manifest.sha256"
+
+          if [ ! -f "$MANIFEST_FILE" ]; then
+            echo "❌ CRITICAL ERROR: $MANIFEST_FILE is missing!"
             exit 1
           fi
 
           TMP_CLEAN_MANIFEST="$(mktemp)"
-          grep -vE '^[[:space:]]*#' extras/manifest.sha256 | grep -vE '^[[:space:]]*$' | tr -d '\r' > "$TMP_CLEAN_MANIFEST"
+          grep -vE '^[[:space:]]*#' "$MANIFEST_FILE" | grep -vE '^[[:space:]]*$' | tr -d '\r' > "$TMP_CLEAN_MANIFEST"
 
           if [ ! -s "$TMP_CLEAN_MANIFEST" ]; then
-            echo "❌ ERROR: manifest.sha256 contains no valid hashes!"
+            echo "❌ ERROR: $MANIFEST_FILE contains no valid hashes!"
             rm -f "$TMP_CLEAN_MANIFEST"
             exit 1
           fi
 
-          echo "🔍 Checking SHA-256 digests against extras/ directory..."
+          echo "🔍 Verifying SHA-256 digests in extras/..."
           (
             cd extras
             sha256sum --strict -c "$TMP_CLEAN_MANIFEST"
@@ -53,7 +82,7 @@ jobs:
           rm -f "$TMP_CLEAN_MANIFEST"
           echo "✅ All SHA-256 digests match manifest!"
 
-      - name: 2. Ed25519 Signature Verification (If Signature Present)
+      - name: 4. Ed25519 Signature Verification (If Signature Present)
         run: |
           set -euo pipefail
 
@@ -62,9 +91,9 @@ jobs:
           MANIFEST_FILE="extras/manifest.sha256"
 
           if [ -f "$SIG_FILE" ]; then
-            echo "🔍 Signature file detected. Verifying Ed25519 signature..."
+            echo "🔍 Signature file detected ($SIG_FILE). Verifying Ed25519 signature..."
             if [ ! -f "$PUBKEY_FILE" ]; then
-              echo "❌ ERROR: Signature present but $PUBKEY_FILE missing!"
+              echo "❌ ERROR: Signature file present ($SIG_FILE) but public key ($PUBKEY_FILE) is missing!"
               exit 1
             fi
 
@@ -75,19 +104,28 @@ jobs:
               ssh-keygen -Y verify -f "$PUBKEY_FILE" -I "bash4llm-manifest" -n "file" -s "$SIG_FILE" < "$MANIFEST_FILE"
               echo "✅ Ed25519 signature verified successfully via ssh-keygen!"
             else
-              echo "❌ ERROR: Neither openssl nor ssh-keygen available for signature verification!"
+              echo "❌ ERROR: Neither openssl nor ssh-keygen is available for signature verification!"
               exit 1
             fi
           else
-            echo "ℹ️ No signature file ($SIG_FILE) present. Skipping signature check."
+            echo "ℹ️ No signature file ($SIG_FILE) present in repository. Skipping signature check."
           fi
 
-      - name: 3. Functional Installer Sanity Test
+      - name: 5. Functional Installer Sanity Test
         run: |
           set -euo pipefail
           
+          B4L_BIN="./bin/bash4llm"
+
+          if [ ! -f "$B4L_BIN" ]; then
+            echo "❌ ERROR: Executable file '$B4L_BIN' not found in repository!"
+            exit 1
+          fi
+
+          chmod +x "$B4L_BIN"
+
           echo "🔍 Testing native extras installer..."
-          INSTALL_LOG=$(./bash4llm --install-extras 2>&1)
+          INSTALL_LOG=$("$B4L_BIN" --install-extras ./extras 2>&1)
           echo "$INSTALL_LOG"
 
           if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
