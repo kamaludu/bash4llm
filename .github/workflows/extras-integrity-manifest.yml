@@ -5,7 +5,6 @@ on:
     branches: [ main ]
     paths:
       - 'bash4llm'
-      - 'extras/**'
       - '.github/workflows/extras-integrity-manifest.yml'
   pull_request:
     branches: [ main ]
@@ -61,7 +60,11 @@ jobs:
             rm -f "$TMP_CLEAN_MANIFEST"
             
             # Verify native bash4llm extras installer integrity test safely
-            INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1 || true)
+            INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1) || {
+              echo "$INSTALL_LOG"
+              echo "❌ ERROR: Extras installer failed with exit code $?!"
+              exit 1
+            }
             echo "$INSTALL_LOG"
             
             if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
