@@ -1,53 +1,51 @@
 # Bash4LLM⁺
 
-> Zero-dependency POSIX Bash client framework for secure, low-latency Large Language Model (LLM) inference, SSE streaming, persistent conversation threads, interactive TUI chat, and OpenSSL AES-256 encrypted key management.
+> Zero-dependency POSIX Bash framework for secure, low-latency Large Language Model (LLM) inference, SSE streaming, persistent thread contexts, and OpenSSL AES-256 encrypted key management.
 
-Bash4LLM⁺ operates entirely on standard POSIX base system utilities, `curl`, and `jq`, requiring zero external language runtimes (no Python, Node.js, Docker, or pip/npm modules). It provides sub-10ms cold-start execution times across GNU/Linux, macOS, BSD, WSL, Cygwin, and Android (Termux).
-
-Key architectural security invariants include zero dynamic shell `eval`, zero process table secret leaking (passing Bearer tokens via unlinked file descriptors `/dev/fd/3`), zero shared directory usage (isolated private execution folders under `umask 077`), memory-locked guard functions (`readonly -f`), and Ed25519 manifest signature verification (`manifest.sha256.sig`) with anti-TOCTOU staging copy isolation.
+Operating strictly on standard POSIX base system utilities, `curl`, and `jq`, Bash4LLM⁺ eliminates external language runtimes (no Python, Node.js, Docker, or pip/npm modules).
 
 ## Core Documentation & Specifications
 
-- [Architecture Specification (English)](https://github.com/kamaludu/bash4llm/blob/main/docs/bash4llm-arch-spec-en.md): Primary system architecture, execution pipeline, runtime constraints, and security design principles.
-- [Architecture Specification (Italian)](https://github.com/kamaludu/bash4llm/blob/main/docs/bash4llm-arch-spec.md): Technical specification of the internal engine, bootstrap sequences, and module layout.
-- [Timeless Architecture Specification](https://github.com/kamaludu/bash4llm/blob/main/docs/timeless/timeless-arc-spec.md): Core architectural invariants, negative constraints, and immutable system design rules.
-- [Timeless Testing Specification](https://github.com/kamaludu/bash4llm/blob/main/docs/timeless/timeless-test-spec.md): QA test standards, compliance suites, and execution invariants.
+- [Architecture Specification (Canonical - EN)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/docs/bash4llm-arch-spec-en.md): Primary system architecture, bootstrap pipeline, and execution constraints.
+- [Architecture Specification (Italian Translation)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/docs/bash4llm-arch-spec.md): Technical specification of the internal engine in Italian.
+- [Timeless Architecture Specification](https://raw.githubusercontent.com/kamaludu/bash4llm/main/docs/timeless/timeless-arc-spec.md): Immutable architectural invariants and negative security constraints.
+- [Timeless Testing Specification](https://raw.githubusercontent.com/kamaludu/bash4llm/main/docs/timeless/timeless-test-spec.md): QA testing standards, compliance requirements, and execution rules.
 
 ## User Guides & Manuals
 
-- [English Repository README](https://github.com/kamaludu/bash4llm/blob/main/README-en.md): Quickstart guide, feature overview, environment variables, and CLI examples.
-- [Italian Repository README](https://github.com/kamaludu/bash4llm/blob/main/README.md): Comprehensive project guide in Italian.
-- [Installation Guide (English)](https://github.com/kamaludu/bash4llm/blob/main/INSTALL-en.md): Installation methods, permissions setup, platform-specific setup (Linux, macOS, BSD, Termux).
-- [Installation Guide (Italian)](https://github.com/kamaludu/bash4llm/blob/main/INSTALL.md): Comprehensive installation guide in Italian.
-- [Command Line Help Reference](https://github.com/kamaludu/bash4llm/blob/main/extras/docs/help.txt): Plain text command-line options reference and flag descriptions.
-- [User Manual (English)](https://github.com/kamaludu/bash4llm/blob/main/extras/docs/manual-en.txt): Detailed usage manual including advanced configuration and flags.
-- [User Manual (Italian)](https://github.com/kamaludu/bash4llm/blob/main/extras/docs/manual-it.txt): Detailed usage manual in Italian.
+- [Repository README (Canonical - EN)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/README-en.md): Main documentation, environment variables, and CLI quickstart examples.
+- [Repository README (Italian Translation)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/README.md): Comprehensive project guide in Italian.
+- [Installation Guide (Canonical - EN)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/INSTALL-en.md): Installation methods and platform-specific setup (Linux, macOS, BSD, Termux).
+- [Installation Guide (Italian Translation)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/INSTALL.md): Installation guide in Italian.
+- [CLI Help Reference](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/docs/help.txt): Command-line options reference and flag descriptions.
+- [User Manual (Canonical - EN)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/docs/manual-en.txt): Full usage manual including advanced configuration.
+- [User Manual (Italian Translation)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/docs/manual-it.txt): Full usage manual in Italian.
 
 ## Security & Vault Infrastructure
 
-- [Security Specification (English)](https://github.com/kamaludu/bash4llm/blob/main/SECURITY-en.md): Threat model, security guarantees, token redaction, and vulnerability reporting.
-- [Security Specification (Italian)](https://github.com/kamaludu/bash4llm/blob/main/SECURITY.md): Italian security policy specification and threat boundaries.
-- [OpenSSL Encrypted Vault Guide](https://github.com/kamaludu/bash4llm/blob/main/extras/security/OPENSSL-HELPER.md): OpenSSL AES-256-CBC PBKDF2 vault operations, RAM context session unlocking, and policy enforcement (`BASH4LLM_REQUIRE_VAULT=1`).
+- [Security Specification (Canonical - EN)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/SECURITY-en.md): Threat model, security guarantees, token redaction, and vulnerability boundaries.
+- [Security Specification (Italian Translation)](https://raw.githubusercontent.com/kamaludu/bash4llm/main/SECURITY.md): Security policy specification in Italian.
+- [OpenSSL Encrypted Vault Guide](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/security/OPENSSL-HELPER.md): OpenSSL AES-256-CBC PBKDF2 vault operations and RAM context unlocking.
 
 ## Providers & Extensions
 
-- [LLM Providers Specification](https://github.com/kamaludu/bash4llm/blob/main/PROVIDERS.md): Provider API contracts, trust domains (`builtin`, `vendor`, `local`), and dynamic module verification for Groq, Gemini, Mistral, and Hugging Face.
-- [Hugging Face Module Specification](https://github.com/kamaludu/bash4llm/blob/main/extras/providers/huggingface.md): Module configuration and payload mapping for Hugging Face Inference API.
+- [LLM Providers Specification](https://raw.githubusercontent.com/kamaludu/bash4llm/main/PROVIDERS.md): Provider API contracts, trust domains, and module verification for Groq, Gemini, Mistral, and Hugging Face.
+- [Hugging Face Module Spec](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/providers/huggingface.md): Module configuration and payload mapping for Hugging Face API.
 
 ## Session Engine & Interactive TUI
 
-- [Interactive TUI REPL Specification](https://github.com/kamaludu/bash4llm/blob/main/extras/chat/SPEC-TUI.md): Design and protocol specification for the interactive terminal chat interface (`extras/chat/tui-repl.sh`).
-- [Session Context Engine Documentation](https://github.com/kamaludu/bash4llm/blob/main/extras/session/README.md): Multi-turn session persistence, NDJSON history formats, SHA-256 `SAFE_THREAD_ID` hashing, and context window truncation.
+- [Interactive TUI REPL Specification](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/chat/SPEC-TUI.md): Protocol and UI design specification for `extras/chat/tui-repl.sh`.
+- [Session Context Engine Guide](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/session/README.md): Multi-turn session persistence, NDJSON history formats, and `SAFE_THREAD_ID` hashing.
 
-## QA, Test Suite & Diagnostics
+## QA & Test Suite
 
-- [Test Suite Overview](https://github.com/kamaludu/bash4llm/blob/main/extras/test/README-tests.md): Master test runner (`run-all-tests.sh`) orchestration, including sanity, compatibility, regression, hardening, concurrency, stress, and scintilla-t3 tests.
-- [Core Technical Notes](https://github.com/kamaludu/bash4llm/blob/main/extras/docs/core-notes.sh): Executable technical note script detailing internal helper functions and diagnostic mappings.
+- [Test Suite Overview](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/test/README-tests.md): Master test runner (`run-all-tests.sh`) orchestration and test categories.
+- [Core Technical Notes](https://raw.githubusercontent.com/kamaludu/bash4llm/main/extras/docs/core-notes.sh): Executable technical note script detailing internal helper functions.
 
 ## Optional & Auxiliary Resources
 
-- [Project Releases & Changelog](https://github.com/kamaludu/bash4llm/releases): Release notes and binary version history.
-- [Release Notes Detail](https://github.com/kamaludu/bash4llm/blob/main/RELEASE-NOTES.md): Cumulative release history and architectural changelogs.
-- [CHANGELOG.md](https://github.com/kamaludu/bash4llm/blob/main/CHANGELOG.md): Itemized history of releases, fixes, and architectural updates.
-- [CONTRIBUTING.md](https://github.com/kamaludu/bash4llm/blob/main/CONTRIBUTING.md): Guidelines for code contributions, code style, and PR requirements.
-- [LICENSE](https://github.com/kamaludu/bash4llm/blob/main/LICENSE): GNU General Public License v3.0 (GPL-3.0-or-later).
+- [Project Releases](https://github.com/kamaludu/bash4llm/releases): Release history and binary distributions.
+- [RELEASE-NOTES.md](https://raw.githubusercontent.com/kamaludu/bash4llm/main/RELEASE-NOTES.md): Cumulative release notes and architectural updates.
+- [CHANGELOG.md](https://raw.githubusercontent.com/kamaludu/bash4llm/main/CHANGELOG.md): Itemized commit and feature changelog.
+- [CONTRIBUTING.md](https://raw.githubusercontent.com/kamaludu/bash4llm/main/CONTRIBUTING.md): Guidelines for contributions and code standards.
+- [LICENSE](https://raw.githubusercontent.com/kamaludu/bash4llm/main/LICENSE): GNU General Public License v3.0 (GPL-3.0-or-later).
