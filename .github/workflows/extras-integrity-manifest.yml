@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'bash4llm'
+      - 'extras/**'
       - '.github/workflows/extras-integrity-manifest.yml'
   pull_request:
     branches: [ main ]
@@ -12,76 +13,85 @@ on:
       - 'bash4llm'
       - 'extras/**'
       - '.github/workflows/extras-integrity-manifest.yml'
-  workflow_run:
-    workflows: ["Update Extras Manifest"]
-    types: [completed]
   workflow_dispatch:
 
 jobs:
   verify-manifest:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.2
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
 
-      - name: Check All Extras Files Against SHA-256 Manifest
+      - name: Setup Execution Environment
+        run: |
+          chmod +x bash4llm
+          chmod +x extras/security/generate-manifest.sh
+
+      - name: 1. Direct Cryptographic SHA-256 Verification
         run: |
           set -euo pipefail
           
-          # Dynamic Path Detection
-          B4L_BIN="./bash4llm"
-          if [ ! -f "$B4L_BIN" ]; then
-            B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
-          fi
-
-          if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
-            echo "❌ ERROR: Executable file 'bash4llm' not found in repository!"
+          if [ ! -f "extras/manifest.sha256" ]; then
+            echo "❌ CRITICAL ERROR: extras/manifest.sha256 is missing!"
             exit 1
           fi
 
-          chmod +x "$B4L_BIN"
-          
-          if [ -d "extras" ]; then
-            if [ ! -f "extras/manifest.sha256" ]; then
-              echo "❌ CRITICAL ERROR: Directory 'extras' exists but 'manifest.sha256' is missing!"
-              exit 1
-            fi
-            
-            # Create temporary clean manifest in system runner tmp to avoid directory pollution
-            TMP_CLEAN_MANIFEST="$(mktemp)"
-            grep -vE '^[[:space:]]*#' extras/manifest.sha256 | grep -vE '^[[:space:]]*$' | tr -d '\r' > "$TMP_CLEAN_MANIFEST" || true
-            
-            if [ ! -s "$TMP_CLEAN_MANIFEST" ]; then
-              echo "❌ ERROR: manifest.sha256 is empty or contains no valid hashes!"
-              rm -f "$TMP_CLEAN_MANIFEST"
+          TMP_CLEAN_MANIFEST="$(mktemp)"
+          grep -vE '^[[:space:]]*#' extras/manifest.sha256 | grep -vE '^[[:space:]]*$' | tr -d '\r' > "$TMP_CLEAN_MANIFEST"
+
+          if [ ! -s "$TMP_CLEAN_MANIFEST" ]; then
+            echo "❌ ERROR: manifest.sha256 contains no valid hashes!"
+            rm -f "$TMP_CLEAN_MANIFEST"
+            exit 1
+          fi
+
+          echo "🔍 Checking SHA-256 digests against extras/ directory..."
+          (
+            cd extras
+            sha256sum --strict -c "$TMP_CLEAN_MANIFEST"
+          )
+          rm -f "$TMP_CLEAN_MANIFEST"
+          echo "✅ All SHA-256 digests match manifest!"
+
+      - name: 2. Ed25519 Signature Verification (If Signature Present)
+        run: |
+          set -euo pipefail
+
+          SIG_FILE="extras/manifest.sha256.sig"
+          PUBKEY_FILE="extras/official-ed25519.pub"
+          MANIFEST_FILE="extras/manifest.sha256"
+
+          if [ -f "$SIG_FILE" ]; then
+            echo "🔍 Signature file detected. Verifying Ed25519 signature..."
+            if [ ! -f "$PUBKEY_FILE" ]; then
+              echo "❌ ERROR: Signature present but $PUBKEY_FILE missing!"
               exit 1
             fi
 
-            # Verify cryptographic digests strictly inside extras context
-            (
-              cd extras
-              sha256sum --strict -c "$TMP_CLEAN_MANIFEST"
-            )
-            rm -f "$TMP_CLEAN_MANIFEST"
-            
-            # Verify native bash4llm extras installer integrity test safely without hiding errors
-            INSTALL_LOG=""
-            if ! INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1); then
-              echo "$INSTALL_LOG"
-              echo "❌ ERROR: Extras installer command failed with exit code $?!"
+            if command -v openssl >/dev/null 2>&1; then
+              openssl pkeyutl -verify -pubin -inkey "$PUBKEY_FILE" -rawin -in "$MANIFEST_FILE" -sigfile "$SIG_FILE"
+              echo "✅ Ed25519 signature verified successfully via OpenSSL!"
+            elif command -v ssh-keygen >/dev/null 2>&1; then
+              ssh-keygen -Y verify -f "$PUBKEY_FILE" -I "bash4llm-manifest" -n "file" -s "$SIG_FILE" < "$MANIFEST_FILE"
+              echo "✅ Ed25519 signature verified successfully via ssh-keygen!"
+            else
+              echo "❌ ERROR: Neither openssl nor ssh-keygen available for signature verification!"
               exit 1
             fi
-            echo "$INSTALL_LOG"
-            
-            if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
-              echo "❌ ERROR: Extras installer detected integrity verification warnings!"
-              exit 1
-            fi
-            
-            echo "✅ All extra modules match official SHA-256 manifest!"
           else
-            echo "ℹ️ Directory 'extras' not present. Skipping check."
+            echo "ℹ️ No signature file ($SIG_FILE) present. Skipping signature check."
           fi
+
+      - name: 3. Functional Installer Sanity Test
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Testing native extras installer..."
+          INSTALL_LOG=$(./bash4llm --install-extras 2>&1)
+          echo "$INSTALL_LOG"
+
+          if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
+            echo "❌ ERROR: Extras installer detected integrity verification warnings!"
+            exit 1
+          fi
+          echo "✅ Installer sanity test passed!"
