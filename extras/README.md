@@ -49,10 +49,11 @@ extras/
 │   ├── sanity.sh
 │   ├── scintilla-t3.sh.      # SCINTILLA Core — T3 TEST SUITE FOR BASH4LLM
 │   └── stress.sh
-└── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
+├── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
+├── manifest.sha256.sig
+└── official-ed25519.pub
 
 ```
-
 
 **Installazione / Installation**
 
