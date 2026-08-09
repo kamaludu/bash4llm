@@ -40,4 +40,3 @@ jobs:
           commit_message: "chore(security): auto-update extras manifest & signatures [skip ci]"
           file_pattern: "extras/manifest.sha256 extras/manifest.sha256.sig extras/official-ed25519.pub"
           auto_push_pr: false
-          push_options: '--force'
