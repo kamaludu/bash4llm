@@ -22,11 +22,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.2
 
-      - name: Setup Execution Environment
-        run: |
-          chmod +x bash4llm
-          chmod +x extras/security/generate-manifest.sh
-
       - name: 1. Direct Cryptographic SHA-256 Verification
         run: |
           set -euo pipefail
@@ -86,8 +81,20 @@ jobs:
         run: |
           set -euo pipefail
           
+          B4L_BIN="./bash4llm"
+          if [ ! -f "$B4L_BIN" ]; then
+            B4L_BIN=$(find . -maxdepth 2 -name "bash4llm" -type f | head -n 1 || true)
+          fi
+
+          if [ -z "$B4L_BIN" ] || [ ! -f "$B4L_BIN" ]; then
+            echo "❌ ERROR: Executable file 'bash4llm' not found in repository!"
+            exit 1
+          fi
+
+          chmod +x "$B4L_BIN"
+
           echo "🔍 Testing native extras installer..."
-          INSTALL_LOG=$(./bash4llm --install-extras 2>&1)
+          INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1)
           echo "$INSTALL_LOG"
 
           if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
