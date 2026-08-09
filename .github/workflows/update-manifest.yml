@@ -39,5 +39,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
           commit_message: "chore(security): auto-update extras manifest & signatures"
-          file_pattern: "extras/manifest.sha256 extras/manifest.sha256.sig extras/official-ed25519.pub"
-          add_options: '--ignore-missing'
+          file_pattern: "extras/manifest.sha256* extras/official-ed25519.pub"
