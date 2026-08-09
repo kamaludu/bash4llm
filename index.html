@@ -46,6 +46,18 @@
       justify-content: center;
     }
 
+    /* Stile globale per i link di testo e liste (alto contrasto WCAG AAA) */
+    a {
+      color: var(--link);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      transition: color 0.15s ease;
+    }
+
+    a:hover {
+      color: #79c0ff;
+    }
+
     .container {
       width: 100%;
       max-width: 900px;
@@ -105,6 +117,8 @@
 
     .btn:hover {
       background-color: var(--btn-hover);
+      color: var(--link);
+      text-decoration: none;
     }
 
     .btn-highlight {
@@ -222,17 +236,9 @@
       text-decoration: underline;
     }
 
-    /* Stile globale per i link nel testo e nelle liste */
-  a {
-    color: var(--link); /* #58a6ff */
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    transition: color 0.15s ease;
-  }
-
-  a:hover {
-    color: #79c0ff; /* Azzurro più chiaro al passaggio del mouse */
-  }
+    footer a:hover {
+      color: var(--link);
+    }
   </style>
 </head>
 <body>
@@ -394,10 +400,10 @@ BASH4LLM_REQUIRE_VAULT=1 ./bin/bash4llm "Query using encrypted vault credentials
         <p>Explore full technical documentation and specifications:</p>
         <ul>
           <li><a href="llms.txt">llms.txt Specification Index</a> — Standard structured markdown index for AI crawlers and LLM agents.</li>
-          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/docs/bash4llm-arch-spec-en.md">Architecture Specification (English)</a> — Comprehensive system internals and bootstrap pipeline.</li>
-          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/docs/timeless/timeless-arc-spec.md">Timeless Architecture Spec</a> — Security invariants and immutable negative constraints.</li>
-          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/SECURITY-en.md">Security Specification</a> — Threat model, token redaction, and vault operations.</li>
-          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/PROVIDERS.md">Providers Specification</a> — Provider contracts, models, and module verification.</li>
+          <li><a href="https://raw.githubusercontent.com/kamaludu/bash4llm/main/docs/bash4llm-arch-spec-en.md">Architecture Specification (English)</a> — Comprehensive system internals and bootstrap pipeline.</li>
+          <li><a href="https://raw.githubusercontent.com/kamaludu/bash4llm/main/docs/timeless/timeless-arc-spec.md">Timeless Architecture Spec</a> — Security invariants and immutable negative constraints.</li>
+          <li><a href="https://raw.githubusercontent.com/kamaludu/bash4llm/main/SECURITY-en.md">Security Specification</a> — Threat model, token redaction, and vault operations.</li>
+          <li><a href="https://raw.githubusercontent.com/kamaludu/bash4llm/main/PROVIDERS.md">Providers Specification</a> — Provider contracts, models, and module verification.</li>
         </ul>
       </section>
     </main>
