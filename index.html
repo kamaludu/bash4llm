@@ -3,8 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bash4LLM⁺</title>
-  <link rel="canonical" href="https://github.com/kamaludu/bash4llm">
+  <title>Bash4LLM⁺ | Zero-Dependency POSIX Bash Framework for LLM Inference</title>
+  <meta name="description" content="Production-grade, zero-dependency POSIX Bash framework for secure, low-latency LLM inference, SSE streaming, thread persistence, interactive TUI chat, and OpenSSL AES-256 encrypted key management.">
+  <link rel="canonical" href="https://kamaludu.github.io/bash4llm/">
+  
+  <!-- Open Graph Metadata -->
+  <meta property="og:title" content="Bash4LLM⁺ — POSIX Bash Client Framework for LLMs">
+  <meta property="og:description" content="Production-grade, zero-dependency POSIX Bash framework for LLM multi-provider inference, real-time SSE streaming, session persistence, and encrypted secret vault.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://kamaludu.github.io/bash4llm/">
+  <meta property="og:site_name" content="Bash4LLM⁺">
+
   <style>
     :root {
       --bg: #0d1117;
@@ -12,9 +21,12 @@
       --border: #30363d;
       --text: #c9d1d9;
       --text-muted: #8b949e;
+      --heading: #f0f6fc;
       --link: #58a6ff;
       --btn-bg: #21262d;
       --btn-hover: #30363d;
+      --code-bg: #010409;
+      --accent-green: #4eaa25;
       --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
     }
 
@@ -27,25 +39,27 @@
     body {
       background-color: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      line-height: 1.5;
-      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 24px 16px;
       display: flex;
       justify-content: center;
-      align-items: center;
-      padding: 16px;
     }
 
-    .card {
+    .container {
+      width: 100%;
+      max-width: 900px;
+    }
+
+    header {
       background-color: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 24px;
-      width: 100%;
-      max-width: 580px;
+      border-radius: 8px;
+      padding: 28px;
+      margin-bottom: 24px;
     }
 
-    .version {
+    .version-badge {
       font-family: var(--font-mono);
       font-size: 0.85rem;
       color: var(--text-muted);
@@ -54,31 +68,31 @@
 
     h1 {
       display: inline-block;
-      font-size: 1.6rem;
-      font-weight: bold;
-      color: #fffff3;
-      background: #4eaa25;
-      padding: 4px 12px;
-      border-radius: 4px;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #ffffff;
+      background: var(--accent-green);
+      padding: 4px 14px;
+      border-radius: 6px;
       margin-bottom: 12px;
     }
-    
-    p {
-      font-size: 0.95rem;
+
+    .subtitle {
+      font-size: 1.05rem;
       color: var(--text);
       margin-bottom: 20px;
     }
 
-    .nav {
+    .nav-bar {
       display: flex;
-      flex-direction: column;
+      flex-wrap: wrap;
       gap: 10px;
+      margin-top: 16px;
     }
 
     .btn {
-      display: block;
-      width: 100%;
-      padding: 10px 14px;
+      display: inline-block;
+      padding: 8px 16px;
       background-color: var(--btn-bg);
       color: var(--link);
       border: 1px solid var(--border);
@@ -86,7 +100,6 @@
       font-size: 0.9rem;
       font-weight: 500;
       text-decoration: none;
-      text-align: center;
       transition: background-color 0.15s ease;
     }
 
@@ -94,40 +107,292 @@
       background-color: var(--btn-hover);
     }
 
-    .meta {
-      margin-top: 20px;
-      padding-top: 14px;
-      border-top: 1px solid var(--border);
-      font-size: 0.8rem;
+    .btn-highlight {
+      border-color: var(--link);
+      font-weight: 600;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    section {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    h2 {
+      font-size: 1.3rem;
+      color: var(--heading);
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    p {
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+    }
+
+    ul, ol {
+      margin-left: 20px;
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 12px;
+    }
+
+    .card-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+
+    .card-item h3 {
+      font-size: 1.05rem;
+      color: var(--heading);
+      margin-bottom: 8px;
+    }
+
+    pre {
+      background-color: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #e6edf3;
+      margin-bottom: 14px;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      background-color: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #e6edf3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--btn-bg);
+      color: var(--heading);
+    }
+
+    footer {
+      margin-top: 24px;
+      padding: 16px;
+      text-align: center;
+      font-size: 0.85rem;
       color: var(--text-muted);
+      border-top: 1px solid var(--border);
       font-family: var(--font-mono);
     }
 
-    .meta a {
+    footer a {
       color: var(--text-muted);
       text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <main class="card">
-    <div class="version">v2.8.5</div>
-    <h1>Bash4LLM⁺</h1>
-    <p>
-      🇮🇹   Framework client POSIX Bash per l'inferenza di modelli linguistici di grandi dimensioni, streaming SSE, persistenza dei thread e gestione di segreti crittografati. Funziona utilizzando le utilità di sistema standard, curl e jq.
-    </p>
-    <p>
-      🇬🇧   POSIX Bash client framework for Large Language Model inference, SSE streaming, thread persistence, and encrypted secret management. Operates using standard base system utilities, curl, and jq.
-    </p>
+  <div class="container">
+    <header>
+      <div class="version-badge">v2.8.5 · GPL-3.0-or-later</div>
+      <h1>Bash4LLM⁺</h1>
+      <p class="subtitle">
+        Zero-dependency POSIX Bash client framework for secure, low-latency Large Language Model (LLM) inference, SSE streaming, persistent thread contexts, and OpenSSL AES-256 encrypted secret management.
+      </p>
 
-    <nav class="nav">
-      <a href="https://github.com/kamaludu/bash4llm" class="btn">Official GitHub Repository</a>
-      <a href="llms.txt" class="btn">llms.txt Specification Index</a>
-    </nav>
+      <nav class="nav-bar" aria-label="Main Navigation">
+        <a href="https://github.com/kamaludu/bash4llm" class="btn">Official Repository</a>
+        <a href="llms.txt" class="btn btn-highlight" rel="index" title="LLM Documentation Index">LLM Documentation Index (/llms.txt)</a>
+        <a href="https://github.com/kamaludu/bash4llm/releases" class="btn">Releases & Release Notes</a>
+      </nav>
+    </header>
 
-    <footer class="meta">
-      License: GPL-3.0-or-later · <a href="https://github.com/kamaludu/bash4llm/releases">Releases</a>
+    <main>
+      <!-- Overview & Purpose -->
+      <section id="overview">
+        <h2>Overview & Architecture Principles</h2>
+        <p>
+          🇮🇹 <strong>Bash4LLM⁺</strong> è un framework client POSIX Bash di livello enterprise progettato per eseguire operazioni con Modelli Linguistici di Grandi Dimensioni (LLM) in ambienti shell ristretti, pipeline CI/CD, container e dispositivi embedded (incluso Android Termux).
+        </p>
+        <p>
+          🇬🇧 <strong>Bash4LLM⁺</strong> is a production-grade POSIX Bash client framework designed to execute Large Language Model operations in restricted shell environments, CI/CD pipelines, container instances, and embedded platforms (including Android Termux).
+        </p>
+        <p>
+          It achieves sub-10ms cold-start execution with <strong>zero third-party package dependencies</strong> (no Python, Node.js, Docker, or pip/npm modules required), relying strictly on base system POSIX utilities, <code>curl</code>, and <code>jq</code>.
+        </p>
+      </section>
+
+      <!-- Key Capabilities -->
+      <section id="capabilities">
+        <h2>Key Capabilities</h2>
+        <div class="grid-2">
+          <div class="card-item">
+            <h3>Multi-Provider Engine</h3>
+            <p>Groq core provider by default, extensible to Gemini, Mistral, and Hugging Face via dynamic checksum-verified modules with Provider API contract versioning.</p>
+          </div>
+          <div class="card-item">
+            <h3>SSE Streaming & TUI Chat</h3>
+            <p>Supports real-time Server-Sent Events (SSE) responses and features an interactive terminal UI chat REPL (<code>extras/chat/tui-repl.sh</code>) with multi-language i18n support.</p>
+          </div>
+          <div class="card-item">
+            <h3>Encrypted Secret Vault</h3>
+            <p>OpenSSL AES-256-CBC PBKDF2 encrypted vault for API keys. Memory-volatile RAM unlock context with mandatory policy enforcement (<code>BASH4LLM_REQUIRE_VAULT=1</code>).</p>
+          </div>
+          <div class="card-item">
+            <h3>Persistent Thread Sessions</h3>
+            <p>Multi-turn conversation histories stored in line-delimited JSON (NDJSON) with automated SHA-256 thread ID anonymization (<code>SAFE_THREAD_ID</code>) and gzip rotation.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Security Invariants -->
+      <section id="security">
+        <h2>Security Invariants & Protections</h2>
+        <ul>
+          <li><strong>Zero Dynamic Code Evaluation:</strong> Guarantees zero usage of shell <code>eval</code>, eliminating dynamic script injection vectors.</li>
+          <li><strong>Zero Process Table Secret Leaking:</strong> API tokens and Bearer credentials are passed via unlinked File Descriptors (<code>/dev/fd/3</code>), keeping credentials hidden from <code>ps aux</code> process listings.</li>
+          <li><strong>Zero Shared Temp Directory Usage:</strong> Enforces private runtime execution directories created under <code>umask 077</code>.</li>
+          <li><strong>Memory-Locked Function Guards:</strong> Critical security and network routing functions are sealed using <code>readonly -f</code>.</li>
+          <li><strong>Ed25519 Manifest Signature Verification:</strong> Extension modules are validated against <code>manifest.sha256</code> and <code>manifest.sha256.sig</code> using anti-TOCTOU staging copy isolation.</li>
+        </ul>
+      </section>
+
+      <!-- System Footprint -->
+      <section id="requirements">
+        <h2>Runtime Requirements & System Footprint</h2>
+        <p>Execution requires standard base OS utilities available in <code>$PATH</code>:</p>
+        <ul>
+          <li><strong>Shell Runtime:</strong> <code>bash</code> (version 4.0 or newer).</li>
+          <li><strong>HTTP Transport & Data Processing:</strong> <code>curl</code> and <code>jq</code>.</li>
+          <li><strong>POSIX Core Utilities (20):</strong> <code>mktemp</code>, <code>stat</code>, <code>base64</code>, <code>find</code>, <code>awk</code>, <code>sed</code>, <code>grep</code>, <code>xargs</code>, <code>tr</code>, <code>sort</code>, <code>head</code>, <code>wc</code>, <code>tee</code>, <code>date</code>, <code>mv</code>, <code>chmod</code>, <code>cp</code>, <code>rm</code>, <code>printf</code>, <code>comm</code>.</li>
+          <li><strong>Optional Binaries (Auto-Fallback):</strong> <code>flock</code> (reverts to atomic <code>mkdir</code> locking), <code>openssl</code>, <code>ssh-keygen</code>, <code>gzip</code>, <code>shred</code>/<code>dd</code>.</li>
+        </ul>
+      </section>
+
+      <!-- Usage Examples -->
+      <section id="examples">
+        <h2>CLI Quick Start</h2>
+        <pre><code># Basic single-prompt query
+./bin/bash4llm "Explain quantum computing in two sentences."
+
+# Real-time Server-Sent Events (SSE) streaming
+./bin/bash4llm --stream "Generate a POSIX shell script for sorting files."
+
+# Launch interactive TUI REPL chat
+./bin/bash4llm --chat
+
+# Execute within persistent conversation thread
+./bin/bash4llm --thread project_refactor "Analyze the auth architecture."
+
+# Enforce Vault key retrieval policy
+BASH4LLM_REQUIRE_VAULT=1 ./bin/bash4llm "Query using encrypted vault credentials"</code></pre>
+      </section>
+
+      <!-- Exit Codes -->
+      <section id="exit-codes">
+        <h2>Canonical Exit Codes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Symbolic Alias</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>10</code></td>
+              <td><code>BASH4LLM_ERR_NO_API_KEY</code></td>
+              <td>Missing, unreadable, or unauthenticated API credential.</td>
+            </tr>
+            <tr>
+              <td><code>11</code></td>
+              <td><code>BASH4LLM_ERR_BAD_MODEL</code></td>
+              <td>Unsupported, missing, or invalid model target specification.</td>
+            </tr>
+            <tr>
+              <td><code>12</code></td>
+              <td><code>BASH4LLM_ERR_CURL_FAILED</code></td>
+              <td>Network transport failure, timeout, or curl execution error.</td>
+            </tr>
+            <tr>
+              <td><code>13</code></td>
+              <td><code>BASH4LLM_ERR_PARSE</code></td>
+              <td>JSON parsing error, or response syntax/SML/REGEX validation failure.</td>
+            </tr>
+            <tr>
+              <td><code>14</code></td>
+              <td><code>BASH4LLM_ERR_NO_PROMPT</code></td>
+              <td>Missing prompt text or unreadable input source.</td>
+            </tr>
+            <tr>
+              <td><code>15</code></td>
+              <td><code>BASH4LLM_ERR_TMP</code></td>
+              <td>File I/O error, permission error, missing core utility, or lock timeout.</td>
+            </tr>
+            <tr>
+              <td><code>16</code></td>
+              <td><code>BASH4LLM_ERR_API</code></td>
+              <td>Upstream API error payload or non-2xx HTTP status code.</td>
+            </tr>
+            <tr>
+              <td><code>17</code></td>
+              <td><code>BASH4LLM_ERR_SEC</code></td>
+              <td>Security policy violation, rate limit exceeded, or signature check failure.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Documentation Links -->
+      <section id="docs">
+        <h2>Documentation Index</h2>
+        <p>Explore full technical documentation and specifications:</p>
+        <ul>
+          <li><a href="llms.txt">llms.txt Specification Index</a> — Standard structured markdown index for AI crawlers and LLM agents.</li>
+          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/docs/bash4llm-arch-spec-en.md">Architecture Specification (English)</a> — Comprehensive system internals and bootstrap pipeline.</li>
+          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/docs/timeless/timeless-arc-spec.md">Timeless Architecture Spec</a> — Security invariants and immutable negative constraints.</li>
+          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/SECURITY-en.md">Security Specification</a> — Threat model, token redaction, and vault operations.</li>
+          <li><a href="https://github.com/kamaludu/bash4llm/blob/main/PROVIDERS.md">Providers Specification</a> — Provider contracts, models, and module verification.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      License: GPL-3.0-or-later · <a href="https://github.com/kamaludu/bash4llm">Official GitHub Repository</a> · <a href="llms.txt">llms.txt Index</a>
     </footer>
-  </main>
+  </div>
 </body>
 </html>
