@@ -5,7 +5,6 @@ on:
     branches: [ main ]
     paths:
       - 'bash4llm'
-      - 'extras/**'
       - '.github/workflows/extras-integrity-manifest.yml'
   pull_request:
     branches: [ main ]
@@ -13,13 +12,21 @@ on:
       - 'bash4llm'
       - 'extras/**'
       - '.github/workflows/extras-integrity-manifest.yml'
+  workflow_run:
+    workflows: ["Update Extras Manifest"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   verify-manifest:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+
       - name: Check All Extras Files Against SHA-256 Manifest
         run: |
           set -euo pipefail
@@ -60,8 +67,13 @@ jobs:
             )
             rm -f "$TMP_CLEAN_MANIFEST"
             
-            # Verify native bash4llm extras installer integrity test safely
-            INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1 || true)
+            # Verify native bash4llm extras installer integrity test safely without hiding errors
+            INSTALL_LOG=""
+            if ! INSTALL_LOG=$("$B4L_BIN" --install-extras 2>&1); then
+              echo "$INSTALL_LOG"
+              echo "❌ ERROR: Extras installer command failed with exit code $?!"
+              exit 1
+            fi
             echo "$INSTALL_LOG"
             
             if echo "$INSTALL_LOG" | grep -qi "integrity verification warnings"; then
