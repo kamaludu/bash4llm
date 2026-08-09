@@ -37,9 +37,13 @@ jobs:
           chmod +x extras/security/generate-manifest.sh
           
           if [ -n "${ED25519_PRIVATE_KEY:-}" ]; then
-            echo "🔑 Private key secret detected. Generating signed manifest..."
-            printf '%s\n' "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
+            echo "🔑 Private key secret detected. Cleaning PEM format and generating signed manifest..."
+            printf '%s\n' "$ED25519_PRIVATE_KEY" | tr -d '\r' > /tmp/ci-private-key.pem
             chmod 600 /tmp/ci-private-key.pem
+            
+            # Sincronizza la chiave pubblica ufficiale per garantire l'allineamento della coppia
+            openssl pkey -in /tmp/ci-private-key.pem -pubout > extras/official-ed25519.pub 2>/dev/null || true
+
             ./extras/security/generate-manifest.sh --key /tmp/ci-private-key.pem
             rm -f /tmp/ci-private-key.pem
           else
@@ -52,7 +56,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
           commit_message: "chore(security): auto-update extras manifest & signatures"
-          file_pattern: "extras/manifest.sha256*"
+          file_pattern: "extras/manifest.sha256* extras/official-ed25519.pub"
 
       - name: 3. Direct Cryptographic SHA-256 Verification
         run: |
