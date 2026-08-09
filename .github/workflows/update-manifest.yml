@@ -25,7 +25,7 @@ jobs:
           ED25519_PRIVATE_KEY: ${{ secrets.ED25519_SIGNING_KEY }}
         run: |
           chmod +x extras/security/generate-manifest.sh
-          if [ -n "$ED25519_PRIVATE_KEY" ]; then
+          if [ -n "${ED25519_PRIVATE_KEY:-}" ]; then
             echo "$ED25519_PRIVATE_KEY" > /tmp/ci-private-key.pem
             chmod 600 /tmp/ci-private-key.pem
             ./extras/security/generate-manifest.sh --key /tmp/ci-private-key.pem
@@ -38,5 +38,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5.1.0
         with:
           commit_message: "chore(security): auto-update extras manifest & signatures [skip ci]"
-          file_pattern: "extras/manifest.sha256 extras/manifest.sha256.sig extras/official-ed25519.pub"
-          auto_push_pr: false
+          file_pattern: "extras/manifest.sha256* extras/official-ed25519.pub*"
