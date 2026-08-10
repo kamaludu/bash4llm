@@ -1,15 +1,27 @@
-/* Zero-Framework CSS3 Modern Dark/Light Design */
+/* ==========================================================================
+   bash4llm⁺ UI Theme: Warm Reader & Terminal Document Style
+   Design Tokens:
+   - Primary BG: #fffdf3 (Light cream / Warm paper)
+   - Text & Borders: #293137 (Dark charcoal grey)
+   - Accent & Highlights: #4eaa25 (Vibrant green)
+   ========================================================================== */
+
 :root {
-  --bg-primary: #121214;
-  --bg-secondary: #1a1a1e;
-  --bg-tertiary: #26262e;
-  --text-primary: #f0f0f5;
-  --text-secondary: #a0a0b0;
-  --accent-color: #00e676;
-  --accent-hover: #00c853;
-  --danger-color: #ff5252;
-  --border-color: #33333e;
-  --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bg-primary: #fffdf3;
+  --bg-secondary: #f3eedc;
+  --bg-tertiary: #e7dfc6;
+  
+  --text-primary: #293137;
+  --text-muted: #576570;
+  --text-on-accent: #fffdf3;
+  
+  --accent-color: #4eaa25;
+  --accent-hover: #3e8d1e;
+  --danger-color: #d32f2f;
+  --border-color: #293137;
+  
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Code", "Fira Code", Monaco, Consolas, "Courier New", monospace;
 }
 
 * {
@@ -24,36 +36,65 @@ body {
   font-family: var(--font-family);
   height: 100vh;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Base Layout Container */
 .app-container {
   display: flex;
   height: 100vh;
   width: 100vw;
+  position: relative;
 }
 
-/* Sidebar */
+/* ==========================================================================
+   BRAND LOGO & HIGHLIGHT TITLES
+   ========================================================================== */
+.brand-badge,
+.highlight-title {
+  background-color: var(--accent-color);
+  color: var(--text-on-accent);
+  font-weight: 800;
+  padding: 0.25em 0.75em; /* Padding ensures clear spacing before and after text */
+  border-radius: 4px;
+  display: inline-block;
+  letter-spacing: 0.5px;
+  font-size: 1.1rem;
+  border: 1px solid var(--border-color);
+  box-shadow: 2px 2px 0px var(--border-color);
+}
+
+.highlight-title {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+/* ==========================================================================
+   SIDEBAR / THREAD NAVIGATOR
+   ========================================================================== */
 .sidebar {
-  width: 280px;
+  width: 300px;
   background-color: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
+  border-right: 2px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
 }
 
 .sidebar-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  padding: 1.2rem 1rem;
+  border-bottom: 2px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
 }
 
 .thread-list-container {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
+  padding: 0.75rem;
 }
 
 .thread-list {
@@ -63,151 +104,355 @@ body {
 .thread-item {
   padding: 0.75rem 1rem;
   border-radius: 6px;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.4rem;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+  border: 1px solid transparent;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.thread-item:hover, .thread-item.active {
+.thread-item:hover {
   background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.thread-item.active {
+  background-color: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  box-shadow: 2px 2px 0px var(--border-color);
   color: var(--text-primary);
 }
 
 .sidebar-footer {
   padding: 1rem;
-  border-top: 1px solid var(--border-color);
+  border-top: 2px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background-color: var(--bg-secondary);
 }
 
 .status-indicator {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background-color: #888;
+  border: 1px solid var(--border-color);
+  background-color: #aaa;
 }
 
 .status-dot.ready { background-color: var(--accent-color); }
-.status-dot.busy { background-color: #ffb300; }
+.status-dot.busy { background-color: #ff9800; }
 
-/* Chat Viewport */
+/* ==========================================================================
+   CHAT VIEWPORT & HEADER
+   ========================================================================== */
 .chat-viewport {
   flex: 1;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-primary);
+  position: relative;
 }
 
 .chat-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  padding: 1rem 1.5rem;
+  border-bottom: 2px solid var(--border-color);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: space-between;
+  background-color: var(--bg-secondary);
 }
 
+#current-thread-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.active-params-badge {
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  background-color: var(--bg-primary);
+  padding: 0.35rem 0.75rem;
+  border: 1.5px solid var(--border-color);
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   CHAT MESSAGES (Option B: Document / Terminal Style)
+   ========================================================================== */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: 1.5rem 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
 }
 
+/* Full-width continuous document style message container */
 .message {
-  max-width: 80%;
-  padding: 1rem;
-  border-radius: 8px;
-  line-height: 1.5;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem;
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  font-size: 1rem;
+  border-bottom: 1.5px solid rgba(41, 49, 55, 0.15); /* Distinct message divider */
+  position: relative;
 }
 
-.message.user {
-  align-self: flex-end;
-  background-color: #1e3a5f;
-  color: #ffffff;
+/* Role badges rendered via CSS pseudo-element (Protected against JS textContent overwrite) */
+.message::before {
+  display: block;
+  width: fit-content;
+  font-size: 0.75rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.2em 0.6em; /* Inner spacing */
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 0.8rem;
+}
+
+.message.user::before {
+  content: "USER";
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+.message.assistant::before {
+  content: "ASSISTANT";
+  background-color: var(--accent-color);
+  color: var(--text-on-accent);
 }
 
 .message.assistant {
-  align-self: flex-start;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background-color: rgba(243, 238, 220, 0.35); /* Subtle contrast background */
 }
 
-/* Input Area */
+/* ==========================================================================
+   INPUT CONTROLS & FORM
+   ========================================================================== */
 .input-container {
-  padding: 1rem;
-  border-top: 1px solid var(--border-color);
+  padding: 1.2rem 1.5rem;
+  border-top: 2px solid var(--border-color);
   background-color: var(--bg-secondary);
 }
 
 .chat-form {
+  max-width: 900px;
+  margin: 0 auto;
   display: flex;
-  gap: 0.75rem;
+  gap: 0.8rem;
+  align-items: flex-end;
 }
 
 .prompt-textarea {
   flex: 1;
+  height: 64px; /* Fixed height for 2-3 lines, maximizing cross-browser stability */
   background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  border: 2px solid var(--border-color);
   border-radius: 6px;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   color: var(--text-primary);
-  font-family: inherit;
-  resize: none;
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  resize: none; /* Prevents layout distortion */
+  box-shadow: 2px 2px 0px var(--border-color);
 }
 
 .prompt-textarea:focus {
-  outline: 1px solid var(--accent-color);
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 3px 3px 0px var(--accent-color);
 }
 
-/* Buttons */
+.input-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* ==========================================================================
+   BUTTONS (High Contrast & Tactile Style)
+   ========================================================================== */
 .btn {
-  padding: 0.6rem 1.2rem;
+  padding: 0.65rem 1.25rem;
   border-radius: 6px;
-  border: none;
-  font-weight: 600;
+  border: 2px solid var(--border-color);
+  font-weight: 700;
+  font-size: 0.9rem;
   cursor: pointer;
+  box-shadow: 2px 2px 0px var(--border-color);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.15s ease;
 }
 
-.btn-primary { background-color: var(--accent-color); color: #000; }
-.btn-secondary { background-color: var(--bg-tertiary); color: var(--text-primary); }
-.btn-submit { background-color: var(--accent-color); color: #000; }
-.btn-danger { background-color: var(--danger-color); color: #fff; }
-.btn-icon { background: none; border: none; color: var(--text-primary); font-size: 1.2rem; cursor: pointer; }
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--border-color);
+}
 
-.hidden { display: none !important; }
+.btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px var(--border-color);
+}
 
-/* Modals */
+.btn-primary, .btn-submit {
+  background-color: var(--accent-color);
+  color: var(--text-on-accent);
+}
+
+.btn-primary:hover, .btn-submit:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn-secondary {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background-color: var(--danger-color);
+  color: #ffffff;
+}
+
+.btn-icon {
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px var(--border-color);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   SETTINGS MODAL (Native <dialog>)
+   ========================================================================== */
 .modal {
   border: none;
   background: transparent;
   margin: auto;
+  padding: 1rem;
+}
+
+.modal::backdrop {
+  background-color: rgba(41, 49, 55, 0.7); /* High-contrast opaque overlay */
 }
 
 .modal-content {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-primary);
   padding: 2rem;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-  min-width: 320px;
+  border: 2px solid var(--border-color);
+  box-shadow: 6px 6px 0px var(--border-color);
+  width: 100%;
+  max-width: 440px;
   color: var(--text-primary);
 }
 
-.form-group { margin-bottom: 1rem; }
-.form-group label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; }
-.form-control { width: 100%; padding: 0.5rem; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem; }
+.form-group {
+  margin-bottom: 1.2rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.6rem;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.8rem;
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN & MOBILE DRAWER OVERLAY
+   ========================================================================== */
+@media (min-width: 769px) {
+  #btn-toggle-sidebar {
+    display: none; /* Hidden on large screens */
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    box-shadow: 4px 0px 15px rgba(0,0,0,0.25);
+  }
+
+  /* Pure CSS mobile drawer triggers */
+  .sidebar:focus-within,
+  .sidebar:target,
+  .sidebar.active,
+  .app-container:has(#btn-toggle-sidebar:focus) .sidebar {
+    transform: translateX(0);
+  }
+
+  .chat-header {
+    padding: 0.8rem 1rem;
+  }
+
+  .message {
+    padding: 1.2rem 1rem;
+  }
+
+  .chat-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .prompt-textarea {
+    height: 80px;
+  }
+
+  .btn-submit, .btn-danger {
+    width: 100%;
+    padding: 0.8rem;
+  }
+}
