@@ -17,13 +17,15 @@ _lock_file_fd: Optional[int] = None
 def validate_runtime_tmpdir(tmpdir: str) -> str:
     """
     Validates that the isolated temporary directory complies with T3 Hardened security.
-    Rejects system global /tmp (including subdirectories and macOS symlinks) and enforces 0700 permissions.
+    Rejects system global /tmp (including subdirectories, case variants on Windows, and macOS symlinks)
+    and enforces 0700 permissions.
     """
     real_tmp = os.path.realpath(tmpdir)
+    real_tmp_lower = real_tmp.lower()
     
-    # Strict prefix matching to block subdirectories under system tmp (e.g. /tmp/sub)
-    forbidden_prefixes = ("/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp", "C:\\Windows\\Temp")
-    if any(real_tmp == p or real_tmp.startswith(p + os.sep) for p in forbidden_prefixes):
+    # Strict prefix matching (case-insensitive for Windows compatibility)
+    forbidden_prefixes = ("/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp", "c:\\windows\\temp")
+    if any(real_tmp_lower == p or real_tmp_lower.startswith(p + os.sep) for p in forbidden_prefixes):
         raise RuntimeError(f"SECURITY VIOLATION: Refusing to use system shared temp directory: {real_tmp}")
 
     if not os.path.exists(real_tmp):
@@ -65,13 +67,12 @@ def acquire_single_instance_lock(lock_file_path: str) -> bool:
 def verify_security_headers(request: Request, active_csrf_token: str, session_id: Optional[str]) -> None:
     """
     Enforces Host, Primary Origin, and CSRF header validation for mutating requests.
-    Mitigates Host Header Spoofing and DNS Rebinding.
+    Uses request.url.hostname for robust IPv6 and IPv4 loopback matching.
     """
-    # 1. Host Header Validation (Extract exact hostname, ignoring port)
-    raw_host = request.headers.get("host", "")
-    host_name = raw_host.split(":")[0].lower().strip("[]")
-    
+    # 1. Host Header Validation via robust URL parser
+    host_name = (request.url.hostname or "").lower()
     allowed_hostnames: Set[str] = {"127.0.0.1", "localhost", "::1"}
+    
     if host_name not in allowed_hostnames:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -102,4 +103,4 @@ def verify_security_headers(request: Request, active_csrf_token: str, session_id
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid or missing CSRF Token"
             )
-          
+            
