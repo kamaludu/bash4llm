@@ -237,10 +237,14 @@ OPZIONI
         Imposta e archivia permanentemente il modello specificato come scelta 
         predefinita per il provider attualmente attivo nel sistema.
 
-  Sezione 8: Interfaccia Utente Interattiva, Diagnostica e Ispezione
+  Sezione 8: Interfacce Interattive, Diagnostica e Ispezione
     --chat, --tui
-        Lancia la sessione TUI REPL interattiva a schermo intero per conversazioni 
-        continue.
+        Avvia la sessione REPL interattiva TUI a schermo intero per conversazioni 
+        continue da terminale.
+
+    --gui, --webapp
+        Avvia l'interfaccia grafica WebApp GUI locale nel browser web 
+        (basata sul runtime Python FastAPI/Uvicorn in extras/gui-py).
 
     --quiet
         Silenziatore di runtime. Inibisce tutte le stampe informative e gli 
