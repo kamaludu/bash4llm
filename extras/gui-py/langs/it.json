@@ -1,0 +1,14 @@
+{
+  "new_thread": "+ Nuovo Thread",
+  "settings": "Impostazioni",
+  "settings_title": "Impostazioni Runtime",
+  "provider": "Provider",
+  "model": "Modello",
+  "temperature": "Temperatura (0.0 - 2.0)",
+  "thread_window": "Messaggi Finestra Cronologia",
+  "save": "Salva",
+  "close": "Chiudi",
+  "send": "Invia",
+  "cancel": "Interrompi",
+  "prompt_placeholder": "Scrivi il tuo prompt qui..."
+}
