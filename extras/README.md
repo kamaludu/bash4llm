@@ -22,6 +22,21 @@ extras/
 │   ├── help.txt
 │   ├── manual-en.txt
 │   └── manual-it.txt
+├── gui-py/
+│.  ├── gui-py.sh             # Launcher CLI Wrapper (POSIX Bash 4.0+, 0700)
+│   ├── main.py               # Entrypoint Adapter Python 3.10+ (FastAPI + Uvicorn)
+│   ├── config.py             # Dataclass, Runtime Settings, Temp Validation
+│   ├── models.py             # Dataclass Job, State Enum, Termination Cause
+│   ├── security.py           # Host/Origin Validation, Cookies, CSRF, Single-Instance Lock
+│   ├── ipc.py                # Subprocess Executor, Pipe I/O, UTF-8 Decoder, SSE Dispatcher
+│   ├── static/
+│   │   ├── index.html        # Progressive Enhancement SPA HTML5
+│   │   ├── error.html        # Error template HTTP 401/403/500 minimal
+│   │   ├── style.css         # Design UI responsive zero-framework
+│   │   └── app.js            # SSE Streamer, CSRF Fetch, Form Enhancements
+│   └── langs/                # Multilingual translations 
+│       ├── en.json       
+│       └── it.json       
 ├── hooks/                    # Hooks 
 │   └── sml-gate.sh.          # SML v2.0 Semantic Safety Gate
 ├── providers/                # Optional LLM Provider Extension Modules
