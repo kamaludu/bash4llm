@@ -97,21 +97,20 @@ Lo script core verifica l'integrità crittografica del modulo mediante `manifest
 
 ```text
 extras/gui-py/
-├── gui-py.sh                   # Launcher CLI Wrapper (POSIX Bash 4.0+, 0700)
-├── main.py                     # Entrypoint Adapter Python 3.10+ (FastAPI + Uvicorn)
-├── config.py                   # Dataclass, Impostazioni Runtime, Temp Validation
-├── models.py                   # Dataclass Job, State Enum, Termination Cause
-├── security.py                 # Host/Origin Validation, Cookies, CSRF, Single-Instance Lock
-├── ipc.py                      # Subprocess Executor, Pipe I/O, UTF-8 Decoder, SSE Dispatcher
+├── gui-py.sh         # Launcher CLI Wrapper (POSIX Bash 4.0+, 0700)
+├── main.py           # Entrypoint Adapter Python 3.10+ (FastAPI + Uvicorn)
+├── config.py         # Dataclass, Impostazioni Runtime, Temp Validation
+├── models.py         # Dataclass Job, State Enum, Termination Cause
+├── security.py       # Host/Origin Validation, Cookies, CSRF, Single-Instance Lock
+├── ipc.py            # Subprocess Executor, Pipe I/O, UTF-8 Decoder, SSE Dispatcher
 ├── static/
-│   ├── index.html              # Progressive Enhancement SPA HTML5
-│   ├── error.html              # Template d'errore HTTP 401/403/500 minimale
-│   ├── style.css               # Design UI responsive zero-framework
-│   └── app.js                  # SSE Streamer, CSRF Fetch, Form Enhancements
-└── langs/
-    ├── en.json                 # Traduzioni lingua inglese
-    └── it.json                 # Traduzioni lingua italiana    
-
+│   ├── index.html    # Progressive Enhancement SPA HTML5
+│   ├── error.html    # Template d'errore HTTP 401/403/500 minimale
+│   ├── style.css     # Design UI responsive zero-framework
+│   └── app.js        # SSE Streamer, CSRF Fetch, Form Enhancements
+└── langs/            # Traduzioni multilingue 
+    ├── en.json       
+    └── it.json       
 ```
 
 ### Ciclo di Vita del Job (`JobState`)
