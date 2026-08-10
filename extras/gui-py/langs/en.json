@@ -1,0 +1,14 @@
+{
+  "new_thread": "+ New Thread",
+  "settings": "Settings",
+  "settings_title": "Runtime Settings",
+  "provider": "Provider",
+  "model": "Model",
+  "temperature": "Temperature (0.0 - 2.0)",
+  "thread_window": "History Window Messages",
+  "save": "Save",
+  "close": "Close",
+  "send": "Send",
+  "cancel": "Stop",
+  "prompt_placeholder": "Type your prompt here..."
+}
