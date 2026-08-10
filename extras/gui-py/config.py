@@ -1,0 +1,85 @@
+# extras/gui-py/config.py
+# Configuration Subsystem for bash4llm⁺ GUI Adapter
+
+import os
+import sys
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Config:
+    """
+    Runtime configuration settings derived from environment variables
+    and core bash4llm default directories.
+    """
+    script_dir: str = field(default_factory=lambda: os.path.dirname(os.path.abspath(__file__)))
+    
+    # BASH4LLM Canonical Directory Paths
+    BASH4LLM_DIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_DIR", 
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+    ))
+    
+    BASH4LLM_TMPDIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_TMPDIR",
+        os.path.join(
+            os.environ.get(
+                "BASH4LLM_DIR", 
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+            ), 
+            "tmp"
+        )
+    ))
+    
+    BASH4LLM_CONFIG_DIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_CONFIG_DIR",
+        os.path.join(
+            os.environ.get(
+                "BASH4LLM_DIR", 
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+            ), 
+            "config"
+        )
+    ))
+    
+    BASH4LLM_HISTORY_DIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_HISTORY_DIR",
+        os.path.join(
+            os.environ.get(
+                "BASH4LLM_DIR", 
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+            ), 
+            "history"
+        )
+    ))
+    
+    BASH4LLM_RUN_DIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_RUN_DIR",
+        os.path.join(
+            os.environ.get(
+                "BASH4LLM_DIR", 
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+            ), 
+            "var", "run"
+        )
+    ))
+
+    @property
+    def core_script_path(self) -> str:
+        """
+        Locates the authoritative core bash4llm shell script.
+        """
+        env_core = os.environ.get("BASH4LLM_CORE_SCRIPT")
+        if env_core and os.path.isfile(env_core):
+            return env_core
+        
+        # Fallback candidate search
+        candidates = [
+            os.path.abspath(os.path.join(self.script_dir, "..", "..", "bash4llm")),
+            os.path.abspath(os.path.join(self.script_dir, "..", "..", "..", "bash4llm")),
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+        return "bash4llm"
+      
