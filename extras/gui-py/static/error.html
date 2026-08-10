@@ -4,50 +4,111 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Unauthorized - bash4llm⁺</title>
+  <link rel="stylesheet" href="/static/style.css">
   <style>
+    /* High-reliability fallback styles matching main theme tokens */
     :root {
-      --bg: #121212;
-      --card-bg: #1e1e1e;
-      --text: #e0e0e0;
-      --accent: #cf6679;
+      --bg-primary: #fffdf3;
+      --bg-secondary: #f3eedc;
+      --text-primary: #293137;
+      --text-muted: #576570;
+      --accent-color: #4eaa25;
+      --danger-color: #d32f2f;
+      --border-color: #293137;
+      --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "Cascadia Code", "Fira Code", Monaco, Consolas, "Courier New", monospace;
     }
+
     body {
-      background-color: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-family);
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
+      padding: 1.5rem;
+      -webkit-font-smoothing: antialiased;
     }
+
     .error-card {
-      background-color: var(--card-bg);
-      padding: 2.5rem;
+      background-color: var(--bg-primary);
+      padding: 2.5rem 2rem;
       border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      border: 2px solid var(--border-color);
+      box-shadow: 6px 6px 0px var(--border-color);
       max-width: 480px;
+      width: 100%;
       text-align: center;
-      border: 1px solid #333;
     }
-    h1 { color: var(--accent); margin-top: 0; }
-    p { line-height: 1.5; color: #a0a0a0; }
-    code {
-      background-color: #2a2a2a;
-      padding: 0.2rem 0.4rem;
+
+    .brand-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .brand-badge {
+      background-color: var(--accent-color);
+      color: var(--bg-primary);
+      font-weight: 800;
+      padding: 0.25em 0.75em;
       border-radius: 4px;
-      font-family: monospace;
-      color: #00e676;
+      display: inline-block;
+      letter-spacing: 0.5px;
+      font-size: 1.1rem;
+      border: 1px solid var(--border-color);
+      box-shadow: 2px 2px 0px var(--border-color);
+    }
+
+    h1 {
+      color: var(--danger-color);
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-top: 0;
+      margin-bottom: 1rem;
+    }
+
+    p {
+      line-height: 1.6;
+      color: var(--text-primary);
+      font-weight: 500;
+      margin-bottom: 1rem;
+    }
+
+    .instruction-text {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    code {
+      display: inline-block;
+      background-color: var(--bg-secondary);
+      border: 1.5px solid var(--border-color);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      box-shadow: 2px 2px 0px var(--border-color);
+      margin: 0.5rem 0;
     }
   </style>
 </head>
 <body>
-  <div class="error-card">
+  <!-- Standalone Error Card aligned with Warm Reader Design Tokens -->
+  <main class="error-card">
+    <div class="brand-header">
+      <span class="brand-badge">Bash4LLM⁺</span>
+    </div>
+
     <h1>401 Unauthorized Access</h1>
     <p>Your session is missing or has expired.</p>
-    <p>To access the WebApp, please start a new session from your terminal:</p>
+    <p class="instruction-text">To access the WebApp, please start a new session from your terminal:</p>
+    
     <p><code>./bash4llm --gui</code></p>
-    <p>And open the generated One-Time Authentication URL in your browser.</p>
-  </div>
+    
+    <p class="instruction-text">And open the generated One-Time Authentication URL in your browser.</p>
+  </main>
 </body>
 </html>
