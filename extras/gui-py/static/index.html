@@ -9,15 +9,16 @@
 <body>
   <div class="app-container">
     <!-- Sidebar / Thread Navigator -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" tabindex="-1">
       <div class="sidebar-header">
-        <h2>bash4llm⁺</h2>
+        <!-- Brand badge with dedicated highlight styling -->
+        <h2 class="brand-badge">Bash4LLM⁺</h2>
         <button id="btn-new-thread" class="btn btn-primary" data-i18n="new_thread">+ New Thread</button>
       </div>
 
       <div class="thread-list-container">
         <ul id="thread-list" class="thread-list">
-          <!-- Thread items populated dynamically or via progressive enhancement -->
+          <!-- Dynamically populated by app.js -->
         </ul>
       </div>
 
@@ -33,16 +34,16 @@
     <!-- Main Chat Workspace -->
     <main class="chat-viewport">
       <header class="chat-header">
-        <button id="btn-toggle-sidebar" class="btn-icon" aria-label="Toggle Sidebar">☰</button>
+        <button id="btn-toggle-sidebar" class="btn-icon" aria-label="Toggle Sidebar">☰ Menu</button>
         <h3 id="current-thread-title">Default Thread</h3>
         <div class="active-params-badge" id="active-params-badge">
           <span id="badge-provider">groq</span> / <span id="badge-model">default</span>
         </div>
       </header>
 
-      <!-- Message History Display -->
+      <!-- Document/Terminal Style Chat Display -->
       <section id="chat-messages" class="chat-messages">
-        <!-- Messages stream here -->
+        <!-- SSE streamed messages injected here dynamically by app.js -->
       </section>
 
       <!-- Prompt Input Controls -->
@@ -69,10 +70,10 @@
     </main>
   </div>
 
-  <!-- Settings Modal -->
+  <!-- Native HTML5 Settings Dialog Modal -->
   <dialog id="settings-modal" class="modal">
     <div class="modal-content">
-      <h3 data-i18n="settings_title">Runtime Settings</h3>
+      <h3 class="highlight-title" data-i18n="settings_title">Runtime Settings</h3>
       
       <div class="form-group">
         <label for="select-provider" data-i18n="provider">Provider</label>
