@@ -230,6 +230,10 @@ OPTIONS
         Launches the full-screen TUI interactive REPL session for continuous 
         conversations.
 
+    --gui, --webapp
+        Launches the local WebApp GUI interactive interface in your web browser 
+        (powered by the Python FastAPI/Uvicorn runtime in extras/gui-py).
+
     --quiet
         Runtime silencer. Inhibits all informational prints and non-critical 
         warnings on standard error.
