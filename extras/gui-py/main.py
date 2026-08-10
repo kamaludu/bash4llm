@@ -2,6 +2,7 @@
 # Main Entrypoint Server Adapter for bash4llm⁺ WebApp GUI
 
 import asyncio
+from contextlib import asynccontextmanager
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import secrets
 import signal
 import socket
 import sys
+import threading
 import time
 import webbrowser
 from typing import Dict, Optional, Tuple, List, Any
@@ -32,6 +34,9 @@ from ipc import (
     THREAD_ID_REGEX
 )
 
+# Termux / Android Environment Auto-Detection
+IS_TERMUX = "TERMUX_VERSION" in os.environ or os.path.exists("/data/data/com.termux")
+
 # Runtime Memory State
 config = Config()
 active_one_time_token: Optional[str] = secrets.token_hex(32)
@@ -43,29 +48,6 @@ idempotency_store: Dict[Tuple[str, str], Job] = {} # (session_id, key) -> Job
 
 server_has_seen_first_client: bool = False
 grace_started_at: Optional[float] = None
-
-app = FastAPI(title="bash4llm WebApp Adapter", docs_url=None, redoc_url=None)
-
-# Mount Static Files and Languages Directories
-static_dir = os.path.join(config.script_dir, "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-langs_dir = os.path.join(config.script_dir, "langs")
-if os.path.exists(langs_dir):
-    app.mount("/langs", StaticFiles(directory=langs_dir), name="langs")
-
-
-def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 100) -> int:
-    """Scans loopback interface for the first available TCP port."""
-    for port in range(start_port, start_port + max_attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("127.0.0.1", port))
-                return port
-            except OSError:
-                continue
-    raise RuntimeError("No free loopback port found in range.")
 
 
 async def graceful_shutdown_checker():
@@ -100,9 +82,40 @@ async def graceful_shutdown_checker():
             grace_started_at = None
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Modern Lifespan handler replacing deprecated @app.on_event('startup')."""
     asyncio.create_task(graceful_shutdown_checker())
+    yield
+
+
+app = FastAPI(
+    title="bash4llm WebApp Adapter",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=lifespan
+)
+
+# Mount Static Files and Languages Directories
+static_dir = os.path.join(config.script_dir, "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+langs_dir = os.path.join(config.script_dir, "langs")
+if os.path.exists(langs_dir):
+    app.mount("/langs", StaticFiles(directory=langs_dir), name="langs")
+
+
+def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 100) -> int:
+    """Scans loopback interface for the first available TCP port."""
+    for port in range(start_port, start_port + max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError("No free loopback port found in range.")
 
 
 # Session Verification Dependency
@@ -453,6 +466,16 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+def _launch_browser_async(url: str):
+    """Launches browser in a background daemon thread after Uvicorn starts listening."""
+    time.sleep(1.2)
+    if not IS_TERMUX and not os.environ.get("BASH4LLM_GUI_NO_BROWSER"):
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     runtime_tmp = validate_runtime_tmpdir(config.BASH4LLM_TMPDIR)
     
@@ -466,13 +489,12 @@ if __name__ == "__main__":
     
     print("=" * 60)
     print(f" bash4llm WebApp GUI Adapter running at: http://127.0.0.1:{port}/")
-    print(f" One-Time Auth URL: {auth_url}")
+    print(f"\n One-Time Auth URL (Click or Copy to Browser):\n {auth_url}\n")
     print("=" * 60)
 
-    try:
-        webbrowser.open(auth_url)
-    except Exception:
-        pass
+    # Launch browser asynchronously on non-Termux systems
+    threading.Thread(target=_launch_browser_async, args=(auth_url,), daemon=True).start()
 
+    # Start uvicorn server immediately on main thread (port 19970 opens right away)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
     
