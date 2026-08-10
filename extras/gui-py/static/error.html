@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unauthorized - bash4llm⁺</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --card-bg: #1e1e1e;
+      --text: #e0e0e0;
+      --accent: #cf6679;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .error-card {
+      background-color: var(--card-bg);
+      padding: 2.5rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      max-width: 480px;
+      text-align: center;
+      border: 1px solid #333;
+    }
+    h1 { color: var(--accent); margin-top: 0; }
+    p { line-height: 1.5; color: #a0a0a0; }
+    code {
+      background-color: #2a2a2a;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #00e676;
+    }
+  </style>
+</head>
+<body>
+  <div class="error-card">
+    <h1>401 Unauthorized Access</h1>
+    <p>Your session is missing or has expired.</p>
+    <p>To access the WebApp, please start a new session from your terminal:</p>
+    <p><code>./bash4llm --gui</code></p>
+    <p>And open the generated One-Time Authentication URL in your browser.</p>
+  </div>
+</body>
+</html>
