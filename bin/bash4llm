@@ -31,8 +31,8 @@ ulimit -c 0 2>/dev/null || true
 # RELEASE VERSION METADATA
 # ======================================
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.5"
-SCRIPT_DATE="2026-08-07"
+SCRIPT_VERSION="2.8.5.1"
+SCRIPT_DATE="2026-08-10"
 
 # Core Provider API Contract Version
 BASH4LLM_SUPPORTED_PROVIDER_API=1
@@ -5334,6 +5334,35 @@ while [ $# -gt 0 ]; do
       # Atomic process image transfer forwarding all remaining positional arguments
       exec bash "$suite_script" "$@"
       ;;
+    --gui|--webapp)
+      shift
+      gui_script="${BASH4LLM_EXTRAS_DIR}/gui-py/gui-py.sh"
+
+      # 1. Verifica di esistenza e leggibilità (Fail-Closed)
+      if [ ! -f "$gui_script" ] || [ ! -r "$gui_script" ]; then
+        log_error "GUI" "GUI module 'gui-py' is not installed. Please run: ./bash4llm --install-extras"
+        exit "${BASH4LLM_ERR_TMP:-15}"
+      fi
+
+      # 2. Strict POSIX Path Security & Ownership Check (INV-4)
+      if ! validate_path_security "$gui_script"; then
+        log_error "SEC" "Path security validation failed for GUI launcher: $gui_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      # 3. Validazione di Integrità Crittografica SHA-256 rispetto al Manifest Vendor
+      if ! verify_module_integrity "$gui_script"; then
+        log_error "SEC" "GUI launcher failed SHA-256 integrity check: $gui_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "GUI" "Delegating execution to verified GUI launcher: $gui_script"
+      fi
+
+      # 4. Atomic Process Image Transfer forwarding remaining positional CLI arguments
+      exec bash "$gui_script" "$@"
+      ;;
     --provider|--providers)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
         PROVIDER_CLI="$2"
@@ -5700,6 +5729,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     # Granular Execution Permissions: Grant executable bits ONLY to direct CLI entrypoints
     chmod 700 "$DEST_BASE/security/output-sanitizer.sh" 2>/dev/null || true
     chmod 700 "$DEST_BASE/chat/tui-repl.sh" 2>/dev/null || true
+    chmod 700 "$DEST_BASE/gui-py/gui-py.sh" 2>/dev/null || true
     find "$DEST_BASE/test" -type f -name "*.sh" -exec chmod 700 {} + 2>/dev/null || true
     
     # Verify integrity of newly installed extras against manifest
