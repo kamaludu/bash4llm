@@ -29,7 +29,7 @@ Il modulo **`gui-py`** è un'interfaccia utente web opzionale, leggera e ad alte
 
 ---
 
-## 2. Guida Utente (README & Quickstart)
+## 📋 2. Guida Utente (README & Quickstart)
 
 ### Prerequisiti di Sistema
 * **Shell & Core Utilities**: Bash >= 4.0, `curl`, `jq`, `mktemp`, `stat`, `base64`, `awk`, `sed`, `grep`.
@@ -46,7 +46,7 @@ Tutti i sorgenti del modulo risiedono nella cartella `extras/gui-py/` del reposi
 
 Questo comando copia l'alberatura in `bash4llm.d/extras/gui-py/` applicando i permessi restrittivi `0700` per le directory e `0600` per i file (Principio del Minimo Privilegio).
 
-### Avvio Rapido dell'Applicazione
+### 🚀 Avvio Rapido dell'Applicazione
 
 L'avvio della WebApp GUI avviene direttamente tramite la CLI di `bash4llm`:
 
@@ -58,7 +58,7 @@ L'avvio della WebApp GUI avviene direttamente tramite la CLI di `bash4llm`:
 
 Lo script core verifica l'integrità crittografica del modulo mediante `manifest.sha256` e delega l'esecuzione allo script wrapper `extras/gui-py/gui-py.sh`.
 
-#### Esecuzione Piattaforma per Piattaforma
+#### 💻 Esecuzione Piattaforma per Piattaforma
 
 * **Linux / macOS**:
   ```bash
@@ -78,7 +78,7 @@ Lo script core verifica l'integrità crittografica del modulo mediante `manifest
   ```
   Utilizza l'utilità `termux-open-url` per l'avvio del browser di sistema e sfrutta la logica di auto-riconnessione del client JS in caso di sospensione del processo da parte del sistema operativo (Doze Mode).
 
-### Manuale d'Uso della GUI WebApp
+### 🌐 Manuale d'Uso della GUI WebApp
 
 1. **Autenticazione Iniziale**: All'avvio viene generato un `one_time_token` monouso. Il browser viene indirizzato su `http://127.0.0.1:19970/auth?one_time_token=...`. Il token viene consumato atomicamente in RAM e viene rilasciato un cookie di sessione sicuro `HttpOnly` con flag `SameSite=Strict`.
 2. **Navigazione Thread (Sidebar)**:
