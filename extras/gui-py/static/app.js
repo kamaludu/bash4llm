@@ -21,11 +21,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   setInterval(sendHeartbeat, 8000);
 });
 
-// Load Localization Dictionary based on browser language
+// Load Localization Dictionary from mounted /langs endpoint
 async function loadLocalization() {
   const lang = navigator.language.startsWith("it") ? "it" : "en";
   try {
-    const res = await fetch(`/static/../langs/${lang}.json`);
+    const res = await fetch(`/langs/${lang}.json`);
     if (res.ok) {
       i18n = await res.json();
       applyLocalization();
