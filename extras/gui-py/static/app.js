@@ -111,20 +111,32 @@ async function switchThread(tid) {
     el.classList.toggle("active", el.textContent === tid);
   });
   
+  // Close mobile sidebar drawer after thread selection
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) sidebar.classList.remove("active");
+
   // Load History
-  const res = await apiFetch(`/api/threads/${tid}`);
-  if (res.ok) {
-    const data = await res.json();
-    renderChatHistory(data.messages);
+  try {
+    const res = await apiFetch(`/api/threads/${tid}`);
+    if (res.ok) {
+      const data = await res.json();
+      renderChatHistory(data.messages);
+    } else {
+      renderChatHistory([]);
+    }
+  } catch (e) {
+    renderChatHistory([]);
   }
 }
 
 function renderChatHistory(messages) {
   const container = document.getElementById("chat-messages");
   container.innerHTML = "";
-  messages.forEach(msg => {
-    appendMessageUI(msg.role, msg.content);
-  });
+  if (Array.isArray(messages)) {
+    messages.forEach(msg => {
+      appendMessageUI(msg.role, msg.content);
+    });
+  }
   container.scrollTop = container.scrollHeight;
 }
 
@@ -138,12 +150,36 @@ function appendMessageUI(role, content) {
   return div;
 }
 
-// Chat Form Submit & SSE Real-time Streaming
+// Event Listeners Initialization
 function setupEventListeners() {
   const form = document.getElementById("chat-form");
+  const promptInput = document.getElementById("prompt-input");
+
+  // New Thread Handler: Auto-generates ID, editable by user before switching
+  const btnNewThread = document.getElementById("btn-new-thread");
+  if (btnNewThread) {
+    btnNewThread.addEventListener("click", () => {
+      const autoId = `thread-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 1000)}`;
+      const userChoice = prompt("Enter new thread name:", autoId);
+      if (userChoice && userChoice.trim()) {
+        const finalId = userChoice.trim();
+        switchThread(finalId);
+      }
+    });
+  }
+
+  // Mobile Sidebar Toggle Handler
+  const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
+  if (btnToggleSidebar) {
+    btnToggleSidebar.addEventListener("click", () => {
+      const sidebar = document.getElementById("sidebar");
+      if (sidebar) sidebar.classList.toggle("active");
+    });
+  }
+
+  // Chat Form Submit (Triggered strictly by clicking the submit button)
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const promptInput = document.getElementById("prompt-input");
     const prompt = promptInput.value.trim();
     if (!prompt) return;
 
@@ -223,6 +259,9 @@ function startSSEStream(jobId) {
       eventSource.close();
       eventSource = null;
     }
+    if (assistantMsgEl && !assistantMsgEl.textContent.trim()) {
+      assistantMsgEl.textContent = "[Error: Stream disconnected]";
+    }
     toggleInputState(false);
   };
 }
@@ -250,10 +289,7 @@ async function loadProvidersAndModels() {
     if (resP.ok) {
       const dataP = await resP.json();
       const selectP = document.getElementById("select-provider");
-      selectP.innerHTML = "";
-      dataP.providers.forEach(p => {
-        selectP.innerHTML += `<option value="${p}">${p}</option>`;
-      });
+      selectP.innerHTML = dataP.providers.map(p => `<option value="${p}">${p}</option>`).join("");
       if (dataP.providers.length > 0) currentProvider = dataP.providers[0];
     }
 
@@ -261,10 +297,7 @@ async function loadProvidersAndModels() {
     if (resM.ok) {
       const dataM = await resM.json();
       const selectM = document.getElementById("select-model");
-      selectM.innerHTML = "";
-      dataM.models.forEach(m => {
-        selectM.innerHTML += `<option value="${m}">${m}</option>`;
-      });
+      selectM.innerHTML = dataM.models.map(m => `<option value="${m}">${m}</option>`).join("");
       if (dataM.models.length > 0) currentModel = dataM.models[0];
     }
 
