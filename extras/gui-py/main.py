@@ -46,10 +46,14 @@ grace_started_at: Optional[float] = None
 
 app = FastAPI(title="bash4llm WebApp Adapter", docs_url=None, redoc_url=None)
 
-# Mount Static Files Directory
+# Mount Static Files and Languages Directories
 static_dir = os.path.join(config.script_dir, "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+langs_dir = os.path.join(config.script_dir, "langs")
+if os.path.exists(langs_dir):
+    app.mount("/langs", StaticFiles(directory=langs_dir), name="langs")
 
 
 def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 100) -> int:
@@ -157,6 +161,7 @@ async def authenticate(one_time_token: str, request: Request):
 
 
 @app.get("/")
+@app.get("/index.html")
 async def root(session_id: str = Depends(get_current_session)):
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
@@ -237,7 +242,16 @@ async def list_threads(request: Request, session_id: str = Depends(get_current_s
     index_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "ui_state", "threads", "index.json")
     
     # Invariant 10: Strict Reconstruction if index missing or corrupt
-    if not os.path.isfile(index_file):
+    index_valid = False
+    if os.path.isfile(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                json.load(f)
+                index_valid = True
+        except Exception:
+            index_valid = False
+
+    if not index_valid:
         history_threads_dir = os.path.join(config.BASH4LLM_HISTORY_DIR, "threads")
         if os.path.exists(history_threads_dir):
             for fname in os.listdir(history_threads_dir):
@@ -309,8 +323,9 @@ async def create_chat_job(
 ):
     verify_security_headers(request, active_csrf_token, session_id)
 
-    # Invariant 7: Fingerprinted Ephemeral Idempotency Check
-    payload_json = payload.json(sort_keys=True)
+    # Invariant 7: Fingerprinted Ephemeral Idempotency Check (Pydantic v1 & v2 compatible)
+    payload_dict = payload.dict() if hasattr(payload, "dict") else payload.model_dump()
+    payload_json = json.dumps(payload_dict, sort_keys=True)
     fingerprint = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
 
     if idempotency_key:
@@ -422,6 +437,16 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
                 if event['event'] == 'done':
                     break
             except asyncio.TimeoutError:
+                # Handle late reconnection or empty queue on completed jobs without hanging
+                if sse_queue.empty() and job.state in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED):
+                    done_payload = json.dumps({
+                        "job_id": job.job_id,
+                        "state": job.state.value,
+                        "error_code": job.core_error_code,
+                        "error_reason": job.core_error_reason
+                    })
+                    yield f"id: {job.sse_sequence + 1}\nevent: done\ndata: {done_payload}\n\n"
+                    break
                 # SSE Heartbeat Comment to keep connection alive
                 yield ": heartbeat\n\n"
 
@@ -450,4 +475,4 @@ if __name__ == "__main__":
         pass
 
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
-  
+    
