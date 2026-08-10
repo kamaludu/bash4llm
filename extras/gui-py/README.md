@@ -1,4 +1,4 @@
-[![WebApp](https://img.shields.io/badge/WebApp-Python-007acc?style=flat-square&logo=python&logoColor=white)](#)
+[![WebApp](https://img.shields.io/badge/GUI--WebApp-Python--3.1+-007acc?style=flat-square&logo=python&logoColor=white)](#)
 
 # DOCUMENTAZIONE TECNICA ED OPERATIVA INTEGRATA
 ## Modulo GUI WebApp `gui-py` per `bash4llm⁺` (v4.4)
