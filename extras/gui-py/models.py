@@ -1,5 +1,14 @@
-# extras/gui-py/models.py
-# Data Models and Dataclasses for bash4llm⁺ GUI Adapter
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ======================================
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
+# File: extras/gui-py/models.py
+# Component: Data Models and Dataclasses for bash4llm⁺ GUI Adapter
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
+# ======================================
 
 import time
 import secrets
