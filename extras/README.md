@@ -35,8 +35,11 @@ extras/
 │   │   ├── style.css         # Design UI responsive zero-framework
 │   │   └── app.js            # SSE Streamer, CSRF Fetch, Form Enhancements
 │   └── langs/                # Multilingual translations 
-│       ├── en.json       
-│       └── it.json       
+│       ├── de.json
+│       ├── en.json
+│       ├── es.json
+│       ├── fr.json
+│       └── it.json
 ├── hooks/                    # Hooks 
 │   └── sml-gate.sh.          # SML v2.0 Semantic Safety Gate
 ├── providers/                # Optional LLM Provider Extension Modules
