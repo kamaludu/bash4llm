@@ -1,3 +1,5 @@
+[![Logo 320](../../docs/img/bash4llm320.png "Logo bash4llm")](../../README.md)
+
 [![WebApp](https://img.shields.io/badge/GUI--WebApp-Python--3.1+-007acc?style=flat-square&logo=python&logoColor=white)](#)
 
 # DOCUMENTAZIONE TECNICA ED OPERATIVA INTEGRATA 🇮🇹 [🇬🇧](README-en.md)
