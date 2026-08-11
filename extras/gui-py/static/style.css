@@ -47,15 +47,13 @@ body {
   position: relative;
 }
 
-/* ==========================================================================
-   BRAND LOGO & HIGHLIGHT TITLES
-   ========================================================================== */
+/* Brand & Highlights */
 .brand-badge,
 .highlight-title {
   background-color: var(--accent-color);
   color: var(--text-on-accent);
   font-weight: 800;
-  padding: 0.25em 0.75em; /* Padding ensures clear spacing before and after text */
+  padding: 0.25em 0.75em;
   border-radius: 4px;
   display: inline-block;
   letter-spacing: 0.5px;
@@ -69,9 +67,7 @@ body {
   margin-bottom: 1rem;
 }
 
-/* ==========================================================================
-   SIDEBAR / THREAD NAVIGATOR
-   ========================================================================== */
+/* Sidebar */
 .sidebar {
   width: 300px;
   background-color: var(--bg-secondary);
@@ -131,8 +127,8 @@ body {
   padding: 1rem;
   border-top: 2px solid var(--border-color);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.8rem;
   background-color: var(--bg-secondary);
 }
 
@@ -155,9 +151,17 @@ body {
 .status-dot.ready { background-color: var(--accent-color); }
 .status-dot.busy { background-color: #ff9800; }
 
-/* ==========================================================================
-   CHAT VIEWPORT & HEADER
-   ========================================================================== */
+.footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.footer-actions .btn {
+  flex: 1;
+}
+
+/* Chat Viewport & Header */
 .chat-viewport {
   flex: 1;
   display: flex;
@@ -175,10 +179,31 @@ body {
   background-color: var(--bg-secondary);
 }
 
+.header-thread-info {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
 #current-thread-title {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.badge-stats {
+  background: var(--bg-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 1px 1px 0px var(--border-color);
+}
+
+.badge-stats:hover {
+  background: var(--bg-tertiary);
 }
 
 .active-params-badge {
@@ -191,9 +216,7 @@ body {
   font-weight: 600;
 }
 
-/* ==========================================================================
-   CHAT MESSAGES (Option B: Document / Terminal Style)
-   ========================================================================== */
+/* Chat Messages Document Style */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -202,7 +225,6 @@ body {
   flex-direction: column;
 }
 
-/* Full-width continuous document style message container */
 .message {
   width: 100%;
   max-width: 900px;
@@ -212,11 +234,10 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 1rem;
-  border-bottom: 1.5px solid rgba(41, 49, 55, 0.15); /* Distinct message divider */
+  border-bottom: 1.5px solid rgba(41, 49, 55, 0.15);
   position: relative;
 }
 
-/* Role badges rendered via CSS pseudo-element (Protected against JS textContent overwrite) */
 .message::before {
   display: block;
   width: fit-content;
@@ -225,7 +246,7 @@ body {
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 0.2em 0.6em; /* Inner spacing */
+  padding: 0.2em 0.6em;
   border-radius: 4px;
   border: 1px solid var(--border-color);
   margin-bottom: 0.8rem;
@@ -244,29 +265,70 @@ body {
 }
 
 .message.assistant {
-  background-color: rgba(243, 238, 220, 0.35); /* Subtle contrast background */
+  background-color: rgba(243, 238, 220, 0.35);
 }
 
-/* ==========================================================================
-   INPUT CONTROLS & FORM
-   ========================================================================== */
+/* Input Controls & Form */
 .input-container {
-  padding: 1.2rem 1.5rem;
+  padding: 1rem 1.5rem;
   border-top: 2px solid var(--border-color);
   background-color: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Attachment Preview Chips */
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.chip-attachment {
+  background-color: var(--bg-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: 16px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 1px 1px 0px var(--border-color);
+}
+
+.chip-attachment .btn-remove-chip {
+  background: none;
+  border: none;
+  color: var(--danger-color);
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0 0.2rem;
 }
 
 .chat-form {
   max-width: 900px;
   margin: 0 auto;
+  width: 100%;
   display: flex;
   gap: 0.8rem;
   align-items: flex-end;
 }
 
-.prompt-textarea {
+.textarea-wrapper {
   flex: 1;
-  height: 64px; /* Fixed height for 2-3 lines, maximizing cross-browser stability */
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.prompt-textarea {
+  width: 100%;
+  height: 64px;
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 6px;
@@ -275,7 +337,7 @@ body {
   font-family: var(--font-family);
   font-size: 0.95rem;
   line-height: 1.4;
-  resize: none; /* Prevents layout distortion */
+  resize: none;
   box-shadow: 2px 2px 0px var(--border-color);
 }
 
@@ -285,14 +347,54 @@ body {
   box-shadow: 3px 3px 0px var(--accent-color);
 }
 
+/* Toolbar under textarea */
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.btn-tool {
+  background: var(--bg-primary);
+  border: 1.5px solid var(--border-color);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 1px 1px 0px var(--border-color);
+}
+
+.btn-tool:hover {
+  background: var(--bg-tertiary);
+}
+
+.select-tool {
+  background: var(--bg-primary);
+  border: 1.5px solid var(--border-color);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.checkbox-tool {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
 .input-actions {
   display: flex;
   align-items: center;
 }
 
-/* ==========================================================================
-   BUTTONS (High Contrast & Tactile Style)
-   ========================================================================== */
+/* Buttons */
 .btn {
   padding: 0.65rem 1.25rem;
   border-radius: 6px;
@@ -302,6 +404,15 @@ body {
   cursor: pointer;
   box-shadow: 2px 2px 0px var(--border-color);
   transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.15s ease;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.btn-block {
+  width: 100%;
 }
 
 .btn:hover {
@@ -348,9 +459,11 @@ body {
   display: none !important;
 }
 
-/* ==========================================================================
-   SETTINGS MODAL (Native <dialog>)
-   ========================================================================== */
+.mt-2 {
+  margin-top: 0.8rem;
+}
+
+/* Modals */
 .modal {
   border: none;
   background: transparent;
@@ -359,7 +472,7 @@ body {
 }
 
 .modal::backdrop {
-  background-color: rgba(41, 49, 55, 0.7); /* High-contrast opaque overlay */
+  background-color: rgba(41, 49, 55, 0.7);
 }
 
 .modal-content {
@@ -369,18 +482,27 @@ body {
   border: 2px solid var(--border-color);
   box-shadow: 6px 6px 0px var(--border-color);
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
   color: var(--text-primary);
 }
 
 .form-group {
-  margin-bottom: 1.2rem;
+  margin-bottom: 1.1rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.form-row .col {
+  flex: 1;
 }
 
 .form-group label {
   display: block;
   margin-bottom: 0.4rem;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 700;
 }
 
@@ -400,19 +522,67 @@ body {
   border-color: var(--accent-color);
 }
 
+.input-with-button {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vault-banner {
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 1.2rem;
+
+.vault-banner.unlocked {
+  background-color: rgba(78, 170, 37, 0.2);
+  border-color: var(--accent-color);
+}
+
+.vault-key-section {
+  border-top: 2px solid var(--border-color);
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.section-subtitle {
+  font-size: 0.95rem;
+  font-weight: 800;
+  margin-bottom: 0.8rem;
+}
+
+.snapshot-details {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: var(--bg-secondary);
+  padding: 1rem;
+  border: 1.5px solid var(--border-color);
+  border-radius: 6px;
+  line-height: 1.6;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-top: 1.8rem;
+  margin-top: 1.5rem;
 }
 
-/* ==========================================================================
-   RESPONSIVE DESIGN & MOBILE DRAWER OVERLAY
-   ========================================================================== */
+/* Responsive */
 @media (min-width: 769px) {
   #btn-toggle-sidebar {
-    display: none; /* Hidden on large screens */
+    display: none;
   }
 }
 
@@ -426,11 +596,7 @@ body {
     box-shadow: 4px 0px 15px rgba(0,0,0,0.25);
   }
 
-  /* Pure CSS mobile drawer triggers */
-  .sidebar:focus-within,
-  .sidebar:target,
-  .sidebar.active,
-  .app-container:has(#btn-toggle-sidebar:focus) .sidebar {
+  .sidebar.active {
     transform: translateX(0);
   }
 
