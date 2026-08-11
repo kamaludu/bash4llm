@@ -1,5 +1,14 @@
-# extras/gui-py/main.py
-# Main Entrypoint Server Adapter for bash4llm⁺ WebApp GUI
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ======================================
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
+# File: extras/gui-py/main.py
+# Component: Main Entrypoint Server Adapter for bash4llm⁺ WebApp GUI
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
+# ======================================
 
 import asyncio
 from contextlib import asynccontextmanager
