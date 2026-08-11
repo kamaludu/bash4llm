@@ -50,6 +50,69 @@ bash 4.0+, coreutils, findutils, util-linux, awk, curl, jq)
 
 * **Prohibition of Automation**: The launcher script does not automatically install packages nor create virtualenvs without explicit authorization. In case of missing dependencies, startup aborts providing exact instructions for manual installation.
 
+#### Examples:
+
+**Debian (with apt e pip)**
+```sh
+# 1. Installing system packages
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+
+# 2. Creating and activating the virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Installing Python Libraries
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+**Termux (Android)**
+```sh
+# 1. Python installation (already includes pip and venv)
+pkg update
+pkg install -y python
+
+# 2. Creating and activating the virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# 3. Installing Python Libraries
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+**macOS (con Homebrew)**
+```sh
+# 1. Installing Python via Homebrew (already includes pip and venv)
+brew install python
+
+# 2. Creating and activating the virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Installing Python Libraries
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+**WSL (Windows Subsystem for Linux)**
+```sh
+# 1. Installing system packages within the WSL shell
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+
+# 2. Creating and activating the virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Installing Python Libraries
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+---
+
 ### Installation and Synchronization
 All module sources reside in the `extras/gui-py/` directory of the repository. Installation on the local system occurs via the core CLI:
 
