@@ -1,5 +1,13 @@
-// bash4llm⁺ WebApp Vanilla ES6 Client
-// SSE Token Streaming, Vault Unlock & Full Extras Integration
+// SPDX-License-Identifier: GPL-3.0-or-later
+// ======================================
+// Bash4LLM⁺ — Bash-first wrapper for the LLM
+// File: extras/gui-py/static/js/app.js
+// Component: WebApp Vanilla ES6 Client (SSE Token Streaming & UI Logic)
+// Copyright (C) 2026 Cristian Evangelisti
+// License: GPL-3.0-or-later
+// Repository: https://github.com/kamaludu/bash4llm
+// Contact: opensource@cevangel.anonaddy.me
+// ======================================
 
 let csrfToken = "";
 let currentThreadId = "default";
