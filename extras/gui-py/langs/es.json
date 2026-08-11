@@ -1,0 +1,14 @@
+{
+  "new_thread": "+ Nueva conversación",
+  "settings": "Ajustes",
+  "settings_title": "Configuración de ejecución",
+  "provider": "Proveedor",
+  "model": "Modelo",
+  "temperature": "Temperatura (0.0 - 2.0)",
+  "thread_window": "Mensajes del historial",
+  "save": "Guardar",
+  "close": "Cerrar",
+  "send": "Enviar",
+  "cancel": "Detener",
+  "prompt_placeholder": "Escribe tu mensaje aquí..."
+}
