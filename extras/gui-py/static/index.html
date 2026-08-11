@@ -27,7 +27,10 @@
           <span id="status-dot" class="status-dot ready"></span>
           <span id="status-text">Ready</span>
         </div>
-        <button id="btn-settings" class="btn btn-secondary" data-i18n="settings">Settings</button>
+        <div class="footer-actions">
+          <button id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">🔒 Vault</button>
+          <button id="btn-settings" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
+        </div>
       </div>
     </aside>
 
@@ -35,7 +38,12 @@
     <main class="chat-viewport">
       <header class="chat-header">
         <button id="btn-toggle-sidebar" class="btn-icon" aria-label="Toggle Sidebar">☰ Menu</button>
-        <h3 id="current-thread-title">Default Thread</h3>
+        
+        <div class="header-thread-info">
+          <h3 id="current-thread-title">Default Thread</h3>
+          <button id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot">📊 Stats</button>
+        </div>
+
         <div class="active-params-badge" id="active-params-badge">
           <span id="badge-provider">groq</span> / <span id="badge-model">default</span>
         </div>
@@ -48,18 +56,39 @@
 
       <!-- Prompt Input Controls -->
       <footer class="input-container">
+        <!-- Attachment Chips Preview Area -->
+        <div id="attachment-list" class="attachment-list"></div>
+
         <form id="chat-form" action="/api/chat" method="POST" class="chat-form">
           <input type="hidden" name="thread_id" id="form-thread-id" value="default">
           <input type="hidden" name="stream" value="true">
           
-          <textarea 
-            name="prompt" 
-            id="prompt-input" 
-            class="prompt-textarea" 
-            rows="2" 
-            placeholder="Type your prompt here..." 
-            data-i18n-placeholder="prompt_placeholder" 
-            required></textarea>
+          <div class="textarea-wrapper">
+            <textarea 
+              name="prompt" 
+              id="prompt-input" 
+              class="prompt-textarea" 
+              rows="2" 
+              placeholder="Type your prompt here..." 
+              data-i18n-placeholder="prompt_placeholder" 
+              required></textarea>
+            
+            <div class="input-toolbar">
+              <label for="file-upload-input" class="btn-tool" title="Attach File (-f)">
+                📎 Attach
+                <input type="file" id="file-upload-input" class="hidden-file-input">
+              </label>
+
+              <select id="select-template" class="select-tool" title="Apply Prompt Template">
+                <option value="">-- No Template --</option>
+              </select>
+
+              <label class="checkbox-tool" title="Validate SML v2.0 Safety Gate">
+                <input type="checkbox" id="check-sml-gate">
+                <span>SML Gate</span>
+              </label>
+            </div>
+          </div>
 
           <div class="input-actions">
             <button type="submit" id="btn-send" class="btn btn-submit" data-i18n="send">Send</button>
@@ -70,7 +99,7 @@
     </main>
   </div>
 
-  <!-- Native HTML5 Settings Dialog Modal -->
+  <!-- Runtime Settings Dialog Modal -->
   <dialog id="settings-modal" class="modal">
     <div class="modal-content">
       <h3 class="highlight-title" data-i18n="settings_title">Runtime Settings</h3>
@@ -82,22 +111,118 @@
 
       <div class="form-group">
         <label for="select-model" data-i18n="model">Model</label>
-        <select id="select-model" class="form-control"></select>
+        <div class="input-with-button">
+          <select id="select-model" class="form-control"></select>
+          <button type="button" id="btn-set-default-model" class="btn btn-secondary btn-sm" title="Set as default model for provider">Set Default</button>
+          <button type="button" id="btn-refresh-models" class="btn btn-secondary btn-sm" title="Refresh models list from provider">🔄</button>
+        </div>
       </div>
 
       <div class="form-group">
-        <label for="input-temperature" data-i18n="temperature">Temperature (0.0 - 2.0)</label>
-        <input type="number" id="input-temperature" class="form-control" step="0.1" min="0.0" max="2.0" value="1.0">
+        <label for="input-system-prompt">System Prompt</label>
+        <textarea id="input-system-prompt" class="form-control" rows="2" placeholder="Optional system instructions..."></textarea>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group col">
+          <label for="input-temperature" data-i18n="temperature">Temperature (0.0 - 2.0)</label>
+          <input type="number" id="input-temperature" class="form-control" step="0.1" min="0.0" max="2.0" value="1.0">
+        </div>
+
+        <div class="form-group col">
+          <label for="input-max-tokens">Max Tokens</label>
+          <input type="number" id="input-max-tokens" class="form-control" step="128" min="1" max="128000" placeholder="Default (4096)">
+        </div>
       </div>
 
       <div class="form-group">
-        <label for="input-thread-window" data-i18n="thread_window">History Window Messages</label>
+        <label for="select-context-mode">Context Window Strategy</label>
+        <select id="select-context-mode" class="form-control">
+          <option value="messages">Message Count Window (N Messages)</option>
+          <option value="bytes">Token/Byte Budget Mode (Target Bytes)</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="group-thread-window">
+        <label for="input-thread-window" data-i18n="thread_window">History Window Messages (N)</label>
         <input type="number" id="input-thread-window" class="form-control" step="1" min="1" max="100" value="10">
+      </div>
+
+      <div class="form-group hidden" id="group-target-bytes">
+        <label for="select-target-bytes">Token Target Budget</label>
+        <select id="select-target-bytes" class="form-control">
+          <option value="8192">8 KB (~2,000 Tokens)</option>
+          <option value="16384">16 KB (~4,000 Tokens)</option>
+          <option value="32768" selected>32 KB (~8,000 Tokens - Default)</option>
+          <option value="65536">64 KB (~16,000 Tokens)</option>
+          <option value="131072">128 KB (~32,000 Tokens)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="check-sanitize" checked>
+          <span>Enable Output Sanitization (Strip ANSI & Binaries)</span>
+        </label>
       </div>
 
       <div class="modal-actions">
         <button id="btn-save-settings" class="btn btn-primary" data-i18n="save">Save</button>
         <button id="btn-close-settings" class="btn btn-secondary" data-i18n="close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- OpenSSL Vault & Key Manager Dialog Modal -->
+  <dialog id="vault-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="highlight-title">🔒 OpenSSL Key Vault</h3>
+      
+      <div id="vault-status-banner" class="vault-banner">
+        <span id="vault-status-text">Checking Vault status...</span>
+      </div>
+
+      <!-- Unlock Section -->
+      <div id="vault-unlock-section" class="form-group">
+        <label for="input-master-password">Master Password</label>
+        <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock">
+        <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block mt-2">Unlock Vault Session</button>
+      </div>
+
+      <!-- Key Manager Section (Visible when unlocked) -->
+      <div id="vault-key-section" class="vault-key-section hidden">
+        <h4 class="section-subtitle">Save Provider API Key</h4>
+        
+        <div class="form-group">
+          <label for="select-vault-provider">Provider</label>
+          <select id="select-vault-provider" class="form-control"></select>
+        </div>
+
+        <div class="form-group">
+          <label for="input-vault-api-key">API Key</label>
+          <input type="password" id="input-vault-api-key" class="form-control" placeholder="Paste API Key here">
+        </div>
+
+        <button type="button" id="btn-save-vault-key" class="btn btn-primary btn-block">Save Encrypted Key</button>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-close-vault" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Session Engine Snapshot Stats Modal -->
+  <dialog id="snapshot-modal" class="modal">
+    <div class="modal-content">
+      <h3 class="highlight-title">📊 Session Engine Snapshot</h3>
+      
+      <div id="snapshot-details" class="snapshot-details">
+        <p>Loading session stats...</p>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-close-snapshot" class="btn btn-secondary">Close</button>
       </div>
     </div>
   </dialog>
