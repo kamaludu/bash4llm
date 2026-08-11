@@ -16,12 +16,15 @@ import webbrowser
 from typing import Dict, Optional, Tuple, List, Any
 
 import uvicorn
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Header
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Header, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import Config
-from models import Job, JobState, TerminationCause, ChatRequest, RenameThreadRequest
+from models import (
+    Job, JobState, TerminationCause, ChatRequest, RenameThreadRequest,
+    VaultUnlockRequest, VaultKeyRequest, SetDefaultModelRequest
+)
 from security import (
     validate_runtime_tmpdir,
     acquire_single_instance_lock,
@@ -31,6 +34,9 @@ from ipc import (
     execute_job_subprocess,
     cancel_job_process,
     read_thread_history_ndjson,
+    get_session_snapshot_ipc,
+    test_vault_unlock_ipc,
+    save_vault_api_key_ipc,
     THREAD_ID_REGEX
 )
 
@@ -194,7 +200,8 @@ async def get_status(request: Request, session_id: str = Depends(get_current_ses
         "server": "READY",
         "active_clients": active_clients,
         "active_jobs": active_jobs,
-        "csrf_token": active_csrf_token
+        "csrf_token": active_csrf_token,
+        "vault_unlocked": config.vault_session_context is not None
     }
 
 
@@ -205,33 +212,77 @@ async def heartbeat(request: Request, session_id: str = Depends(get_current_sess
     return {"status": "ok"}
 
 
-# --- CORE CLI BRIDGE ROUTES ---
+# --- CORE CLI BRIDGE & PROVIDER ROUTES ---
 
 @app.get("/api/models")
-async def list_models(request: Request, session_id: str = Depends(get_current_session)):
+async def list_models(
+    request: Request,
+    provider: Optional[str] = None,
+    session_id: str = Depends(get_current_session)
+):
     verify_security_headers(request, active_csrf_token, session_id)
+    cmd = ["bash", config.core_script_path]
+    if provider:
+        cmd.extend(["--provider", provider])
+    cmd.append("--list-models-raw")
+
     proc = await asyncio.create_subprocess_exec(
-        "bash", config.core_script_path, "--list-models-raw",
+        *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
     stdout, _ = await proc.communicate()
     models = [line.strip() for line in stdout.decode('utf-8', errors='replace').splitlines() if line.strip()]
-    return {"models": models}
+    return {"models": models, "provider": provider or "default"}
 
 
-@app.post("/api/models/refresh")
-async def refresh_models(request: Request, session_id: str = Depends(get_current_session)):
+@app.post("/api/models/default")
+async def set_default_model(
+    payload: SetDefaultModelRequest,
+    request: Request,
+    session_id: str = Depends(get_current_session)
+):
     verify_security_headers(request, active_csrf_token, session_id)
     proc = await asyncio.create_subprocess_exec(
-        "bash", config.core_script_path, "--refresh-models",
+        "bash", config.core_script_path,
+        "--provider", payload.provider,
+        "--set-default", payload.model,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
     await proc.communicate()
     if proc.returncode != 0:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set default model")
+    return {"status": "default_model_set", "provider": payload.provider, "model": payload.model}
+
+
+@app.post("/api/models/refresh")
+async def refresh_models(
+    request: Request,
+    provider: Optional[str] = None,
+    session_id: str = Depends(get_current_session)
+):
+    verify_security_headers(request, active_csrf_token, session_id)
+    cmd = ["bash", config.core_script_path]
+    if provider:
+        cmd.extend(["--provider", provider])
+    cmd.append("--refresh-models")
+
+    # Inject vault session context if unlocked
+    env = {**os.environ}
+    if config.vault_session_context:
+        env["_B4L_RT_CTX"] = config.vault_session_context
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env
+    )
+    await proc.communicate()
+    if proc.returncode != 0:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to refresh models")
-    return {"status": "refreshed"}
+    return {"status": "refreshed", "provider": provider or "default"}
 
 
 @app.get("/api/providers")
@@ -247,6 +298,103 @@ async def list_providers(request: Request, session_id: str = Depends(get_current
     return {"providers": providers}
 
 
+@app.get("/api/templates")
+async def list_templates(request: Request, session_id: str = Depends(get_current_session)):
+    verify_security_headers(request, active_csrf_token, session_id)
+    templates_dir = config.BASH4LLM_TEMPLATES_DIR
+    templates = []
+    if os.path.exists(templates_dir) and os.path.isdir(templates_dir):
+        for fname in sorted(os.listdir(templates_dir)):
+            if fname.endswith(".txt") and not fname.startswith("."):
+                templates.append(fname)
+    return {"templates": templates}
+
+
+# --- VAULT & KEY MANAGEMENT ROUTES ---
+
+@app.get("/api/vault/status")
+async def get_vault_status(request: Request, session_id: str = Depends(get_current_session)):
+    verify_security_headers(request, active_csrf_token, session_id)
+    vault_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "keys.enc")
+    vault_exists = os.path.isfile(vault_file)
+    unlocked = config.vault_session_context is not None
+    return {
+        "vault_exists": vault_exists,
+        "unlocked": unlocked
+    }
+
+
+@app.post("/api/vault/unlock")
+async def unlock_vault(
+    payload: VaultUnlockRequest,
+    request: Request,
+    session_id: str = Depends(get_current_session)
+):
+    verify_security_headers(request, active_csrf_token, session_id)
+    valid = await test_vault_unlock_ipc(
+        extras_dir=config.BASH4LLM_EXTRAS_DIR,
+        config_dir=config.BASH4LLM_CONFIG_DIR,
+        tmp_dir=config.BASH4LLM_TMPDIR,
+        master_password=payload.master_password
+    )
+    if not valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid master password")
+    
+    config.vault_session_context = payload.master_password
+    return {"status": "unlocked"}
+
+
+@app.post("/api/vault/keys")
+async def save_vault_key(
+    payload: VaultKeyRequest,
+    request: Request,
+    session_id: str = Depends(get_current_session)
+):
+    verify_security_headers(request, active_csrf_token, session_id)
+    if not config.vault_session_context:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Vault is locked. Unlock vault first.")
+    
+    success = await save_vault_api_key_ipc(
+        extras_dir=config.BASH4LLM_EXTRAS_DIR,
+        config_dir=config.BASH4LLM_CONFIG_DIR,
+        tmp_dir=config.BASH4LLM_TMPDIR,
+        master_password=config.vault_session_context,
+        provider=payload.provider,
+        api_key=payload.api_key
+    )
+    if not success:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save key in vault")
+    return {"status": "key_saved", "provider": payload.provider}
+
+
+# --- UPLOAD ATTACHMENT ROUTE ---
+
+@app.post("/api/upload")
+async def upload_attachment(
+    request: Request,
+    file: UploadFile = File(...),
+    session_id: str = Depends(get_current_session)
+):
+    verify_security_headers(request, active_csrf_token, session_id)
+    
+    filename = os.path.basename(file.filename or "attachment.tmp")
+    safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")
+    if not safe_filename:
+        safe_filename = "attachment.tmp"
+    
+    upload_dir = os.path.join(config.BASH4LLM_TMPDIR, "gui_uploads")
+    os.makedirs(upload_dir, mode=0o700, exist_ok=True)
+    
+    file_path = os.path.join(upload_dir, f"{secrets.token_hex(8)}_{safe_filename}")
+    
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    os.chmod(file_path, 0o600)
+
+    return {"filename": safe_filename, "file_path": file_path, "size": len(content)}
+
+
 # --- THREAD MANAGEMENT ROUTES ---
 
 @app.get("/api/threads")
@@ -254,7 +402,6 @@ async def list_threads(request: Request, session_id: str = Depends(get_current_s
     verify_security_headers(request, active_csrf_token, session_id)
     index_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "ui_state", "threads", "index.json")
     
-    # Invariant 10: Strict Reconstruction if index missing or corrupt
     index_valid = False
     if os.path.isfile(index_file):
         try:
@@ -297,6 +444,21 @@ async def get_thread_history(thread_id: str, request: Request, session_id: str =
     return {"thread_id": thread_id, "messages": messages}
 
 
+@app.get("/api/threads/{thread_id}/snapshot")
+async def get_thread_snapshot(thread_id: str, request: Request, session_id: str = Depends(get_current_session)):
+    verify_security_headers(request, active_csrf_token, session_id)
+    if not THREAD_ID_REGEX.match(thread_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid thread_id format")
+
+    snapshot = await get_session_snapshot_ipc(
+        extras_dir=config.BASH4LLM_EXTRAS_DIR,
+        history_dir=config.BASH4LLM_HISTORY_DIR,
+        tmp_dir=config.BASH4LLM_TMPDIR,
+        thread_id=thread_id
+    )
+    return snapshot
+
+
 @app.delete("/api/threads/{thread_id}")
 async def delete_thread(thread_id: str, request: Request, session_id: str = Depends(get_current_session)):
     verify_security_headers(request, active_csrf_token, session_id)
@@ -336,7 +498,6 @@ async def create_chat_job(
 ):
     verify_security_headers(request, active_csrf_token, session_id)
 
-    # Invariant 7: Fingerprinted Ephemeral Idempotency Check (Pydantic v1 & v2 compatible)
     payload_dict = payload.dict() if hasattr(payload, "dict") else payload.model_dump()
     payload_json = json.dumps(payload_dict, sort_keys=True)
     fingerprint = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
@@ -356,7 +517,7 @@ async def create_chat_job(
                     detail="Idempotency key mismatch with different payload fingerprint"
                 )
 
-    # Allocate new Job
+    # Allocate new Job with full Extras options
     job = Job(
         owner_session_id=session_id,
         idempotency_key=idempotency_key,
@@ -368,7 +529,13 @@ async def create_chat_job(
         provider=payload.provider,
         model=payload.model,
         temperature=payload.temperature,
-        max_tokens=payload.max_tokens
+        max_tokens=payload.max_tokens,
+        system_prompt=payload.system_prompt,
+        target_bytes=payload.target_bytes,
+        template=payload.template,
+        attachments=payload.attachments or [],
+        validate_sml=payload.validate_sml,
+        sanitize_output=payload.sanitize_output
     )
 
     jobs_registry[job.job_id] = job
@@ -385,6 +552,14 @@ async def create_chat_job(
     }
     sanitized_env["BASH4LLM_DIR"] = config.BASH4LLM_DIR
     sanitized_env["BASH4LLM_TMPDIR"] = config.BASH4LLM_TMPDIR
+    sanitized_env["BASH4LLM_CONFIG_DIR"] = config.BASH4LLM_CONFIG_DIR
+    sanitized_env["BASH4LLM_HISTORY_DIR"] = config.BASH4LLM_HISTORY_DIR
+    sanitized_env["BASH4LLM_EXTRAS_DIR"] = config.BASH4LLM_EXTRAS_DIR
+    sanitized_env["BASH4LLM_TEMPLATES_DIR"] = config.BASH4LLM_TEMPLATES_DIR
+
+    # Inject active Vault session context if unlocked
+    if config.vault_session_context:
+        sanitized_env["_B4L_RT_CTX"] = config.vault_session_context
 
     # Launch subprocess asynchronously
     asyncio.create_task(
@@ -450,7 +625,6 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
                 if event['event'] == 'done':
                     break
             except asyncio.TimeoutError:
-                # Handle late reconnection or empty queue on completed jobs without hanging
                 if sse_queue.empty() and job.state in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED):
                     done_payload = json.dumps({
                         "job_id": job.job_id,
@@ -460,7 +634,6 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
                     })
                     yield f"id: {job.sse_sequence + 1}\nevent: done\ndata: {done_payload}\n\n"
                     break
-                # SSE Heartbeat Comment to keep connection alive
                 yield ": heartbeat\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -495,6 +668,5 @@ if __name__ == "__main__":
     # Launch browser asynchronously on non-Termux systems
     threading.Thread(target=_launch_browser_async, args=(auth_url,), daemon=True).start()
 
-    # Start uvicorn server immediately on main thread (port 19970 opens right away)
+    # Start uvicorn server immediately on main thread
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
-    
