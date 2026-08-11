@@ -50,6 +50,69 @@ bash 4.0+, coreutils, findutils, util-linux, awk, curl, jq)
 
 * **Divieto di Automatismi**: Lo script launcher non installa automaticamente pacchetti né crea virtualenv senza autorizzazione esplicita. In caso di dipendenze mancanti, l'avvio si interrompe fornendo le istruzioni esatte per l'installazione manuale.
 
+#### Esempi:
+
+**Debian (con apt e pip)**
+```sh
+# 1. Installazione dei pacchetti di sistema
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+
+# 2. Creazione e attivazione dell'ambiente virtuale
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Installazione delle librerie Python
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+**Termux (Android)**
+```sh
+# 1. Installazione di Python (include già pip e venv)
+pkg update
+pkg install -y python
+
+# 2. Creazione e attivazione dell'ambiente virtuale
+python -m venv .venv
+source .venv/bin/activate
+
+# 3. Installazione delle librerie Python
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+**macOS (con Homebrew)**
+```sh
+# 1. Installazione di Python tramite Homebrew (include già pip e venv)
+brew install python
+
+# 2. Creazione e attivazione dell'ambiente virtuale
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Installazione delle librerie Python
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+**WSL (Windows Subsystem for Linux)**
+```sh
+# 1. Installazione dei pacchetti di sistema all'interno della shell WSL
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+
+# 2. Creazione e attivazione dell'ambiente virtuale
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Installazione delle librerie Python
+pip install --upgrade pip
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+```
+
+---
+
 ### Installazione e Sincronizzazione
 Tutti i sorgenti del modulo risiedono nella cartella `extras/gui-py/` del repository. L'installazione sul sistema locale avviene tramite la CLI del core:
 
