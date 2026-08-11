@@ -5,7 +5,7 @@ import time
 import secrets
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -47,6 +47,12 @@ class Job:
     model: Optional[str] = None
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+    system_prompt: Optional[str] = None
+    target_bytes: Optional[int] = None
+    template: Optional[str] = None
+    attachments: List[str] = field(default_factory=list)
+    validate_sml: bool = False
+    sanitize_output: bool = True
     state: JobState = JobState.CREATED
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
@@ -68,13 +74,32 @@ class ChatRequest(BaseModel):
     thread_id: str = Field(default="default", min_length=1, max_length=128)
     prompt: str = Field(..., min_length=1)
     stream: bool = True
-    thread_window: int = Field(default=10, ge=1, le=100)
+    thread_window: int = Field(default=10, ge=0, le=100) # ge=0 allows N=0 for Byte-Budget Mode
     provider: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, ge=1, le=128000)
+    system_prompt: Optional[str] = Field(default=None, max_length=10000)
+    target_bytes: Optional[int] = Field(default=None, ge=0, le=1048576)
+    template: Optional[str] = Field(default=None, max_length=128)
+    attachments: List[str] = Field(default_factory=list)
+    validate_sml: bool = False
+    sanitize_output: bool = True
 
 
 class RenameThreadRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
-  
+
+
+class VaultUnlockRequest(BaseModel):
+    master_password: str = Field(..., min_length=1)
+
+
+class VaultKeyRequest(BaseModel):
+    provider: str = Field(..., min_length=1, max_length=64)
+    api_key: str = Field(..., min_length=1)
+
+
+class SetDefaultModelRequest(BaseModel):
+    provider: str = Field(..., min_length=1, max_length=64)
+    model: str = Field(..., min_length=1, max_length=128)
