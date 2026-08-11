@@ -1,3 +1,5 @@
+[![WebApp](https://img.shields.io/badge/GUI--WebApp-Python--3.1+-007acc?style=flat-square&logo=python&logoColor=white)](#)
+
 # INTEGRATED TECHNICAL AND OPERATIONAL DOCUMENTATION
 ## WebApp GUI Module `gui-py` for `bash4llm⁺` (v4.4)
 **Standard**: OpenAPI 3.1.0 Compatible | **Security Level**: T3 Hardened
