@@ -36,9 +36,18 @@ The **`gui-py`** module is an optional, lightweight, high-performance web user i
 ## 📋 2. User Guide (README & Quickstart)
 
 ### System Prerequisites
-* **Shell & Core Utilities**: Bash >= 4.0, `curl`, `jq`, `mktemp`, `stat`, `base64`, `awk`, `sed`, `grep`.
-* **Python Interpreter**: Python >= 3.10.
-* **Required Python Libraries**: `fastapi`, `uvicorn`, `pydantic`.
+
+* **Core Dependencies bash4llm** (
+bash 4.0+, coreutils, findutils, util-linux, awk, curl, jq)
+
+* **Runtime Python:** ​Python (>=3.10)
+* **Python Modules:** pip e venv
+
+* **Python Libraries Required:**
+  - fastapi (>=0.100.0)
+  - uvicorn (>=0.20.0)
+  - pydantic (>=2.0.0)
+
 * **Prohibition of Automation**: The launcher script does not automatically install packages nor create virtualenvs without explicit authorization. In case of missing dependencies, startup aborts providing exact instructions for manual installation.
 
 ### Installation and Synchronization
