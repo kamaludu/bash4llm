@@ -9,6 +9,8 @@
 // Contact: opensource@cevangel.anonaddy.me
 // ======================================
 
+'use strict';
+
 let csrfToken = "";
 let currentThreadId = "default";
 let activeJobId = null;
