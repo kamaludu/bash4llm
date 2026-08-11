@@ -544,6 +544,7 @@ body {
   font-weight: 700;
   font-size: 0.85rem;
   margin-bottom: 1.2rem;
+}
 
 .vault-banner.unlocked {
   background-color: rgba(78, 170, 37, 0.2);
