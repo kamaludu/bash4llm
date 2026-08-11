@@ -1,0 +1,14 @@
+{
+  "new_thread": "+ Nouvelle discussion",
+  "settings": "Paramètres",
+  "settings_title": "Paramètres d'exécution",
+  "provider": "Fournisseur",
+  "model": "Modèle",
+  "temperature": "Température (0.0 - 2.0)",
+  "thread_window": "Messages de l'historique",
+  "save": "Enregistrer",
+  "close": "Fermer",
+  "send": "Envoyer",
+  "cancel": "Arrêter",
+  "prompt_placeholder": "Écrivez votre message ici..."
+}
