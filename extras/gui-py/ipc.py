@@ -7,8 +7,10 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import signal
 import sys
+import tempfile
 from typing import Dict, Any, List, Optional
 from models import Job, JobState, TerminationCause
 
@@ -31,18 +33,40 @@ async def execute_job_subprocess(
         core_script_path,
         "--thread", job.thread_id,
         "--thread-window", str(job.thread_window),
-        "--stream",
         "--json-diagnostics"
     ]
+
+    if job.stream:
+        cmd.append("--stream")
 
     if job.provider:
         cmd.extend(["--provider", job.provider])
     if job.model:
         cmd.extend(["--model", job.model])
+    if job.system_prompt:
+        cmd.extend(["--system", job.system_prompt])
     if job.temperature is not None:
         cmd.extend(["--temperature", str(job.temperature)])
     if job.max_tokens is not None:
         cmd.extend(["--max", str(job.max_tokens)])
+    if job.template:
+        cmd.extend(["--template", job.template])
+    if job.validate_sml:
+        cmd.append("--validate-sml")
+    if job.sanitize_output:
+        cmd.append("--sanitize")
+
+    if job.attachments:
+        for att_path in job.attachments:
+            if os.path.isfile(att_path) and os.access(att_path, os.R_OK):
+                cmd.extend(["-f", att_path])
+
+    # Dynamic Environment Injection for Extras
+    sanitized_env["BASH4LLM_SESSION_ENGINE"] = "on"
+    if job.target_bytes is not None:
+        sanitized_env["BASH4LLM_SESSION_TARGET_BYTES"] = str(job.target_bytes)
+    if job.sanitize_output:
+        sanitized_env["SANITIZE_OUTPUT"] = "1"
 
     job.state = JobState.STARTING
     job.started_at = asyncio.get_event_loop().time()
@@ -233,4 +257,140 @@ def read_thread_history_ndjson(history_dir: str, thread_id: str) -> List[Dict[st
         return []
 
     return messages
-  
+
+
+async def get_session_snapshot_ipc(
+    extras_dir: str,
+    history_dir: str,
+    tmp_dir: str,
+    thread_id: str
+) -> Dict[str, Any]:
+    """
+    Invokes session_engine_snapshot in an isolated subshell to export
+    session statistics (message count, byte size, segments) for the thread.
+    """
+    if not THREAD_ID_REGEX.match(thread_id):
+        return {"error": "Invalid thread_id format"}
+
+    session_engine_script = os.path.join(extras_dir, "session", "session-engine.sh")
+    if not os.path.isfile(session_engine_script):
+        return {"error": "session-engine.sh not found"}
+
+    out_file = os.path.join(tmp_dir, f"snapshot_{secrets.token_hex(8)}.json")
+    
+    bash_code = f"""
+    export BASH4LLM_HISTORY_DIR={json.dumps(history_dir)}
+    export RUN_TMPDIR={json.dumps(tmp_dir)}
+    export BASH4LLM_TMPDIR={json.dumps(tmp_dir)}
+    source {json.dumps(session_engine_script)}
+    session_engine_snapshot {json.dumps(thread_id)} {json.dumps(out_file)}
+    """
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", "-c", bash_code,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+
+        if os.path.isfile(out_file):
+            try:
+                with open(out_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return data
+            finally:
+                try:
+                    os.remove(out_file)
+                except OSError:
+                    pass
+        return {"error": "Snapshot generation failed"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def test_vault_unlock_ipc(
+    extras_dir: str,
+    config_dir: str,
+    tmp_dir: str,
+    master_password: str
+) -> bool:
+    """
+    Tests master password validity against the encrypted OpenSSL Vault in an isolated subshell.
+    Returns True if decryption succeeds, False otherwise.
+    """
+    openssl_helper_script = os.path.join(extras_dir, "security", "openssl-helper.sh")
+    if not os.path.isfile(openssl_helper_script):
+        return False
+
+    bash_code = f"""
+    export BASH4LLM_CONFIG_DIR={json.dumps(config_dir)}
+    export RUN_TMPDIR={json.dumps(tmp_dir)}
+    export BASH4LLM_TMPDIR={json.dumps(tmp_dir)}
+    export _B4L_RT_CTX={json.dumps(master_password)}
+    source {json.dumps(openssl_helper_script)}
+    res="$(vault_load_keys 2>/dev/null)"
+    if [ -n "$res" ] && printf '%s' "$res" | jq -e . >/dev/null 2>&1; then
+        exit 0
+    else
+        exit 1
+    fi
+    """
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", "-c", bash_code,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.wait()
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+async def save_vault_api_key_ipc(
+    extras_dir: str,
+    config_dir: str,
+    tmp_dir: str,
+    master_password: str,
+    provider: str,
+    api_key: str
+) -> bool:
+    """
+    Saves an API key encrypted into the OpenSSL Vault for a specified provider.
+    Runs strictly inside an isolated subshell.
+    """
+    openssl_helper_script = os.path.join(extras_dir, "security", "openssl-helper.sh")
+    if not os.path.isfile(openssl_helper_script):
+        return False
+
+    bash_code = f"""
+    export BASH4LLM_CONFIG_DIR={json.dumps(config_dir)}
+    export RUN_TMPDIR={json.dumps(tmp_dir)}
+    export BASH4LLM_TMPDIR={json.dumps(tmp_dir)}
+    export _B4L_RT_CTX={json.dumps(master_password)}
+    source {json.dumps(openssl_helper_script)}
+    
+    vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
+    [ -n "$vault_key" ] || exit 1
+    
+    current_payload="$(_vault_decrypt_file "$_VAULT_DAT_FILE" "$vault_key" 2>/dev/null)"
+    [ -n "$current_payload" ] || current_payload="{{}}"
+    
+    updated_payload="$(printf '%s' "$current_payload" | jq --arg p {json.dumps(provider)} --arg k {json.dumps(api_key)} '.[$p] = $k' 2>/dev/null)"
+    [ -n "$updated_payload" ] || exit 1
+    
+    _vault_encrypt_to_file "$updated_payload" "$_VAULT_DAT_FILE" "$vault_key"
+    """
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", "-c", bash_code,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.wait()
+        return proc.returncode == 0
+    except Exception:
+        return False
