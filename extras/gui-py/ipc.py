@@ -1,5 +1,14 @@
-# extras/gui-py/ipc.py
-# Async Subprocess Execution, Deadlock Prevention & SSE Reader for bash4llm⁺
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ======================================
+# Bash4LLM⁺ — Bash-first wrapper for the LLM
+# File: extras/gui-py/ipc.py
+# Component: Async Subprocess Execution, Deadlock Prevention & SSE Reader for bash4llm⁺
+# Copyright (C) 2026 Cristian Evangelisti
+# License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
+# ======================================
 
 import asyncio
 import codecs
