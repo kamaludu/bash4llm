@@ -4,6 +4,7 @@
 import os
 import sys
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -13,6 +14,9 @@ class Config:
     and core bash4llm default directories.
     """
     script_dir: str = field(default_factory=lambda: os.path.dirname(os.path.abspath(__file__)))
+    
+    # Session-only RAM Vault Context Token (_B4L_RT_CTX)
+    vault_session_context: Optional[str] = None
     
     # BASH4LLM Canonical Directory Paths
     BASH4LLM_DIR: str = field(default_factory=lambda: os.environ.get(
@@ -64,6 +68,28 @@ class Config:
         )
     ))
 
+    BASH4LLM_EXTRAS_DIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_EXTRAS_DIR",
+        os.path.join(
+            os.environ.get(
+                "BASH4LLM_DIR", 
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+            ), 
+            "extras"
+        )
+    ))
+
+    BASH4LLM_TEMPLATES_DIR: str = field(default_factory=lambda: os.environ.get(
+        "BASH4LLM_TEMPLATES_DIR",
+        os.path.join(
+            os.environ.get(
+                "BASH4LLM_DIR", 
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bash4llm.d"))
+            ), 
+            "templates"
+        )
+    ))
+
     @property
     def core_script_path(self) -> str:
         """
@@ -82,4 +108,3 @@ class Config:
             if os.path.isfile(candidate):
                 return candidate
         return "bash4llm"
-      
