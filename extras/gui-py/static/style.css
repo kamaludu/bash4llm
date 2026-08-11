@@ -1,5 +1,13 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* ==========================================================================
-   bash4llm⁺ UI Theme: Warm Reader & Terminal Document Style
+   Bash4LLM⁺ — Bash-first wrapper for the LLM
+   File: extras/gui-py/static/css/style.css
+   Component: WebApp UI Theme (Warm Reader & Terminal Document Style)
+   Copyright (C) 2026 Cristian Evangelisti
+   License: GPL-3.0-or-later
+   Repository: https://github.com/kamaludu/bash4llm
+   Contact: opensource@cevangel.anonaddy.me
+   ==========================================================================
    Design Tokens:
    - Primary BG: #fffdf3 (Light cream / Warm paper)
    - Text & Borders: #293137 (Dark charcoal grey)
