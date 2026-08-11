@@ -1,0 +1,14 @@
+{
+  "new_thread": "+ Neuer Thread",
+  "settings": "Einstellungen",
+  "settings_title": "Laufzeiteinstellungen",
+  "provider": "Anbieter",
+  "model": "Modell",
+  "temperature": "Temperatur (0.0 - 2.0)",
+  "thread_window": "Verlauf-Nachrichten",
+  "save": "Speichern",
+  "close": "Schließen",
+  "send": "Senden",
+  "cancel": "Stoppen",
+  "prompt_placeholder": "Geben Sie Ihre Nachricht ein..."
+}
