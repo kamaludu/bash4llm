@@ -18,7 +18,7 @@ let targetBytes = 32768;
 let selectedTemplate = "";
 let validateSml = false;
 let sanitizeOutput = true;
-let attachedFiles = []; // Array of server file paths
+let attachedFiles = []; // Array of server file paths: [{name: "...", path: "..."}]
 
 let i18n = {};
 
@@ -336,7 +336,7 @@ function setupEventListeners() {
       stream: true,
       provider: currentProvider,
       model: currentModel,
-      system_prompt: systemPrompt || None,
+      system_prompt: systemPrompt || null,
       temperature: temperature,
       max_tokens: maxTokens,
       template: document.getElementById("select-template")?.value || null,
@@ -485,7 +485,7 @@ function renderAttachmentChips() {
     chip.className = "chip-attachment";
     chip.innerHTML = `
       <span>📎 ${att.name}</span>
-      <button class="btn-remove-chip" data-idx="${idx}">×</button>
+      <button type="button" class="btn-remove-chip" data-idx="${idx}">×</button>
     `;
     chip.querySelector(".btn-remove-chip").onclick = () => {
       attachedFiles.splice(idx, 1);
