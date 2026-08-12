@@ -47,7 +47,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function loadLocalization() {
-  const lang = navigator.language.startsWith("it") ? "it" : "en";
+  const supportedLangs = ["de", "en", "es", "fr", "it"];
+
+  // Extract 2-letter primary language code (e.g., "fr-FR" -> "fr")
+  const userLang = (navigator.language || "en").slice(0, 2).toLowerCase();
+
+  // Match against supported languages list, defaulting to English
+  const lang = supportedLangs.includes(userLang) ? userLang : "en";
+
   try {
     const res = await fetch(`/langs/${lang}.json`);
     if (res.ok) {
