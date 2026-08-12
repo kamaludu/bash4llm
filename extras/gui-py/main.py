@@ -67,17 +67,20 @@ grace_started_at: Optional[float] = None
 
 async def graceful_shutdown_checker():
     """
-    Monitors server lifecycle and triggers shutdown when idle for >= 15 seconds.
-    Inhibited until at least one client has authenticated.
+    Monitors server lifecycle and triggers shutdown when idle.
+    Tolerances are adjusted for mobile/Termux environments.
     """
     global grace_started_at, server_has_seen_first_client
+    CLIENT_ACTIVITY_WINDOW = 60.0
+    IDLE_GRACE_PERIOD = 120.0
+
     while True:
         await asyncio.sleep(2.0)
         if not server_has_seen_first_client:
             continue
 
         now = time.time()
-        active_clients = sum(1 for last_seen in sessions.values() if (now - last_seen) <= 10.0)
+        active_clients = sum(1 for last_seen in sessions.values() if (now - last_seen) <= CLIENT_ACTIVITY_WINDOW)
         active_jobs = sum(
             1 for job in jobs_registry.values()
             if job.state in {
@@ -89,8 +92,8 @@ async def graceful_shutdown_checker():
         if active_clients == 0 and active_jobs == 0:
             if grace_started_at is None:
                 grace_started_at = now
-            elif (now - grace_started_at) >= 15.0:
-                print("Graceful shutdown conditions met (15s idle). Stopping server...")
+            elif (now - grace_started_at) >= IDLE_GRACE_PERIOD:
+                print(f"Graceful shutdown conditions met ({int(IDLE_GRACE_PERIOD)}s idle). Stopping server...")
                 os.kill(os.getpid(), signal.SIGINT)
                 break
         else:
@@ -99,7 +102,6 @@ async def graceful_shutdown_checker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Modern Lifespan handler replacing deprecated @app.on_event('startup')."""
     asyncio.create_task(graceful_shutdown_checker())
     yield
 
@@ -122,7 +124,6 @@ if os.path.exists(langs_dir):
 
 
 def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 100) -> int:
-    """Scans loopback interface for the first available TCP port."""
     for port in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
@@ -133,7 +134,6 @@ def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 10
     raise RuntimeError("No free loopback port found in range.")
 
 
-# Session Verification Dependency
 def get_current_session(request: Request) -> str:
     session_id = request.cookies.get("session_id")
     if not session_id or session_id not in sessions:
@@ -144,7 +144,6 @@ def get_current_session(request: Request) -> str:
     return session_id
 
 
-# Middleware for Root & HTML Route Protection
 @app.middleware("http")
 async def protect_html_routes_middleware(request: Request, call_next):
     path = request.url.path
@@ -160,15 +159,12 @@ async def protect_html_routes_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# --- AUTHENTICATION & STATUS ROUTES ---
-
 @app.get("/auth")
 async def authenticate(one_time_token: str, request: Request):
     global active_one_time_token
     if not active_one_time_token or not secrets.compare_digest(one_time_token, active_one_time_token):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or spent token")
 
-    # Consume one-time token
     active_one_time_token = None
     
     new_session_id = secrets.token_hex(32)
@@ -202,7 +198,7 @@ async def root(session_id: str = Depends(get_current_session)):
 async def get_status(request: Request, session_id: str = Depends(get_current_session)):
     verify_security_headers(request, active_csrf_token, session_id)
     now = time.time()
-    active_clients = sum(1 for last_seen in sessions.values() if (now - last_seen) <= 10.0)
+    active_clients = sum(1 for last_seen in sessions.values() if (now - last_seen) <= 60.0)
     active_jobs = sum(1 for job in jobs_registry.values() if job.state in (JobState.RUNNING, JobState.STREAMING))
     
     return {
@@ -220,8 +216,6 @@ async def heartbeat(request: Request, session_id: str = Depends(get_current_sess
     sessions[session_id] = time.time()
     return {"status": "ok"}
 
-
-# --- CORE CLI BRIDGE & PROVIDER ROUTES ---
 
 @app.get("/api/models")
 async def list_models(
@@ -242,7 +236,25 @@ async def list_models(
     )
     stdout, _ = await proc.communicate()
     models = [line.strip() for line in stdout.decode('utf-8', errors='replace').splitlines() if line.strip()]
-    return {"models": models, "provider": provider or "default"}
+
+    # Read current default model for provider from canonical model file
+    active_provider = provider or "groq"
+    model_file = os.path.join(config.BASH4LLM_CONFIG_DIR, f"model.{active_provider}")
+    default_model = None
+    if os.path.isfile(model_file):
+        try:
+            with open(model_file, "r", encoding="utf-8") as f:
+                line = f.readline().strip()
+                if line:
+                    default_model = line
+        except Exception:
+            pass
+
+    return {
+        "models": models,
+        "provider": active_provider,
+        "default_model": default_model
+    }
 
 
 @app.post("/api/models/default")
@@ -277,7 +289,6 @@ async def refresh_models(
         cmd.extend(["--provider", provider])
     cmd.append("--refresh-models")
 
-    # Inject vault session context if unlocked
     env = {**os.environ}
     if config.vault_session_context:
         env["_B4L_RT_CTX"] = config.vault_session_context
@@ -318,8 +329,6 @@ async def list_templates(request: Request, session_id: str = Depends(get_current
                 templates.append(fname)
     return {"templates": templates}
 
-
-# --- VAULT & KEY MANAGEMENT ROUTES ---
 
 @app.get("/api/vault/status")
 async def get_vault_status(request: Request, session_id: str = Depends(get_current_session)):
@@ -376,8 +385,6 @@ async def save_vault_key(
     return {"status": "key_saved", "provider": payload.provider}
 
 
-# --- UPLOAD ATTACHMENT ROUTE ---
-
 @app.post("/api/upload")
 async def upload_attachment(
     request: Request,
@@ -403,8 +410,6 @@ async def upload_attachment(
 
     return {"filename": safe_filename, "file_path": file_path, "size": len(content)}
 
-
-# --- THREAD MANAGEMENT ROUTES ---
 
 @app.get("/api/threads")
 async def list_threads(request: Request, session_id: str = Depends(get_current_session)):
@@ -496,16 +501,38 @@ async def rename_thread(thread_id: str, payload: RenameThreadRequest, request: R
     return {"status": "renamed", "thread_id": thread_id, "title": payload.title}
 
 
-# --- CHAT & JOB EXECUTION ROUTES ---
-
 @app.post("/api/chat")
 async def create_chat_job(
-    payload: ChatRequest,
     request: Request,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     session_id: str = Depends(get_current_session)
 ):
     verify_security_headers(request, active_csrf_token, session_id)
+
+    # Support both JSON payload and Form-Data (native HTML form submission)
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form_data = await request.form()
+        payload = ChatRequest(
+            thread_id=str(form_data.get("thread_id", "default")),
+            prompt=str(form_data.get("prompt", "")),
+            stream=str(form_data.get("stream", "true")).lower() in ("true", "1", "yes"),
+            provider=str(form_data.get("provider")) if form_data.get("provider") else None,
+            model=str(form_data.get("model")) if form_data.get("model") else None,
+            system_prompt=str(form_data.get("system_prompt")) if form_data.get("system_prompt") else None,
+            template=str(form_data.get("template")) if form_data.get("template") else None,
+            validate_sml=str(form_data.get("validate_sml", "false")).lower() in ("true", "1", "yes")
+        )
+    else:
+        try:
+            body_bytes = await request.body()
+            payload_dict = json.loads(body_bytes.decode('utf-8'))
+            payload = ChatRequest(**payload_dict)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid JSON payload: {str(e)}"
+            )
 
     payload_dict = payload.dict() if hasattr(payload, "dict") else payload.model_dump()
     payload_json = json.dumps(payload_dict, sort_keys=True)
@@ -526,7 +553,6 @@ async def create_chat_job(
                     detail="Idempotency key mismatch with different payload fingerprint"
                 )
 
-    # Allocate new Job with full Extras options
     job = Job(
         owner_session_id=session_id,
         idempotency_key=idempotency_key,
@@ -554,10 +580,10 @@ async def create_chat_job(
     if idempotency_key:
         idempotency_store[(session_id, idempotency_key)] = job
 
-    # Clean Environment variables before spawning subprocess
+    # Clean Environment variables while preserving Provider API Keys (*_API_KEY)
     sanitized_env = {
         k: v for k, v in os.environ.items()
-        if not any(k.endswith(sec) for sec in ("_KEY", "_TOKEN", "_SECRET"))
+        if not (k.endswith("_SECRET") or (k.endswith("_TOKEN") and k != "BASH4LLM_AUTH_TOKEN"))
     }
     sanitized_env["BASH4LLM_DIR"] = config.BASH4LLM_DIR
     sanitized_env["BASH4LLM_TMPDIR"] = config.BASH4LLM_TMPDIR
@@ -566,11 +592,9 @@ async def create_chat_job(
     sanitized_env["BASH4LLM_EXTRAS_DIR"] = config.BASH4LLM_EXTRAS_DIR
     sanitized_env["BASH4LLM_TEMPLATES_DIR"] = config.BASH4LLM_TEMPLATES_DIR
 
-    # Inject active Vault session context if unlocked
     if config.vault_session_context:
         sanitized_env["_B4L_RT_CTX"] = config.vault_session_context
 
-    # Launch subprocess asynchronously
     asyncio.create_task(
         execute_job_subprocess(
             job=job,
@@ -649,7 +673,6 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
 
 
 def _launch_browser_async(url: str):
-    """Launches browser in a background daemon thread after Uvicorn starts listening."""
     time.sleep(1.2)
     if not IS_TERMUX and not os.environ.get("BASH4LLM_GUI_NO_BROWSER"):
         try:
@@ -674,8 +697,6 @@ if __name__ == "__main__":
     print(f"\n One-Time Auth URL (Click or Copy to Browser):\n {auth_url}\n")
     print("=" * 60)
 
-    # Launch browser asynchronously on non-Termux systems
     threading.Thread(target=_launch_browser_async, args=(auth_url,), daemon=True).start()
-
-    # Start uvicorn server immediately on main thread
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    
