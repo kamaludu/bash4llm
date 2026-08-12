@@ -694,10 +694,10 @@ if __name__ == "__main__":
     port = find_available_loopback_port(start_port=19970)
     auth_url = f"http://127.0.0.1:{port}/auth?one_time_token={active_one_time_token}"
     
-    print("=" * 60)
-    print(f" bash4llm WebApp GUI Adapter running at: http://127.0.0.1:{port}/")
-    print(f"\n One-Time Auth URL (Click or Copy to Browser):\n {auth_url}\n")
-    print("=" * 60)
+    print("=" * 40)
+    print(f" Bash4LLM WebApp GUI Adapter running at: http://127.0.0.1:{port}/")
+    print(f"\n One-Time Auth URL (Copy to Browser):\n {auth_url}\n")
+    print("=" * 40)
 
     threading.Thread(target=_launch_browser_async, args=(auth_url,), daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
