@@ -8,12 +8,17 @@
 </head>
 <body>
   <div class="app-container">
+    <!-- Overlay for closing sidebar on mobile -->
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
     <!-- Sidebar / Thread Navigator -->
     <aside class="sidebar" id="sidebar" tabindex="-1">
       <div class="sidebar-header">
-        <!-- Brand badge with dedicated highlight styling -->
         <h2 class="brand-badge">Bash4LLM⁺</h2>
-        <button id="btn-new-thread" class="btn btn-primary" data-i18n="new_thread">+ New Thread</button>
+        <div class="header-actions">
+          <button id="btn-new-thread" class="btn btn-primary" data-i18n="new_thread">+ New Thread</button>
+          <button id="btn-close-sidebar" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
+        </div>
       </div>
 
       <div class="thread-list-container">
