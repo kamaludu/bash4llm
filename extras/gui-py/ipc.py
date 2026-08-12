@@ -257,6 +257,7 @@ def read_thread_history_ndjson(history_dir: str, thread_id: str) -> List[Dict[st
 
 async def get_session_snapshot_ipc(
     extras_dir: str,
+    config_dir: str,
     history_dir: str,
     tmp_dir: str,
     thread_id: str
@@ -270,8 +271,14 @@ async def get_session_snapshot_ipc(
 
     out_file = os.path.join(tmp_dir, f"snapshot_{secrets.token_hex(8)}.json")
     
+    # Ensure threads history directory exists
+    os.makedirs(os.path.join(history_dir, "threads"), mode=0o700, exist_ok=True)
+
     bash_code = f"""
+    export BASH4LLM_DIR={json.dumps(os.path.dirname(config_dir))}
+    export BASH4LLM_CONFIG_DIR={json.dumps(config_dir)}
     export BASH4LLM_HISTORY_DIR={json.dumps(history_dir)}
+    export BASH4LLM_EXTRAS_DIR={json.dumps(extras_dir)}
     export RUN_TMPDIR={json.dumps(tmp_dir)}
     export BASH4LLM_TMPDIR={json.dumps(tmp_dir)}
     source {json.dumps(session_engine_script)}
@@ -299,7 +306,6 @@ async def get_session_snapshot_ipc(
         return {"error": "Snapshot generation failed"}
     except Exception as exc:
         return {"error": str(exc)}
-
 
 async def test_vault_unlock_ipc(
     extras_dir: str,
