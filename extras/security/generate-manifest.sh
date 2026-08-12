@@ -164,8 +164,8 @@ if [ ! -f "$KEY_FILE" ]; then
     log_warn "Private key missing at $KEY_FILE. Skipping Ed25519 signature (--no-sign-if-missing-key active)."
     exit 0
   else
-    log_error "Private key file not found at: $KEY_FILE"
-    log_error "Use --generate-key or pass --no-sign-if-missing-key"
+    log_error "Private key file not found at:"$'\n'"$KEY_FILE"
+    log_error $'\n'"Use "$'\n'"--generate-key"$'\n'"or pass "$'\n'"--no-sign-if-missing-key"$'\n'
     exit 1
   fi
 fi
