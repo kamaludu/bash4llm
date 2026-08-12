@@ -1,5 +1,6 @@
+
 {
-  "new_thread": "+ Nuovo thread",
+  "new_thread": "+ Nuova Chat",
   "settings": "Impostazioni",
   "settings_title": "Impostazioni di runtime",
   "provider": "Provider",
@@ -40,7 +41,7 @@
   "api_key_placeholder": "Incolla la chiave API qui",
   "save_encrypted_key": "Salva chiave crittografata",
   "snapshot_title": "📊 Snapshot motore di sessione",
-  "prompt_new_thread": "Inserisci il nome del nuovo thread:",
+  "prompt_new_thread": "Inserisci il nome della nuova Chat:",
   "msg_default_set": "Modello predefinito per {provider} impostato su {model}",
   "msg_models_refreshed": "Elenco modelli aggiornato dal provider.",
   "msg_key_saved": "Chiave API per {provider} salvata in modo sicuro nel Vault OpenSSL.",
@@ -49,5 +50,5 @@
   "msg_save_key_failed": "Impossibile salvare la chiave API.",
   "err_stream_disconnected": "[Errore: Stream disconnesso]",
   "err_network_failed": "[Errore: Connessione di rete non riuscita]",
-  "err_submission_failed": "Errore durante l'invio del job."
+  "err_submission_failed": "Errore durante l'invio della richiesta."
 }
