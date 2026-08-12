@@ -1,5 +1,5 @@
 {
-  "new_thread": "+ Nouveau thread",
+  "new_thread": "+ Nouveau chat",
   "settings": "Paramètres",
   "settings_title": "Paramètres d'exécution",
   "provider": "Fournisseur",
@@ -40,7 +40,7 @@
   "api_key_placeholder": "Collez la clé API ici",
   "save_encrypted_key": "Enregistrer la clé chiffrée",
   "snapshot_title": "📊 Instantané du moteur de session",
-  "prompt_new_thread": "Entrez le nom du nouveau thread :",
+  "prompt_new_thread": "Entrez le nom du nouveau chat:",
   "msg_default_set": "Modèle par défaut pour {provider} défini sur {model}",
   "msg_models_refreshed": "Liste des modèles actualisée depuis le fournisseur.",
   "msg_key_saved": "Clé API pour {provider} enregistrée en toute sécurité dans le Vault OpenSSL.",
@@ -49,5 +49,5 @@
   "msg_save_key_failed": "Échec de l'enregistrement de la clé API.",
   "err_stream_disconnected": "[Erreur : Flux déconnecté]",
   "err_network_failed": "[Erreur : Échec de la connexion réseau]",
-  "err_submission_failed": "Erreur lors de la soumission de la tâche."
+  "err_submission_failed": "Erreur lors de l'envoi de la requête."
 }
