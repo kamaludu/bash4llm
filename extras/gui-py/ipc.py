@@ -19,7 +19,6 @@ import re
 import secrets
 import signal
 import sys
-import tempfile
 from typing import Dict, Any, List, Optional
 from models import Job, JobState, TerminationCause
 
@@ -93,7 +92,7 @@ async def execute_job_subprocess(
         job.process_pid = process.pid
         job.state = JobState.RUNNING
 
-        # Concurrent Stdin Writer (Prevents deadlock if prompt is large or process exits early)
+        # Concurrent Stdin Writer
         async def stdin_writer():
             try:
                 if process and process.stdin:
@@ -101,7 +100,7 @@ async def execute_job_subprocess(
                     await process.stdin.drain()
                     process.stdin.close()
             except (BrokenPipeError, ConnectionResetError):
-                pass  # Subprocess terminated early before reading all stdin
+                pass
 
         # Incremental UTF-8 Decoder for stdout token streaming
         async def stdout_reader():
@@ -129,7 +128,7 @@ async def execute_job_subprocess(
                     "data": json.dumps({"delta": tail})
                 })
 
-        # Strict JSON diagnostics parser for stderr (Zero Regex on free text)
+        # Strict JSON diagnostics parser for stderr
         async def stderr_reader():
             if not process or not process.stderr:
                 return
@@ -181,10 +180,6 @@ async def execute_job_subprocess(
 
 
 async def cancel_job_process(job: Job) -> bool:
-    """
-    Terminates the process tree associated with a Job.
-    Uses SIGTERM -> 5s timeout -> SIGKILL on POSIX, taskkill on Windows.
-    """
     if not job.process_pid or job.state in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED):
         return False
 
@@ -202,17 +197,14 @@ async def cancel_job_process(job: Job) -> bool:
             await proc.wait()
             job.termination_cause = TerminationCause.SIGKILL
         else:
-            # POSIX Process Termination Tree
             os.kill(job.process_pid, signal.SIGTERM)
             job.termination_cause = TerminationCause.SIGTERM
             
-            # Wait up to 5.0 seconds before escalating to SIGKILL
             for _ in range(50):
                 await asyncio.sleep(0.1)
                 if job.state == JobState.CANCELLED:
                     return True
             
-            # Force escalation if process is still alive
             try:
                 os.kill(job.process_pid, signal.SIGKILL)
                 job.termination_cause = TerminationCause.SIGKILL
@@ -228,11 +220,6 @@ async def cancel_job_process(job: Job) -> bool:
 
 
 def read_thread_history_ndjson(history_dir: str, thread_id: str) -> List[Dict[str, Any]]:
-    """
-    Performs 2-Level Read-Only Resolution for Thread History without subshell spawns.
-    Level 1: SHA-256 hash lookup (bash4llm.d/history/threads/{sha256}.ndjson)
-    Level 2: Plain ID fallback lookup (bash4llm.d/history/threads/{thread_id}.ndjson)
-    """
     if not THREAD_ID_REGEX.match(thread_id):
         return []
 
@@ -274,10 +261,6 @@ async def get_session_snapshot_ipc(
     tmp_dir: str,
     thread_id: str
 ) -> Dict[str, Any]:
-    """
-    Invokes session_engine_snapshot in an isolated subshell to export
-    session statistics (message count, byte size, segments) for the thread.
-    """
     if not THREAD_ID_REGEX.match(thread_id):
         return {"error": "Invalid thread_id format"}
 
@@ -325,8 +308,7 @@ async def test_vault_unlock_ipc(
     master_password: str
 ) -> bool:
     """
-    Tests master password validity against the encrypted OpenSSL Vault in an isolated subshell.
-    Returns True if decryption succeeds, False otherwise.
+    Tests master password validity directly against the OpenSSL Vault key file.
     """
     openssl_helper_script = os.path.join(extras_dir, "security", "openssl-helper.sh")
     if not os.path.isfile(openssl_helper_script):
@@ -338,8 +320,14 @@ async def test_vault_unlock_ipc(
     export BASH4LLM_TMPDIR={json.dumps(tmp_dir)}
     export _B4L_RT_CTX={json.dumps(master_password)}
     source {json.dumps(openssl_helper_script)}
-    res="$(vault_load_keys 2>/dev/null)"
-    if [ -n "$res" ] && printf '%s' "$res" | jq -e . >/dev/null 2>&1; then
+    
+    vault_file="${{BASH4LLM_CONFIG_DIR}}/keys.enc"
+    if [ ! -f "$vault_file" ]; then
+        exit 0
+    fi
+    
+    vault_key="$(_vault_decrypt_file "$vault_file" "$_B4L_RT_CTX" 2>/dev/null || true)"
+    if [ -n "$vault_key" ] && [[ "$vault_key" =~ ^[0-9a-fA-F]{{64}}$ ]]; then
         exit 0
     else
         exit 1
@@ -366,10 +354,6 @@ async def save_vault_api_key_ipc(
     provider: str,
     api_key: str
 ) -> bool:
-    """
-    Saves an API key encrypted into the OpenSSL Vault for a specified provider.
-    Runs strictly inside an isolated subshell.
-    """
     openssl_helper_script = os.path.join(extras_dir, "security", "openssl-helper.sh")
     if not os.path.isfile(openssl_helper_script):
         return False
@@ -381,16 +365,26 @@ async def save_vault_api_key_ipc(
     export _B4L_RT_CTX={json.dumps(master_password)}
     source {json.dumps(openssl_helper_script)}
     
-    vault_key="$(_vault_decrypt_file "$_VAULT_FILE" "$_B4L_RT_CTX" 2>/dev/null)"
+    vault_file="${{BASH4LLM_CONFIG_DIR}}/keys.enc"
+    dat_file="${{BASH4LLM_CONFIG_DIR}}/keys.dat.enc"
+    
+    if [ ! -f "$vault_file" ]; then
+        vault_init
+    fi
+
+    vault_key="$(_vault_decrypt_file "$vault_file" "$_B4L_RT_CTX" 2>/dev/null)"
     [ -n "$vault_key" ] || exit 1
     
-    current_payload="$(_vault_decrypt_file "$_VAULT_DAT_FILE" "$vault_key" 2>/dev/null)"
+    current_payload=""
+    if [ -f "$dat_file" ]; then
+        current_payload="$(_vault_decrypt_file "$dat_file" "$vault_key" 2>/dev/null)"
+    fi
     [ -n "$current_payload" ] || current_payload="{{}}"
     
     updated_payload="$(printf '%s' "$current_payload" | jq --arg p {json.dumps(provider)} --arg k {json.dumps(api_key)} '.[$p] = $k' 2>/dev/null)"
     [ -n "$updated_payload" ] || exit 1
     
-    _vault_encrypt_to_file "$updated_payload" "$_VAULT_DAT_FILE" "$vault_key"
+    _vault_encrypt_to_file "$updated_payload" "$dat_file" "$vault_key"
     """
 
     try:
@@ -403,3 +397,4 @@ async def save_vault_api_key_ipc(
         return proc.returncode == 0
     except Exception:
         return False
+        
