@@ -22,25 +22,27 @@ let currentModel = "";
 let systemPrompt = "";
 let temperature = 1.0;
 let maxTokens = null;
-let contextMode = "messages"; // "messages" or "bytes"
+let contextMode = "messages";
 let threadWindow = 10;
 let targetBytes = 32768;
 let selectedTemplate = "";
 let validateSml = false;
 let sanitizeOutput = true;
-let attachedFiles = []; // Array of server file paths: [{name: "...", path: "..."}]
+let attachedFiles = [];
 
 let i18n = {};
 
 // 1. Initialize Application
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadLocalization();
-  await refreshStatus();
-  await checkVaultStatus();
-  await loadThreads();
-  await loadProviders();
-  await loadTemplates();
   setupEventListeners();
+
+  try { await loadLocalization(); } catch (e) {}
+  try { await refreshStatus(); } catch (e) {}
+  try { await checkVaultStatus(); } catch (e) {}
+  try { await loadThreads(); } catch (e) {}
+  try { await loadProviders(); } catch (e) {}
+  try { await loadTemplates(); } catch (e) {}
+
   setInterval(sendHeartbeat, 8000);
 });
 
@@ -68,7 +70,6 @@ function applyLocalization() {
   });
 }
 
-// Authenticated Anti-CSRF Fetch Wrapper
 async function apiFetch(url, options = {}) {
   options.headers = options.headers || {};
   if (csrfToken && ["POST", "PUT", "PATCH", "DELETE"].includes(options.method?.toUpperCase())) {
@@ -89,10 +90,12 @@ async function refreshStatus() {
     if (res.ok) {
       const data = await res.json();
       csrfToken = data.csrf_token;
-      document.getElementById("status-dot").className = "status-dot ready";
+      const statusDot = document.getElementById("status-dot");
+      if (statusDot) statusDot.className = "status-dot ready";
     }
   } catch (e) {
-    document.getElementById("status-dot").className = "status-dot busy";
+    const statusDot = document.getElementById("status-dot");
+    if (statusDot) statusDot.className = "status-dot busy";
   }
 }
 
@@ -102,7 +105,6 @@ async function sendHeartbeat() {
   } catch (e) {}
 }
 
-// Vault Status & Unlock
 async function checkVaultStatus() {
   try {
     const res = await apiFetch("/api/vault/status");
@@ -114,21 +116,20 @@ async function checkVaultStatus() {
       const keySec = document.getElementById("vault-key-section");
 
       if (data.unlocked) {
-        banner.className = "vault-banner unlocked";
-        text.textContent = "🔓 Vault Unlocked (Session Context Active)";
-        unlockSec.classList.add("hidden");
-        keySec.classList.remove("hidden");
+        if (banner) banner.className = "vault-banner unlocked";
+        if (text) text.textContent = "🔓 Vault Unlocked (Session Context Active)";
+        if (unlockSec) unlockSec.classList.add("hidden");
+        if (keySec) keySec.classList.remove("hidden");
       } else {
-        banner.className = "vault-banner";
-        text.textContent = data.vault_exists ? "🔒 Vault Initialized (Locked)" : "🔒 Vault Not Initialized";
-        unlockSec.classList.remove("hidden");
-        keySec.classList.add("hidden");
+        if (banner) banner.className = "vault-banner";
+        if (text) text.textContent = data.vault_exists ? "🔒 Vault Initialized (Locked)" : "🔒 Vault Not Initialized";
+        if (unlockSec) unlockSec.classList.remove("hidden");
+        if (keySec) keySec.classList.add("hidden");
       }
     }
   } catch (e) {}
 }
 
-// Thread Navigation
 async function loadThreads() {
   try {
     const res = await apiFetch("/api/threads");
@@ -141,6 +142,7 @@ async function loadThreads() {
 
 function renderThreadList(threads) {
   const listEl = document.getElementById("thread-list");
+  if (!listEl) return;
   listEl.innerHTML = "";
   threads.forEach(tid => {
     const li = document.createElement("li");
@@ -151,16 +153,32 @@ function renderThreadList(threads) {
   });
 }
 
+function closeSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  if (sidebar) sidebar.classList.remove("active");
+  if (overlay) overlay.classList.remove("active");
+}
+
+function openSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  if (sidebar) sidebar.classList.add("active");
+  if (overlay) overlay.classList.add("active");
+}
+
 async function switchThread(tid) {
   currentThreadId = tid;
-  document.getElementById("form-thread-id").value = tid;
-  document.getElementById("current-thread-title").textContent = tid;
+  const formThreadId = document.getElementById("form-thread-id");
+  const threadTitle = document.getElementById("current-thread-title");
+  if (formThreadId) formThreadId.value = tid;
+  if (threadTitle) threadTitle.textContent = tid;
+
   document.querySelectorAll(".thread-item").forEach(el => {
     el.classList.toggle("active", el.textContent === tid);
   });
   
-  const sidebar = document.getElementById("sidebar");
-  if (sidebar) sidebar.classList.remove("active");
+  closeSidebar();
 
   try {
     const res = await apiFetch(`/api/threads/${tid}`);
@@ -177,6 +195,7 @@ async function switchThread(tid) {
 
 function renderChatHistory(messages) {
   const container = document.getElementById("chat-messages");
+  if (!container) return;
   container.innerHTML = "";
   if (Array.isArray(messages)) {
     messages.forEach(msg => {
@@ -188,6 +207,7 @@ function renderChatHistory(messages) {
 
 function appendMessageUI(role, content) {
   const container = document.getElementById("chat-messages");
+  if (!container) return null;
   const div = document.createElement("div");
   div.className = `message ${role}`;
   div.textContent = content;
@@ -196,7 +216,6 @@ function appendMessageUI(role, content) {
   return div;
 }
 
-// Provider & Model Dynamic Loading
 async function loadProviders() {
   try {
     const res = await apiFetch("/api/providers");
@@ -206,8 +225,8 @@ async function loadProviders() {
       const selectVP = document.getElementById("select-vault-provider");
       
       const optionsHtml = data.providers.map(p => `<option value="${p}">${p}</option>`).join("");
-      selectP.innerHTML = optionsHtml;
-      selectVP.innerHTML = optionsHtml;
+      if (selectP) selectP.innerHTML = optionsHtml;
+      if (selectVP) selectVP.innerHTML = optionsHtml;
 
       if (data.providers.length > 0) {
         currentProvider = data.providers[0];
@@ -223,9 +242,14 @@ async function loadModelsForProvider(prov) {
     if (res.ok) {
       const data = await res.json();
       const selectM = document.getElementById("select-model");
-      selectM.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join("");
-      if (data.models.length > 0) {
-        currentModel = data.models[0];
+      if (selectM) {
+        selectM.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join("");
+        if (data.default_model && data.models.includes(data.default_model)) {
+          selectM.value = data.default_model;
+          currentModel = data.default_model;
+        } else if (data.models.length > 0) {
+          currentModel = data.models[0];
+        }
       }
       updateActiveBadge();
     }
@@ -238,18 +262,21 @@ async function loadTemplates() {
     if (res.ok) {
       const data = await res.json();
       const selectT = document.getElementById("select-template");
-      selectT.innerHTML = `<option value="">-- No Template --</option>` +
-        data.templates.map(t => `<option value="${t}">${t}</option>`).join("");
+      if (selectT) {
+        selectT.innerHTML = `<option value="">-- No Template --</option>` +
+          data.templates.map(t => `<option value="${t}">${t}</option>`).join("");
+      }
     }
   } catch (e) {}
 }
 
 function updateActiveBadge() {
-  document.getElementById("badge-provider").textContent = currentProvider || "groq";
-  document.getElementById("badge-model").textContent = currentModel || "default";
+  const badgeP = document.getElementById("badge-provider");
+  const badgeM = document.getElementById("badge-model");
+  if (badgeP) badgeP.textContent = currentProvider || "groq";
+  if (badgeM) badgeM.textContent = currentModel || "default";
 }
 
-// Event Listeners
 function setupEventListeners() {
   const form = document.getElementById("chat-form");
   const promptInput = document.getElementById("prompt-input");
@@ -263,10 +290,10 @@ function setupEventListeners() {
     }
   });
 
-  // Mobile Sidebar
-  document.getElementById("btn-toggle-sidebar")?.addEventListener("click", () => {
-    document.getElementById("sidebar")?.classList.toggle("active");
-  });
+  // Mobile Sidebar Toggle and Close
+  document.getElementById("btn-toggle-sidebar")?.addEventListener("click", openSidebar);
+  document.getElementById("btn-close-sidebar")?.addEventListener("click", closeSidebar);
+  document.getElementById("sidebar-overlay")?.addEventListener("click", closeSidebar);
 
   // File Attachment Upload (-f)
   document.getElementById("file-upload-input")?.addEventListener("change", async (e) => {
@@ -295,8 +322,8 @@ function setupEventListeners() {
   // Context Window Strategy Switch
   document.getElementById("select-context-mode")?.addEventListener("change", (e) => {
     contextMode = e.target.value;
-    document.getElementById("group-thread-window").classList.toggle("hidden", contextMode !== "messages");
-    document.getElementById("group-target-bytes").classList.toggle("hidden", contextMode !== "bytes");
+    document.getElementById("group-thread-window")?.classList.toggle("hidden", contextMode !== "messages");
+    document.getElementById("group-target-bytes")?.classList.toggle("hidden", contextMode !== "bytes");
   });
 
   // Provider Selection Change -> Reload Models
@@ -308,7 +335,8 @@ function setupEventListeners() {
 
   // Set Default Model Button
   document.getElementById("btn-set-default-model")?.addEventListener("click", async () => {
-    const selectedM = document.getElementById("select-model").value;
+    const selectM = document.getElementById("select-model");
+    const selectedM = selectM ? selectM.value : "";
     if (!selectedM) return;
     try {
       const res = await apiFetch("/api/models/default", {
@@ -316,7 +344,11 @@ function setupEventListeners() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: currentProvider, model: selectedM })
       });
-      if (res.ok) alert(`Default model for ${currentProvider} set to ${selectedM}`);
+      if (res.ok) {
+        currentModel = selectedM;
+        updateActiveBadge();
+        alert(`Default model for ${currentProvider} set to ${selectedM}`);
+      }
     } catch (e) {}
   });
 
@@ -332,98 +364,110 @@ function setupEventListeners() {
   });
 
   // Submit Chat Form
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const prompt = promptInput.value.trim();
-    if (!prompt) return;
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const prompt = promptInput ? promptInput.value.trim() : "";
+      if (!prompt) return;
 
-    appendMessageUI("user", prompt);
-    promptInput.value = "";
+      appendMessageUI("user", prompt);
+      if (promptInput) promptInput.value = "";
 
-    const payload = {
-      thread_id: currentThreadId,
-      prompt: prompt,
-      stream: true,
-      provider: currentProvider,
-      model: currentModel,
-      system_prompt: systemPrompt || null,
-      temperature: temperature,
-      max_tokens: maxTokens,
-      template: document.getElementById("select-template")?.value || null,
-      attachments: attachedFiles.map(a => a.path),
-      validate_sml: document.getElementById("check-sml-gate")?.checked || false,
-      sanitize_output: sanitizeOutput
-    };
+      const payload = {
+        thread_id: currentThreadId,
+        prompt: prompt,
+        stream: true,
+        provider: currentProvider,
+        model: currentModel,
+        system_prompt: systemPrompt || null,
+        temperature: temperature,
+        max_tokens: maxTokens,
+        template: document.getElementById("select-template")?.value || null,
+        attachments: attachedFiles.map(a => a.path),
+        validate_sml: document.getElementById("check-sml-gate")?.checked || false,
+        sanitize_output: sanitizeOutput
+      };
 
-    if (contextMode === "messages") {
-      payload.thread_window = threadWindow;
-      payload.target_bytes = null;
-    } else {
-      payload.thread_window = 0; // Triggers Byte Budget mode in Session Engine
-      payload.target_bytes = targetBytes;
-    }
-
-    // Reset attachments
-    attachedFiles = [];
-    renderAttachmentChips();
-
-    toggleInputState(true);
-
-    try {
-      const res = await apiFetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.status === 202) {
-        const data = await res.json();
-        activeJobId = data.job_id;
-        startSSEStream(activeJobId);
+      if (contextMode === "messages") {
+        payload.thread_window = threadWindow;
+        payload.target_bytes = null;
       } else {
-        appendMessageUI("assistant", "Error submitting job.");
+        payload.thread_window = 0;
+        payload.target_bytes = targetBytes;
+      }
+
+      attachedFiles = [];
+      renderAttachmentChips();
+
+      toggleInputState(true);
+
+      try {
+        const res = await apiFetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.status === 202) {
+          const data = await res.json();
+          activeJobId = data.job_id;
+          startSSEStream(activeJobId);
+        } else {
+          appendMessageUI("assistant", "Error submitting job.");
+          toggleInputState(false);
+        }
+      } catch (e) {
+        appendMessageUI("assistant", "Network error.");
         toggleInputState(false);
       }
-    } catch (e) {
-      appendMessageUI("assistant", "Network error.");
-      toggleInputState(false);
-    }
-  });
+    });
+  }
 
-  document.getElementById("btn-cancel").onclick = cancelJob;
+  const btnCancel = document.getElementById("btn-cancel");
+  if (btnCancel) btnCancel.onclick = cancelJob;
   
   // Settings Modal Handlers
   const modalSettings = document.getElementById("settings-modal");
-  document.getElementById("btn-settings").onclick = () => modalSettings.showModal();
-  document.getElementById("btn-close-settings").onclick = () => modalSettings.close();
-  document.getElementById("btn-save-settings").onclick = () => {
-    currentProvider = document.getElementById("select-provider").value;
-    currentModel = document.getElementById("select-model").value;
-    systemPrompt = document.getElementById("input-system-prompt").value.trim();
-    temperature = parseFloat(document.getElementById("input-temperature").value);
+  document.getElementById("btn-settings")?.addEventListener("click", () => modalSettings?.showModal());
+  document.getElementById("btn-close-settings")?.addEventListener("click", () => modalSettings?.close());
+  document.getElementById("btn-save-settings")?.addEventListener("click", () => {
+    const selP = document.getElementById("select-provider");
+    const selM = document.getElementById("select-model");
+    const inputSys = document.getElementById("input-system-prompt");
+    const inputTemp = document.getElementById("input-temperature");
+    const inputMaxTok = document.getElementById("input-max-tokens");
+    const inputWin = document.getElementById("input-thread-window");
+    const selBytes = document.getElementById("select-target-bytes");
+    const checkSan = document.getElementById("check-sanitize");
+
+    if (selP) currentProvider = selP.value;
+    if (selM) currentModel = selM.value;
+    if (inputSys) systemPrompt = inputSys.value.trim();
+    if (inputTemp) temperature = parseFloat(inputTemp.value);
     
-    const maxTokVal = document.getElementById("input-max-tokens").value;
+    const maxTokVal = inputMaxTok ? inputMaxTok.value : "";
     maxTokens = maxTokVal ? parseInt(maxTokVal) : null;
     
-    threadWindow = parseInt(document.getElementById("input-thread-window").value);
-    targetBytes = parseInt(document.getElementById("select-target-bytes").value);
-    sanitizeOutput = document.getElementById("check-sanitize").checked;
+    if (inputWin) threadWindow = parseInt(inputWin.value);
+    if (selBytes) targetBytes = parseInt(selBytes.value);
+    if (checkSan) sanitizeOutput = checkSan.checked;
 
     updateActiveBadge();
-    modalSettings.close();
-  };
+    modalSettings?.close();
+  });
 
   // Vault Modal Handlers
   const modalVault = document.getElementById("vault-modal");
-  document.getElementById("btn-vault").onclick = () => {
+  document.getElementById("btn-vault")?.addEventListener("click", () => {
     checkVaultStatus();
-    modalVault.showModal();
-  };
-  document.getElementById("btn-close-vault").onclick = () => modalVault.close();
+    modalVault?.showModal();
+  });
+  document.getElementById("btn-close-vault")?.addEventListener("click", () => modalVault?.close());
 
   // Vault Unlock Button
   document.getElementById("btn-unlock-vault")?.addEventListener("click", async () => {
-    const pass = document.getElementById("input-master-password").value;
+    const inputPass = document.getElementById("input-master-password");
+    const pass = inputPass ? inputPass.value : "";
     if (!pass) return;
 
     try {
@@ -433,7 +477,7 @@ function setupEventListeners() {
         body: JSON.stringify({ master_password: pass })
       });
       if (res.ok) {
-        document.getElementById("input-master-password").value = "";
+        if (inputPass) inputPass.value = "";
         await checkVaultStatus();
       } else {
         alert("Invalid Master Password.");
@@ -443,8 +487,10 @@ function setupEventListeners() {
 
   // Save Encrypted API Key
   document.getElementById("btn-save-vault-key")?.addEventListener("click", async () => {
-    const prov = document.getElementById("select-vault-provider").value;
-    const key = document.getElementById("input-vault-api-key").value.trim();
+    const selVP = document.getElementById("select-vault-provider");
+    const inputKey = document.getElementById("input-vault-api-key");
+    const prov = selVP ? selVP.value : "";
+    const key = inputKey ? inputKey.value.trim() : "";
     if (!prov || !key) return;
 
     try {
@@ -454,7 +500,7 @@ function setupEventListeners() {
         body: JSON.stringify({ provider: prov, api_key: key })
       });
       if (res.ok) {
-        document.getElementById("input-vault-api-key").value = "";
+        if (inputKey) inputKey.value = "";
         alert(`API Key for ${prov} saved securely in OpenSSL Vault.`);
       } else {
         alert("Failed to save API key.");
@@ -470,25 +516,29 @@ function setupEventListeners() {
       if (res.ok) {
         const data = await res.json();
         const detailsEl = document.getElementById("snapshot-details");
-        if (data.stats) {
-          detailsEl.innerHTML = `
-            <strong>Thread ID:</strong> ${data.session_id}<br>
-            <strong>Total Messages:</strong> ${data.stats.message_count}<br>
-            <strong>Segment Files:</strong> ${data.stats.segments}<br>
-            <strong>Total Byte Size:</strong> ${(data.stats.total_size_bytes / 1024).toFixed(2)} KB
-          `;
-        } else {
-          detailsEl.textContent = JSON.stringify(data, null, 2);
+        if (detailsEl) {
+          if (data.stats) {
+            detailsEl.innerHTML = `
+              <strong>Thread ID:</strong> ${data.session_id}<br>
+              <strong>Total Messages:</strong> ${data.stats.message_count}<br>
+              <strong>Segment Files:</strong> ${data.stats.segments}<br>
+              <strong>Total Byte Size:</strong> ${(data.stats.total_size_bytes / 1024).toFixed(2)} KB
+            `;
+          } else {
+            detailsEl.textContent = JSON.stringify(data, null, 2);
+          }
         }
-        modalSnapshot.showModal();
+        modalSnapshot?.showModal();
       }
     } catch (e) {}
   });
-  document.getElementById("btn-close-snapshot")?.onclick = () => modalSnapshot.close();
+  const btnCloseSnapshot = document.getElementById("btn-close-snapshot");
+  if (btnCloseSnapshot) btnCloseSnapshot.onclick = () => modalSnapshot?.close();
 }
 
 function renderAttachmentChips() {
   const container = document.getElementById("attachment-list");
+  if (!container) return;
   container.innerHTML = "";
   attachedFiles.forEach((att, idx) => {
     const chip = document.createElement("div");
@@ -497,10 +547,13 @@ function renderAttachmentChips() {
       <span>📎 ${att.name}</span>
       <button type="button" class="btn-remove-chip" data-idx="${idx}">×</button>
     `;
-    chip.querySelector(".btn-remove-chip").onclick = () => {
-      attachedFiles.splice(idx, 1);
-      renderAttachmentChips();
-    };
+    const btnRemove = chip.querySelector(".btn-remove-chip");
+    if (btnRemove) {
+      btnRemove.onclick = () => {
+        attachedFiles.splice(idx, 1);
+        renderAttachmentChips();
+      };
+    }
     container.appendChild(chip);
   });
 }
@@ -511,8 +564,9 @@ function startSSEStream(jobId) {
 
   eventSource.addEventListener("token", (e) => {
     const data = JSON.parse(e.data);
-    assistantMsgEl.textContent += data.delta;
-    document.getElementById("chat-messages").scrollTop = document.getElementById("chat-messages").scrollHeight;
+    if (assistantMsgEl) assistantMsgEl.textContent += data.delta;
+    const messagesEl = document.getElementById("chat-messages");
+    if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
   });
 
   eventSource.addEventListener("done", (e) => {
@@ -547,7 +601,11 @@ async function cancelJob() {
 }
 
 function toggleInputState(isBusy) {
-  document.getElementById("btn-send").classList.toggle("hidden", isBusy);
-  document.getElementById("btn-cancel").classList.toggle("hidden", !isBusy);
-  document.getElementById("prompt-input").disabled = isBusy;
+  const btnSend = document.getElementById("btn-send");
+  const btnCancel = document.getElementById("btn-cancel");
+  const promptInput = document.getElementById("prompt-input");
+
+  if (btnSend) btnSend.classList.toggle("hidden", isBusy);
+  if (btnCancel) btnCancel.classList.toggle("hidden", !isBusy);
+  if (promptInput) promptInput.disabled = isBusy;
 }
