@@ -1,5 +1,5 @@
 {
-  "new_thread": "+ Nuevo hilo",
+  "new_thread": "+ Nuevo chat",
   "settings": "Configuración",
   "settings_title": "Configuración de ejecución",
   "provider": "Proveedor",
@@ -40,7 +40,7 @@
   "api_key_placeholder": "Pega la clave API aquí",
   "save_encrypted_key": "Guardar clave cifrada",
   "snapshot_title": "📊 Instantánea del motor de sesión",
-  "prompt_new_thread": "Introduce el nombre del nuevo hilo:",
+  "prompt_new_thread": "Introduce el nombre del nuevo chat:",
   "msg_default_set": "Modelo predeterminado para {provider} establecido en {model}",
   "msg_models_refreshed": "Lista de modelos actualizada desde el proveedor.",
   "msg_key_saved": "Clave API para {provider} guardada de forma segura en el Vault OpenSSL.",
@@ -49,5 +49,5 @@
   "msg_save_key_failed": "Error al guardar la clave API.",
   "err_stream_disconnected": "[Error: Stream desconectado]",
   "err_network_failed": "[Error: Conexión de red fallida]",
-  "err_submission_failed": "Error al enviar el trabajo."
+  "err_submission_failed": "Error al enviar la solicitud."
 }
