@@ -1,5 +1,5 @@
 {
-  "new_thread": "+ Neuer Thread",
+  "new_thread": "+ Neuer Chat",
   "settings": "Einstellungen",
   "settings_title": "Laufzeit-Einstellungen",
   "provider": "Anbieter",
@@ -40,7 +40,7 @@
   "api_key_placeholder": "API-Schlüssel hier einfügen",
   "save_encrypted_key": "Verschlüsselten Schlüssel speichern",
   "snapshot_title": "📊 Sitzungs-Engine-Snapshot",
-  "prompt_new_thread": "Neuen Thread-Namen eingeben:",
+  "prompt_new_thread": "Neuen Chat-Namen eingeben:",
   "msg_default_set": "Standardmodell für {provider} auf {model} festgelegt",
   "msg_models_refreshed": "Modellliste vom Anbieter aktualisiert.",
   "msg_key_saved": "API-Schlüssel für {provider} sicher im OpenSSL-Vault gespeichert.",
@@ -49,5 +49,5 @@
   "msg_save_key_failed": "Fehler beim Speichern des API-Schlüssels.",
   "err_stream_disconnected": "[Fehler: Stream getrennt]",
   "err_network_failed": "[Fehler: Netzwerkverbindung fehlgeschlagen]",
-  "err_submission_failed": "Fehler beim Übermitteln des Jobs."
+  "err_submission_failed": "Fehler beim Übermitteln der Anfrage."
 }
