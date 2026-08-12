@@ -466,6 +466,7 @@ async def get_thread_snapshot(thread_id: str, request: Request, session_id: str 
 
     snapshot = await get_session_snapshot_ipc(
         extras_dir=config.BASH4LLM_EXTRAS_DIR,
+        config_dir=config.BASH4LLM_CONFIG_DIR,
         history_dir=config.BASH4LLM_HISTORY_DIR,
         tmp_dir=config.BASH4LLM_TMPDIR,
         thread_id=thread_id
@@ -534,7 +535,8 @@ async def create_chat_job(
                 detail=f"Invalid JSON payload: {str(e)}"
             )
 
-    payload_dict = payload.dict() if hasattr(payload, "dict") else payload.model_dump()
+    # Use model_dump() for Pydantic V2 compatibility with fallback to dict()
+    payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     payload_json = json.dumps(payload_dict, sort_keys=True)
     fingerprint = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
 
