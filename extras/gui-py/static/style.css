@@ -7,11 +7,6 @@
    License: GPL-3.0-or-later
    Repository: https://github.com/kamaludu/bash4llm
    Contact: opensource@cevangel.anonaddy.me
-   ==========================================================================
-   Design Tokens:
-   - Primary BG: #fffdf3 (Light cream / Warm paper)
-   - Text & Borders: #293137 (Dark charcoal grey)
-   - Accent & Highlights: #4eaa25 (Vibrant green)
    ========================================================================== */
 
 :root {
@@ -20,7 +15,6 @@
   --bg-tertiary: #e7dfc6;
   
   --text-primary: #293137;
-  --text-muted: #576570;
   --text-on-accent: #fffdf3;
   
   --accent-color: #4eaa25;
@@ -47,7 +41,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Base Layout Container */
 .app-container {
   display: flex;
   height: 100vh;
@@ -55,7 +48,7 @@ body {
   position: relative;
 }
 
-/* Brand & Highlights */
+/* Badge e Titoli in Evidenza */
 .brand-badge,
 .highlight-title {
   background-color: var(--accent-color);
@@ -75,7 +68,7 @@ body {
   margin-bottom: 1rem;
 }
 
-/* Sidebar */
+/* Sidebar e Navigazione */
 .sidebar {
   width: 300px;
   background-color: var(--bg-secondary);
@@ -95,6 +88,28 @@ body {
   gap: 0.5rem;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sidebar-close-btn {
+  display: none;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(41, 49, 55, 0.6);
+  z-index: 99;
+  display: none;
+}
+
+.sidebar-overlay.active {
+  display: block;
+}
+
 .thread-list-container {
   flex: 1;
   overflow-y: auto;
@@ -110,7 +125,6 @@ body {
   border-radius: 6px;
   margin-bottom: 0.4rem;
   cursor: pointer;
-  color: var(--text-primary);
   font-weight: 600;
   border: 1px solid transparent;
   display: flex;
@@ -128,7 +142,6 @@ body {
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   box-shadow: 2px 2px 0px var(--border-color);
-  color: var(--text-primary);
 }
 
 .sidebar-footer {
@@ -137,7 +150,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  background-color: var(--bg-secondary);
 }
 
 .status-indicator {
@@ -196,22 +208,6 @@ body {
 #current-thread-title {
   font-size: 1.1rem;
   font-weight: 700;
-  color: var(--text-primary);
-}
-
-.badge-stats {
-  background: var(--bg-primary);
-  border: 1.5px solid var(--border-color);
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 1px 1px 0px var(--border-color);
-}
-
-.badge-stats:hover {
-  background: var(--bg-tertiary);
 }
 
 .active-params-badge {
@@ -224,7 +220,7 @@ body {
   font-weight: 600;
 }
 
-/* Chat Messages Document Style */
+/* Messaggi della Chat */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -237,7 +233,7 @@ body {
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem;
+  padding: 1.5rem;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
@@ -276,7 +272,7 @@ body {
   background-color: rgba(243, 238, 220, 0.35);
 }
 
-/* Input Controls & Form */
+/* Controlli Input e Form */
 .input-container {
   padding: 1rem 1.5rem;
   border-top: 2px solid var(--border-color);
@@ -286,7 +282,6 @@ body {
   gap: 0.5rem;
 }
 
-/* Attachment Preview Chips */
 .attachment-list {
   display: flex;
   flex-wrap: wrap;
@@ -342,7 +337,7 @@ body {
   border-radius: 6px;
   padding: 0.75rem 1rem;
   color: var(--text-primary);
-  font-family: var(--font-family);
+  font-family: inherit;
   font-size: 0.95rem;
   line-height: 1.4;
   resize: none;
@@ -355,7 +350,6 @@ body {
   box-shadow: 3px 3px 0px var(--accent-color);
 }
 
-/* Toolbar under textarea */
 .input-toolbar {
   display: flex;
   align-items: center;
@@ -368,41 +362,49 @@ body {
   display: none;
 }
 
-.btn-tool {
+/* Elementi Utilità UI Accorpati */
+.btn-tool,
+.select-tool,
+.badge-stats {
   background: var(--bg-primary);
   border: 1.5px solid var(--border-color);
-  padding: 0.2rem 0.6rem;
   border-radius: 4px;
-  cursor: pointer;
   box-shadow: 1px 1px 0px var(--border-color);
+  font-weight: 600;
 }
 
-.btn-tool:hover {
+.btn-tool,
+.badge-stats {
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+
+.badge-stats {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.btn-tool:hover,
+.badge-stats:hover {
   background: var(--bg-tertiary);
 }
 
 .select-tool {
-  background: var(--bg-primary);
-  border: 1.5px solid var(--border-color);
   padding: 0.2rem 0.5rem;
-  border-radius: 4px;
   font-size: 0.8rem;
-  font-weight: 600;
 }
 
-.checkbox-tool {
+.checkbox-tool,
+.checkbox-label {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.input-actions {
-  display: flex;
-  align-items: center;
-}
-
-/* Buttons */
+/* Pulsanti Generici */
 .btn {
   padding: 0.65rem 1.25rem;
   border-radius: 6px;
@@ -471,7 +473,7 @@ body {
   margin-top: 0.8rem;
 }
 
-/* Modals */
+/* Finestre Diag Modal */
 .modal {
   border: none;
   background: transparent;
@@ -491,7 +493,6 @@ body {
   box-shadow: 6px 6px 0px var(--border-color);
   width: 100%;
   max-width: 480px;
-  color: var(--text-primary);
 }
 
 .form-group {
@@ -533,15 +534,6 @@ body {
 .input-with-button {
   display: flex;
   gap: 0.4rem;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 .vault-banner {
@@ -588,7 +580,7 @@ body {
   margin-top: 1.5rem;
 }
 
-/* Responsive */
+/* Layout Responsive Mobile */
 @media (min-width: 769px) {
   #btn-toggle-sidebar {
     display: none;
@@ -598,15 +590,17 @@ body {
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
+    inset: 0 auto 0 0;
     transform: translateX(-100%);
     box-shadow: 4px 0px 15px rgba(0,0,0,0.25);
   }
 
   .sidebar.active {
     transform: translateX(0);
+  }
+
+  .sidebar-close-btn {
+    display: inline-block;
   }
 
   .chat-header {
