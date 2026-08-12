@@ -30,10 +30,10 @@
       <div class="sidebar-footer">
         <div class="status-indicator">
           <span id="status-dot" class="status-dot ready"></span>
-          <span id="status-text">Ready</span>
+          <span id="status-text" data-i18n="status_ready">Ready</span>
         </div>
         <div class="footer-actions">
-          <button id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">🔒 Vault</button>
+          <button id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status" data-i18n="vault">🔒 Vault</button>
           <button id="btn-settings" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
         </div>
       </div>
@@ -46,7 +46,7 @@
         
         <div class="header-thread-info">
           <h3 id="current-thread-title">Default Thread</h3>
-          <button id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot">📊 Stats</button>
+          <button id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot" data-i18n="stats" data-i18n-title="stats">📊 Stats</button>
         </div>
 
         <div class="active-params-badge" id="active-params-badge">
@@ -80,17 +80,17 @@
             
             <div class="input-toolbar">
               <label for="file-upload-input" class="btn-tool" title="Attach File (-f)">
-                📎 Attach
+                <span data-i18n="attach">📎 Attach</span>
                 <input type="file" id="file-upload-input" class="hidden-file-input">
               </label>
 
               <select id="select-template" class="select-tool" title="Apply Prompt Template">
-                <option value="">-- No Template --</option>
+                <option value="" data-i18n="no_template">-- No Template --</option>
               </select>
 
               <label class="checkbox-tool" title="Validate SML v2.0 Safety Gate">
                 <input type="checkbox" id="check-sml-gate">
-                <span>SML Gate</span>
+                <span data-i18n="sml_gate">SML Gate</span>
               </label>
             </div>
           </div>
@@ -118,14 +118,14 @@
         <label for="select-model" data-i18n="model">Model</label>
         <div class="input-with-button">
           <select id="select-model" class="form-control"></select>
-          <button type="button" id="btn-set-default-model" class="btn btn-secondary btn-sm" title="Set as default model for provider">Set Default</button>
+          <button type="button" id="btn-set-default-model" class="btn btn-secondary btn-sm" title="Set as default model for provider" data-i18n="set_default">Set Default</button>
           <button type="button" id="btn-refresh-models" class="btn btn-secondary btn-sm" title="Refresh models list from provider">🔄</button>
         </div>
       </div>
 
       <div class="form-group">
-        <label for="input-system-prompt">System Prompt</label>
-        <textarea id="input-system-prompt" class="form-control" rows="2" placeholder="Optional system instructions..."></textarea>
+        <label for="input-system-prompt" data-i18n="system_prompt">System Prompt</label>
+        <textarea id="input-system-prompt" class="form-control" rows="2" placeholder="Optional system instructions..." data-i18n-placeholder="system_prompt_placeholder"></textarea>
       </div>
 
       <div class="form-row">
@@ -135,16 +135,16 @@
         </div>
 
         <div class="form-group col">
-          <label for="input-max-tokens">Max Tokens</label>
-          <input type="number" id="input-max-tokens" class="form-control" step="128" min="1" max="128000" placeholder="Default (4096)">
+          <label for="input-max-tokens" data-i18n="max_tokens">Max Tokens</label>
+          <input type="number" id="input-max-tokens" class="form-control" step="128" min="1" max="128000" placeholder="Default (4096)" data-i18n-placeholder="max_tokens_placeholder">
         </div>
       </div>
 
       <div class="form-group">
-        <label for="select-context-mode">Context Window Strategy</label>
+        <label for="select-context-mode" data-i18n="context_strategy">Context Window Strategy</label>
         <select id="select-context-mode" class="form-control">
-          <option value="messages">Message Count Window (N Messages)</option>
-          <option value="bytes">Token/Byte Budget Mode (Target Bytes)</option>
+          <option value="messages" data-i18n="ctx_messages">Message Count Window (N Messages)</option>
+          <option value="bytes" data-i18n="ctx_bytes">Token/Byte Budget Mode (Target Bytes)</option>
         </select>
       </div>
 
@@ -154,7 +154,7 @@
       </div>
 
       <div class="form-group hidden" id="group-target-bytes">
-        <label for="select-target-bytes">Token Target Budget</label>
+        <label for="select-target-bytes" data-i18n="target_budget">Token Target Budget</label>
         <select id="select-target-bytes" class="form-control">
           <option value="8192">8 KB (~2,000 Tokens)</option>
           <option value="16384">16 KB (~4,000 Tokens)</option>
@@ -167,7 +167,7 @@
       <div class="form-group">
         <label class="checkbox-label">
           <input type="checkbox" id="check-sanitize" checked>
-          <span>Enable Output Sanitization (Strip ANSI & Binaries)</span>
+          <span data-i18n="sanitize_output">Enable Output Sanitization (Strip ANSI & Binaries)</span>
         </label>
       </div>
 
@@ -181,7 +181,7 @@
   <!-- OpenSSL Vault & Key Manager Dialog Modal -->
   <dialog id="vault-modal" class="modal">
     <div class="modal-content">
-      <h3 class="highlight-title">🔒 OpenSSL Key Vault</h3>
+      <h3 class="highlight-title" data-i18n="vault_title">🔒 OpenSSL Key Vault</h3>
       
       <div id="vault-status-banner" class="vault-banner">
         <span id="vault-status-text">Checking Vault status...</span>
@@ -189,30 +189,30 @@
 
       <!-- Unlock Section -->
       <div id="vault-unlock-section" class="form-group">
-        <label for="input-master-password">Master Password</label>
-        <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock">
-        <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block mt-2">Unlock Vault Session</button>
+        <label for="input-master-password" data-i18n="master_password">Master Password</label>
+        <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock" data-i18n-placeholder="master_password_placeholder">
+        <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block mt-2" data-i18n="unlock_session">Unlock Vault Session</button>
       </div>
 
       <!-- Key Manager Section (Visible when unlocked) -->
       <div id="vault-key-section" class="vault-key-section hidden">
-        <h4 class="section-subtitle">Save Provider API Key</h4>
+        <h4 class="section-subtitle" data-i18n="save_api_key_title">Save Provider API Key</h4>
         
         <div class="form-group">
-          <label for="select-vault-provider">Provider</label>
+          <label for="select-vault-provider" data-i18n="provider">Provider</label>
           <select id="select-vault-provider" class="form-control"></select>
         </div>
 
         <div class="form-group">
-          <label for="input-vault-api-key">API Key</label>
-          <input type="password" id="input-vault-api-key" class="form-control" placeholder="Paste API Key here">
+          <label for="input-vault-api-key" data-i18n="api_key">API Key</label>
+          <input type="password" id="input-vault-api-key" class="form-control" placeholder="Paste API Key here" data-i18n-placeholder="api_key_placeholder">
         </div>
 
-        <button type="button" id="btn-save-vault-key" class="btn btn-primary btn-block">Save Encrypted Key</button>
+        <button type="button" id="btn-save-vault-key" class="btn btn-primary btn-block" data-i18n="save_encrypted_key">Save Encrypted Key</button>
       </div>
 
       <div class="modal-actions">
-        <button id="btn-close-vault" class="btn btn-secondary">Close</button>
+        <button id="btn-close-vault" class="btn btn-secondary" data-i18n="close">Close</button>
       </div>
     </div>
   </dialog>
@@ -220,14 +220,14 @@
   <!-- Session Engine Snapshot Stats Modal -->
   <dialog id="snapshot-modal" class="modal">
     <div class="modal-content">
-      <h3 class="highlight-title">📊 Session Engine Snapshot</h3>
+      <h3 class="highlight-title" data-i18n="snapshot_title">📊 Session Engine Snapshot</h3>
       
       <div id="snapshot-details" class="snapshot-details">
         <p>Loading session stats...</p>
       </div>
 
       <div class="modal-actions">
-        <button id="btn-close-snapshot" class="btn btn-secondary">Close</button>
+        <button id="btn-close-snapshot" class="btn btn-secondary" data-i18n="close">Close</button>
       </div>
     </div>
   </dialog>
