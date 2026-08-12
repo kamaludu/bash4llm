@@ -573,6 +573,18 @@ body {
   line-height: 1.6;
 }
 
+.help-details {
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  background: var(--bg-secondary);
+  padding: 1rem;
+  border: 1.5px solid var(--accent-color);
+  border-radius: 6px;
+  line-height: 1.6;
+  width: 95%;
+  margin: 0 auto;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
