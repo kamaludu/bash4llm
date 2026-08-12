@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bash4LLM⁺ WebApp - Help</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <main class="chat-viewport">
+
+      <!-- Top Header Navigation -->
+      <header class="chat-header">
+        <div class="header-thread-info">
+          <h1 class="brand-badge">Bash4LLM⁺</h1>
+          <h3 id="current-thread-title">GUI Command Guide</h3>
+        </div>
+        <a href="/" class="btn btn-primary btn-sm">← Back</a>
+      </header>
+
+      <!-- Main Content Viewport using existing snapshot-details layout -->
+      <section class="chat-messages">
+        <div class="snapshot-details">
+
+          <h3 class="highlight-title">🚀 Overview</h3>
+          <p>Local Web Interface for the bash4llm wrapper script.</p>
+
+          <h4 class="section-subtitle">💬 Sidebar & Threads</h4>
+          <ul>
+            <li><strong>+ New Thread:</strong> Create a new session thread.</li>
+            <li><strong>Thread List:</strong> Select thread to switch conversation.</li>
+            <li><strong>📊 Stats:</strong> View session message count and byte usage.</li>
+            <li><strong>🔒 Vault:</strong> Open key manager modal.</li>
+            <li><strong>Settings:</strong> Open runtime configuration modal.</li>
+          </ul>
+
+          <h4 class="section-subtitle">✍️ Input Controls</h4>
+          <ul>
+            <li><strong>Prompt:</strong> Enter user query or instruction.</li>
+            <li><strong>📎 Attach:</strong> Upload context file (-f flag).</li>
+            <li><strong>Templates:</strong> Apply prompt template from list.</li>
+            <li><strong>SML Gate:</strong> Enable SML v2.0 output validation.</li>
+            <li><strong>Send / Stop:</strong> Submit query or interrupt streaming.</li>
+          </ul>
+
+          <h4 class="section-subtitle">⚙️ Runtime Settings</h4>
+          <ul>
+            <li><strong>Provider / Model:</strong> Select active LLM backend and model.</li>
+            <li><strong>Set Default:</strong> Save default model for active provider.</li>
+            <li><strong>🔄 Refresh:</strong> Fetch updated model list from API.</li>
+            <li><strong>Params:</strong> Set System Prompt, Temperature, Max Tokens.</li>
+            <li><strong>Context Mode:</strong> Select N Messages window or Byte Budget.</li>
+            <li><strong>Sanitize:</strong> Strip ANSI codes and non-printable bytes.</li>
+          </ul>
+
+          <h4 class="section-subtitle">🔒 OpenSSL Key Vault</h4>
+          <ul>
+            <li><strong>Unlock:</strong> Authenticate session with Master Password.</li>
+            <li><strong>Save Key:</strong> Store encrypted API keys (AES-256).</li>
+          </ul>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>
