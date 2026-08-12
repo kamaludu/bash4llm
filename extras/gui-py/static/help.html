@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,230 +10,255 @@
   <div class="app-container">
     <main class="chat-viewport">
 
-      <!-- Top Header Navigation -->
+      <!-- Header Principale -->
       <header class="chat-header">
         <div class="header-thread-info">
-          <h3 class="brand-badge" id="top"><a href="/">&#9664;  Bash4LLM⁺ WebApp</a></h3>
-          <h1 class="highlight-title"> Help ❓</h1>
-          <!-- 1. Language Navigation Bar -->
-          <nav class="header-actions">
-            <a href="#en" class="btn-tool" title="English" aria-label="English">🇬🇧</a>
-            <a href="#it" class="btn-tool" title="Italiano" aria-label="Italiano">🇮🇹</a>
-            <a href="#es" class="btn-tool" title="Español" aria-label="Español">🇪🇸</a>
-            <a href="#fr" class="btn-tool" title="Français" aria-label="Français">🇫🇷</a>
-            <a href="#de" class="btn-tool" title="Deutsch" aria-label="Deutsch">🇩🇪</a>
-          </nav>
+          <a href="/" class="brand-badge" id="top">&#9664; Bash4LLM⁺ WebApp</a>
+          <span class="highlight-title">Help ❓</span>
         </div>
+        <nav class="header-actions">
+          <a href="#en" class="btn-tool" title="English">🇬🇧</a>
+          <a href="#it" class="btn-tool" title="Italiano">🇮🇹</a>
+          <a href="#es" class="btn-tool" title="Español">🇪🇸</a>
+          <a href="#fr" class="btn-tool" title="Français">🇫🇷</a>
+          <a href="#de" class="btn-tool" title="Deutsch">🇩🇪</a>
+        </nav>
       </header>
 
-      <!-- Main Content Viewport using existing snapshot-details layout -->
+      <!-- Area Contenuti Help -->
       <section class="chat-messages">
+
         <!-- English -->
-        <div class="snapshot-details" id="en">
-          <h2 id="current-thread-title"><a href="#top" title="English" aria-label="English">🇬🇧</a> GUI Command Guide</h2>
-          <h3 class="highlight-title">🚀 Overview</h3>
-          <p>Local Web Interface for the bash4llm wrapper script.</p>
+        <article class="message">
+          <div class="snapshot-details" id="en">
+            <div class="highlight-title">
+              <a href="#top">🇬🇧</a> GUI Command Guide
+            </div>
+            
+            <div class="section-subtitle mt-2">🚀 Overview</div>
+            <p>Local Web Interface for the bash4llm wrapper script.</p>
 
-          <h4 class="section-subtitle">💬 Sidebar & Threads</h4>
-          <ul>
-            <li><strong>+ New Thread:</strong> Create a new session thread.</li>
-            <li><strong>Thread List:</strong> Select thread to switch conversation.</li>
-            <li><strong>📊 Stats:</strong> View session message count and byte usage.</li>
-            <li><strong>🔒 Vault:</strong> Open key manager modal.</li>
-            <li><strong>Settings:</strong> Open runtime configuration modal.</li>
-          </ul>
+            <div class="section-subtitle mt-2">💬 Sidebar & Threads</div>
+            <ul>
+              <li><strong>+ New Thread:</strong> Create a new session thread.</li>
+              <li><strong>Thread List:</strong> Select thread to switch conversation.</li>
+              <li><strong>📊 Stats:</strong> View session message count and byte usage.</li>
+              <li><strong>🔒 Vault:</strong> Open key manager modal.</li>
+              <li><strong>Settings:</strong> Open runtime configuration modal.</li>
+            </ul>
 
-          <h4 class="section-subtitle">✍️ Input Controls</h4>
-          <ul>
-            <li><strong>Prompt:</strong> Enter user query or instruction.</li>
-            <li><strong>📎 Attach:</strong> Upload context file (-f flag).</li>
-            <li><strong>Templates:</strong> Apply prompt template from list.</li>
-            <li><strong>SML Gate:</strong> (Structured Metadata Layout) Validates that the AI response contains the mandatory summary and outcome sections.</li>
-            <li><strong>Send / Stop:</strong> Submit query or interrupt streaming.</li>
-          </ul>
+            <div class="section-subtitle mt-2">✍️ Input Controls</div>
+            <ul>
+              <li><strong>Prompt:</strong> Enter user query or instruction.</li>
+              <li><strong>📎 Attach:</strong> Upload context file (-f flag).</li>
+              <li><strong>Templates:</strong> Apply prompt template from list.</li>
+              <li><strong>SML Gate:</strong> (Structured Metadata Layout) Validates that the AI response contains the mandatory summary and outcome sections.</li>
+              <li><strong>Send / Stop:</strong> Submit query or interrupt streaming.</li>
+            </ul>
 
-          <h4 class="section-subtitle">⚙️ Runtime Settings</h4>
-          <ul>
-            <li><strong>Provider / Model:</strong> Select active LLM backend and model.</li>
-            <li><strong>Set Default:</strong> Save default model for active provider.</li>
-            <li><strong>🔄 Refresh:</strong> Fetch updated model list from API.</li>
-            <li><strong>Params:</strong> Set System Prompt, Temperature, Max Tokens.</li>
-            <li><strong>Context Mode:</strong> Select N Messages window or Byte Budget.</li>
-            <li><strong>Sanitize:</strong> Strip ANSI codes and non-printable bytes.</li>
-          </ul>
+            <div class="section-subtitle mt-2">⚙️ Runtime Settings</div>
+            <ul>
+              <li><strong>Provider / Model:</strong> Select active LLM backend and model.</li>
+              <li><strong>Set Default:</strong> Save default model for active provider.</li>
+              <li><strong>🔄 Refresh:</strong> Fetch updated model list from API.</li>
+              <li><strong>Params:</strong> Set System Prompt, Temperature, Max Tokens.</li>
+              <li><strong>Context Mode:</strong> Select N Messages window or Byte Budget.</li>
+              <li><strong>Sanitize:</strong> Strip ANSI codes and non-printable bytes.</li>
+            </ul>
 
-          <h4 class="section-subtitle">🔒 OpenSSL Key Vault</h4>
-          <ul>
-            <li><strong>Unlock:</strong> Authenticate session with Master Password.</li>
-            <li><strong>Save Key:</strong> Store encrypted API keys (AES-256).</li>
-          </ul>
-        </div>
-        <br>
+            <div class="section-subtitle mt-2">🔒 OpenSSL Key Vault</div>
+            <ul>
+              <li><strong>Unlock:</strong> Authenticate session with Master Password.</li>
+              <li><strong>Save Key:</strong> Store encrypted API keys (AES-256).</li>
+            </ul>
+          </div>
+        </article>
+
         <!-- Italian -->
-        <div class="snapshot-details" id="it">
-          <h2 id="current-thread-title"><a href="#top" title="Italiano" aria-label="Italiano">🇮🇹</a> Guida ai comandi della GUI</h2>
-          <h3 class="highlight-title">🚀 Panoramica</h3>
-          <p>Interfaccia web locale per lo script wrapper bash4llm.</p>
+        <article class="message">
+          <div class="snapshot-details" id="it">
+            <div class="highlight-title">
+              <a href="#top">🇮🇹</a> Guida ai comandi della GUI
+            </div>
 
-          <h4 class="section-subtitle">💬 Barra laterale e thread</h4>
-          <ul>
-            <li><strong>+ Nuovo thread:</strong> Crea un nuovo thread di sessione.</li>
-            <li><strong>Elenco thread:</strong> Seleziona un thread per cambiare conversazione.</li>
-            <li><strong>📊 Statistiche:</strong> Visualizza il conteggio dei messaggi e l'utilizzo dei byte della sessione.</li>
-            <li><strong>🔒 Vault:</strong> Apri la finestra modale del gestore chiavi.</li>
-            <li><strong>Impostazioni:</strong> Apri la finestra modale delle impostazioni di runtime.</li>
-          </ul>
+            <div class="section-subtitle mt-2">🚀 Panoramica</div>
+            <p>Interfaccia web locale per lo script wrapper bash4llm.</p>
 
-          <h4 class="section-subtitle">✍️ Controlli di input</h4>
-          <ul>
-            <li><strong>Prompt:</strong> Inserisci la query o l'istruzione dell'utente.</li>
-            <li><strong>📎 Allega:</strong> Carica un file di contesto (flag -f).</li>
-            <li><strong>Template:</strong> Applica un template di prompt dall'elenco.</li>
-            <li><strong>SML Gate:</strong> (Structured Metadata Layout) Verifica che la risposta dell'IA contenga le sezioni obbligatorie di sommario e risultato.</li>
-            <li><strong>Invia / Interrompi:</strong> Invia la query o interrompi lo streaming.</li>
-          </ul>
+            <div class="section-subtitle mt-2">💬 Barra laterale e chat</div>
+            <ul>
+              <li><strong>+ Nuova chat:</strong> Crea una nuova chat di sessione.</li>
+              <li><strong>Elenco chat:</strong> Seleziona una chat per cambiare conversazione.</li>
+              <li><strong>📊 Statistiche:</strong> Visualizza il conteggio dei messaggi e l'utilizzo dei byte della sessione.</li>
+              <li><strong>🔒 Vault:</strong> Apri la finestra modale del gestore chiavi.</li>
+              <li><strong>Impostazioni:</strong> Apri la finestra modale delle impostazioni di runtime.</li>
+            </ul>
 
-          <h4 class="section-subtitle">⚙️ Impostazioni di runtime</h4>
-          <ul>
-            <li><strong>Provider / Modello:</strong> Seleziona il backend LLM e il modello attivi.</li>
-            <li><strong>Imposta predefinito:</strong> Salva il modello predefinito per il provider attivo.</li>
-            <li><strong>🔄 Aggiorna:</strong> Recupera l'elenco dei modelli aggiornato dall'API.</li>
-            <li><strong>Parametri:</strong> Imposta prompt di sistema, temperatura e token massimi.</li>
-            <li><strong>Modalità contesto:</strong> Seleziona la finestra N messaggi o il budget di byte.</li>
-            <li><strong>Sanifica:</strong> Rimuovi codici ANSI e byte non stampabili.</li>
-          </ul>
+            <div class="section-subtitle mt-2">✍️ Controlli di input</div>
+            <ul>
+              <li><strong>Prompt:</strong> Inserisci la query o l'istruzione dell'utente.</li>
+              <li><strong>📎 Allega:</strong> Carica un file di contesto (flag -f).</li>
+              <li><strong>Template:</strong> Applica un template di prompt dall'elenco.</li>
+              <li><strong>SML Gate:</strong> (Structured Metadata Layout) Verifica che la risposta dell'IA contenga le sezioni obbligatorie di sommario e risultato.</li>
+              <li><strong>Invia / Interrompi:</strong> Invia la query o interrompi lo streaming.</li>
+            </ul>
 
-          <h4 class="section-subtitle">🔒 Vault chiavi OpenSSL</h4>
-          <ul>
-            <li><strong>Sblocca:</strong> Autentica la sessione con la master password.</li>
-            <li><strong>Salva chiave:</strong> Salva le chiavi API crittografate (AES-256).</li>
-          </ul>
-        </div>
-        <br>
+            <div class="section-subtitle mt-2">⚙️ Impostazioni di runtime</div>
+            <ul>
+              <li><strong>Provider / Modello:</strong> Seleziona il backend LLM e il modello attivi.</li>
+              <li><strong>Imposta predefinito:</strong> Salva il modello predefinito per il provider attivo.</li>
+              <li><strong>🔄 Aggiorna:</strong> Recupera l'elenco dei modelli aggiornato dall'API.</li>
+              <li><strong>Parametri:</strong> Imposta prompt di sistema, temperatura e token massimi.</li>
+              <li><strong>Modalità contesto:</strong> Seleziona la finestra N messaggi o il budget di byte.</li>
+              <li><strong>Sanifica:</strong> Rimuovi codici ANSI e byte non stampabili.</li>
+            </ul>
+
+            <div class="section-subtitle mt-2">🔒 Vault chiavi OpenSSL</div>
+            <ul>
+              <li><strong>Sblocca:</strong> Autentica la sessione con la master password.</li>
+              <li><strong>Salva chiave:</strong> Salva le chiavi API crittografate (AES-256).</li>
+            </ul>
+          </div>
+        </article>
+
         <!-- Spanish -->
-        <div class="snapshot-details" id="es">
-          <h2 id="current-thread-title"><a href="#top" title="Español" aria-label="Español">🇪🇸</a> Guía de comandos de la GUI</h2>
-          <h3 class="highlight-title">🚀 Resumen</h3>
-          <p>Interfaz web local para el script wrapper bash4llm.</p>
+        <article class="message">
+          <div class="snapshot-details" id="es">
+            <div class="highlight-title">
+              <a href="#top">🇪🇸</a> Guía de comandos de la GUI
+            </div>
 
-          <h4 class="section-subtitle">💬 Barra lateral y chats</h4>
-          <ul>
-            <li><strong>+ Nuevo chat:</strong> Crea un nuevo chat de sesión.</li>
-            <li><strong>Lista de chats:</strong> Selecciona un chat para cambiar de conversación.</li>
-            <li><strong>📊 Estadísticas:</strong> Muestra el recuento de mensajes de la sesión y el uso de bytes.</li>
-            <li><strong>🔒 Vault:</strong> Abre la ventana modal del gestor de claves.</li>
-            <li><strong>Configuración:</strong> Abre la ventana modal de configuración de ejecución.</li>
-          </ul>
+            <div class="section-subtitle mt-2">🚀 Resumen</div>
+            <p>Interfaz web local para el script wrapper bash4llm.</p>
 
-          <h4 class="section-subtitle">✍️ Controles de entrada</h4>
-          <ul>
-            <li><strong>Prompt:</strong> Introduce la consulta o instrucción del usuario.</li>
-            <li><strong>📎 Adjuntar:</strong> Carga un archivo de contexto (opción -f).</li>
-            <li><strong>Plantillas:</strong> Aplica una plantilla de prompt de la lista.</li>
-            <li><strong>SML Gate:</strong> (Structured Metadata Layout) Valida que la respuesta de la IA contenga las secciones obligatorias de resumen y resultado.</li>
-            <li><strong>Enviar / Detener:</strong> Envía la consulta o interrumpe la transmisión.</li>
-          </ul>
+            <div class="section-subtitle mt-2">💬 Barra lateral y chats</div>
+            <ul>
+              <li><strong>+ Nuevo chat:</strong> Crea un nuevo chat de sesión.</li>
+              <li><strong>Lista de chats:</strong> Selecciona un chat para cambiar de conversación.</li>
+              <li><strong>📊 Estadísticas:</strong> Muestra el recuento de mensajes de la sesión y el uso de bytes.</li>
+              <li><strong>🔒 Vault:</strong> Abre la ventana modal del gestor de claves.</li>
+              <li><strong>Configuración:</strong> Abre la ventana modal de configuración de ejecución.</li>
+            </ul>
 
-          <h4 class="section-subtitle">⚙️ Configuración de ejecución</h4>
-          <ul>
-            <li><strong>Proveedor / Modelo:</strong> Selecciona el backend de LLM y el modelo activos.</li>
-            <li><strong>Establecer como predeterminado:</strong> Guarda el modelo predeterminado para el proveedor activo.</li>
-            <li><strong>🔄 Actualizar:</strong> Obtiene la lista actualizada de modelos desde la API.</li>
-            <li><strong>Parámetros:</strong> Define el prompt del sistema, la temperatura y los tokens máximos.</li>
-            <li><strong>Modo de contexto:</strong> Selecciona la ventana de recuento de N mensajes o el presupuesto de bytes.</li>
-            <li><strong>Sanitizar:</strong> Elimina códigos ANSI y bytes no imprimibles.</li>
-          </ul>
+            <div class="section-subtitle mt-2">✍️ Controles de entrada</div>
+            <ul>
+              <li><strong>Prompt:</strong> Introduce la consulta o instrucción del usuario.</li>
+              <li><strong>📎 Adjuntar:</strong> Carga un archivo de contexto (opción -f).</li>
+              <li><strong>Plantillas:</strong> Aplica una plantilla de prompt de la lista.</li>
+              <li><strong>SML Gate:</strong> (Structured Metadata Layout) Valida que la respuesta de la IA contenga las secciones obligatorias de resumen y resultado.</li>
+              <li><strong>Enviar / Detener:</strong> Envía la consulta o interrumpe la transmisión.</li>
+            </ul>
 
-          <h4 class="section-subtitle">🔒 Vault de claves OpenSSL</h4>
-          <ul>
-            <li><strong>Desbloquear:</strong> Autentica la sesión con la contraseña maestra.</li>
-            <li><strong>Guardar clave:</strong> Almacena claves API cifradas (AES-256).</li>
-          </ul>
-        </div>        
-        <br>
+            <div class="section-subtitle mt-2">⚙️ Configuración de ejecución</div>
+            <ul>
+              <li><strong>Proveedor / Modelo:</strong> Selecciona el backend de LLM y el modelo activos.</li>
+              <li><strong>Establecer como predeterminado:</strong> Guarda el modelo predeterminado para el proveedor activo.</li>
+              <li><strong>🔄 Actualizar:</strong> Obtiene la lista actualizada de modelos desde la API.</li>
+              <li><strong>Parámetros:</strong> Define el prompt del sistema, la temperatura y los tokens máximos.</li>
+              <li><strong>Modo de contexto:</strong> Selecciona la ventana de recuento de N mensajes o el presupuesto de bytes.</li>
+              <li><strong>Sanitizar:</strong> Elimina códigos ANSI y bytes no imprimibles.</li>
+            </ul>
+
+            <div class="section-subtitle mt-2">🔒 Vault de claves OpenSSL</div>
+            <ul>
+              <li><strong>Desbloquear:</strong> Authentica la sesión con la contraseña maestra.</li>
+              <li><strong>Guardar clave:</strong> Almacena claves API cifradas (AES-256).</li>
+            </ul>
+          </div>
+        </article>
+
         <!-- French -->
-        <div class="snapshot-details" id="fr">
-          <h2 id="current-thread-title"><a href="#top" title="Français" aria-label="Français">🇫🇷</a> Guide des commandes de la GUI</h2>
-          <h3 class="highlight-title">🚀 Aperçu</h3>
-          <p>Interface web locale pour le script wrapper bash4llm.</p>
+        <article class="message">
+          <div class="snapshot-details" id="fr">
+            <div class="highlight-title">
+              <a href="#top">🇫🇷</a> Guide des commandes de la GUI
+            </div>
 
-          <h4 class="section-subtitle">💬 Barre latérale et chats</h4>
-          <ul>
-            <li><strong>+ Nouveau chat :</strong> Créer un nouveau chat de session.</li>
-            <li><strong>Liste des chats :</strong> Sélectionner un chat pour changer de conversation.</li>
-            <li><strong>📊 Statistiques :</strong> Afficher le nombre de messages et l'utilisation des octets de la session.</li>
-            <li><strong>🔒 Vault :</strong> Ouvrir la fenêtre modale du gestionnaire de clés.</li>
-            <li><strong>Paramètres :</strong> Ouvrir la fenêtre modale de configuration d'exécution.</li>
-          </ul>
+            <div class="section-subtitle mt-2">🚀 Aperçu</div>
+            <p>Interface web locale pour le script wrapper bash4llm.</p>
 
-          <h4 class="section-subtitle">✍️ Contrôles de saisie</h4>
-          <ul>
-            <li><strong>Prompt :</strong> Saisir la requête ou l'instruction de l'utilisateur.</li>
-            <li><strong>📎 Joindre :</strong> Téléverser un fichier de contexte (option -f).</li>
-            <li><strong>Templates :</strong> Appliquer un template de prompt depuis la liste.</li>
-            <li><strong>SML Gate :</strong> (Structured Metadata Layout) Valide que la réponse de l'IA contient les sections obligatoires de résumé et de résultat.</li>
-            <li><strong>Envoyer / Arrêter :</strong> Soumettre la requête ou interrompre le flux.</li>
-          </ul>
+            <div class="section-subtitle mt-2">💬 Barre latérale et chats</div>
+            <ul>
+              <li><strong>+ Nouveau chat :</strong> Créer un nouveau chat de session.</li>
+              <li><strong>Liste des chats :</strong> Sélectionner un chat pour changer de conversation.</li>
+              <li><strong>📊 Statistiques :</strong> Afficher le nombre de messages et l'utilisation des octets de la session.</li>
+              <li><strong>🔒 Vault :</strong> Ouvrir la fenêtre modale du gestionnaire de clés.</li>
+              <li><strong>Paramètres :</strong> Ouvrir la fenêtre modale de configuration d'exécution.</li>
+            </ul>
 
-          <h4 class="section-subtitle">⚙️ Paramètres d'exécution</h4>
-          <ul>
-            <li><strong>Fournisseur / Modèle :</strong> Sélectionner le backend LLM et le modèle actifs.</li>
-            <li><strong>Définir par défaut :</strong> Enregistrer le modèle par défaut pour le fournisseur actif.</li>
-            <li><strong>🔄 Actualiser :</strong> Récupérer la liste à jour des modèles depuis l'API.</li>
-            <li><strong>Paramètres :</strong> Définir le prompt système, la température et les tokens max.</li>
-            <li><strong>Mode de contexte :</strong> Sélectionner la fenêtre de N messages ou le budget d'octets.</li>
-            <li><strong>Assainir :</strong> Supprimer les codes ANSI et les octets non imprimables.</li>
-          </ul>
+            <div class="section-subtitle mt-2">✍️ Contrôles de saisie</div>
+            <ul>
+              <li><strong>Prompt :</strong> Saisir la requête ou l'instruction de l'utilisateur.</li>
+              <li><strong>📎 Joindre :</strong> Téléverser un fichier de contexte (option -f).</li>
+              <li><strong>Templates :</strong> Appliquer un template de prompt depuis la liste.</li>
+              <li><strong>SML Gate :</strong> (Structured Metadata Layout) Valide que la réponse de l'IA contient les sections obligatoires de résumé et de résultat.</li>
+              <li><strong>Envoyer / Arrêter :</strong> Soumettre la requête ou interrompre le flux.</li>
+            </ul>
 
-          <h4 class="section-subtitle">🔒 Vault de clés OpenSSL</h4>
-          <ul>
-            <li><strong>Déverrouiller :</strong> Authentifier la session avec le mot de passe maître.</li>
-            <li><strong>Enregistrer la clé :</strong> Stocker les clés API chiffrées (AES-256).</li>
-          </ul>
-        </div>        
-        <br>
+            <div class="section-subtitle mt-2">⚙️ Paramètres d'exécution</div>
+            <ul>
+              <li><strong>Fournisseur / Modèle :</strong> Sélectionner le backend LLM et le modèle actifs.</li>
+              <li><strong>Définir par défaut :</strong> Enregistrer le modèle par défaut pour le fournisseur actif.</li>
+              <li><strong>🔄 Actualiser :</strong> Récupérer la liste à jour des modèles depuis l'API.</li>
+              <li><strong>Paramètres :</strong> Définir le prompt système, la température et les tokens max.</li>
+              <li><strong>Mode de contexte :</strong> Sélectionner la fenêtre de N messages ou le budget d'octets.</li>
+              <li><strong>Assainir :</strong> Supprimer les codes ANSI et les octets non imprimables.</li>
+            </ul>
+
+            <div class="section-subtitle mt-2">🔒 Vault de clés OpenSSL</div>
+            <ul>
+              <li><strong>Déverrouiller :</strong> Authentifier la session avec le mot de passe maître.</li>
+              <li><strong>Enregistrer la clé :</strong> Stocker les clés API chiffrées (AES-256).</li>
+            </ul>
+          </div>
+        </article>
+
         <!-- German -->
-        <div class="snapshot-details" id="de">
-          <h2 id="current-thread-title"><a href="#top" title="Deutsch" aria-label="Deutsch">🇩🇪</a> GUI-Befehlsanleitung</h2>
-          <h3 class="highlight-title">🚀 Übersicht</h3>
-          <p>Lokale Web-Benutzeroberfläche für das bash4llm-Wrapper-Skript.</p>
+        <article class="message">
+          <div class="snapshot-details" id="de">
+            <div class="highlight-title">
+              <a href="#top">🇩🇪</a> GUI-Befehlsanleitung
+            </div>
 
-          <h4 class="section-subtitle">💬 Seitenleiste & Chats</h4>
-          <ul>
-            <li><strong>+ Neuer Chat:</strong> Einen neuen Sitzungs-Chat erstellen.</li>
-            <li><strong>Chat-Liste:</strong> Chat auswählen, um die Unterhaltung zu wechseln.</li>
-            <li><strong>📊 Statistiken:</strong> Sitzungsnachrichtenanzahl und Byte-Nutzung anzeigen.</li>
-            <li><strong>🔒 Vault:</strong> Schlüsselmanager-Modal öffnen.</li>
-            <li><strong>Einstellungen:</strong> Laufzeit-Konfigurationsmodal öffnen.</li>
-          </ul>
+            <div class="section-subtitle mt-2">🚀 Übersicht</div>
+            <p>Lokale Web-Benutzeroberfläche für das bash4llm-Wrapper-Skript.</p>
 
-          <h4 class="section-subtitle">✍️ Eingabesteuerung</h4>
-          <ul>
-            <li><strong>Prompt:</strong> Benutzeranfrage oder -anweisung eingeben.</li>
-            <li><strong>📎 Anhängen:</strong> Kontextdatei hochladen (Flag -f).</li>
-            <li><strong>Templates:</strong> Prompt-Template aus der Liste anwenden.</li>
-            <li><strong>SML Gate:</strong> (Structured Metadata Layout) Überprüft, ob die KI-Antwort die obligatorischen Abschnitte Zusammenfassung und Ergebnis enthält.</li>
-            <li><strong>Senden / Stopp:</strong> Anfrage übermitteln oder Streaming unterbrechen.</li>
-          </ul>
+            <div class="section-subtitle mt-2">💬 Seitenleiste & Chats</div>
+            <ul>
+              <li><strong>+ Neuer Chat:</strong> Einen neuen Sitzungs-Chat erstellen.</li>
+              <li><strong>Chat-Liste:</strong> Chat auswählen, um die Unterhaltung zu wechseln.</li>
+              <li><strong>📊 Statistiken:</strong> Sitzungsnachrichtenanzahl und Byte-Nutzung anzeigen.</li>
+              <li><strong>🔒 Vault:</strong> Schlüsselmanager-Modal öffnen.</li>
+              <li><strong>Einstellungen:</strong> Laufzeit-Konfigurationsmodal öffnen.</li>
+            </ul>
 
-          <h4 class="section-subtitle">⚙️ Laufzeit-Einstellungen</h4>
-          <ul>
-            <li><strong>Anbieter / Modell:</strong> Aktives LLM-Backend und Modell auswählen.</li>
-            <li><strong>Als Standard festlegen:</strong> Standardmodell für aktiven Anbieter speichern.</li>
-            <li><strong>🔄 Aktualisieren:</strong> Aktualisierte Modellliste vom Anbieter abrufen.</li>
-            <li><strong>Parameter:</strong> System-Prompt, Temperatur und max. Tokens festlegen.</li>
-            <li><strong>Kontextmodus:</strong> Fenster für N Nachrichten oder Byte-Budget auswählen.</li>
-            <li><strong>Bereinigen:</strong> ANSI-Codes und nicht druckbare Bytes entfernen.</li>
-          </ul>
+            <div class="section-subtitle mt-2">✍️ Eingabesteuerung</div>
+            <ul>
+              <li><strong>Prompt:</strong> Benutzeranfrage oder -anweisung eingeben.</li>
+              <li><strong>📎 Anhängen:</strong> Kontextdatei hochladen (Flag -f).</li>
+              <li><strong>Templates:</strong> Prompt-Template aus der Liste anwenden.</li>
+              <li><strong>SML Gate:</strong> (Structured Metadata Layout) Überprüft, ob die KI-Antwort die obligatorischen Abschnitte Zusammenfassung und Ergebnis enthält.</li>
+              <li><strong>Senden / Stopp:</strong> Anfrage übermitteln oder Streaming unterbrechen.</li>
+            </ul>
 
-          <h4 class="section-subtitle">🔒 OpenSSL-Schlüssel-Vault</h4>
-          <ul>
-            <li><strong>Entsperren:</strong> Sitzung mit Master-Passwort authentifizieren.</li>
-            <li><strong>Schlüssel speichern:</strong> Verschlüsselte API-Schlüssel speichern (AES-256).</li>
-          </ul>
-        </div>        
+            <div class="section-subtitle mt-2">⚙️ Laufzeit-Einstellungen</div>
+            <ul>
+              <li><strong>Anbieter / Modell:</strong> Aktives LLM-Backend und Modell auswählen.</li>
+              <li><strong>Als Standard festlegen:</strong> Standardmodell für aktiven Anbieter speichern.</li>
+              <li><strong>🔄 Aktualisieren:</strong> Aktualisierte Modellliste vom Anbieter abrufen.</li>
+              <li><strong>Parameter:</strong> System-Prompt, Temperatur und max. Tokens festlegen.</li>
+              <li><strong>Kontextmodus:</strong> Fenster für N Nachrichten oder Byte-Budget auswählen.</li>
+              <li><strong>Bereinigen:</strong> ANSI-Codes und nicht druckbare Bytes entfernen.</li>
+            </ul>
+
+            <div class="section-subtitle mt-2">🔒 OpenSSL-Schlüssel-Vault</div>
+            <ul>
+              <li><strong>Entsperren:</strong> Sitzung mit Master-Passwort authentifizieren.</li>
+              <li><strong>Schlüssel speichern:</strong> Verschlüsselte API-Schlüssel speichern (AES-256).</li>
+            </ul>
+          </div>
+        </article>
+
       </section>
-
     </main>
   </div>
 </body>
