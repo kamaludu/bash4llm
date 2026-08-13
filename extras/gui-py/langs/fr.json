@@ -50,4 +50,12 @@
   "err_stream_disconnected": "[Erreur : Flux déconnecté]",
   "err_network_failed": "[Erreur : Échec de la connexion réseau]",
   "err_submission_failed": "Erreur lors de l'envoi de la requête."
+  "help": "Aide",
+  "prompt_label": "Prompt utilisateur",
+  "template_label": "Sélectionner le template de prompt",
+  "error_title": "Accès restreint / Erreur de session",
+  "error_message": "Votre session est manquante, expirée ou l'accès a été refusé par la couche de sécurité du backend.",
+  "error_instruction_cli": "Pour démarrer une nouvelle session WebApp sécurisée, exécutez la commande suivante dans votre terminal :",
+  "error_instruction_url": "Ouvrez ensuite l'URL d'authentification à usage unique générée dans votre navigateur web.",
+  "error_back_home": "Retour à la WebApp"
 }
