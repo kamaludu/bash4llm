@@ -8,23 +8,20 @@
 </head>
 <body>
   <div class="app-container">
-    <!-- Overlay for closing sidebar on mobile -->
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-    <!-- Sidebar / Thread Navigator -->
+    <!-- Sidebar / Navigatore Thread -->
     <aside class="sidebar" id="sidebar" tabindex="-1">
       <div class="sidebar-header">
         <h2 class="brand-badge">Bash4LLM⁺</h2>
         <div class="header-actions">
-          <button id="btn-new-thread" class="btn btn-primary" data-i18n="new_thread">+ New Thread</button>
-          <button id="btn-close-sidebar" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
+          <button id="btn-new-thread" type="button" class="btn btn-primary" data-i18n="new_thread">+ New Thread</button>
+          <button id="btn-close-sidebar" type="button" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
         </div>
       </div>
 
       <div class="thread-list-container">
-        <ul id="thread-list" class="thread-list">
-          <!-- Dynamically populated by app.js -->
-        </ul>
+        <ul id="thread-list" class="thread-list"></ul>
       </div>
 
       <div class="sidebar-footer">
@@ -33,21 +30,21 @@
           <span id="status-text" data-i18n="status_ready">Ready</span>
         </div>
         <div class="footer-actions">
-          <button id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status" data-i18n="vault">🔒 Vault</button>
-          <button id="btn-settings" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
+          <button id="btn-vault" type="button" class="btn btn-secondary btn-sm" title="Key Vault Status" data-i18n="vault">🔒 Vault</button>
+          <button id="btn-settings" type="button" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
           <a href="/static/help.html" class="btn btn-secondary btn-sm" style="text-decoration:none; text-align:center;">❓ Help</a>
         </div>
       </div>
     </aside>
 
-    <!-- Main Chat Workspace -->
+    <!-- Main Workspace -->
     <main class="chat-viewport">
       <header class="chat-header">
-        <button id="btn-toggle-sidebar" class="btn-icon" aria-label="Toggle Sidebar">☰ Menu</button>
+        <button id="btn-toggle-sidebar" type="button" class="btn-icon" aria-label="Toggle Sidebar">☰ Menu</button>
         
         <div class="header-thread-info">
           <h3 id="current-thread-title">Default Thread</h3>
-          <button id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot" data-i18n="stats" data-i18n-title="stats">📊 Stats</button>
+          <button id="btn-thread-stats" type="button" class="badge-stats" title="View Session Engine Snapshot" data-i18n="stats">📊 Stats</button>
         </div>
 
         <div class="active-params-badge" id="active-params-badge">
@@ -55,14 +52,11 @@
         </div>
       </header>
 
-      <!-- Document/Terminal Style Chat Display -->
-      <section id="chat-messages" class="chat-messages">
-        <!-- SSE streamed messages injected here dynamically by app.js -->
-      </section>
+      <!-- Feed Messaggi -->
+      <section id="chat-messages" class="chat-messages" aria-live="polite" aria-atomic="false"></section>
 
-      <!-- Prompt Input Controls -->
+      <!-- Input Form -->
       <footer class="input-container">
-        <!-- Attachment Chips Preview Area -->
         <div id="attachment-list" class="attachment-list"></div>
 
         <form id="chat-form" action="/api/chat" method="POST" class="chat-form">
@@ -173,13 +167,13 @@
       </div>
 
       <div class="modal-actions">
-        <button id="btn-save-settings" class="btn btn-primary" data-i18n="save">Save</button>
-        <button id="btn-close-settings" class="btn btn-secondary" data-i18n="close">Close</button>
+        <button type="button" id="btn-save-settings" class="btn btn-primary" data-i18n="save">Save</button>
+        <button type="button" id="btn-close-settings" class="btn btn-secondary" data-i18n="close">Close</button>
       </div>
     </div>
   </dialog>
 
-  <!-- OpenSSL Vault & Key Manager Dialog Modal -->
+  <!-- OpenSSL Vault Dialog Modal -->
   <dialog id="vault-modal" class="modal">
     <div class="modal-content">
       <h3 class="highlight-title" data-i18n="vault_title">🔒 OpenSSL Key Vault</h3>
@@ -188,14 +182,12 @@
         <span id="vault-status-text">Checking Vault status...</span>
       </div>
 
-      <!-- Unlock Section -->
       <div id="vault-unlock-section" class="form-group">
         <label for="input-master-password" data-i18n="master_password">Master Password</label>
         <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock" data-i18n-placeholder="master_password_placeholder">
         <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block mt-2" data-i18n="unlock_session">Unlock Vault Session</button>
       </div>
 
-      <!-- Key Manager Section (Visible when unlocked) -->
       <div id="vault-key-section" class="vault-key-section hidden">
         <h4 class="section-subtitle" data-i18n="save_api_key_title">Save Provider API Key</h4>
         
@@ -213,12 +205,12 @@
       </div>
 
       <div class="modal-actions">
-        <button id="btn-close-vault" class="btn btn-secondary" data-i18n="close">Close</button>
+        <button type="button" id="btn-close-vault" class="btn btn-secondary" data-i18n="close">Close</button>
       </div>
     </div>
   </dialog>
 
-  <!-- Session Engine Snapshot Stats Modal -->
+  <!-- Session Snapshot Dialog Modal -->
   <dialog id="snapshot-modal" class="modal">
     <div class="modal-content">
       <h3 class="highlight-title" data-i18n="snapshot_title">📊 Session Engine Snapshot</h3>
@@ -228,7 +220,7 @@
       </div>
 
       <div class="modal-actions">
-        <button id="btn-close-snapshot" class="btn btn-secondary" data-i18n="close">Close</button>
+        <button type="button" id="btn-close-snapshot" class="btn btn-secondary" data-i18n="close">Close</button>
       </div>
     </div>
   </dialog>
