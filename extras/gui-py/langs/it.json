@@ -50,4 +50,12 @@
   "err_stream_disconnected": "[Errore: Stream disconnesso]",
   "err_network_failed": "[Errore: Connessione di rete non riuscita]",
   "err_submission_failed": "Errore durante l'invio della richiesta."
+  "help": "Guida",
+  "prompt_label": "Prompt utente",
+  "template_label": "Seleziona template di prompt",
+  "error_title": "Accesso limitato / Errore di sessione",
+  "error_message": "La sessione è mancante, scaduta o l'accesso è stato negato dal livello di sicurezza del backend.",
+  "error_instruction_cli": "Per avviare una nuova sessione sicura della WebApp, esegui il seguente comando nel terminale:",
+  "error_instruction_url": "Quindi apri l'URL di autenticazione monouso generato nel tuo browser.",
+  "error_back_home": "Torna alla WebApp"
 }
