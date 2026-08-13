@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Bash4LLM⁺ Web Interface - Bash-first wrapper for Large Language Models">
+  <meta name="description" content="Bash4LLM⁺ Web Interface - Resilient, accessible, Bash-first client for Large Language Models">
   <title>Bash4LLM⁺ WebApp</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Background overlay for closing sidebar on mobile screens -->
-    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+  <div class="app-layout">
+    <!-- Mobile Off-canvas Backdrop Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay" tabindex="-1" aria-hidden="true"></div>
 
-    <!-- Sidebar / Session Navigator (Thread) -->
-    <aside class="sidebar" id="sidebar" tabindex="-1" aria-label="Sidebar Navigation">
+    <!-- Navigation & Thread History Drawer -->
+    <aside id="sidebar" class="sidebar" aria-label="Session Navigation">
       <header class="sidebar-header">
-        <h2 class="brand-badge">Bash4LLM⁺</h2>
+        <div class="brand-badge">Bash4LLM⁺</div>
         <div class="header-actions">
-          <button id="btn-new-thread" type="button" class="btn btn-primary" data-i18n="new_thread">+ New Thread</button>
-          <button id="btn-close-sidebar" type="button" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
+          <button type="button" id="btn-new-thread" class="btn btn-primary btn-sm" data-i18n="new_thread">+ New Thread</button>
+          <button type="button" id="btn-close-sidebar" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
         </div>
       </header>
 
@@ -28,43 +28,46 @@
 
       <footer class="sidebar-footer">
         <div class="status-indicator">
-          <span id="status-dot" class="status-dot ready"></span>
-          <span id="status-text" data-i18n="status_ready">Ready</span>
+          <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
+          <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
         </div>
         <div class="footer-actions">
-          <button id="btn-vault" type="button" class="btn btn-secondary btn-sm" title="Key Vault Status" data-i18n="vault">🔒 Vault</button>
-          <button id="btn-settings" type="button" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
+          <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status" data-i18n="vault">🔒 Vault</button>
+          <button type="button" id="btn-settings" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
           <a href="/static/help.html" class="btn btn-secondary btn-sm" data-i18n="help">❓ Help</a>
         </div>
       </footer>
     </aside>
 
-    <!-- Main Workspace (Chat Viewport) -->
+    <!-- Main Chat Workspace -->
     <main class="chat-viewport">
       <header class="chat-header">
-        <button id="btn-toggle-sidebar" type="button" class="btn-icon" aria-label="Toggle Sidebar">☰ Menu</button>
-        
-        <div class="header-thread-info">
-          <h1 id="current-thread-title">Default Thread</h1>
-          <button id="btn-thread-stats" type="button" class="badge-stats" title="View Session Engine Snapshot" data-i18n="stats">📊 Stats</button>
+        <div class="chat-header-left">
+          <button type="button" id="btn-toggle-sidebar" class="btn-icon" aria-label="Toggle Sidebar Navigation">
+            <span aria-hidden="true">☰</span>
+          </button>
+          <div class="header-thread-info">
+            <h1 id="current-thread-title" class="current-thread-title">Default Thread</h1>
+            <button type="button" id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot" data-i18n="stats">📊 Stats</button>
+          </div>
         </div>
 
-        <div class="active-params-badge" id="active-params-badge">
+        <div class="active-params-badge" id="active-params-badge" aria-label="Active LLM Configuration">
           <span id="badge-provider">groq</span> / <span id="badge-model">default</span>
         </div>
       </header>
 
-      <!-- Message Feed (Output Streaming SSE) -->
-      <section id="chat-messages" class="chat-messages" aria-live="polite" aria-atomic="false"></section>
+      <!-- Message Feed & Streaming Area -->
+      <section id="chat-messages" class="chat-messages" aria-live="polite" aria-atomic="false" aria-label="Chat Conversation Log"></section>
 
-      <!-- Input Form and Toolbar Controls -->
-      <footer class="input-container">
-        <div id="attachment-list" class="attachment-list"></div>
+      <!-- Interactive Input Form & Toolbar -->
+      <footer class="chat-footer">
+        <div id="attachment-list" class="attachment-list" aria-label="Attached files"></div>
 
         <form id="chat-form" action="/api/chat" method="POST" class="chat-form">
           <input type="hidden" name="thread_id" id="form-thread-id" value="default">
           <input type="hidden" name="stream" value="true">
-          
+
           <div class="textarea-wrapper">
             <label for="prompt-input" class="sr-only" data-i18n="prompt_label">User Prompt</label>
             <textarea 
@@ -75,144 +78,155 @@
               placeholder="Type your prompt here..." 
               data-i18n-placeholder="prompt_placeholder" 
               required></textarea>
-            
+
             <div class="input-toolbar">
-              <label for="file-upload-input" class="btn-tool" title="Attach File (-f)">
-                <span data-i18n="attach">📎 Attach</span>
+              <div class="input-toolbar-left">
                 <input type="file" id="file-upload-input" class="hidden-file-input">
-              </label>
+                <label for="file-upload-input" class="btn-tool" title="Attach Context File (-f)">
+                  <span aria-hidden="true">📎</span>
+                  <span data-i18n="attach">Attach</span>
+                </label>
 
-              <label for="select-template" class="sr-only" data-i18n="template_label">Select Prompt Template</label>
-              <select id="select-template" class="select-tool" title="Apply Prompt Template">
-                <option value="" data-i18n="no_template">-- No Template --</option>
-              </select>
+                <label for="select-template" class="sr-only" data-i18n="template_label">Select Prompt Template</label>
+                <select id="select-template" class="select-tool" title="Apply Prompt Template">
+                  <option value="" data-i18n="no_template">-- No Template --</option>
+                </select>
 
-              <div class="checkbox-tool-wrapper">
-                <input type="checkbox" id="check-sml-gate">
-                <label for="check-sml-gate" class="checkbox-tool-label" title="Validate SML v2.0 Safety Gate" data-i18n="sml_gate">SML Gate</label>
+                <div class="checkbox-tool-wrapper">
+                  <input type="checkbox" id="check-sml-gate">
+                  <label for="check-sml-gate" class="checkbox-tool-label" title="Validate SML v2.0 Safety Gate" data-i18n="sml_gate">SML Gate</label>
+                </div>
+              </div>
+
+              <div class="input-actions">
+                <button type="submit" id="btn-send" class="btn btn-submit" data-i18n="send">Send</button>
+                <button type="button" id="btn-cancel" class="btn btn-danger hidden" data-i18n="cancel">Stop</button>
               </div>
             </div>
-          </div>
-
-          <div class="input-actions">
-            <button type="submit" id="btn-send" class="btn btn-submit" data-i18n="send">Send</button>
-            <button type="button" id="btn-cancel" class="btn btn-danger hidden" data-i18n="cancel">Stop</button>
           </div>
         </form>
       </footer>
     </main>
   </div>
 
-  <!-- Runtime Settings Dialog Modal -->
-  <dialog id="settings-modal" class="modal" aria-labelledby="settings-title">
-    <div class="modal-content">
+  <!-- Runtime Settings Modal Dialog -->
+  <dialog id="settings-modal" class="modal" aria-labelledby="settings-title" aria-modal="true">
+    <div class="modal-card">
       <header class="modal-header">
-        <h3 id="settings-title" class="highlight-title" data-i18n="settings_title">Runtime Settings</h3>
+        <h2 id="settings-title" class="modal-title" data-i18n="settings_title">Runtime Settings</h2>
       </header>
 
-      <form method="dialog" class="modal-form-body">
-        <div class="form-group">
-          <label for="select-provider" data-i18n="provider">Provider</label>
-          <select id="select-provider" class="form-control"></select>
-        </div>
-
-        <div class="form-group">
-          <label for="select-model" data-i18n="model">Model</label>
-          <div class="input-with-button">
-            <select id="select-model" class="form-control"></select>
-            <button type="button" id="btn-set-default-model" class="btn btn-secondary btn-sm" title="Set as default model for provider" data-i18n="set_default">Set Default</button>
-            <button type="button" id="btn-refresh-models" class="btn btn-secondary btn-sm" title="Refresh models list from provider">🔄</button>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="input-system-prompt" data-i18n="system_prompt">System Prompt</label>
-          <textarea id="input-system-prompt" class="form-control" rows="2" placeholder="Optional system instructions..." data-i18n-placeholder="system_prompt_placeholder"></textarea>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group col">
-            <label for="input-temperature" data-i18n="temperature">Temperature (0.0 - 2.0)</label>
-            <input type="number" id="input-temperature" class="form-control" step="0.1" min="0.0" max="2.0" value="1.0">
+      <div class="modal-body">
+        <div class="modal-form-body">
+          <div class="form-group">
+            <label for="select-provider" class="form-label" data-i18n="provider">Provider</label>
+            <select id="select-provider" class="form-control"></select>
           </div>
 
-          <div class="form-group col">
-            <label for="input-max-tokens" data-i18n="max_tokens">Max Tokens</label>
-            <input type="number" id="input-max-tokens" class="form-control" step="128" min="1" max="128000" placeholder="Default (4096)" data-i18n-placeholder="max_tokens_placeholder">
+          <div class="form-group">
+            <label for="select-model" class="form-label" data-i18n="model">Model</label>
+            <div class="input-with-actions">
+              <select id="select-model" class="form-control"></select>
+              <button type="button" id="btn-set-default-model" class="btn btn-secondary btn-sm" title="Set as default model for provider" data-i18n="set_default">Set Default</button>
+              <button type="button" id="btn-refresh-models" class="btn btn-secondary btn-sm" title="Refresh models list from provider" aria-label="Refresh Models">🔄</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="input-system-prompt" class="form-label" data-i18n="system_prompt">System Prompt</label>
+            <textarea id="input-system-prompt" class="form-control" rows="3" placeholder="Optional system instructions..." data-i18n-placeholder="system_prompt_placeholder"></textarea>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="input-temperature" class="form-label" data-i18n="temperature">Temperature (0.0 - 2.0)</label>
+              <input type="number" id="input-temperature" class="form-control" step="0.1" min="0.0" max="2.0" value="1.0">
+            </div>
+
+            <div class="form-group">
+              <label for="input-max-tokens" class="form-label" data-i18n="max_tokens">Max Tokens</label>
+              <input type="number" id="input-max-tokens" class="form-control" step="128" min="1" max="128000" placeholder="Default (4096)" data-i18n-placeholder="max_tokens_placeholder">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="select-context-mode" class="form-label" data-i18n="context_strategy">Context Window Strategy</label>
+            <select id="select-context-mode" class="form-control">
+              <option value="messages" data-i18n="ctx_messages">Message Count Window (N Messages)</option>
+              <option value="bytes" data-i18n="ctx_bytes">Token/Byte Budget Mode (Target Bytes)</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="group-thread-window">
+            <label for="input-thread-window" class="form-label" data-i18n="thread_window">History Window Messages (N)</label>
+            <input type="number" id="input-thread-window" class="form-control" step="1" min="1" max="100" value="10">
+          </div>
+
+          <div class="form-group hidden" id="group-target-bytes">
+            <label for="select-target-bytes" class="form-label" data-i18n="target_budget">Token Target Budget</label>
+            <select id="select-target-bytes" class="form-control">
+              <option value="8192">8 KB (~2,000 Tokens)</option>
+              <option value="16384">16 KB (~4,000 Tokens)</option>
+              <option value="32768" selected>32 KB (~8,000 Tokens - Default)</option>
+              <option value="65536">64 KB (~16,000 Tokens)</option>
+              <option value="131072">128 KB (~32,000 Tokens)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-label-wrapper">
+              <input type="checkbox" id="check-sanitize" checked>
+              <label for="check-sanitize" class="checkbox-form-label" data-i18n="sanitize_output">Enable Output Sanitization (Strip ANSI &amp; Binaries)</label>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="form-group">
-          <label for="select-context-mode" data-i18n="context_strategy">Context Window Strategy</label>
-          <select id="select-context-mode" class="form-control">
-            <option value="messages" data-i18n="ctx_messages">Message Count Window (N Messages)</option>
-            <option value="bytes" data-i18n="ctx_bytes">Token/Byte Budget Mode (Target Bytes)</option>
-          </select>
-        </div>
-
-        <div class="form-group" id="group-thread-window">
-          <label for="input-thread-window" data-i18n="thread_window">History Window Messages (N)</label>
-          <input type="number" id="input-thread-window" class="form-control" step="1" min="1" max="100" value="10">
-        </div>
-
-        <div class="form-group hidden" id="group-target-bytes">
-          <label for="select-target-bytes" data-i18n="target_budget">Token Target Budget</label>
-          <select id="select-target-bytes" class="form-control">
-            <option value="8192">8 KB (~2,000 Tokens)</option>
-            <option value="16384">16 KB (~4,000 Tokens)</option>
-            <option value="32768" selected>32 KB (~8,000 Tokens - Default)</option>
-            <option value="65536">64 KB (~16,000 Tokens)</option>
-            <option value="131072">128 KB (~32,000 Tokens)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <div class="checkbox-label-wrapper">
-            <input type="checkbox" id="check-sanitize" checked>
-            <label for="check-sanitize" data-i18n="sanitize_output">Enable Output Sanitization (Strip ANSI &amp; Binaries)</label>
-          </div>
-        </div>
-
-        <footer class="modal-actions">
-          <button type="button" id="btn-save-settings" class="btn btn-primary" data-i18n="save">Save</button>
-          <button type="button" id="btn-close-settings" class="btn btn-secondary" data-i18n="close">Close</button>
-        </footer>
-      </form>
+      <footer class="modal-actions">
+        <button type="button" id="btn-save-settings" class="btn btn-primary" data-i18n="save">Save</button>
+        <button type="button" id="btn-close-settings" class="btn btn-secondary" data-i18n="close">Close</button>
+      </footer>
     </div>
   </dialog>
 
-  <!-- OpenSSL Vault Dialog Modal -->
-  <dialog id="vault-modal" class="modal" aria-labelledby="vault-title">
-    <div class="modal-content">
+  <!-- OpenSSL Key Vault Modal Dialog -->
+  <dialog id="vault-modal" class="modal" aria-labelledby="vault-title" aria-modal="true">
+    <div class="modal-card">
       <header class="modal-header">
-        <h3 id="vault-title" class="highlight-title" data-i18n="vault_title">🔒 OpenSSL Key Vault</h3>
+        <h2 id="vault-title" class="modal-title" data-i18n="vault_title">🔒 OpenSSL Key Vault</h2>
       </header>
-      
-      <div id="vault-status-banner" class="vault-banner">
-        <span id="vault-status-text">Checking Vault status...</span>
+
+      <div class="modal-body">
+        <div id="vault-status-banner" class="vault-banner">
+          <span id="vault-status-text" class="vault-status-text">Checking Vault status...</span>
+        </div>
+
+        <section id="vault-unlock-section" class="form-group">
+          <label for="input-master-password" class="form-label" data-i18n="master_password">Master Password</label>
+          <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock" data-i18n-placeholder="master_password_placeholder">
+          <div class="form-actions-inline mt-1">
+            <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block" data-i18n="unlock_session">Unlock Vault Session</button>
+          </div>
+        </section>
+
+        <section id="vault-key-section" class="vault-key-section hidden">
+          <h3 class="section-subtitle" data-i18n="save_api_key_title">Save Provider API Key</h3>
+
+          <div class="form-group">
+            <label for="select-vault-provider" class="form-label" data-i18n="provider">Provider</label>
+            <select id="select-vault-provider" class="form-control"></select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-vault-api-key" class="form-label" data-i18n="api_key">API Key</label>
+            <input type="password" id="input-vault-api-key" class="form-control" placeholder="Paste API Key here" data-i18n-placeholder="api_key_placeholder">
+          </div>
+
+          <div class="form-actions-inline mt-1">
+            <button type="button" id="btn-save-vault-key" class="btn btn-primary btn-block" data-i18n="save_encrypted_key">Save Encrypted Key</button>
+          </div>
+        </section>
       </div>
-
-      <section id="vault-unlock-section" class="form-group">
-        <label for="input-master-password" data-i18n="master_password">Master Password</label>
-        <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock" data-i18n-placeholder="master_password_placeholder">
-        <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block" data-i18n="unlock_session">Unlock Vault Session</button>
-      </section>
-
-      <section id="vault-key-section" class="vault-key-section hidden">
-        <h4 class="section-subtitle" data-i18n="save_api_key_title">Save Provider API Key</h4>
-        
-        <div class="form-group">
-          <label for="select-vault-provider" data-i18n="provider">Provider</label>
-          <select id="select-vault-provider" class="form-control"></select>
-        </div>
-
-        <div class="form-group">
-          <label for="input-vault-api-key" data-i18n="api_key">API Key</label>
-          <input type="password" id="input-vault-api-key" class="form-control" placeholder="Paste API Key here" data-i18n-placeholder="api_key_placeholder">
-        </div>
-
-        <button type="button" id="btn-save-vault-key" class="btn btn-primary btn-block" data-i18n="save_encrypted_key">Save Encrypted Key</button>
-      </section>
 
       <footer class="modal-actions">
         <button type="button" id="btn-close-vault" class="btn btn-secondary" data-i18n="close">Close</button>
@@ -220,16 +234,18 @@
     </div>
   </dialog>
 
-  <!-- Session Snapshot Dialog Modal -->
-  <dialog id="snapshot-modal" class="modal" aria-labelledby="snapshot-title">
-    <div class="modal-content">
+  <!-- Session Engine Snapshot Modal Dialog -->
+  <dialog id="snapshot-modal" class="modal" aria-labelledby="snapshot-title" aria-modal="true">
+    <div class="modal-card">
       <header class="modal-header">
-        <h3 id="snapshot-title" class="highlight-title" data-i18n="snapshot_title">📊 Session Engine Snapshot</h3>
+        <h2 id="snapshot-title" class="modal-title" data-i18n="snapshot_title">📊 Session Engine Snapshot</h2>
       </header>
-      
-      <section id="snapshot-details" class="snapshot-details">
-        <p>Loading session stats...</p>
-      </section>
+
+      <div class="modal-body">
+        <section id="snapshot-details" class="snapshot-details" aria-live="polite">
+          <p>Loading session stats...</p>
+        </section>
+      </div>
 
       <footer class="modal-actions">
         <button type="button" id="btn-close-snapshot" class="btn btn-secondary" data-i18n="close">Close</button>
@@ -237,7 +253,7 @@
     </div>
   </dialog>
 
-  <!-- Script ES6 unificato (Immutabile) -->
+  <!-- Unified ES6 Client Script (Immutable) -->
   <script src="/static/app.js" type="module"></script>
 </body>
 </html>
