@@ -50,4 +50,12 @@
   "err_stream_disconnected": "[Error: Stream disconnected]",
   "err_network_failed": "[Error: Network connection failed]",
   "err_submission_failed": "Error submitting job."
+  "help": "Help",
+  "prompt_label": "User Prompt",
+  "template_label": "Select Prompt Template",
+  "error_title": "Access Restricted / Session Error",
+  "error_message": "Your session is missing, expired, or access was denied by the backend security layer.",
+  "error_instruction_cli": "To start a new secure WebApp session, run the following command in your terminal:",
+  "error_instruction_url": "Then open the generated One-Time Authentication URL in your web browser.",
+  "error_back_home": "Return to WebApp"
 }
