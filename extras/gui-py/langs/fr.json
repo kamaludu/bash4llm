@@ -49,7 +49,7 @@
   "msg_save_key_failed": "Échec de l'enregistrement de la clé API.",
   "err_stream_disconnected": "[Erreur : Flux déconnecté]",
   "err_network_failed": "[Erreur : Échec de la connexion réseau]",
-  "err_submission_failed": "Erreur lors de l'envoi de la requête."
+  "err_submission_failed": "Erreur lors de l'envoi de la requête.",
   "help": "Aide",
   "prompt_label": "Prompt utilisateur",
   "template_label": "Sélectionner le template de prompt",
