@@ -3,33 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Unauthorized - Bash4LLM⁺</title>
+  <meta name="description" content="Bash4LLM⁺ WebApp - HTTP Error Page">
+  <title>HTTP Error - Bash4LLM⁺</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Centered Card Container using existing modal layout -->
-    <div class="modal">
-      <main class="modal-content">
-        <div class="form-group">
-          <span class="brand-badge">Bash4LLM⁺</span>
+  <div class="app-container error-viewport">
+    <!-- Card-centered HTTP error handling -->
+    <main class="error-card" aria-labelledby="error-title">
+      <header class="error-header">
+        <span class="brand-badge">Bash4LLM⁺</span>
+        <h1 id="error-title" class="error-title" data-i18n="error_title">Access Restricted / Session Error</h1>
+      </header>
+
+      <section class="error-body">
+        <div class="error-code-badge" id="error-code">HTTP 401 / 403 / 500</div>
+        
+        <p class="error-message" id="error-message" data-i18n="error_message">
+          Your session is missing, expired, or access was denied by the backend security layer.
+        </p>
+
+        <div class="error-instructions">
+          <p data-i18n="error_instruction_cli">
+            To start a new secure WebApp session, run the following command in your terminal:
+          </p>
+          
+          <pre class="terminal-box"><code>./bash4llm --gui</code></pre>
+
+          <p data-i18n="error_instruction_url">
+            Then open the generated One-Time Authentication URL in your web browser.
+          </p>
         </div>
+      </section>
 
-        <h3 class="section-subtitle">401 Unauthorized Access</h3>
-
-        <div class="form-group">
-          <p>Your session is missing or has expired.</p>
-          <p>To access the WebApp, please start a new session from your terminal:</p>
-        </div>
-
-        <!-- Terminal Command Box using snapshot-details theme class -->
-        <div class="snapshot-details form-group">
-          ./bash4llm --gui
-        </div>
-
-        <p>And open the generated One-Time Authentication URL in your browser.</p>
-      </main>
-    </div>
+      <footer class="error-footer">
+        <a href="/" class="btn btn-primary" data-i18n="error_back_home">Return to WebApp</a>
+        <a href="/static/help.html" class="btn btn-secondary" data-i18n="help">❓ Help</a>
+      </footer>
+    </main>
   </div>
+
+  <!-- Unified ES6 Script (Immutable) -->
+  <script src="/static/app.js" type="module"></script>
 </body>
 </html>
