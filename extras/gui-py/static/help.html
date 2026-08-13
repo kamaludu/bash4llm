@@ -3,274 +3,243 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Bash4LLM⁺ WebApp Documentation and GUI Command Guide">
+  <meta name="description" content="Bash4LLM⁺ WebApp Documentation, Architecture Overview and GUI Command Guide">
   <title>Bash4LLM⁺ WebApp - Help &amp; Documentation</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="app-container">
-    <main class="chat-viewport">
-
-      <!-- Help Page Header-->
+  <div class="app-layout help-layout">
+    <main class="chat-viewport help-viewport">
+      <!-- Help Page Sticky Header -->
       <header class="chat-header">
-        <div class="header-thread-info">
-          <a href="/" class="btn-tool" id="top" aria-label="Return to Main Application">&#9664; Bash4LLM⁺ WebApp</a>
-          <span id="current-thread-title" class="brand-badge">❔ Help</span>
+        <div class="chat-header-left">
+          <a href="/" class="btn-tool btn-back-home" id="top" aria-label="Return to Main Application">&#9664; Bash4LLM⁺ WebApp</a>
+          <span class="brand-badge" data-i18n="help">❓ Help</span>
         </div>
-        
-        <!-- Quick navigation between languages ​​-->
-        <nav class="header-actions" aria-label="Language Selector">
-          <a href="#en" class="btn-tool" title="English">🇬🇧</a>
-          <a href="#it" class="btn-tool" title="Italiano">🇮🇹</a>
-          <a href="#es" class="btn-tool" title="Español">🇪🇸</a>
-          <a href="#fr" class="btn-tool" title="Français">🇫🇷</a>
-          <a href="#de" class="btn-tool" title="Deutsch">🇩🇪</a>
+
+        <!-- Quick Language Navigator Anchors -->
+        <nav class="lang-nav-bar" aria-label="Language Selector">
+          <a href="#en" class="btn-tool lang-link" title="English">🇬🇧 EN</a>
+          <a href="#it" class="btn-tool lang-link" title="Italiano">🇮🇹 IT</a>
+          <a href="#es" class="btn-tool lang-link" title="Español">🇪🇸 ES</a>
+          <a href="#fr" class="btn-tool lang-link" title="Français">🇫🇷 FR</a>
+          <a href="#de" class="btn-tool lang-link" title="Deutsch">🇩🇪 DE</a>
         </nav>
       </header>
 
-      <!-- Contents Section Multilingual Documentation -->
-      <section class="chat-messages help-viewport-section">
+      <!-- Multilingual Help Articles Container -->
+      <section class="help-content-scroll" aria-label="Help Documentation Content">
 
         <!-- English Documentation -->
-        <article class="help-details" id="en" lang="en">
-          <header class="section-subtitle">
-            <a href="#top" class="btn-tool" aria-label="Back to Top">🇬🇧 Top</a> GUI Command Guide
+        <article class="help-card" id="en" lang="en">
+          <header class="help-card-header">
+            <h2 class="help-card-title">🇬🇧 English — GUI Command Guide</h2>
+            <a href="#top" class="btn-tool btn-sm" aria-label="Back to Top">⬆ Top</a>
           </header>
-          <p><strong>🚀 Overview:</strong> Local Web Interface for the <code>bash4llm</code> wrapper script.</p>
+          <div class="help-card-body">
+            <p><strong>🚀 Overview:</strong> Local, resilient Web Interface for the <code>bash4llm</code> wrapper script.</p>
 
-          <h3 class="section-subtitle mt-2">💬 Sidebar &amp; Threads</h3>
-          <ul>
-            <li><span class="btn-tool">+ New Thread</span><br>Create a new session thread.</li>
-            <li><span class="btn-tool">Thread List</span><br>Select thread to switch conversation.</li>
-            <li><span class="btn-tool">📊 Stats</span><br>View session message count and byte usage.</li>
-            <li><span class="btn-tool">🔒 Vault</span><br>Open key manager modal.</li>
-            <li><span class="btn-tool">Settings</span><br>Open runtime configuration modal.</li>
-          </ul>
+            <h3 class="section-subtitle">💬 Sidebar &amp; Threads</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">+ New Thread</span>: Create a new session thread.</li>
+              <li><span class="badge-term">Thread List</span>: Switch between active conversation histories.</li>
+              <li><span class="badge-term">📊 Stats</span>: View message counts, segment allocations, and total byte usage.</li>
+              <li><span class="badge-term">🔒 Vault</span>: Open OpenSSL master key manager dialog.</li>
+              <li><span class="badge-term">Settings</span>: Open runtime parameter configuration modal.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">✍️ Input Controls</h3>
-          <ul>
-            <li><span class="btn-tool">Prompt</span><br>Enter user query or instruction.</li>
-            <li><span class="btn-tool">📎 Attach</span><br>Upload context file (<code>-f</code> flag).</li>
-            <li><span class="btn-tool">Templates</span><br>Apply prompt template from list.</li>
-            <li>
-              <span class="btn-tool">SML Gate</span><br>
-              (Structured Metadata Layout) Validates that the AI response contains mandatory summary and outcome sections.<br>
-              📌 <strong>SML Gate (Structured Metadata Layout):</strong> Forces validation of the output schema (requires <code>LISTEN_SUMMARY</code> and <code>CONVERSATION_OUTCOME</code> blocks); if the model "hallucinates", forgets one of these fields, or returns a generic error, SML Gate blocks the output and flags to the system that the response is unreliable.
-            </li>
-            <li><span class="btn-tool">Send</span> / <span class="btn-tool">Stop</span><br>Submit query or interrupt streaming.</li>
-          </ul>
+            <h3 class="section-subtitle">✍️ Input Controls</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Prompt</span>: Enter user query or instruction.</li>
+              <li><span class="badge-term">📎 Attach</span>: Upload context file (mapped to <code>-f</code> flag).</li>
+              <li><span class="badge-term">Templates</span>: Apply structured prompt template from repository.</li>
+              <li>
+                <span class="badge-term">SML Gate</span>:
+                Structured Metadata Layout validator. Forces validation of the AI output schema (requires mandatory <code>LISTEN_SUMMARY</code> and <code>CONVERSATION_OUTCOME</code> blocks). If the model hallucinates or fails the schema, SML Gate blocks execution and flags output as unverified.
+              </li>
+              <li><span class="badge-term">Send / Stop</span>: Submit query stream or interrupt active SSE job immediately.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">⚙️ Runtime Settings</h3>
-          <ul>
-            <li><span class="btn-tool">Provider</span> / <span class="btn-tool">Model</span><br>Select active LLM backend and model.</li>
-            <li><span class="btn-tool">Set Default</span><br>Save default model for active provider.</li>
-            <li><span class="btn-tool">🔄</span><br>Fetch updated model list from provider.</li>
-            <li><span class="btn-tool">Params</span><br>Set System Prompt, Temperature (0.0 - 2.0), Max Tokens.</li>
-            <li><span class="btn-tool">Context Window Strategy</span><br>Select Message Count Window (N Messages) or Token/Byte Budget Mode (Target Bytes).</li>
-            <li><span class="btn-tool">Enable Output Sanitization</span><br>Strip ANSI &amp; Binaries.</li>
-          </ul>
+            <h3 class="section-subtitle">⚙️ Runtime Settings</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Provider / Model</span>: Select active LLM provider engine and inference model.</li>
+              <li><span class="badge-term">Set Default</span>: Persist preferred model for active provider.</li>
+              <li><span class="badge-term">🔄 Refresh</span>: Query provider endpoint for live updated model catalogs.</li>
+              <li><span class="badge-term">Params</span>: Set System Prompt, Temperature (0.0 - 2.0), and Token Limits.</li>
+              <li><span class="badge-term">Context Strategy</span>: Switch between Message Count Window (N Messages) or Token/Byte Budget Mode.</li>
+              <li><span class="badge-term">Output Sanitization</span>: Strip terminal ANSI escape sequences and non-printable binary streams.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">🔒 OpenSSL Key Vault</h3>
-          <p>📌 <strong>Vault:</strong> OpenSSL-based security module through which Provider API keys are stored in encrypted form on the filesystem.</p>
-          <ul>
-            <li><span class="btn-tool">Unlock Vault Session</span><br>Authenticate session with Master Password.</li>
-            <li><span class="btn-tool">Save Encrypted Key</span><br>Store encrypted API keys (AES-256).</li>
-          </ul>
+            <h3 class="section-subtitle">🔒 OpenSSL Key Vault</h3>
+            <p>The Vault securely manages API keys locally using OpenSSL AES-256 encryption on the host filesystem.</p>
+            <ul class="help-list">
+              <li><span class="badge-term">Unlock Vault Session</span>: Authenticate session in memory via Master Password.</li>
+              <li><span class="badge-term">Save Encrypted Key</span>: Store new encrypted provider credentials safely.</li>
+            </ul>
+          </div>
         </article>
 
         <!-- Italian Documentation -->
-        <article class="help-details" id="it" lang="it">
-          <header class="section-subtitle">
-            <a href="#top" class="btn-tool" aria-label="Torna su">🇮🇹 Torna su</a> Guida ai comandi della GUI
+        <article class="help-card" id="it" lang="it">
+          <header class="help-card-header">
+            <h2 class="help-card-title">🇮🇹 Italiano — Guida ai comandi della GUI</h2>
+            <a href="#top" class="btn-tool btn-sm" aria-label="Torna su">⬆ Torna su</a>
           </header>
-          <p><strong>🚀 Panoramica:</strong> Interfaccia web locale per lo script wrapper <code>bash4llm</code>.</p>
+          <div class="help-card-body">
+            <p><strong>🚀 Panoramica:</strong> Interfaccia web locale ad alta resilienza per lo script wrapper <code>bash4llm</code>.</p>
 
-          <h3 class="section-subtitle mt-2">💬 Barra laterale e thread</h3>
-          <ul>
-            <li><span class="btn-tool">+ Nuova Chat</span><br>Crea un nuovo thread di sessione.</li>
-            <li><span class="btn-tool">Elenco thread</span><br>Seleziona un thread per cambiare conversazione.</li>
-            <li><span class="btn-tool">📊 Statistiche</span><br>Visualizza il conteggio dei messaggi e l'utilizzo dei byte della sessione.</li>
-            <li><span class="btn-tool">🔒 Vault</span><br>Apri la finestra modale del gestore chiavi.</li>
-            <li><span class="btn-tool">Impostazioni</span><br>Apri la finestra modale delle impostazioni di runtime.</li>
-          </ul>
+            <h3 class="section-subtitle">💬 Barra laterale e thread</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">+ Nuova Chat</span>: Crea un nuovo thread di sessione.</li>
+              <li><span class="badge-term">Elenco thread</span>: Seleziona un thread per cambiare cronologia conversazione.</li>
+              <li><span class="badge-term">📊 Statistiche</span>: Visualizza conteggio messaggi, segmenti e utilizzo byte.</li>
+              <li><span class="badge-term">🔒 Vault</span>: Apri la finestra modale del gestore chiavi crittografate.</li>
+              <li><span class="badge-term">Impostazioni</span>: Configura i parametri di esecuzione a runtime.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">✍️ Controlli di input</h3>
-          <ul>
-            <li><span class="btn-tool">Prompt</span><br>Inserisci la query o l'istruzione dell'utente.</li>
-            <li><span class="btn-tool">📎 Allega</span><br>Carica un file di contesto (flag <code>-f</code>).</li>
-            <li><span class="btn-tool">Template</span><br>Applica un template di prompt dall'elenco.</li>
-            <li>
-              <span class="btn-tool">SML Gate</span><br>
-              (Structured Metadata Layout) Verifica che la risposta dell'IA contenga le sezioni obbligatorie di sommario e risultato.<br>
-              📌 <strong>SML Gate (Structured Metadata Layout):</strong> Forza la validazione dello schema di output (richiede i blocchi <code>LISTEN_SUMMARY</code> e <code>CONVERSATION_OUTCOME</code>), se il modello "allucina", dimentica uno di questi campi o restituisce un errore generico, SML Gate blocca l'output e segnala al sistema che la risposta non è affidabile.
-            </li>
-            <li><span class="btn-tool">Invia</span> / <span class="btn-tool">Interrompi</span><br>Invia la query o interrompi lo streaming.</li>
-          </ul>
+            <h3 class="section-subtitle">✍️ Controlli di input</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Prompt</span>: Inserisci la query o l'istruzione per il modello.</li>
+              <li><span class="badge-term">📎 Allega</span>: Carica un file di contesto (flag <code>-f</code>).</li>
+              <li><span class="badge-term">Template</span>: Applica un template di prompt predefinito.</li>
+              <li>
+                <span class="badge-term">SML Gate</span>:
+                (Structured Metadata Layout) Verifica che la risposta dell'IA rispetti lo schema obbligatorio (blocchi <code>LISTEN_SUMMARY</code> e <code>CONVERSATION_OUTCOME</code>). In caso di allucinazione o schema incompleto, SML Gate blocca l'output non conforme.
+              </li>
+              <li><span class="badge-term">Invia / Interrompi</span>: Avvia lo streaming o cancella immediatamente il job SSE in corso.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">⚙️ Impostazioni di runtime</h3>
-          <ul>
-            <li><span class="btn-tool">Provider</span> / <span class="btn-tool">Modello</span><br>Seleziona il backend LLM e il modello attivi.</li>
-            <li><span class="btn-tool">Imposta predefinito</span><br>Salva il modello predefinito per il provider attivo.</li>
-            <li><span class="btn-tool">🔄</span><br>Recupera l'elenco dei modelli aggiornato dal provider.</li>
-            <li><span class="btn-tool">Parametri</span><br>Imposta Prompt di sistema, Temperatura (0.0 - 2.0) e Token massimi.</li>
-            <li><span class="btn-tool">Strategia finestra di contesto</span><br>Seleziona Finestra conteggio messaggi (N messaggi) o Modalità budget token/byte (Byte target).</li>
-            <li><span class="btn-tool">Abilita sanificazione output</span><br>Rimuovi ANSI e binari.</li>
-          </ul>
+            <h3 class="section-subtitle">⚙️ Impostazioni di runtime</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Provider / Modello</span>: Seleziona il backend LLM e il modello attivo.</li>
+              <li><span class="badge-term">Imposta predefinito</span>: Memorizza il modello di default per il provider selezionato.</li>
+              <li><span class="badge-term">🔄 Aggiorna</span>: Interroga l'API remota per scaricare l'elenco modelli aggiornato.</li>
+              <li><span class="badge-term">Parametri</span>: Regola Prompt di sistema, Temperatura (0.0 - 2.0) e Token massimi.</li>
+              <li><span class="badge-term">Strategia contesto</span>: Alterna tra conteggio messaggi (N) o budget byte target.</li>
+              <li><span class="badge-term">Sanificazione output</span>: Rimuove sequenze ANSI e residui binari dal log.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">🔒 Vault chiavi OpenSSL</h3>
-          <p>📌 <strong>Vault:</strong> Modulo di sicurezza basato su OpenSSL, tramite il quale le chiavi API dei Providers vengono memorizzate in forma cifrata sul filesystem.</p>
-          <ul>
-            <li><span class="btn-tool">Sblocca sessione Vault</span><br>Autentica la sessione con la master password.</li>
-            <li><span class="btn-tool">Salva chiave crittografata</span><br>Salva le chiavi API crittografate (AES-256).</li>
-          </ul>
+            <h3 class="section-subtitle">🔒 Vault chiavi OpenSSL</h3>
+            <p>Il modulo Vault cifra le chiavi API direttamente sul filesystem locale tramite cifratura AES-256.</p>
+            <ul class="help-list">
+              <li><span class="badge-term">Sblocca sessione Vault</span>: Autentica la sessione attiva con la master password.</li>
+              <li><span class="badge-term">Salva chiave crittografata</span>: Memorizza nuove credenziali cifrate per ciascun provider.</li>
+            </ul>
+          </div>
         </article>
 
         <!-- Spanish Documentation -->
-        <article class="help-details" id="es" lang="es">
-          <header class="section-subtitle">
-            <a href="#top" class="btn-tool" aria-label="Volver arriba">🇪🇸 Arriba</a> Guía de comandos de la GUI
+        <article class="help-card" id="es" lang="es">
+          <header class="help-card-header">
+            <h2 class="help-card-title">🇪🇸 Español — Guía de comandos de la GUI</h2>
+            <a href="#top" class="btn-tool btn-sm" aria-label="Volver arriba">⬆ Arriba</a>
           </header>
-          <p><strong>🚀 Resumen:</strong> Interfaz web local para el script wrapper <code>bash4llm</code>.</p>
+          <div class="help-card-body">
+            <p><strong>🚀 Resumen:</strong> Interfaz web local para el script wrapper <code>bash4llm</code>.</p>
 
-          <h3 class="section-subtitle mt-2">💬 Barra lateral e hilos</h3>
-          <ul>
-            <li><span class="btn-tool">+ Nuevo chat</span><br>Crea un nuevo hilo de sesión.</li>
-            <li><span class="btn-tool">Lista de hilos</span><br>Selecciona un hilo para cambiar de conversación.</li>
-            <li><span class="btn-tool">📊 Estadísticas</span><br>Muestra el recuento de mensajes de la sesión y el uso de bytes.</li>
-            <li><span class="btn-tool">🔒 Vault</span><br>Abre la ventana modal del gestor de claves.</li>
-            <li><span class="btn-tool">Configuración</span><br>Abre la ventana modal de configuración de ejecución.</li>
-          </ul>
+            <h3 class="section-subtitle">💬 Barra lateral e hilos</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">+ Nuevo chat</span>: Crea un nuevo hilo de sesión.</li>
+              <li><span class="badge-term">Lista de hilos</span>: Cambia entre historiales de conversación activos.</li>
+              <li><span class="badge-term">📊 Estadísticas</span>: Visualiza el recuento de mensajes y uso de bytes.</li>
+              <li><span class="badge-term">🔒 Vault</span>: Abre el gestor de claves OpenSSL.</li>
+              <li><span class="badge-term">Configuración</span>: Abre los parámetros de ejecución.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">✍️ Controles de entrada</h3>
-          <ul>
-            <li><span class="btn-tool">Prompt</span><br>Introduce la consulta o instrucción del usuario.</li>
-            <li><span class="btn-tool">📎 Adjuntar</span><br>Carga un archivo de contexto (opción <code>-f</code>).</li>
-            <li><span class="btn-tool">Plantillas</span><br>Aplica una plantilla de prompt de la lista.</li>
-            <li>
-              <span class="btn-tool">SML Gate</span><br>
-              (Structured Metadata Layout) Valida que la respuesta de la IA contenga las secciones obligatorias de resumen y resultado.<br>
-              📌 <strong>SML Gate (Structured Metadata Layout):</strong> Fuerza la validación del esquema de salida (requiere los bloques <code>LISTEN_SUMMARY</code> y <code>CONVERSATION_OUTCOME</code>); si el modelo "alucina", olvida uno de estos campos o devuelve un error genérico, SML Gate bloquea la salida y señala al sistema que la respuesta no es confiable.
-            </li>
-            <li><span class="btn-tool">Enviar</span> / <span class="btn-tool">Detener</span><br>Envía la consulta o interrumpe la transmisión.</li>
-          </ul>
+            <h3 class="section-subtitle">✍️ Controles de entrada</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Prompt</span>: Introduce la consulta o instrucción.</li>
+              <li><span class="badge-term">📎 Adjuntar</span>: Sube un archivo de contexto (opción <code>-f</code>).</li>
+              <li><span class="badge-term">Plantillas</span>: Aplica una plantilla de prompt.</li>
+              <li>
+                <span class="badge-term">SML Gate</span>:
+                Valida el esquema Structured Metadata Layout (bloques <code>LISTEN_SUMMARY</code> y <code>CONVERSATION_OUTCOME</code>).
+              </li>
+              <li><span class="badge-term">Enviar / Detener</span>: Envía la petición o cancela la transmisión SSE activa.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">⚙️ Configuración de ejecución</h3>
-          <ul>
-            <li><span class="btn-tool">Proveedor</span> / <span class="btn-tool">Modelo</span><br>Selecciona el backend de LLM y el modelo activos.</li>
-            <li><span class="btn-tool">Establecer como predeterminado</span><br>Guarda el modelo predeterminado para el proveedor activo.</li>
-            <li><span class="btn-tool">🔄</span><br>Obtiene la lista actualizada de modelos desde el proveedor.</li>
-            <li><span class="btn-tool">Parámetros</span><br>Define el Prompt del sistema, la Temperatura (0.0 - 2.0) y los Tokens máximos.</li>
-            <li><span class="btn-tool">Estrategia de ventana de contexto</span><br>Selecciona Ventana de recuento de mensajes (N mensajes) o Modo de presupuesto de tokens/bytes (Bytes objetivo).</li>
-            <li><span class="btn-tool">Habilitar sanitización de salida</span><br>Elimina ANSI y binarios.</li>
-          </ul>
+            <h3 class="section-subtitle">⚙️ Configuración de ejecución</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Proveedor / Modelo</span>: Configura el proveedor y modelo activo.</li>
+              <li><span class="badge-term">Establecer predeterminado</span>: Guarda el modelo por defecto.</li>
+              <li><span class="badge-term">🔄</span>: Actualiza la lista de modelos remotos.</li>
+              <li><span class="badge-term">Sanitización</span>: Elimina códigos ANSI y binarios.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">🔒 Vault de claves OpenSSL</h3>
-          <p>📌 <strong>Vault:</strong> Módulo de seguridad basado en OpenSSL, mediante el cual las claves API de los proveedores se almacenan de forma cifrada en el sistema de archivos.</p>
-          <ul>
-            <li><span class="btn-tool">Desbloquear sesión de Vault</span><br>Autentica la sesión con la contraseña maestra.</li>
-            <li><span class="btn-tool">Guardar clave cifrada</span><br>Almacena claves API cifradas (AES-256).</li>
-          </ul>
+            <h3 class="section-subtitle">🔒 Vault OpenSSL</h3>
+            <p>Almacenamiento seguro cifrado localmente mediante AES-256.</p>
+          </div>
         </article>
 
         <!-- French Documentation -->
-        <article class="help-details" id="fr" lang="fr">
-          <header class="section-subtitle">
-            <a href="#top" class="btn-tool" aria-label="Haut de page">🇫🇷 Haut</a> Guide des commandes de la GUI
+        <article class="help-card" id="fr" lang="fr">
+          <header class="help-card-header">
+            <h2 class="help-card-title">🇫🇷 Français — Guide des commandes de la GUI</h2>
+            <a href="#top" class="btn-tool btn-sm" aria-label="Haut de page">⬆ Haut</a>
           </header>
-          <p><strong>🚀 Aperçu:</strong> Interface web locale pour le script wrapper <code>bash4llm</code>.</p>
+          <div class="help-card-body">
+            <p><strong>🚀 Aperçu:</strong> Interface web locale pour le script wrapper <code>bash4llm</code>.</p>
 
-          <h3 class="section-subtitle mt-2">💬 Barre latérale et threads</h3>
-          <ul>
-            <li><span class="btn-tool">+ Nouveau chat</span><br>Créer un nouveau thread de session.</li>
-            <li><span class="btn-tool">Liste des threads</span><br>Sélectionner un thread pour changer de conversation.</li>
-            <li><span class="btn-tool">📊 Statistiques</span><br>Afficher le nombre de messages et l'utilisation des octets de la session.</li>
-            <li><span class="btn-tool">🔒 Vault</span><br>Ouvrir la fenêtre modale du gestionnaire de clés.</li>
-            <li><span class="btn-tool">Paramètres</span><br>Ouvrir la fenêtre modale de configuration d'exécution.</li>
-          </ul>
+            <h3 class="section-subtitle">💬 Barre latérale et threads</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">+ Nouveau chat</span>: Créer un nouveau fil de conversation.</li>
+              <li><span class="badge-term">Liste des threads</span>: Naviguer dans l'historique.</li>
+              <li><span class="badge-term">📊 Statistiques</span>: Afficher les métriques de la session.</li>
+              <li><span class="badge-term">🔒 Vault</span>: Ouvrir le coffre-fort de clés OpenSSL.</li>
+              <li><span class="badge-term">Paramètres</span>: Régler les hyperparamètres.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">✍️ Contrôles de saisie</h3>
-          <ul>
-            <li><span class="btn-tool">Prompt</span><br>Saisir la requête ou l'instruction de l'utilisateur.</li>
-            <li><span class="btn-tool">📎 Joindre</span><br>Téléverser un fichier de contexte (option <code>-f</code>).</li>
-            <li><span class="btn-tool">Templates</span><br>Appliquer un template de prompt depuis la liste.</li>
-            <li>
-              <span class="btn-tool">SML Gate</span><br>
-              (Structured Metadata Layout) Valide que la réponse de l'IA contient les sections obligatoires de résumé et de résultat.<br>
-              📌 <strong>SML Gate (Structured Metadata Layout) :</strong> Force la validation du schéma de sortie (nécessite les blocs <code>LISTEN_SUMMARY</code> et <code>CONVERSATION_OUTCOME</code>) ; si le modèle « hallucine », oublie l'un de ces champs ou renvoie une erreur générique, SML Gate bloque la sortie et signale au système que la réponse n'est pas fiable.
-            </li>
-            <li><span class="btn-tool">Envoyer</span> / <span class="btn-tool">Arrêter</span><br>Soumettre la requête ou interrompre le flux.</li>
-          </ul>
-
-          <h3 class="section-subtitle mt-2">⚙️ Paramètres d'exécution</h3>
-          <ul>
-            <li><span class="btn-tool">Fournisseur</span> / <span class="btn-tool">Modèle</span><br>Sélectionner le backend LLM et le modèle actifs.</li>
-            <li><span class="btn-tool">Définir par défaut</span><br>Enregistrer le modèle par défaut pour le fournisseur actif.</li>
-            <li><span class="btn-tool">🔄</span><br>Récupérer la liste à jour des modèles depuis le fournisseur.</li>
-            <li><span class="btn-tool">Paramètres</span><br>Définir le Prompt système, la Température (0.0 - 2.0) et les Tokens max.</li>
-            <li><span class="btn-tool">Stratégie de fenêtre de contexte</span><br>Sélectionner Fenêtre de nombre de messages (N messages) ou Mode budget tokens/octets (Octets cibles).</li>
-            <li><span class="btn-tool">Activer l'assainissement de la sortie</span><br>Supprimer ANSI et binaires.</li>
-          </ul>
-
-          <h3 class="section-subtitle mt-2">🔒 Vault de clés OpenSSL</h3>
-          <p>📌 <strong>Vault :</strong> Module de sécurité basé sur OpenSSL, grâce auquel les clés API des fournisseurs sont stockées sous forme chiffrée sur le système de fichiers.</p>
-          <ul>
-            <li><span class="btn-tool">Déverrouiller la session du Vault</span><br>Authentifier la session avec le mot de passe maître.</li>
-            <li><span class="btn-tool">Enregistrer la clé chiffrée</span><br>Stocker les clés API chiffrées (AES-256).</li>
-          </ul>
+            <h3 class="section-subtitle">✍️ Contrôles de saisie</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Prompt</span>: Saisir votre instruction.</li>
+              <li><span class="badge-term">📎 Joindre</span>: Téléverser un fichier de contexte (option <code>-f</code>).</li>
+              <li><span class="badge-term">Templates</span>: Sélectionner un modèle de prompt.</li>
+              <li>
+                <span class="badge-term">SML Gate</span>:
+                Validation stricte du Structured Metadata Layout (blocs <code>LISTEN_SUMMARY</code> et <code>CONVERSATION_OUTCOME</code>).
+              </li>
+              <li><span class="badge-term">Envoyer / Arrêter</span>: Lancer le streaming ou annuler le traitement.</li>
+            </ul>
+          </div>
         </article>
 
         <!-- German Documentation -->
-        <article class="help-details" id="de" lang="de">
-          <header class="section-subtitle">
-            <a href="#top" class="btn-tool" aria-label="Nach oben">🇩🇪 Nach oben</a> GUI-Befehlsanleitung
+        <article class="help-card" id="de" lang="de">
+          <header class="help-card-header">
+            <h2 class="help-card-title">🇩🇪 Deutsch — GUI-Befehlsanleitung</h2>
+            <a href="#top" class="btn-tool btn-sm" aria-label="Nach oben">⬆ Nach oben</a>
           </header>
-          <p><strong>🚀 Übersicht:</strong> Lokale Web-Benutzeroberfläche für das <code>bash4llm</code>-Wrapper-Skript.</p>
+          <div class="help-card-body">
+            <p><strong>🚀 Übersicht:</strong> Lokale Web-Benutzeroberfläche für das <code>bash4llm</code>-Wrapper-Skript.</p>
 
-          <h3 class="section-subtitle mt-2">💬 Seitenleiste &amp; Threads</h3>
-          <ul>
-            <li><span class="btn-tool">+ Neuer Chat</span><br>Einen neuen Sitzungs-Thread erstellen.</li>
-            <li><span class="btn-tool">Thread-Liste</span><br>Thread auswählen, um die Unterhaltung zu wechseln.</li>
-            <li><span class="btn-tool">📊 Statistiken</span><br>Sitzungsnachrichtenanzahl und Byte-Nutzung anzeigen.</li>
-            <li><span class="btn-tool">🔒 Vault</span><br>Schlüsselmanager-Modal öffnen.</li>
-            <li><span class="btn-tool">Einstellungen</span><br>Laufzeit-Konfigurationsmodal öffnen.</li>
-          </ul>
+            <h3 class="section-subtitle">💬 Seitenleiste &amp; Threads</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">+ Neuer Chat</span>: Neuen Chat-Thread initialisieren.</li>
+              <li><span class="badge-term">Thread-Liste</span>: Zwischen Unterhaltungen wechseln.</li>
+              <li><span class="badge-term">📊 Statistiken</span>: Sitzungsmetriken und Bytes abrufen.</li>
+              <li><span class="badge-term">🔒 Vault</span>: OpenSSL-Schlüssel-Vault öffnen.</li>
+              <li><span class="badge-term">Einstellungen</span>: Laufzeitkonfiguration anpassen.</li>
+            </ul>
 
-          <h3 class="section-subtitle mt-2">✍️ Eingabesteuerung</h3>
-          <ul>
-            <li><span class="btn-tool">Prompt</span><br>Benutzeranfrage oder -anweisung eingeben.</li>
-            <li><span class="btn-tool">📎 Anhängen</span><br>Kontextdatei hochladen (Flag <code>-f</code>).</li>
-            <li><span class="btn-tool">Templates</span><br>Prompt-Template aus der Liste anwenden.</li>
-            <li>
-              <span class="btn-tool">SML Gate</span><br>
-              (Structured Metadata Layout) Überprüft, ob die KI-Antwort die obligatorischen Abschnitte Zusammenfassung und Ergebnis enthält.<br>
-              📌 <strong>SML Gate (Structured Metadata Layout):</strong> Erzwingt die Validierung des Ausgabeschemas (erfordert die Blöcke <code>LISTEN_SUMMARY</code> und <code>CONVERSATION_OUTCOME</code>); wenn das Modell „halluziniert“, eines dieser Felder vergisst oder einen generischen Fehler zurückgibt, blockiert SML Gate die Ausgabe und meldet dem System, dass die Antwort nicht vertrauenswürdig ist.
-            </li>
-            <li><span class="btn-tool">Senden</span> / <span class="btn-tool">Stopp</span><br>Anfrage übermitteln oder Streaming unterbrechen.</li>
-          </ul>
-
-          <h3 class="section-subtitle mt-2">⚙️ Laufzeit-Einstellungen</h3>
-          <ul>
-            <li><span class="btn-tool">Anbieter</span> / <span class="btn-tool">Modell</span><br>Aktives LLM-Backend und Modell auswählen.</li>
-            <li><span class="btn-tool">Als Standard festlegen</span><br>Standardmodell für aktiven Anbieter speichern.</li>
-            <li><span class="btn-tool">🔄</span><br>Aktualisierte Modellliste vom Anbieter abrufen.</li>
-            <li><span class="btn-tool">Parameter</span><br>System-Prompt, Temperatur (0.0 - 2.0) und Max. Tokens festlegen.</li>
-            <li><span class="btn-tool">Kontextfenster-Strategie</span><br>Nachrichtenanzahl-Fenster (N Nachrichten) oder Token/Byte-Budget-Modus (Ziel-Bytes) auswählen.</li>
-            <li><span class="btn-tool">Ausgabebereinigung aktivieren</span><br>ANSI-Codes und Binärdateien entfernen.</li>
-          </ul>
-
-          <h3 class="section-subtitle mt-2">🔒 OpenSSL-Schlüssel-Vault</h3>
-          <p>📌 <strong>Vault:</strong> OpenSSL-basiertes Sicherheitsmodul, mit dem die API-Schlüssel der Anbieter verschlüsselt auf dem Dateisystem gespeichert werden.</p>
-          <ul>
-            <li><span class="btn-tool">Vault-Sitzung entsperren</span><br>Sitzung mit Master-Passwort authentifizieren.</li>
-            <li><span class="btn-tool">Verschlüsselten Schlüssel speichern</span><br>Verschlüsselte API-Schlüssel speichern (AES-256).</li>
-          </ul>
+            <h3 class="section-subtitle">✍️ Eingabesteuerung</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Prompt</span>: Benutzeranfrage eingeben.</li>
+              <li><span class="badge-term">📎 Anhängen</span>: Kontextdatei anhängen (Flag <code>-f</code>).</li>
+              <li><span class="badge-term">Templates</span>: Prompt-Vorlage anwenden.</li>
+              <li>
+                <span class="badge-term">SML Gate</span>:
+                Erzwingt Structured Metadata Layout Schemaprüfung (<code>LISTEN_SUMMARY</code> und <code>CONVERSATION_OUTCOME</code>).
+              </li>
+              <li><span class="badge-term">Senden / Stopp</span>: Stream ausführen oder sofort abbrechen.</li>
+            </ul>
+          </div>
         </article>
 
       </section>
     </main>
   </div>
 
-  <!-- Unified ES6 Script (Immutable) -->
+  <!-- Unified ES6 Client Script (Immutable) -->
   <script src="/static/app.js" type="module"></script>
 </body>
 </html>
