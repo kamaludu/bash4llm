@@ -10,13 +10,12 @@
   <div class="app-container">
     <main class="chat-viewport">
 
-      <!-- Header Principale -->
       <header class="chat-header">
         <div class="header-thread-info">
           <a href="/" class="btn-tool" id="top">&#9664; Bash4LLM⁺ WebApp</a>
           <span id="current-thread-title" class="brand-badge">❔ Help</span>
         </div>
-        <nav class="header-actions">
+        <nav class="header-actions" aria-label="Language Selector">
           <a href="#en" class="btn-tool" title="English">🇬🇧</a>
           <a href="#it" class="btn-tool" title="Italiano">🇮🇹</a>
           <a href="#es" class="btn-tool" title="Español">🇪🇸</a>
@@ -25,15 +24,14 @@
         </nav>
       </header>
 
-      <!-- Area Contenuti Help -->
-      <section class="chat-messages">
+      <section class="chat-messages" style="padding: 1.5rem;">
 
         <!-- English -->
-        <div class="help-details" id="en">
+        <article class="help-details" id="en" lang="en">
           <div class="section-subtitle"><a href="#top" class="btn-tool">🇬🇧</a> GUI Command Guide</div>
           <p><strong>🚀 Overview:</strong> Local Web Interface for the bash4llm wrapper script.</p>
 
-          <div class="section-subtitle mt-2">💬 Sidebar & Threads</div>
+          <div class="section-subtitle mt-2">💬 Sidebar &amp; Threads</div>
           <ul>
             <li><span class="btn-tool">+ New Thread</span><br>Create a new session thread.</li>
             <li><span class="btn-tool">Thread List</span><br>Select thread to switch conversation.</li>
@@ -58,7 +56,7 @@
             <li><span class="btn-tool">🔄</span><br>Fetch updated model list from provider.</li>
             <li><span class="btn-tool">Params</span><br>Set System Prompt, Temperature (0.0 - 2.0), Max Tokens.</li>
             <li><span class="btn-tool">Context Window Strategy</span><br>Select Message Count Window (N Messages) or Token/Byte Budget Mode (Target Bytes).</li>
-            <li><span class="btn-tool">Enable Output Sanitization</span><br>Strip ANSI & Binaries.</li>
+            <li><span class="btn-tool">Enable Output Sanitization</span><br>Strip ANSI &amp; Binaries.</li>
           </ul>
 
           <div class="section-subtitle mt-2">🔒 OpenSSL Key Vault</div>
@@ -67,12 +65,12 @@
             <li><span class="btn-tool">Unlock Vault Session</span><br>Authenticate session with Master Password.</li>
             <li><span class="btn-tool">Save Encrypted Key</span><br>Store encrypted API keys (AES-256).</li>
           </ul>
-        </div>
+        </article>
 
         <br>
 
         <!-- Italian -->
-        <div class="help-details" id="it">
+        <article class="help-details" id="it" lang="it">
           <div class="section-subtitle"><a href="#top" class="btn-tool">🇮🇹</a> Guida ai comandi della GUI</div>
           <p><strong>🚀 Panoramica:</strong> Interfaccia web locale per lo script wrapper bash4llm.</p>
 
@@ -110,12 +108,12 @@
             <li><span class="btn-tool">Sblocca sessione Vault</span><br>Autentica la sessione con la master password.</li>
             <li><span class="btn-tool">Salva chiave crittografata</span><br>Salva le chiavi API crittografate (AES-256).</li>
           </ul>
-        </div>
+        </article>
 
         <br>
 
         <!-- Spanish -->
-        <div class="help-details" id="es">
+        <article class="help-details" id="es" lang="es">
           <div class="section-subtitle"><a href="#top" class="btn-tool">🇪🇸</a> Guía de comandos de la GUI</div>
           <p><strong>🚀 Resumen:</strong> Interfaz web local para el script wrapper bash4llm.</p>
 
@@ -153,12 +151,12 @@
             <li><span class="btn-tool">Desbloquear sesión de Vault</span><br>Autentica la sesión con la contraseña maestra.</li>
             <li><span class="btn-tool">Guardar clave cifrada</span><br>Almacena claves API cifradas (AES-256).</li>
           </ul>
-        </div>
+        </article>
 
         <br>
 
         <!-- French -->
-        <div class="help-details" id="fr">
+        <article class="help-details" id="fr" lang="fr">
           <div class="section-subtitle"><a href="#top" class="btn-tool">🇫🇷</a> Guide des commandes de la GUI</div>
           <p><strong>🚀 Aperçu:</strong> Interface web locale pour le script wrapper bash4llm.</p>
 
@@ -196,16 +194,16 @@
             <li><span class="btn-tool">Déverrouiller la session du Vault</span><br>Authentifier la session avec le mot de passe maître.</li>
             <li><span class="btn-tool">Enregistrer la clé chiffrée</span><br>Stocker les clés API chiffrées (AES-256).</li>
           </ul>
-        </div>
+        </article>
 
         <br>
 
         <!-- German -->
-        <div class="help-details" id="de">
+        <article class="help-details" id="de" lang="de">
           <div class="section-subtitle"><a href="#top" class="btn-tool">🇩🇪</a> GUI-Befehlsanleitung</div>
           <p><strong>🚀 Übersicht:</strong> Lokale Web-Benutzeroberfläche für das bash4llm-Wrapper-Skript.</p>
 
-          <div class="section-subtitle mt-2">💬 Seitenleiste & Threads</div>
+          <div class="section-subtitle mt-2">💬 Seitenleiste &amp; Threads</div>
           <ul>
             <li><span class="btn-tool">+ Neuer Chat</span><br>Einen neuen Sitzungs-Thread erstellen.</li>
             <li><span class="btn-tool">Thread-Liste</span><br>Thread auswählen, um die Unterhaltung zu wechseln.</li>
@@ -239,7 +237,7 @@
             <li><span class="btn-tool">Vault-Sitzung entsperren</span><br>Sitzung mit Master-Passwort authentifizieren.</li>
             <li><span class="btn-tool">Verschlüsselten Schlüssel speichern</span><br>Verschlüsselte API-Schlüssel speichern (AES-256).</li>
           </ul>
-        </div>
+        </article>
 
       </section>
     </main>
