@@ -49,7 +49,7 @@
   "msg_save_key_failed": "Impossibile salvare la chiave API.",
   "err_stream_disconnected": "[Errore: Stream disconnesso]",
   "err_network_failed": "[Errore: Connessione di rete non riuscita]",
-  "err_submission_failed": "Errore durante l'invio della richiesta."
+  "err_submission_failed": "Errore durante l'invio della richiesta.",
   "help": "Guida",
   "prompt_label": "Prompt utente",
   "template_label": "Seleziona template di prompt",
