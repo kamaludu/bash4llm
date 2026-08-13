@@ -50,4 +50,12 @@
   "err_stream_disconnected": "[Error: Stream desconectado]",
   "err_network_failed": "[Error: Conexión de red fallida]",
   "err_submission_failed": "Error al enviar la solicitud."
+    "help": "Ayuda",
+  "prompt_label": "Prompt de usuario",
+  "template_label": "Seleccionar plantilla de prompt",
+  "error_title": "Acceso restringido / Error de sesión",
+  "error_message": "Su sesión falta, ha expirado o el acceso fue denegado por la capa de seguridad del backend.",
+  "error_instruction_cli": "Para iniciar una nueva sesión segura de la WebApp, ejecute el siguiente comando en su terminal:",
+  "error_instruction_url": "Luego abra la URL de autenticación de un solo uso generada en su navegador web.",
+  "error_back_home": "Volver a la WebApp"
 }
