@@ -50,4 +50,12 @@
   "err_stream_disconnected": "[Fehler: Stream getrennt]",
   "err_network_failed": "[Fehler: Netzwerkverbindung fehlgeschlagen]",
   "err_submission_failed": "Fehler beim Übermitteln der Anfrage."
+  "help": "Hilfe",
+  "prompt_label": "Benutzer-Prompt",
+  "template_label": "Prompt-Template auswählen",
+  "error_title": "Zugriff eingeschränkt / Sitzungsfehler",
+  "error_message": "Ihre Sitzung fehlt, ist abgelaufen oder der Zugriff wurde von der Backend-Sicherheitsebene verweigert.",
+  "error_instruction_cli": "Um eine neue sichere WebApp-Sitzung zu starten, führen Sie den folgenden Befehl in Ihrem Terminal aus:",
+  "error_instruction_url": "Öffnen Sie dann die generierte Einmal-Authentifizierungs-URL in Ihrem Webbrowser.",
+  "error_back_home": "Zurück zur WebApp"
 }
