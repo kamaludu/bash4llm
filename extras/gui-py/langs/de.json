@@ -49,7 +49,7 @@
   "msg_save_key_failed": "Fehler beim Speichern des API-Schlüssels.",
   "err_stream_disconnected": "[Fehler: Stream getrennt]",
   "err_network_failed": "[Fehler: Netzwerkverbindung fehlgeschlagen]",
-  "err_submission_failed": "Fehler beim Übermitteln der Anfrage."
+  "err_submission_failed": "Fehler beim Übermitteln der Anfrage.",
   "help": "Hilfe",
   "prompt_label": "Benutzer-Prompt",
   "template_label": "Prompt-Template auswählen",
