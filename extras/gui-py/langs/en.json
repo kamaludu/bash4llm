@@ -13,7 +13,7 @@
   "prompt_placeholder": "Type your prompt here...",
   "status_ready": "Ready",
   "status_busy": "Busy",
-  "vault": "Vault",
+  "vault": "🛡️ Vault",
   "stats": "Stats",
   "attach": "Attach",
   "no_template": "-- No Template --",
