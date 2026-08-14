@@ -4,23 +4,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Bash4LLM⁺ WebApp - HTTP Security &amp; Session Error Notification">
-  <title>HTTP Error - Bash4LLM⁺</title>
+  <title>{{ERROR_STATUS_CODE}} - Bash4LLM⁺</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<!-- Semantic data-page attribute for client runtime routing & early exit -->
+<body data-page="error">
   <div class="app-layout error-layout">
     <main class="error-card" aria-labelledby="error-title">
       <header class="error-header">
         <div class="brand-badge">Bash4LLM⁺</div>
-        <h1 id="error-title" class="error-title" data-i18n="error_title">Access Restricted / Session Error</h1>
+        <h1 id="error-title" class="error-title">{{ERROR_TITLE}}</h1>
       </header>
 
       <section class="error-body">
-        <div class="error-code-badge" id="error-code">HTTP 401 / 403 / 500</div>
+        <div class="error-code-badge" id="error-code">{{ERROR_STATUS_CODE}}</div>
 
-        <p class="error-message" id="error-message" data-i18n="error_message">
-          Your session is missing, expired, or access was denied by the backend security layer.
+        <p class="error-message" id="error-message">
+          {{ERROR_MESSAGE}}
         </p>
+
+        <!-- Visual separator between error diagnosis and recovery instructions -->
+        <hr class="error-divider">
 
         <div class="error-instructions">
           <p class="instruction-text" data-i18n="error_instruction_cli">
@@ -36,13 +40,12 @@
       </section>
 
       <footer class="error-actions">
-        <a href="/" class="btn btn-primary" data-i18n="error_back_home">Return to WebApp</a>
         <a href="/static/help.html" class="btn btn-secondary" data-i18n="help">❓ Help</a>
       </footer>
     </main>
   </div>
 
-  <!-- Unified ES6 Client Script (Immutable) -->
+  <!-- Unified ES6 Client Script -->
   <script src="/static/app.js" type="module"></script>
 </body>
 </html>
