@@ -205,7 +205,10 @@
   <dialog id="vault-modal" class="modal" aria-labelledby="vault-title" aria-modal="true">
     <div class="modal-card">
       <header class="modal-header">
-        <h2 id="vault-title" class="modal-title" data-i18n="vault_title">🔒 OpenSSL Key Vault</h2>
+        <h2 id="vault-title" class="modal-title">
+          <span aria-hidden="true">🔒</span>
+          <span data-i18n="vault_title">OpenSSL Key Vault</span>
+        </h2>
       </header>
 
       <div class="modal-body">
