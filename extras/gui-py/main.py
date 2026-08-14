@@ -123,6 +123,31 @@ if os.path.exists(langs_dir):
     app.mount("/langs", StaticFiles(directory=langs_dir), name="langs")
 
 
+def render_error_page(status_code: int, title: str, message: str) -> HTMLResponse:
+    """
+    Safely renders error.html by replacing template placeholders server-side.
+    Avoids external template engine overhead while preventing XSS / injection issues.
+    """
+    error_html_path = os.path.join(static_dir, "error.html")
+    if os.path.exists(error_html_path):
+        try:
+            with open(error_html_path, "r", encoding="utf-8") as f:
+                template = f.read()
+            content = (
+                template
+                .replace("{{ERROR_STATUS_CODE}}", f"HTTP {status_code}")
+                .replace("{{ERROR_TITLE}}", title)
+                .replace("{{ERROR_MESSAGE}}", message)
+            )
+            return HTMLResponse(content=content, status_code=status_code)
+        except Exception:
+            pass
+    return HTMLResponse(
+        content=f"<h1>HTTP {status_code} - {title}</h1><p>{message}</p>",
+        status_code=status_code
+    )
+
+
 def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 100) -> int:
     for port in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -150,20 +175,55 @@ async def protect_html_routes_middleware(request: Request, call_next):
     if path in ("/", "/index.html"):
         session_id = request.cookies.get("session_id")
         if not session_id or session_id not in sessions:
-            error_html_path = os.path.join(static_dir, "error.html")
-            if os.path.exists(error_html_path):
-                with open(error_html_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                return HTMLResponse(content=content, status_code=status.HTTP_401_UNAUTHORIZED)
-            return HTMLResponse(content="<h1>401 Unauthorized</h1><p>Please authenticate via token link.</p>", status_code=status.HTTP_401_UNAUTHORIZED)
+            return render_error_page(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                title="Session Missing or Expired",
+                message="Your session is missing, expired, or access was denied by the backend security layer."
+            )
     return await call_next(request)
+
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Surgically routes HTTP exceptions:
+    - API endpoints or non-HTML requests preserve strict JSON contracts.
+    - Direct browser navigation renders the styled error page.
+    """
+    accept_header = request.headers.get("accept", "").lower()
+    is_html_request = "text/html" in accept_header and not request.url.path.startswith("/api")
+
+    if not is_html_request:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    status_code = exc.status_code
+    title_map = {
+        400: "Bad Request",
+        401: "Authentication Required",
+        403: "Access Forbidden",
+        404: "Page Not Found",
+        405: "Method Not Allowed",
+        409: "Conflict",
+        422: "Unprocessable Entity",
+        500: "Internal Server Error"
+    }
+    title = title_map.get(status_code, f"HTTP Error {status_code}")
+    return render_error_page(
+        status_code=status_code,
+        title=title,
+        message=str(exc.detail) if exc.detail else "An HTTP error occurred."
+    )
 
 
 @app.get("/auth")
 async def authenticate(one_time_token: str, request: Request):
     global active_one_time_token
     if not active_one_time_token or not secrets.compare_digest(one_time_token, active_one_time_token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or spent token")
+        return render_error_page(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            title="Invalid or Spent Token",
+            message="The one-time authentication token provided in the URL is invalid, already spent, or expired."
+        )
 
     active_one_time_token = None
     
@@ -237,7 +297,6 @@ async def list_models(
     stdout, _ = await proc.communicate()
     models = [line.strip() for line in stdout.decode('utf-8', errors='replace').splitlines() if line.strip()]
 
-    # Read current default model for provider from canonical model file
     active_provider = provider or "groq"
     model_file = os.path.join(config.BASH4LLM_CONFIG_DIR, f"model.{active_provider}")
     default_model = None
@@ -510,7 +569,6 @@ async def create_chat_job(
 ):
     verify_security_headers(request, active_csrf_token, session_id)
 
-    # Support both JSON payload and Form-Data (native HTML form submission)
     content_type = request.headers.get("content-type", "").lower()
     if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
         form_data = await request.form()
@@ -535,7 +593,6 @@ async def create_chat_job(
                 detail=f"Invalid JSON payload: {str(e)}"
             )
 
-    # Use model_dump() for Pydantic V2 compatibility with fallback to dict()
     payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     payload_json = json.dumps(payload_dict, sort_keys=True)
     fingerprint = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
@@ -582,7 +639,6 @@ async def create_chat_job(
     if idempotency_key:
         idempotency_store[(session_id, idempotency_key)] = job
 
-    # Clean Environment variables while preserving Provider API Keys (*_API_KEY)
     sanitized_env = {
         k: v for k, v in os.environ.items()
         if not (k.endswith("_SECRET") or (k.endswith("_TOKEN") and k != "BASH4LLM_AUTH_TOKEN"))
