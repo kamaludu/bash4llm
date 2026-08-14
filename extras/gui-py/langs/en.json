@@ -50,7 +50,7 @@
   "err_stream_disconnected": "[Error: Stream disconnected]",
   "err_network_failed": "[Error: Network connection failed]",
   "err_submission_failed": "Error submitting job.",
-  "help": "Help",
+  "help": "❓ Help",
   "prompt_label": "User Prompt",
   "template_label": "Select Prompt Template",
   "error_title": "Access Restricted / Session Error",
