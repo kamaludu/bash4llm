@@ -13,7 +13,7 @@
 
 // Compact DOM Helpers
 const $ = id => document.getElementById(id);
-const on = (id, evt, fn) => $(id)?.addEventListener(evt, fn);
+const on = id => (evt, fn) => $(id)?.addEventListener(evt, fn);
 
 let csrfToken = "";
 let currentThreadId = "default";
@@ -89,13 +89,28 @@ function syncSettingsFormFields() {
   $("group-target-bytes")?.classList.toggle("hidden", contextMode !== "bytes");
 }
 
-// 1. Initialize Application
+// 1. Application Initialization Lifecycle
 document.addEventListener("DOMContentLoaded", async () => {
+  // A. Load fundamental UI localization (required across all views: index, error, help)
+  await loadLocalization();
+
+  // B. DEFENSE-IN-DEPTH EARLY-EXIT GUARD (Anti-Loop & Unauthenticated Protection)
+  // Terminate initialization on static/informational views (error, help) or any view
+  // lacking the primary interactive workspace form (#chat-form).
+  // This prevents unauthenticated HTTP 401 API cascades and subsequent location.reload() loops.
+  const pageType = document.body.dataset.page;
+  const isStaticOrNonWorkspace = pageType === "error" || 
+                                 pageType === "help" || 
+                                 Boolean(document.querySelector(".error-layout, .help-layout")) ||
+                                 !$("chat-form");
+
+  if (isStaticOrNonWorkspace) {
+    return;
+  }
+
+  // C. Interactive Workspace Initialization (Authenticated index.html only)
   setupEventListeners();
   loadSettingsFromLocalStorage();
-
-  // Load localization dictionary before populating UI components
-  await loadLocalization();
 
   await Promise.allSettled([
     refreshStatus(),
@@ -315,17 +330,17 @@ function updateActiveBadge() {
 }
 
 function setupEventListeners() {
-  on("btn-new-thread", "click", () => {
+  on("btn-new-thread")("click", () => {
     const autoId = `thread-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 1000)}`;
     const userChoice = prompt(t("prompt_new_thread", "Enter new thread name:"), autoId);
     if (userChoice && userChoice.trim()) switchThread(userChoice.trim());
   });
 
-  on("btn-toggle-sidebar", "click", () => toggleSidebar(true));
-  on("btn-close-sidebar", "click", () => toggleSidebar(false));
-  on("sidebar-overlay", "click", () => toggleSidebar(false));
+  on("btn-toggle-sidebar")("click", () => toggleSidebar(true));
+  on("btn-close-sidebar")("click", () => toggleSidebar(false));
+  on("sidebar-overlay")("click", () => toggleSidebar(false));
 
-  on("file-upload-input", "change", async e => {
+  on("file-upload-input")("change", async e => {
     const file = e.target.files[0];
     if (!file) return;
     const formData = new FormData();
@@ -343,19 +358,19 @@ function setupEventListeners() {
     e.target.value = "";
   });
 
-  on("select-context-mode", "change", e => {
+  on("select-context-mode")("change", e => {
     contextMode = e.target.value;
     $("group-thread-window")?.classList.toggle("hidden", contextMode !== "messages");
     $("group-target-bytes")?.classList.toggle("hidden", contextMode !== "bytes");
   });
 
-  on("select-provider", "change", async e => {
+  on("select-provider")("change", async e => {
     currentProvider = e.target.value;
     currentModel = "";
     await loadModelsForProvider(currentProvider);
   });
 
-  on("btn-set-default-model", "click", async () => {
+  on("btn-set-default-model")("click", async () => {
     const selectedM = $("select-model")?.value || "";
     if (!selectedM) return;
     try {
@@ -373,7 +388,7 @@ function setupEventListeners() {
     } catch (e) {}
   });
 
-  on("btn-refresh-models", "click", async () => {
+  on("btn-refresh-models")("click", async () => {
     try {
       const res = await apiFetch(`/api/models/refresh?provider=${encodeURIComponent(currentProvider)}`, { method: "POST" });
       if (res.ok) {
@@ -438,17 +453,17 @@ function setupEventListeners() {
     });
   }
 
-  on("btn-cancel", "click", cancelJob);
+  on("btn-cancel")("click", cancelJob);
 
   // Settings Modal Handlers
-  on("btn-settings", "click", () => {
+  on("btn-settings")("click", () => {
     syncSettingsFormFields();
     if ($("select-provider")) $("select-provider").value = currentProvider;
     if ($("select-model")) $("select-model").value = currentModel;
     $("settings-modal")?.showModal();
   });
-  on("btn-close-settings", "click", () => $("settings-modal")?.close());
-  on("btn-save-settings", "click", () => {
+  on("btn-close-settings")("click", () => $("settings-modal")?.close());
+  on("btn-save-settings")("click", () => {
     currentProvider = $("select-provider")?.value || currentProvider;
     currentModel = $("select-model")?.value || currentModel;
     systemPrompt = $("input-system-prompt")?.value.trim() || "";
@@ -467,10 +482,10 @@ function setupEventListeners() {
   });
 
   // Vault Modal Handlers
-  on("btn-vault", "click", () => { checkVaultStatus(); $("vault-modal")?.showModal(); });
-  on("btn-close-vault", "click", () => $("vault-modal")?.close());
+  on("btn-vault")("click", () => { checkVaultStatus(); $("vault-modal")?.showModal(); });
+  on("btn-close-vault")("click", () => $("vault-modal")?.close());
 
-  on("btn-unlock-vault", "click", async () => {
+  on("btn-unlock-vault")("click", async () => {
     const pass = $("input-master-password")?.value || "";
     if (!pass) return;
     try {
@@ -488,7 +503,7 @@ function setupEventListeners() {
     } catch (e) {}
   });
 
-  on("btn-save-vault-key", "click", async () => {
+  on("btn-save-vault-key")("click", async () => {
     const prov = $("select-vault-provider")?.value || "";
     const key = $("input-vault-api-key")?.value.trim() || "";
     if (!prov || !key) return;
@@ -508,7 +523,7 @@ function setupEventListeners() {
   });
 
   // Snapshot Modal Handlers
-  on("btn-thread-stats", "click", async () => {
+  on("btn-thread-stats")("click", async () => {
     try {
       const res = await apiFetch(`/api/threads/${currentThreadId}/snapshot`);
       if (res.ok) {
@@ -527,7 +542,7 @@ function setupEventListeners() {
     } catch (e) {}
   });
 
-  on("btn-close-snapshot", "click", () => $("snapshot-modal")?.close());
+  on("btn-close-snapshot")("click", () => $("snapshot-modal")?.close());
 }
 
 function renderAttachmentChips() {
