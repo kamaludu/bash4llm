@@ -1,6 +1,6 @@
 {
   "new_thread": "+ Neuer Chat",
-  "settings": "Einstellungen",
+  "settings": "⚙️ Einstellungen",
   "settings_title": "Laufzeit-Einstellungen",
   "provider": "Anbieter",
   "model": "Modell",
@@ -13,7 +13,7 @@
   "prompt_placeholder": "Geben Sie Ihren Prompt hier ein...",
   "status_ready": "Bereit",
   "status_busy": "Beschäftigt",
-  "vault": "🛡️ Vault",
+  "vault": "🔒 Vault",
   "stats": "Statistiken",
   "attach": "Anhängen",
   "no_template": "-- Kein Template --",
