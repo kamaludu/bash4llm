@@ -5,46 +5,46 @@
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   1. ROOT DESIGN TOKENS & WCAG AAA PALETTE (Contrast Ratio >= 7:1)
+   1. ROOT DESIGN TOKENS & WCAG AAA PALETTE (Light UI / Dark Text / Green Accent)
    -------------------------------------------------------------------------- */
 :root {
-  /* Surface & Canvas Colors */
-  --color-bg-base: #0d1117;
-  --color-bg-surface: #161b22;
-  --color-bg-overlay: #21262d;
-  --color-bg-subtle: #30363d;
-  --color-bg-backdrop: rgba(1, 4, 9, 0.85);
+  /* Surface & Canvas Colors (Light Theme - Warm Light Yellowish Canvas) */
+  --color-bg-base: #fffdf3;         /* Main application background */
+  --color-bg-surface: #f4efe2;      /* Sidebar, header, and modal background */
+  --color-bg-overlay: #eae4d5;      /* Hover states and attachment chip background */
+  --color-bg-subtle: #ded7c5;       /* Selected items and active elements background */
+  --color-bg-backdrop: rgba(41, 49, 55, 0.6); /* Modal dark grey overlay backdrop */
 
   /* Borders & Dividers */
-  --color-border-subtle: #30363d;
-  --color-border-muted: #484f58;
-  --color-border-focus: #58a6ff;
+  --color-border-subtle: #ded7c5;    /* Subtle dividers and light borders */
+  --color-border-muted: #b8af9b;     /* Muted contrast borders */
+  --color-border-focus: #4eaa25;     /* Focus border ring in custom green */
 
-  /* Typography Colors (WCAG 2.1 AAA Compliant) */
-  --color-fg-primary: #f0f6fc;      /* Contrast ~16.1:1 against #0d1117 */
-  --color-fg-secondary: #c9d1d9;    /* Contrast ~11.2:1 against #0d1117 */
-  --color-fg-muted: #8b949e;        /* Large text contrast ~5.1:1 */
-  --color-fg-inverse: #0d1117;
+  /* Typography Colors (WCAG 2.1 AAA Compliant - Dark Grey Text) */
+  --color-fg-primary: #293137;      /* Primary dark grey body text */
+  --color-fg-secondary: #4a5761;    /* Secondary slate text */
+  --color-fg-muted: #667580;        /* Muted and disabled text */
+  --color-fg-inverse: #fffdf3;      /* Light text for dark/solid filled buttons */
 
-  /* Accent & Semantic Action Tokens */
-  --color-accent-blue: #58a6ff;     /* Contrast ~7.9:1 */
-  --color-accent-blue-hover: #79c0ff;
-  --color-success-green: #3fb950;   /* Contrast ~7.3:1 */
-  --color-success-bg: rgba(46, 160, 67, 0.15);
-  --color-danger-red: #ff7b72;      /* Contrast ~7.1:1 */
-  --color-danger-hover: #ffa198;
-  --color-danger-bg: rgba(248, 81, 73, 0.15);
-  --color-warning-amber: #e3b341;   /* Contrast ~8.5:1 (AAA High Contrast) */
+  /* Accent & Semantic Action Tokens (Highlights in Custom Green #4eaa25) */
+  --color-accent-blue: #4eaa25;     /* Primary green accent (replaces default blue) */
+  --color-accent-blue-hover: #3d881d; /* Darker green hover state */
+  --color-success-green: #4eaa25;   /* Success indicator green */
+  --color-success-bg: rgba(78, 170, 37, 0.15);
+  --color-danger-red: #cf222e;      /* High contrast danger red */
+  --color-danger-hover: #a40e26;
+  --color-danger-bg: rgba(207, 34, 46, 0.12);
+  --color-warning-amber: #b07400;    /* High contrast amber warning */
 
-  /* Message Bubbles */
-  --color-msg-user-bg: #1f2937;
-  --color-msg-user-border: #374151;
-  --color-msg-assistant-bg: #161b22;
-  --color-msg-assistant-border: #30363d;
+  /* Message Bubbles (Light Theme with Dark Grey Text #293137) */
+  --color-msg-user-bg: #e5f3dd;      /* Light green tint user bubble */
+  --color-msg-user-border: #c3e2b4;
+  --color-msg-assistant-bg: #ffffff; /* Pure white assistant bubble */
+  --color-msg-assistant-border: #ded7c5;
 
-  /* Typography Stack */
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Typography Stack (Roboto UI / Roboto Mono Code) */
+  --font-sans: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* Geometry, Radius & Transitions */
   --radius-sm: 0.25rem;
