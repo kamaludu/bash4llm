@@ -50,7 +50,7 @@
   "err_stream_disconnected": "[Error: Stream desconectado]",
   "err_network_failed": "[Error: Conexión de red fallida]",
   "err_submission_failed": "Error al enviar la solicitud.",
-  "help": "Ayuda",
+  "help": "❓ Ayuda",
   "prompt_label": "Prompt de usuario",
   "template_label": "Seleccionar plantilla de prompt",
   "error_title": "Acceso restringido / Error de sesión",
