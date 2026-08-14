@@ -1,6 +1,6 @@
 {
   "new_thread": "+ New Thread",
-  "settings": "Settings",
+  "settings": "⚙️ Settings",
   "settings_title": "Runtime Settings",
   "provider": "Provider",
   "model": "Model",
@@ -13,7 +13,7 @@
   "prompt_placeholder": "Type your prompt here...",
   "status_ready": "Ready",
   "status_busy": "Busy",
-  "vault": "🛡️ Vault",
+  "vault": "🔒 Vault",
   "stats": "Stats",
   "attach": "Attach",
   "no_template": "-- No Template --",
