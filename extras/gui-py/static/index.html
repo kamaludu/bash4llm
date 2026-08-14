@@ -32,9 +32,18 @@
           <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
         </div>
         <div class="footer-actions">
-          <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status" data-i18n="vault">🔒 Vault</button>
-          <button type="button" id="btn-settings" class="btn btn-secondary btn-sm" data-i18n="settings">Settings</button>
-          <a href="/static/help.html" class="btn btn-secondary btn-sm" data-i18n="help">❓ Help</a>
+          <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">
+            <span aria-hidden="true">🔒</span>
+            <span data-i18n="vault">Vault</span>
+          </button>
+          <button type="button" id="btn-settings" class="btn btn-secondary btn-sm">
+            <span aria-hidden="true">⚙️</span>
+            <span data-i18n="settings">Settings</span>
+          </button>
+          <a href="/static/help.html" class="btn btn-secondary btn-sm">
+            <span aria-hidden="true">❓</span>
+            <span data-i18n="help">Help</span>
+          </a>
         </div>
       </footer>
     </aside>
