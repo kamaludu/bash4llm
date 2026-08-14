@@ -26,6 +26,10 @@
   --color-fg-muted: #667580;        /* Muted and disabled text */
   --color-fg-inverse: #fffdf3;      /* Light text for dark/solid filled buttons */
 
+  /* Brand Badge Specific Design Tokens */
+  --color-brand-bg: #4eaa25;        /* Dedicated brand badge green background */
+  --color-brand-fg: #ffffff;        /* Dedicated brand badge white text */
+
   /* Accent & Semantic Action Tokens (Highlights in Custom Green #4eaa25) */
   --color-accent-blue: #4eaa25;     /* Primary green accent (replaces default blue) */
   --color-accent-blue-hover: #3d881d; /* Darker green hover state */
@@ -175,10 +179,16 @@ img, svg, video {
 }
 
 .brand-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  background-color: var(--color-brand-bg);
+  color: var(--color-brand-fg);
   font-weight: 700;
   font-size: 1.125rem;
   letter-spacing: -0.025em;
-  color: var(--color-accent-blue);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-md);
   white-space: nowrap;
 }
 
@@ -973,6 +983,12 @@ code {
   font-size: 1rem;
   line-height: 1.6;
   color: var(--color-fg-secondary);
+}
+
+.error-divider {
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  margin: 0.25rem 0;
 }
 
 .error-instructions {
