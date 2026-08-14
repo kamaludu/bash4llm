@@ -50,7 +50,7 @@
   "err_stream_disconnected": "[Fehler: Stream getrennt]",
   "err_network_failed": "[Fehler: Netzwerkverbindung fehlgeschlagen]",
   "err_submission_failed": "Fehler beim Übermitteln der Anfrage.",
-  "help": "Hilfe",
+  "help": "❓ Hilfe",
   "prompt_label": "Benutzer-Prompt",
   "template_label": "Prompt-Template auswählen",
   "error_title": "Zugriff eingeschränkt / Sitzungsfehler",
