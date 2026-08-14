@@ -13,7 +13,7 @@
   "prompt_placeholder": "Escribe tu prompt aquí...",
   "status_ready": "Listo",
   "status_busy": "Ocupado",
-  "vault": "Vault",
+  "vault": "🛡️ Vault",
   "stats": "Estadísticas",
   "attach": "Adjuntar",
   "no_template": "-- Sin plantilla --",
