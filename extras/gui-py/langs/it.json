@@ -50,7 +50,7 @@
   "err_stream_disconnected": "[Errore: Stream disconnesso]",
   "err_network_failed": "[Errore: Connessione di rete non riuscita]",
   "err_submission_failed": "Errore durante l'invio della richiesta.",
-  "help": "Guida",
+  "help": "❓ Guida",
   "prompt_label": "Prompt utente",
   "template_label": "Seleziona template di prompt",
   "error_title": "Accesso limitato / Errore di sessione",
