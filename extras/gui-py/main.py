@@ -46,6 +46,7 @@ from ipc import (
     get_session_snapshot_ipc,
     test_vault_unlock_ipc,
     save_vault_api_key_ipc,
+    get_vault_keys_ipc,
     THREAD_ID_REGEX
 )
 
@@ -56,19 +57,103 @@ IS_TERMUX = "TERMUX_VERSION" in os.environ or os.path.exists("/data/data/com.ter
 config = Config()
 active_one_time_token: Optional[str] = secrets.token_hex(32)
 active_csrf_token: str = secrets.token_hex(32)
-sessions: Dict[str, float] = {}                   # session_id -> last_seen_timestamp
+sessions: Dict[str, float] = {}                    # session_id -> last_seen_timestamp
 jobs_registry: Dict[str, Job] = {}
 job_queues: Dict[str, asyncio.Queue] = {}
-idempotency_store: Dict[Tuple[str, str], Job] = {} # (session_id, key) -> Job
+idempotency_store: Dict[Tuple[str, str], Job] = {}  # (session_id, key) -> Job
 
 server_has_seen_first_client: bool = False
 grace_started_at: Optional[float] = None
 
 
+def _safe_int(value: Any, default: Optional[int] = None) -> Optional[int]:
+    if value is None:
+        return default
+    val_str = str(value).strip()
+    if not val_str:
+        return default
+    try:
+        return int(float(val_str))
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    if value is None:
+        return default
+    val_str = str(value).strip()
+    if not val_str:
+        return default
+    try:
+        return float(val_str)
+    except (ValueError, TypeError):
+        return default
+
+
+def get_canonical_env() -> Dict[str, str]:
+    """
+    Constructs an authoritative environment dictionary for all subprocess invocations.
+    Guarantees that bash4llm never falls back to unaligned relative paths.
+    """
+    env = {
+        k: v for k, v in os.environ.items()
+        if not (k.endswith("_SECRET") or (k.endswith("_TOKEN") and k != "BASH4LLM_AUTH_TOKEN"))
+    }
+    env["BASH4LLM_DIR"] = config.BASH4LLM_DIR
+    env["BASH4LLM_TMPDIR"] = config.BASH4LLM_TMPDIR
+    env["BASH4LLM_CONFIG_DIR"] = config.BASH4LLM_CONFIG_DIR
+    env["BASH4LLM_HISTORY_DIR"] = config.BASH4LLM_HISTORY_DIR
+    env["BASH4LLM_RUN_DIR"] = config.BASH4LLM_RUN_DIR
+    env["BASH4LLM_EXTRAS_DIR"] = config.BASH4LLM_EXTRAS_DIR
+    env["BASH4LLM_TEMPLATES_DIR"] = config.BASH4LLM_TEMPLATES_DIR
+    env["RUN_TMPDIR"] = config.BASH4LLM_TMPDIR
+
+    if config.vault_session_context:
+        env["_B4L_RT_CTX"] = config.vault_session_context
+
+    return env
+
+
+def prune_expired_memory_records() -> None:
+    """
+    Prevents unbounded RAM growth by evicting completed jobs older than 2 hours
+    or trimming excess capacity while protecting active executing jobs.
+    """
+    now = time.time()
+    MAX_RECORDS = 200
+    TTL_SECONDS = 7200.0  # 2 Hours
+
+    expired_job_ids = [
+        jid for jid, j in jobs_registry.items()
+        if j.completed_at and (now - j.completed_at) > TTL_SECONDS
+    ]
+    for jid in expired_job_ids:
+        jobs_registry.pop(jid, None)
+
+    if len(jobs_registry) > MAX_RECORDS:
+        inactive_jids = [
+            jid for jid, j in jobs_registry.items()
+            if j.state in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED)
+        ]
+        sorted_inactive = sorted(
+            inactive_jids,
+            key=lambda k: jobs_registry[k].created_at
+        )
+        excess_count = len(jobs_registry) - MAX_RECORDS
+        for jid in sorted_inactive[:excess_count]:
+            jobs_registry.pop(jid, None)
+
+    expired_idem_keys = [
+        k for k, j in idempotency_store.items()
+        if j.completed_at and (now - j.completed_at) > TTL_SECONDS
+    ]
+    for k in expired_idem_keys:
+        idempotency_store.pop(k, None)
+
+
 async def graceful_shutdown_checker():
     """
-    Monitors server lifecycle and triggers shutdown when idle.
-    Tolerances are adjusted for mobile/Termux environments.
+    Monitors server lifecycle, triggers idle shutdown and prunes expired RAM objects.
     """
     global grace_started_at, server_has_seen_first_client
     CLIENT_ACTIVITY_WINDOW = 60.0
@@ -76,6 +161,8 @@ async def graceful_shutdown_checker():
 
     while True:
         await asyncio.sleep(2.0)
+        prune_expired_memory_records()
+
         if not server_has_seen_first_client:
             continue
 
@@ -126,7 +213,6 @@ if os.path.exists(langs_dir):
 def render_error_page(status_code: int, title: str, message: str) -> HTMLResponse:
     """
     Safely renders error.html by replacing template placeholders server-side.
-    Avoids external template engine overhead while preventing XSS / injection issues.
     """
     error_html_path = os.path.join(static_dir, "error.html")
     if os.path.exists(error_html_path):
@@ -185,11 +271,6 @@ async def protect_html_routes_middleware(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
-    """
-    Surgically routes HTTP exceptions:
-    - API endpoints or non-HTML requests preserve strict JSON contracts.
-    - Direct browser navigation renders the styled error page.
-    """
     accept_header = request.headers.get("accept", "").lower()
     is_html_request = "text/html" in accept_header and not request.url.path.startswith("/api")
 
@@ -284,20 +365,32 @@ async def list_models(
     session_id: str = Depends(get_current_session)
 ):
     verify_security_headers(request, active_csrf_token, session_id)
-    cmd = ["bash", config.core_script_path]
-    if provider:
-        cmd.extend(["--provider", provider])
-    cmd.append("--list-models-raw")
+    
+    # Dynamically resolve active provider from config/provider if not passed in query
+    active_provider = provider
+    if not active_provider:
+        provider_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "provider")
+        if os.path.isfile(provider_file):
+            try:
+                with open(provider_file, "r", encoding="utf-8") as f:
+                    line = f.readline().strip()
+                    if line:
+                        active_provider = line
+            except Exception:
+                pass
+    active_provider = active_provider or "groq"
+
+    cmd = ["bash", config.core_script_path, "--provider", active_provider, "--list-models-raw"]
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        stderr=asyncio.subprocess.PIPE,
+        env=get_canonical_env()
     )
     stdout, _ = await proc.communicate()
     models = [line.strip() for line in stdout.decode('utf-8', errors='replace').splitlines() if line.strip()]
 
-    active_provider = provider or "groq"
     model_file = os.path.join(config.BASH4LLM_CONFIG_DIR, f"model.{active_provider}")
     default_model = None
     if os.path.isfile(model_file):
@@ -328,7 +421,8 @@ async def set_default_model(
         "--provider", payload.provider,
         "--set-default", payload.model,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        stderr=asyncio.subprocess.PIPE,
+        env=get_canonical_env()
     )
     await proc.communicate()
     if proc.returncode != 0:
@@ -348,15 +442,11 @@ async def refresh_models(
         cmd.extend(["--provider", provider])
     cmd.append("--refresh-models")
 
-    env = {**os.environ}
-    if config.vault_session_context:
-        env["_B4L_RT_CTX"] = config.vault_session_context
-
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env=env
+        env=get_canonical_env()
     )
     await proc.communicate()
     if proc.returncode != 0:
@@ -370,7 +460,8 @@ async def list_providers(request: Request, session_id: str = Depends(get_current
     proc = await asyncio.create_subprocess_exec(
         "bash", config.core_script_path, "--list-providers-raw",
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        stderr=asyncio.subprocess.PIPE,
+        env=get_canonical_env()
     )
     stdout, _ = await proc.communicate()
     providers = [line.strip() for line in stdout.decode('utf-8', errors='replace').splitlines() if line.strip()]
@@ -401,6 +492,21 @@ async def get_vault_status(request: Request, session_id: str = Depends(get_curre
     }
 
 
+@app.get("/api/vault/keys")
+async def list_vault_keys(request: Request, session_id: str = Depends(get_current_session)):
+    verify_security_headers(request, active_csrf_token, session_id)
+    if not config.vault_session_context:
+        return {"keys": []}
+    
+    keys = await get_vault_keys_ipc(
+        extras_dir=config.BASH4LLM_EXTRAS_DIR,
+        config_dir=config.BASH4LLM_CONFIG_DIR,
+        tmp_dir=config.BASH4LLM_TMPDIR,
+        master_password=config.vault_session_context
+    )
+    return {"keys": keys}
+
+
 @app.post("/api/vault/unlock")
 async def unlock_vault(
     payload: VaultUnlockRequest,
@@ -408,6 +514,17 @@ async def unlock_vault(
     session_id: str = Depends(get_current_session)
 ):
     verify_security_headers(request, active_csrf_token, session_id)
+    
+    vault_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "keys.enc")
+    vault_exists = os.path.isfile(vault_file)
+
+    # Server-side defense-in-depth: enforce minimum password length (>= 11 chars) on clean install
+    if not vault_exists and len(payload.master_password) < 11:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Master Password must be at least 11 characters long"
+        )
+
     valid = await test_vault_unlock_ipc(
         extras_dir=config.BASH4LLM_EXTRAS_DIR,
         config_dir=config.BASH4LLM_CONFIG_DIR,
@@ -475,35 +592,19 @@ async def list_threads(request: Request, session_id: str = Depends(get_current_s
     verify_security_headers(request, active_csrf_token, session_id)
     index_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "ui_state", "threads", "index.json")
     
-    index_valid = False
-    if os.path.isfile(index_file):
-        try:
-            with open(index_file, "r", encoding="utf-8") as f:
-                json.load(f)
-                index_valid = True
-        except Exception:
-            index_valid = False
-
-    if not index_valid:
-        history_threads_dir = os.path.join(config.BASH4LLM_HISTORY_DIR, "threads")
-        if os.path.exists(history_threads_dir):
-            for fname in os.listdir(history_threads_dir):
-                if fname.endswith(".ndjson"):
-                    tid = fname[:-7]
-                    proc = await asyncio.create_subprocess_exec(
-                        "bash", config.core_script_path, "--init-thread", "--thread", tid,
-                        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-                    )
-                    await proc.wait()
-
-    threads = []
+    threads: List[str] = []
     if os.path.isfile(index_file):
         try:
             with open(index_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                threads = data.get("threads", [])
+                raw_threads = data.get("threads", [])
+                threads = [t if isinstance(t, str) else t.get("id", str(t)) for t in raw_threads]
         except Exception:
             threads = []
+    
+    if not threads:
+        threads = ["default"]
+
     return {"threads": threads}
 
 
@@ -541,9 +642,14 @@ async def delete_thread(thread_id: str, request: Request, session_id: str = Depe
 
     proc = await asyncio.create_subprocess_exec(
         "bash", config.core_script_path, "--delete-thread", thread_id,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        env=get_canonical_env()
     )
-    await proc.communicate()
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err_msg = stderr.decode('utf-8', errors='replace').strip() or "Failed to delete thread"
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=err_msg)
+
     return {"status": "deleted", "thread_id": thread_id}
 
 
@@ -555,9 +661,14 @@ async def rename_thread(thread_id: str, payload: RenameThreadRequest, request: R
 
     proc = await asyncio.create_subprocess_exec(
         "bash", config.core_script_path, "--rename-thread", thread_id, "--title", payload.title,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        env=get_canonical_env()
     )
-    await proc.communicate()
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err_msg = stderr.decode('utf-8', errors='replace').strip() or "Failed to rename thread"
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=err_msg)
+
     return {"status": "renamed", "thread_id": thread_id, "title": payload.title}
 
 
@@ -572,15 +683,22 @@ async def create_chat_job(
     content_type = request.headers.get("content-type", "").lower()
     if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
         form_data = await request.form()
+        raw_attachments = form_data.getlist("attachments") if hasattr(form_data, "getlist") else []
         payload = ChatRequest(
-            thread_id=str(form_data.get("thread_id", "default")),
+            thread_id=str(form_data.get("thread_id", "default") or "default"),
             prompt=str(form_data.get("prompt", "")),
             stream=str(form_data.get("stream", "true")).lower() in ("true", "1", "yes"),
+            thread_window=_safe_int(form_data.get("thread_window"), 10) or 10,
             provider=str(form_data.get("provider")) if form_data.get("provider") else None,
             model=str(form_data.get("model")) if form_data.get("model") else None,
+            temperature=_safe_float(form_data.get("temperature")),
+            max_tokens=_safe_int(form_data.get("max_tokens")),
             system_prompt=str(form_data.get("system_prompt")) if form_data.get("system_prompt") else None,
+            target_bytes=_safe_int(form_data.get("target_bytes")),
             template=str(form_data.get("template")) if form_data.get("template") else None,
-            validate_sml=str(form_data.get("validate_sml", "false")).lower() in ("true", "1", "yes")
+            attachments=[str(a) for a in raw_attachments if a],
+            validate_sml=str(form_data.get("validate_sml", "false")).lower() in ("true", "1", "yes"),
+            sanitize_output=str(form_data.get("sanitize_output", "true")).lower() in ("true", "1", "yes")
         )
     else:
         try:
@@ -639,19 +757,7 @@ async def create_chat_job(
     if idempotency_key:
         idempotency_store[(session_id, idempotency_key)] = job
 
-    sanitized_env = {
-        k: v for k, v in os.environ.items()
-        if not (k.endswith("_SECRET") or (k.endswith("_TOKEN") and k != "BASH4LLM_AUTH_TOKEN"))
-    }
-    sanitized_env["BASH4LLM_DIR"] = config.BASH4LLM_DIR
-    sanitized_env["BASH4LLM_TMPDIR"] = config.BASH4LLM_TMPDIR
-    sanitized_env["BASH4LLM_CONFIG_DIR"] = config.BASH4LLM_CONFIG_DIR
-    sanitized_env["BASH4LLM_HISTORY_DIR"] = config.BASH4LLM_HISTORY_DIR
-    sanitized_env["BASH4LLM_EXTRAS_DIR"] = config.BASH4LLM_EXTRAS_DIR
-    sanitized_env["BASH4LLM_TEMPLATES_DIR"] = config.BASH4LLM_TEMPLATES_DIR
-
-    if config.vault_session_context:
-        sanitized_env["_B4L_RT_CTX"] = config.vault_session_context
+    sanitized_env = get_canonical_env()
 
     asyncio.create_task(
         execute_job_subprocess(
@@ -709,23 +815,26 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stream queue unavailable")
 
     async def event_generator():
-        while True:
-            try:
-                event = await asyncio.wait_for(sse_queue.get(), timeout=15.0)
-                yield f"id: {event['id']}\nevent: {event['event']}\ndata: {event['data']}\n\n"
-                if event['event'] == 'done':
-                    break
-            except asyncio.TimeoutError:
-                if sse_queue.empty() and job.state in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED):
-                    done_payload = json.dumps({
-                        "job_id": job.job_id,
-                        "state": job.state.value,
-                        "error_code": job.core_error_code,
-                        "error_reason": job.core_error_reason
-                    })
-                    yield f"id: {job.sse_sequence + 1}\nevent: done\ndata: {done_payload}\n\n"
-                    break
-                yield ": heartbeat\n\n"
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(sse_queue.get(), timeout=15.0)
+                    yield f"id: {event['id']}\nevent: {event['event']}\ndata: {event['data']}\n\n"
+                    if event['event'] == 'done':
+                        break
+                except asyncio.TimeoutError:
+                    if sse_queue.empty() and job.state in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED):
+                        done_payload = json.dumps({
+                            "job_id": job.job_id,
+                            "state": job.state.value,
+                            "error_code": job.core_error_code,
+                            "error_reason": job.core_error_reason
+                        })
+                        yield f"id: {job.sse_sequence + 1}\nevent: done\ndata: {done_payload}\n\n"
+                        break
+                    yield ": heartbeat\n\n"
+        finally:
+            job_queues.pop(job_id, None)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -757,4 +866,3 @@ if __name__ == "__main__":
 
     threading.Thread(target=_launch_browser_async, args=(auth_url,), daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
-    
