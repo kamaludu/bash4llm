@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ======================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
-# File: generate-manifest.sh
+# File: extras/security/generate-manifest.sh
 # Component: Official Extras Manifest Generator & Ed25519 Signer
 # License: GPL-3.0-or-later
 # Repository: https://github.com/kamaludu/bash4llm
