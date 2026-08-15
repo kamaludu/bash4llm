@@ -397,7 +397,7 @@ call_api_huggingface() {
 
   # Execute HTTP call via Authoritative Secure Network Path (Redacts API Key from argv)
   local -a extra_opts=(-D "$hdr_file" -w '%{http_code} %{time_total}')
-  http_result="$(_exec_curl_secure "POST" "$api_url" "$HFAPIKEY" "$PAYLOAD" "$tmpresp" "${ERRF:-}" 0 extra_opts || true)"
+  http_result="$(_exec_curl_secure "POST" "$api_url" "$HFAPIKEY" "$PAYLOAD" "$tmpresp" "${ERRF:-}" 0 "${extra_opts[@]}" || true)"
 
   read -r http_code time_total <<EOF
 $http_result
@@ -518,21 +518,21 @@ call_api_streaming_huggingface() {
 
   # Single unbuffered jq processing pipeline routed through _exec_curl_secure
   local -a extra_opts=(-D "$hdr_file")
-  _exec_curl_secure "POST" "$api_url" "$HFAPIKEY" "$PAYLOAD" "" "${ERRF:-}" 1 extra_opts | \
+  _exec_curl_secure "POST" "$api_url" "$HFAPIKEY" "$PAYLOAD" "" "${ERRF:-}" 1 "${extra_opts[@]}" | \
   tee -a "$RESP_RAW" | \
-  jq --unbuffered -R -r '
+  jq --unbuffered -j -R '
     if startswith("data: ") then
       sub("^data:[[:space:]]*"; "") |
       select(. != "[DONE]") |
-      try (fromjson | .choices[]?.delta?.content // .choices[]?.message?.content // "") catch ""
+      try (fromjson | .choices[]?.delta?.content // .choices[]?.message?.content // empty) catch empty
     else
       try (
         fromjson | 
-        if .error.message then ("\nAPI Error: " + .error.message) 
-        elif .message then ("\nAPI Error: " + .message) 
+        if .error.message then ("\nAPI Error: " + .error.message + "\n") 
+        elif .message then ("\nAPI Error: " + .message + "\n") 
         else empty end
       ) catch empty
-    fi
+    end
   '
 
   rc=${PIPESTATUS[0]:-0}
@@ -666,7 +666,7 @@ validate_key_huggingface() {
   local api_url="https://huggingface.co/api/whoami-v2"
 
   local -a key_val_opts=(--max-time 10 -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 "${key_val_opts[@]}" || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true
