@@ -293,7 +293,7 @@ if [ ! -f "$KEY_FILE" ]; then
     exit 0
   else
     log_error "Private key file not found at: $KEY_FILE"
-    log_error $'\nUse:\n  --generate-key\n\nor pass:\n  --no-sign-if-missing-key'
+    log_error $'\nUse:\n  --generate-key\n\nor pass:\n  --no-sign-if-missing-key\n'
     exit 1
   fi
 fi
