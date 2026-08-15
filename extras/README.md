@@ -31,6 +31,7 @@ extras/
 │   ├── ipc.py                # Subprocess Executor, Pipe I/O, UTF-8 Decoder, SSE Dispatcher
 │   ├── static/
 │   │   ├── index.html        # Progressive Enhancement SPA HTML5
+│   │   ├── help.html         # Help file
 │   │   ├── error.html        # Error template HTTP 401/403/500 minimal
 │   │   ├── style.css         # Design UI responsive zero-framework
 │   │   └── app.js            # SSE Streamer, CSRF Fetch, Form Enhancements
