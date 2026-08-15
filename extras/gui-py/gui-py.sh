@@ -23,6 +23,8 @@ if [ -n "${BASH4LLM_CORE_SCRIPT:-}" ] && [ -f "${BASH4LLM_CORE_SCRIPT}" ]; then
   CORE_SCRIPT="${BASH4LLM_CORE_SCRIPT}"
 elif [ -f "${SCRIPT_DIR}/../../bash4llm" ]; then
   CORE_SCRIPT="$(cd "${SCRIPT_DIR}/../../" >/dev/null 2>&1 && pwd)/bash4llm"
+elif [ -f "${SCRIPT_DIR}/../../../bash4llm" ]; then
+  CORE_SCRIPT="$(cd "${SCRIPT_DIR}/../../../" >/dev/null 2>&1 && pwd)/bash4llm"
 else
   printf 'bash4llm-gui: FATAL ERROR: Core script bash4llm not found at canonical path.\n' >&2
   exit 15
