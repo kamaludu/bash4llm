@@ -307,7 +307,7 @@ call_api_gemini() {
 
   # Execute HTTP call through Authoritative Secure Network Path (Redacts API Key from argv)
   local -a extra_opts=(-w '%{http_code} %{time_total}')
-  _exec_curl_secure "POST" "$api_url" "x-goog-api-key: ${key_trim}" "$send_payload" "$tmpresp" "$errf" 0 extra_opts >"$tmpout" || true
+  _exec_curl_secure "POST" "$api_url" "x-goog-api-key: ${key_trim}" "$send_payload" "$tmpresp" "$errf" 0 "${extra_opts[@]}" >"$tmpout" || true
 
   rm -f "$decoded_payload" 2>/dev/null || true
 
@@ -464,17 +464,17 @@ call_api_streaming_gemini() {
   # Unbuffered streaming pipeline routed through _exec_curl_secure (API Key hidden from argv)
   _exec_curl_secure "POST" "$api_url" "x-goog-api-key: ${key_trim}" "$send_payload" "" "$errf" 1 | \
   tee -a "$RESP_RAW" | \
-  jq --unbuffered -R -r '
+  jq --unbuffered -j -R '
     select(length > 0) |
     if startswith("data: ") then sub("^data:[[:space:]]*"; "") else . end |
     try (
       fromjson |
-      if .error then ("\nAPI Error: " + .error.message)
-      elif .candidates then (.candidates[]?.content?.parts[]?.text // "")
-      elif .content then (.content?.parts[]?.text // "")
-      elif .outputs then (.outputs[]?.content?.parts[]?.text // "")
-      else "" end
-    ) catch ""
+      if .error then ("\nAPI Error: " + .error.message + "\n")
+      elif .candidates then (.candidates[]?.content?.parts[]?.text // empty)
+      elif .content then (.content?.parts[]?.text // empty)
+      elif .outputs then (.outputs[]?.content?.parts[]?.text // empty)
+      else empty end
+    ) catch empty
   '
 
   rc=${PIPESTATUS[0]:-0}
@@ -623,7 +623,7 @@ refresh_models_gemini() {
 
   rm -f "$out" "$errf" "$curlout" 2>/dev/null || true
   local -a extra_opts=(-w '%{http_code} %{time_total}')
-  if ! _exec_curl_secure "GET" "$api_url" "x-goog-api-key: ${key_trim}" "" "$out" "$errf" 0 extra_opts >"$curlout"; then
+  if ! _exec_curl_secure "GET" "$api_url" "x-goog-api-key: ${key_trim}" "" "$out" "$errf" 0 "${extra_opts[@]}" >"$curlout"; then
     log_error "MODELREFRESH" "HTTP request to Gemini models endpoint failed."
     log_info "MODELREFRESH" "curl stderr (head):"
     head -n 200 "$errf" >&2 || true
@@ -783,7 +783,7 @@ validate_key_gemini() {
   local api_url="https://generativelanguage.googleapis.com/v1beta/models"
 
   local -a key_val_opts=(--max-time 10 -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "x-goog-api-key: ${key}" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
+  http_code="$(_exec_curl_secure "GET" "$api_url" "x-goog-api-key: ${key}" "" "$tmpout" "$errf" 0 "${key_val_opts[@]}" || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true
