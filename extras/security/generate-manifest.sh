@@ -293,7 +293,12 @@ if [ ! -f "$KEY_FILE" ]; then
     exit 0
   else
     log_error "Private key file not found at: $KEY_FILE"
-    log_error $'\nUse:\n  --generate-key\n\nor pass:\n  --no-sign-if-missing-key\n'
+    log_error "
+Use:
+  ${C_BGREEN}--generate-key${C_RST}
+
+or pass:
+  ${C_BGREEN}--no-sign-if-missing-key${C_RST}"
     exit 1
   fi
 fi
