@@ -56,7 +56,7 @@
             <span aria-hidden="true">☰</span>
           </button>
           <div class="header-thread-info">
-            <h1 id="current-thread-title" class="current-thread-title">GUI WebApp</h1>
+            <h1 id="current-thread-title" class="current-thread-title">default</h1>
             <button type="button" id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot">
               <span aria-hidden="true">📊</span>
               <span data-i18n="stats">Stats</span>
@@ -219,20 +219,43 @@
           <span id="vault-status-text" class="vault-status-text">Checking Vault status...</span>
         </div>
 
+        <!-- Unlock / Initialize Vault Section -->
         <section id="vault-unlock-section" class="form-group">
-          <label for="input-master-password" class="form-label" data-i18n="master_password">Master Password</label>
-          <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password to unlock" data-i18n-placeholder="master_password_placeholder">
+          <div class="form-group">
+            <label for="input-master-password" class="form-label" data-i18n="master_password">Master Password</label>
+            <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password (min 11 chars)" data-i18n-placeholder="master_password_placeholder">
+          </div>
+
+          <!-- Password confirmation field (revealed on clean install / uninitialized vault) -->
+          <div class="form-group hidden" id="group-confirm-password">
+            <label for="input-confirm-password" class="form-label" data-i18n="confirm_master_password">Confirm Master Password</label>
+            <input type="password" id="input-confirm-password" class="form-control" placeholder="Confirm Master Password" data-i18n-placeholder="confirm_password_placeholder">
+          </div>
+
           <div class="form-actions-inline mt-1">
             <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block" data-i18n="unlock_session">Unlock Vault Session</button>
           </div>
         </section>
 
+        <!-- Provider API Key Management Section (Revealed when unlocked) -->
         <section id="vault-key-section" class="vault-key-section hidden">
+          <!-- Configured Providers Listing -->
+          <div class="form-group" id="group-vault-saved-keys">
+            <h3 class="section-subtitle" data-i18n="saved_keys_title">Configured Providers</h3>
+            <div id="vault-saved-keys-list" class="attachment-list" aria-label="Configured Providers"></div>
+          </div>
+
           <h3 class="section-subtitle" data-i18n="save_api_key_title">Save Provider API Key</h3>
 
           <div class="form-group">
             <label for="select-vault-provider" class="form-label" data-i18n="provider">Provider</label>
             <select id="select-vault-provider" class="form-control"></select>
+          </div>
+
+          <!-- Custom Provider Input field (revealed when custom provider selected) -->
+          <div class="form-group hidden" id="group-custom-provider">
+            <label for="input-vault-custom-provider" class="form-label" data-i18n="custom_provider">Custom Provider Name</label>
+            <input type="text" id="input-vault-custom-provider" class="form-control" placeholder="e.g. ollama, mistral, openai" data-i18n-placeholder="custom_provider_placeholder">
           </div>
 
           <div class="form-group">
@@ -274,7 +297,7 @@
     </div>
   </dialog>
 
-  <!-- Unified ES6 Client Script (Immutable) -->
+  <!-- Unified ES6 Client Script -->
   <script src="/static/app.js" type="module"></script>
 </body>
 </html>
