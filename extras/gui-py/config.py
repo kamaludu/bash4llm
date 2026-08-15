@@ -11,7 +11,6 @@
 # ======================================
 
 import os
-import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -20,7 +19,7 @@ from typing import Optional
 class Config:
     """
     Runtime configuration settings derived from environment variables
-    and core bash4llm default directories.
+    and canonical bash4llm directory paths (Closed-World Data Policy).
     """
     script_dir: str = field(default_factory=lambda: os.path.dirname(os.path.abspath(__file__)))
     
@@ -102,18 +101,15 @@ class Config:
     @property
     def core_script_path(self) -> str:
         """
-        Locates the authoritative core bash4llm shell script.
+        Returns the authoritative canonical path to the bash4llm core script.
+        Adheres strictly to Closed-World Data and Fail-Fast policies without probing loops.
         """
         env_core = os.environ.get("BASH4LLM_CORE_SCRIPT")
         if env_core and os.path.isfile(env_core):
             return env_core
         
-        # Fallback candidate search
-        candidates = [
-            os.path.abspath(os.path.join(self.script_dir, "..", "..", "bash4llm")),
-            os.path.abspath(os.path.join(self.script_dir, "..", "..", "..", "bash4llm")),
-        ]
-        for candidate in candidates:
-            if os.path.isfile(candidate):
-                return candidate
-        return "bash4llm"
+        canonical_path = os.path.abspath(os.path.join(self.script_dir, "..", "..", "bash4llm"))
+        if os.path.isfile(canonical_path):
+            return canonical_path
+        
+        raise FileNotFoundError(f"Core script bash4llm not found at canonical location: {canonical_path}")
