@@ -2,7 +2,7 @@
 // ======================================
 // Bash4LLM⁺ — Bash-first wrapper for the LLM
 // File: extras/gui-py/static/app.js
-// Component: WebApp Vanilla ES6 Client (SSE Token Streaming & UI Logic)
+// Component: WebApp Vanilla ES6 Client (SSE Token Streaming, Vault Zero-State & UI Logic)
 // Copyright (C) 2026 Cristian Evangelisti
 // License: GPL-3.0-or-later
 // Repository: https://github.com/kamaludu/bash4llm
@@ -17,11 +17,14 @@ const on = id => (evt, fn) => $(id)?.addEventListener(evt, fn);
 
 let csrfToken = "";
 let currentThreadId = "default";
+let knownThreads = new Set(["default"]);
 let activeJobId = null;
 let eventSource = null;
+let isVaultInitialized = false;
+let isVaultUnlocked = false;
 
-// Application Settings State
-let currentProvider = "groq";
+// Application Settings State (Initialized dynamically)
+let currentProvider = "";
 let currentModel = "";
 let systemPrompt = "";
 let temperature = 1.0;
@@ -67,7 +70,6 @@ function loadSettingsFromLocalStorage() {
     targetBytes = s.targetBytes ?? targetBytes;
     sanitizeOutput = s.sanitizeOutput ?? sanitizeOutput;
 
-    // Synchronize UI form fields with loaded settings
     syncSettingsFormFields();
     updateActiveBadge();
   } catch (e) {
@@ -91,13 +93,10 @@ function syncSettingsFormFields() {
 
 // 1. Application Initialization Lifecycle
 document.addEventListener("DOMContentLoaded", async () => {
-  // A. Load fundamental UI localization (required across all views: index, error, help)
+  // A. Load fundamental UI localization
   await loadLocalization();
 
   // B. DEFENSE-IN-DEPTH EARLY-EXIT GUARD (Anti-Loop & Unauthenticated Protection)
-  // Terminate initialization on static/informational views (error, help) or any view
-  // lacking the primary interactive workspace form (#chat-form).
-  // This prevents unauthenticated HTTP 401 API cascades and subsequent location.reload() loops.
   const pageType = document.body.dataset.page;
   const isStaticOrNonWorkspace = pageType === "error" || 
                                  pageType === "help" || 
@@ -108,7 +107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // C. Interactive Workspace Initialization (Authenticated index.html only)
+  // C. Interactive Workspace Initialization
   setupEventListeners();
   loadSettingsFromLocalStorage();
 
@@ -119,6 +118,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadProviders(),
     loadTemplates()
   ]);
+
+  // Initial thread history hydration
+  await switchThread(currentThreadId);
 
   setInterval(sendHeartbeat, 8000);
 });
@@ -159,7 +161,11 @@ async function apiFetch(url, options = {}) {
   }
   options.credentials = "same-origin";
   const res = await fetch(url, options);
-  if (res.status === 401) window.location.reload();
+  
+  // Guard against reload loops on intentional 401s (e.g. invalid vault master password)
+  if (res.status === 401 && !url.includes("/api/vault/unlock")) {
+    window.location.reload();
+  }
   return res;
 }
 
@@ -169,6 +175,7 @@ async function refreshStatus() {
     if (res.ok) {
       const data = await res.json();
       csrfToken = data.csrf_token;
+      isVaultUnlocked = Boolean(data.vault_unlocked);
       if ($("status-dot")) $("status-dot").className = "status-dot ready";
       if ($("status-text")) $("status-text").textContent = t("status_ready", "Ready");
     }
@@ -187,23 +194,69 @@ async function checkVaultStatus() {
     const res = await apiFetch("/api/vault/status");
     if (res.ok) {
       const data = await res.json();
+      isVaultInitialized = Boolean(data.vault_exists);
+      isVaultUnlocked = Boolean(data.unlocked);
       const banner = $("vault-status-banner");
       const text = $("vault-status-text");
+      const unlockBtn = $("btn-unlock-vault");
+      const confirmGroup = $("group-confirm-password");
+
       if (data.unlocked) {
         if (banner) banner.className = "vault-banner unlocked";
         if (text) text.textContent = t("vault_unlocked", "🔓 Vault Unlocked (Session Context Active)");
         $("vault-unlock-section")?.classList.add("hidden");
         $("vault-key-section")?.classList.remove("hidden");
+        await loadVaultKeys();
       } else {
         if (banner) banner.className = "vault-banner";
-        if (text) text.textContent = data.vault_exists
-          ? t("vault_locked", "🔒 Vault Initialized (Locked)")
-          : t("vault_not_init", "🔒 Vault Not Initialized");
         $("vault-unlock-section")?.classList.remove("hidden");
         $("vault-key-section")?.classList.add("hidden");
+
+        if (data.vault_exists) {
+          if (text) text.textContent = t("vault_locked", "🔒 Vault Initialized (Locked)");
+          if (unlockBtn) unlockBtn.textContent = t("unlock_session", "Unlock Vault Session");
+          confirmGroup?.classList.add("hidden");
+        } else {
+          // Zero-State Clean Install Flow
+          if (text) text.textContent = t("vault_not_init", "🔒 Vault Not Initialized");
+          if (unlockBtn) unlockBtn.textContent = t("init_vault", "Initialize Vault");
+          confirmGroup?.classList.remove("hidden");
+        }
       }
     }
   } catch (e) {}
+}
+
+async function loadVaultKeys() {
+  if (!isVaultUnlocked) return;
+  try {
+    const res = await apiFetch("/api/vault/keys");
+    if (res.ok) {
+      const data = await res.json();
+      renderVaultSavedKeys(data.keys || []);
+    }
+  } catch (e) {}
+}
+
+function renderVaultSavedKeys(keys) {
+  const container = $("vault-saved-keys-list");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!keys || keys.length === 0) {
+    const noKeysSpan = document.createElement("span");
+    noKeysSpan.className = "status-text";
+    noKeysSpan.textContent = t("no_saved_keys", "No API keys configured yet.");
+    container.appendChild(noKeysSpan);
+    return;
+  }
+  keys.forEach(k => {
+    const chip = document.createElement("div");
+    chip.className = "chip-attachment";
+    const span = document.createElement("span");
+    span.textContent = `🔑 ${k}`;
+    chip.appendChild(span);
+    container.appendChild(chip);
+  });
 }
 
 async function loadThreads() {
@@ -214,7 +267,14 @@ async function loadThreads() {
       const listEl = $("thread-list");
       if (!listEl) return;
       listEl.innerHTML = "";
-      data.threads.forEach(tid => {
+      
+      const rawList = (data.threads && data.threads.length > 0) ? data.threads : ["default"];
+      rawList.forEach(t => knownThreads.add(t));
+      if (currentThreadId) knownThreads.add(currentThreadId);
+
+      const threadList = Array.from(knownThreads);
+
+      threadList.forEach(tid => {
         const li = document.createElement("li");
         li.className = `thread-item ${tid === currentThreadId ? "active" : ""}`;
         li.textContent = tid;
@@ -231,16 +291,17 @@ const toggleSidebar = active => {
 };
 
 async function switchThread(tid) {
-  currentThreadId = tid;
-  if ($("form-thread-id")) $("form-thread-id").value = tid;
-  if ($("current-thread-title")) $("current-thread-title").textContent = tid;
+  currentThreadId = tid || "default";
+  knownThreads.add(currentThreadId);
+  if ($("form-thread-id")) $("form-thread-id").value = currentThreadId;
+  if ($("current-thread-title")) $("current-thread-title").textContent = currentThreadId;
   document.querySelectorAll(".thread-item").forEach(el => {
-    el.classList.toggle("active", el.textContent === tid);
+    el.classList.toggle("active", el.textContent === currentThreadId);
   });
   toggleSidebar(false);
 
   try {
-    const res = await apiFetch(`/api/threads/${tid}`);
+    const res = await apiFetch(`/api/threads/${encodeURIComponent(currentThreadId)}`);
     renderChatHistory(res.ok ? (await res.json()).messages : []);
   } catch (e) {
     renderChatHistory([]);
@@ -251,7 +312,7 @@ function renderChatHistory(messages) {
   const container = $("chat-messages");
   if (!container) return;
   container.innerHTML = "";
-  if (Array.isArray(messages)) {
+  if (Array.isArray(messages) && messages.length > 0) {
     messages.forEach(msg => appendMessageUI(msg.role, msg.content));
   }
   container.scrollTop = container.scrollHeight;
@@ -283,17 +344,32 @@ function populateSelect(id, items, selected = "", defaultOption = "", defaultOpt
 async function loadProviders() {
   try {
     const res = await apiFetch("/api/providers");
+    let availableProviders = [];
     if (res.ok) {
       const data = await res.json();
-      if (data.providers.length > 0) {
-        if (!data.providers.includes(currentProvider)) {
-          currentProvider = data.providers[0];
-        }
-        populateSelect("select-provider", data.providers, currentProvider);
-        populateSelect("select-vault-provider", data.providers);
-        await loadModelsForProvider(currentProvider);
+      if (Array.isArray(data.providers) && data.providers.length > 0) {
+        availableProviders = data.providers;
       }
     }
+    
+    if (availableProviders.length === 0) {
+      availableProviders = ["groq"];
+    }
+
+    if (!currentProvider || !availableProviders.includes(currentProvider)) {
+      currentProvider = availableProviders[0];
+    }
+    
+    populateSelect("select-provider", availableProviders, currentProvider);
+
+    const vaultSelectEl = $("select-vault-provider");
+    if (vaultSelectEl) {
+      let vaultHtml = availableProviders.map(p => `<option value="${p}">${p}</option>`).join("");
+      vaultHtml += `<option value="custom">${t("custom_provider_opt", "-- Custom / Other... --")}</option>`;
+      vaultSelectEl.innerHTML = vaultHtml;
+    }
+
+    await loadModelsForProvider(currentProvider);
   } catch (e) {}
 }
 
@@ -302,12 +378,17 @@ async function loadModelsForProvider(prov) {
     const res = await apiFetch(`/api/models?provider=${encodeURIComponent(prov)}`);
     if (res.ok) {
       const data = await res.json();
+      if (data.provider) {
+        currentProvider = data.provider;
+      }
       if (currentModel && data.models.includes(currentModel)) {
         // Retain active model
       } else if (data.default_model && data.models.includes(data.default_model)) {
         currentModel = data.default_model;
       } else if (data.models.length > 0) {
         currentModel = data.models[0];
+      } else {
+        currentModel = "";
       }
       populateSelect("select-model", data.models, currentModel);
       updateActiveBadge();
@@ -325,7 +406,7 @@ async function loadTemplates() {
 }
 
 function updateActiveBadge() {
-  if ($("badge-provider")) $("badge-provider").textContent = currentProvider || "groq";
+  if ($("badge-provider")) $("badge-provider").textContent = currentProvider || "default";
   if ($("badge-model")) $("badge-model").textContent = currentModel || "default";
 }
 
@@ -333,12 +414,32 @@ function setupEventListeners() {
   on("btn-new-thread")("click", () => {
     const autoId = `thread-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 1000)}`;
     const userChoice = prompt(t("prompt_new_thread", "Enter new thread name:"), autoId);
-    if (userChoice && userChoice.trim()) switchThread(userChoice.trim());
+    if (userChoice && userChoice.trim()) {
+      const sanitized = userChoice.trim().replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 128);
+      if (sanitized) {
+        knownThreads.add(sanitized);
+        switchThread(sanitized);
+        loadThreads();
+      } else {
+        alert(t("msg_invalid_thread_name", "Invalid thread name. Only letters, numbers, '.', '_' and '-' are allowed."));
+      }
+    }
   });
 
   on("btn-toggle-sidebar")("click", () => toggleSidebar(true));
   on("btn-close-sidebar")("click", () => toggleSidebar(false));
   on("sidebar-overlay")("click", () => toggleSidebar(false));
+
+  // Chat Prompt Keyboard Ergonomics (Enter = Submit, Shift+Enter = Newline)
+  const promptInputEl = $("prompt-input");
+  if (promptInputEl) {
+    promptInputEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        $("chat-form")?.requestSubmit();
+      }
+    });
+  }
 
   on("file-upload-input")("change", async e => {
     const file = e.target.files[0];
@@ -402,6 +503,15 @@ function setupEventListeners() {
   if (form) {
     form.addEventListener("submit", async e => {
       e.preventDefault();
+
+      // PRE-FLIGHT CHECK: If Vault is initialized on disk but locked in RAM, guide user to unlock first
+      if (isVaultInitialized && !isVaultUnlocked) {
+        alert(t("msg_vault_locked_prompt", "🔒 Key Vault is locked. Please unlock the Vault with your Master Password to chat."));
+        checkVaultStatus();
+        $("vault-modal")?.showModal();
+        return;
+      }
+
       const promptInput = $("prompt-input");
       const prompt = promptInput ? promptInput.value.trim() : "";
       if (!prompt) return;
@@ -414,7 +524,7 @@ function setupEventListeners() {
         prompt: prompt,
         stream: true,
         provider: currentProvider,
-        model: currentModel,
+        model: currentModel || null,
         system_prompt: systemPrompt || null,
         temperature: temperature,
         max_tokens: maxTokens,
@@ -482,12 +592,34 @@ function setupEventListeners() {
   });
 
   // Vault Modal Handlers
-  on("btn-vault")("click", () => { checkVaultStatus(); $("vault-modal")?.showModal(); });
+  on("btn-vault")("click", () => { 
+    checkVaultStatus(); 
+    $("group-custom-provider")?.classList.toggle("hidden", $("select-vault-provider")?.value !== "custom");
+    $("vault-modal")?.showModal(); 
+  });
   on("btn-close-vault")("click", () => $("vault-modal")?.close());
+
+  on("select-vault-provider")("change", e => {
+    const isCustom = e.target.value === "custom";
+    $("group-custom-provider")?.classList.toggle("hidden", !isCustom);
+  });
 
   on("btn-unlock-vault")("click", async () => {
     const pass = $("input-master-password")?.value || "";
     if (!pass) return;
+
+    if (!isVaultInitialized) {
+      const confirmPass = $("input-confirm-password")?.value || "";
+      if (pass.length < 11) {
+        alert(t("msg_password_too_short", "Master Password must be at least 11 characters long."));
+        return;
+      }
+      if (pass !== confirmPass) {
+        alert(t("msg_passwords_mismatch", "Passwords do not match. Please try again."));
+        return;
+      }
+    }
+
     try {
       const res = await apiFetch("/api/vault/unlock", {
         method: "POST",
@@ -496,7 +628,9 @@ function setupEventListeners() {
       });
       if (res.ok) {
         if ($("input-master-password")) $("input-master-password").value = "";
+        if ($("input-confirm-password")) $("input-confirm-password").value = "";
         await checkVaultStatus();
+        await refreshStatus();
       } else {
         alert(t("msg_invalid_password", "Invalid Master Password."));
       }
@@ -504,9 +638,14 @@ function setupEventListeners() {
   });
 
   on("btn-save-vault-key")("click", async () => {
-    const prov = $("select-vault-provider")?.value || "";
+    const selectedProv = $("select-vault-provider")?.value || "";
+    let prov = selectedProv;
+    if (selectedProv === "custom") {
+      prov = $("input-vault-custom-provider")?.value.trim().toLowerCase() || "";
+    }
     const key = $("input-vault-api-key")?.value.trim() || "";
     if (!prov || !key) return;
+
     try {
       const res = await apiFetch("/api/vault/keys", {
         method: "POST",
@@ -515,7 +654,12 @@ function setupEventListeners() {
       });
       if (res.ok) {
         if ($("input-vault-api-key")) $("input-vault-api-key").value = "";
+        if ($("input-vault-custom-provider")) $("input-vault-custom-provider").value = "";
         alert(t("msg_key_saved", `API Key for ${prov} saved securely in OpenSSL Vault.`, { provider: prov }));
+        await loadProviders();
+        await checkVaultStatus();
+        await loadVaultKeys();
+        await refreshStatus();
       } else {
         alert(t("msg_save_key_failed", "Failed to save API key."));
       }
@@ -525,17 +669,23 @@ function setupEventListeners() {
   // Snapshot Modal Handlers
   on("btn-thread-stats")("click", async () => {
     try {
-      const res = await apiFetch(`/api/threads/${currentThreadId}/snapshot`);
+      const res = await apiFetch(`/api/threads/${encodeURIComponent(currentThreadId)}/snapshot`);
       if (res.ok) {
         const data = await res.json();
         const detailsEl = $("snapshot-details");
         if (detailsEl) {
-          detailsEl.innerHTML = data.stats ? `
-            <strong>Thread ID:</strong> ${data.session_id}<br>
-            <strong>Total Messages:</strong> ${data.stats.message_count}<br>
-            <strong>Segment Files:</strong> ${data.stats.segments}<br>
-            <strong>Total Byte Size:</strong> ${(data.stats.total_size_bytes / 1024).toFixed(2)} KB
-          ` : JSON.stringify(data, null, 2);
+          if (data.stats) {
+            detailsEl.innerHTML = `
+              <strong>Thread ID:</strong> ${data.session_id || currentThreadId}<br>
+              <strong>Total Messages:</strong> ${data.stats.message_count ?? 0}<br>
+              <strong>Segment Files:</strong> ${data.stats.segments ?? 0}<br>
+              <strong>Total Byte Size:</strong> ${((data.stats.total_size_bytes || 0) / 1024).toFixed(2)} KB
+            `;
+          } else if (data.error) {
+            detailsEl.textContent = `${t("msg_snapshot_error", "Snapshot Info")}: ${data.error}`;
+          } else {
+            detailsEl.textContent = JSON.stringify(data, null, 2);
+          }
         }
         $("snapshot-modal")?.showModal();
       }
@@ -552,14 +702,21 @@ function renderAttachmentChips() {
   attachedFiles.forEach((att, idx) => {
     const chip = document.createElement("div");
     chip.className = "chip-attachment";
-    chip.innerHTML = `
-      <span>📎 ${att.name}</span>
-      <button type="button" class="btn-remove-chip">×</button>
-    `;
-    chip.querySelector(".btn-remove-chip").onclick = () => {
+
+    const span = document.createElement("span");
+    span.textContent = `📎 ${att.name}`;
+    chip.appendChild(span);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-remove-chip";
+    btn.textContent = "×";
+    btn.onclick = () => {
       attachedFiles.splice(idx, 1);
       renderAttachmentChips();
     };
+    chip.appendChild(btn);
+
     container.appendChild(chip);
   });
 }
@@ -578,11 +735,10 @@ function startSSEStream(jobId) {
   eventSource.addEventListener("done", e => {
     try {
       const data = JSON.parse(e.data);
-      if (data.state === "FAILED" || data.error_code) {
+      if (data.state === "FAILED" || data.error_code || data.error_reason) {
         if (assistantMsgEl) {
-          const errCode = data.error_code ? `Error ${data.error_code}` : "Execution Failed";
-          const errReason = data.error_reason ? `: ${data.error_reason}` : "";
-          assistantMsgEl.textContent += `\n[${errCode}${errReason}]`;
+          const reasonText = data.error_reason ? `: ${data.error_reason}` : (data.error_code ? ` (Code ${data.error_code})` : "");
+          assistantMsgEl.textContent += `\n[Error${reasonText}]`;
         }
       }
     } catch (err) {}
