@@ -287,6 +287,7 @@ TMP_MANIFEST=""
 log_info "Generated manifest.sha256 with ${C_BGREEN}${entry_count}${C_RST} registered entries"
 
 # Signature phase
+# Signature phase
 if [ ! -f "$KEY_FILE" ]; then
   if [ "$ALLOW_MISSING_KEY" -eq 1 ]; then
     log_warn "Private key missing at $KEY_FILE. Skipping Ed25519 signature (--no-sign-if-missing-key active)."
@@ -298,7 +299,8 @@ Use:
   ${C_BGREEN}--generate-key${C_RST}
 
 or pass:
-  ${C_BGREEN}--no-sign-if-missing-key${C_RST}"
+  ${C_BGREEN}--no-sign-if-missing-key${C_RST}
+  "
     exit 1
   fi
 fi
