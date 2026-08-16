@@ -3,7 +3,7 @@
 # =============================================================================
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/hooks/sml-gate.sh
-# Component: Extra Hook Module: SML v2.0 Semantic Safety Gate
+# Component: Extra Hook Module: Structured Metadata Layout - Semantic Safety Gate
 # Target Category: T2 Boundary Integration Hook
 # Copyright (C) 2026 Cristian Evangelisti
 # License: GPL-3.0-or-later

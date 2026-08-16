@@ -1,226 +1,1062 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.8.5",
-    "date": "2026-08-07"
+    "version": "2.8.5.3",
+    "date": "2026-08-16",
+    "total_functions": 71
   },
   "functions": [
     {
+      "name": "resolve_script_dir",
+      "category": "PRECORE_BOOT",
+      "purpose": "Identifica la cartella reale in cui risiede lo script risolvendo ricorsivamente i collegamenti simbolici.",
+      "input": "Nessuno (analizza ${BASH_SOURCE[0]}).",
+      "output": "Percorso assoluto normalizzato su stdout.",
+      "dependencies": ["readlink", "dirname", "cd", "pwd", "printf"]
+    },
+    {
+      "name": "safe_mkdir",
+      "category": "PRECORE_BOOT",
+      "purpose": "Crea una directory con permessi specifici verificando che non sia un symlink (mitigazione symlink attack).",
+      "input": "$1 (directory), $2 (opzionale: permessi ottali, default 700).",
+      "output": "Stato 0 o esce con codice 15 (BASH4LLM_ERR_TMP) in caso di errore o symlink.",
+      "side_effects": "Creazione directory, chmod.",
+      "dependencies": ["mkdir", "chmod", "printf", "log_error"]
+    },
+    {
+      "name": "check_required_arg",
+      "category": "PRECORE_BOOT",
+      "purpose": "Valida la presenza del parametro CLI obbligatorio richiesto da un'opzione.",
+      "input": "$1 (opzione indagata), $2 (conteggio argomenti residui $#).",
+      "output": "Stato 0 o termina con codice 15 (BASH4LLM_ERR_TMP).",
+      "dependencies": ["log_error", "printf"]
+    },
+    {
+      "name": "canonical_config_dir",
+      "category": "PRECORE_BOOT",
+      "purpose": "Normalizza il percorso della directory di configurazione rimuovendo eventuali barre finali.",
+      "input": "Nessuno (analizza $BASH4LLM_CONFIG_DIR).",
+      "output": "Percorso canonico su stdout.",
+      "dependencies": ["printf"]
+    },
+    {
+      "name": "canonical_provider_file",
+      "category": "PRECORE_BOOT",
+      "purpose": "Genera il percorso canonico del file di persistenza del provider (/provider).",
+      "input": "Nessuno.",
+      "output": "Percorso file su stdout.",
+      "dependencies": ["printf", "canonical_config_dir"]
+    },
+    {
+      "name": "canonical_model_file",
+      "category": "PRECORE_BOOT",
+      "purpose": "Genera il percorso del file del modello predefinito per il provider indicato (/model.<provider>).",
+      "input": "$1 (nome provider).",
+      "output": "Percorso file su stdout.",
+      "dependencies": ["printf", "canonical_config_dir"]
+    },
+    {
+      "name": "canonical_provider_url_file",
+      "category": "PRECORE_BOOT",
+      "purpose": "Genera il percorso canonico del file contenente l'URL endpoint del provider (/provider-url).",
+      "input": "Nessuno.",
+      "output": "Percorso file su stdout.",
+      "dependencies": ["type", "canonical_config_dir", "printf"]
+    },
+    {
+      "name": "trim_space",
+      "category": "PRECORE_BOOT",
+      "purpose": "Rimuove spazi e tabulazioni iniziali e finali tramite parameter expansion nativa senza fork.",
+      "input": "$1 (stringa).",
+      "output": "Stringa pulita su stdout.",
+      "dependencies": ["printf"]
+    },
+    {
+      "name": "_is_readonly_func",
+      "category": "PRECORE_BOOT",
+      "purpose": "Verifica se una funzione esiste ed è dichiarata come read-only in memoria.",
+      "input": "$1 (nome funzione).",
+      "output": "Stato 0 (read-only) o 1.",
+      "dependencies": ["declare", "unset"]
+    },
+    {
+      "name": "sync_models_file_path",
+      "category": "PRECORE_BOOT",
+      "purpose": "Sincronizza il percorso globale di MODELS_FILE basandosi sul provider attivo con sanitizzazione alfanumerica protettiva.",
+      "input": "$1 (opzionale: provider, default $PROVIDER o 'groq').",
+      "output": "Esporta MODELS_FILE nell'ambiente.",
+      "side_effects": "Esportazione di MODELS_FILE.",
+      "dependencies": ["export"]
+    },
+    {
+      "name": "validate_file_input",
+      "category": "PRECORE_BOOT",
+      "purpose": "Esegue la convalida di sicurezza di un file di input per escludere byte nulli o caratteri di controllo non consentiti.",
+      "input": "$1 (percorso file).",
+      "output": "Codici stato: 0 (valido), 1 (vuoto), 2 (illeggibile), 3 (0 byte), 4 (binario/non consentito).",
+      "dependencies": ["tr", "file_size", "wc", "LC_ALL=C"]
+    },
+    {
+      "name": "_normalize_model_name",
+      "category": "PRECORE_BOOT",
+      "purpose": "Normalizza i nomi dei modelli rimuovendo prefissi e spazi, memorizzando i risultati nella cache BASH4LLM_MODEL_CACHE.",
+      "input": "$1 (nome modello).",
+      "output": "Nome normalizzato e filtrato su stdout.",
+      "side_effects": "Aggiorna BASH4LLM_MODEL_CACHE.",
+      "dependencies": ["normalize_model_<provider>"]
+    },
+    {
+      "name": "is_truthy",
+      "category": "PRECORE_BOOT",
+      "purpose": "Valuta se un valore testuale corrisponde a veridicità logica affermativa (1, true, TRUE, True, yes, YES, Yes).",
+      "input": "$1 (stringa).",
+      "output": "Stato 0 (vero) o 1 (falso)."
+    },
+    {
+      "name": "_get_perm_string",
+      "category": "PRECORE_BOOT",
+      "purpose": "Restituisce i permessi simbolici portabili di un percorso (stat -c %A o stat -f %Sp).",
+      "input": "$1 (percorso).",
+      "output": "Permessi simbolici su stdout.",
+      "dependencies": ["stat"]
+    },
+    {
+      "name": "_get_owner",
+      "category": "PRECORE_BOOT",
+      "purpose": "Restituisce il nome dell'utente proprietario di un percorso in modo portabile.",
+      "input": "$1 (percorso).",
+      "output": "Nome owner su stdout.",
+      "dependencies": ["stat"]
+    },
+    {
+      "name": "validate_path_security",
+      "category": "PRECORE_BOOT",
+      "purpose": "Verifica che il file e la directory padre appartengano all'utente corrente, non siano symlink e non siano group/world-writable (INV-4).",
+      "input": "$1 (percorso target).",
+      "output": "Stato 0 o 1 (violazione di sicurezza).",
+      "dependencies": ["dirname", "id", "_get_owner", "_get_perm_string", "awk", "log_error", "log_warn", "is_truthy"]
+    },
+    {
+      "name": "_core_sha256",
+      "category": "PRECORE_BOOT",
+      "purpose": "Calcola il digest crittografico SHA-256 di un file tramite sha256sum, openssl o shasum.",
+      "input": "$1 (percorso file).",
+      "output": "Digest SHA-256 esadecimale su stdout o stato 1.",
+      "dependencies": ["sha256sum", "openssl", "shasum", "awk"]
+    },
+    {
+      "name": "verify_module_integrity",
+      "category": "PRECORE_BOOT",
+      "purpose": "Valida sicurezza percorso e integrità crittografica SHA-256 rispetto a manifest.sha256 (Fail-Closed, esce con 17 se manomesso).",
+      "input": "$1 (file target), $2 (dominio: 'vendor' o 'local'), $3 (percorso relativo opzionale).",
+      "output": "Stato 0 o 17 (BASH4LLM_ERR_SEC).",
+      "dependencies": ["validate_path_security", "_core_sha256", "awk", "log_error", "log_info"]
+    },
+    {
+      "name": "_provider_env_snapshot",
+      "category": "PRECORE_BOOT",
+      "purpose": "Cattura uno snapshot in memoria delle variabili d'ambiente critiche del guscio prima di importare plugin esterni.",
+      "input": "Nessuno.",
+      "output": "Popola le variabili interne _B4L_SAVED_*."
+    },
+    {
+      "name": "_provider_env_restore",
+      "category": "PRECORE_BOOT",
+      "purpose": "Ripristina le variabili d'ambiente guscio salvate da _provider_env_snapshot post-caricamento provider.",
+      "input": "Nessuno.",
+      "output": "Ripristina l'ambiente ed esegue unset di _B4L_SAVED_*.",
+      "side_effects": "Ripristino variabili ed esecuzione cd.",
+      "dependencies": ["export", "unset", "cd"]
+    },
+    {
+      "name": "_verify_manifest_signature",
+      "category": "PRECORE_BOOT",
+      "purpose": "Verifica la firma crittografica Ed25519 del manifesto via OpenSSL o ssh-keygen con la chiave official-ed25519.pub.",
+      "input": "$1 (percorso file manifesto).",
+      "output": "Stato 0 o 17 (BASH4LLM_ERR_SEC).",
+      "dependencies": ["validate_path_security", "_tmpf", "openssl", "ssh-keygen", "log_error", "is_truthy", "rm"]
+    },
+    {
+      "name": "ensure_api_key_for_provider",
+      "category": "PRECORE_BOOT",
+      "purpose": "Recupera la chiave API: 1) Vault OpenSSL decrittografato; 2) Variabile d'ambiente; 3) Prompt interattivo TTY silenziato.",
+      "input": "$1 (nome provider).",
+      "output": "Stato 0 ed esportazione chiave, o codice d'errore (10/17).",
+      "side_effects": "Esportazione variabili d'ambiente, prompt TTY.",
+      "dependencies": ["provider_api_env_var_name", "vault_exists", "vault_load_keys", "jq", "read_secure_input", "printf", "export", "is_truthy", "log_info_user", "log_warn", "log_error"]
+    },
+    {
+      "name": "enforce_network_policy",
+      "category": "PRECORE_BOOT",
+      "purpose": "Determina se le connessioni di rete sono autorizzate o bloccate da DRY_RUN, BASH4LLM_SKIP_NETWORK o policy QUIET.",
+      "input": "Nessuno.",
+      "output": "Stato 0 (autorizzate) o 1 (bloccate).",
+      "dependencies": ["is_truthy", "log_info"]
+    },
+    {
+      "name": "_extract_notes_section",
+      "category": "PRECORE_BOOT",
+      "purpose": "Estrae sezioni testuali letterali in modalità Zero-Eval dal file core-notes.sh.",
+      "input": "$1 (intestazione sezione).",
+      "output": "Righe estratte su stdout o stato 1.",
+      "dependencies": ["awk"]
+    },
+    {
+      "name": "emit_json_diagnostics",
+      "category": "PRECORE_BOOT",
+      "purpose": "Emette diagnostica strutturata in formato JSON su stderr quando JSON_DIAGNOSTICS=1.",
+      "input": "$1 (status), $2 (codice errore numerico), $3 (reason), $4 (messaggio).",
+      "output": "Stringa JSON su stderr.",
+      "dependencies": ["jq", "date", "printf"]
+    },
+    {
+      "name": "log_prefix",
+      "category": "PRECORE_BOOT",
+      "purpose": "Restituisce il prefisso unificato di logging ('bash4llm: ').",
+      "input": "Nessuno.",
+      "output": "Stringa su stdout.",
+      "dependencies": ["printf"]
+    },
+    {
+      "name": "log_info",
+      "category": "PRECORE_BOOT",
+      "purpose": "Registra messaggi informativi su stderr (se DEBUG=1) e appende a $BASH4LLM_LOG.",
+      "input": "$1 (categoria, default INFO), $2 (messaggio).",
+      "output": "Scrittura log su console e file.",
+      "dependencies": ["log_prefix", "date", "printf"]
+    },
+    {
+      "name": "log_warn",
+      "category": "PRECORE_BOOT",
+      "purpose": "Traccia avvisi non critici su stderr e nel file log.",
+      "input": "$1 (categoria, default WARN), $2 (messaggio).",
+      "output": "Scrittura su stderr e file.",
+      "dependencies": ["log_prefix", "date", "printf"]
+    },
+    {
+      "name": "log_error",
+      "category": "PRECORE_BOOT",
+      "purpose": "Registra errori critici su stderr (o delega a emit_json_diagnostics se attivo) e nel file log.",
+      "input": "$1 (categoria, default ERROR), $2 (messaggio).",
+      "output": "Scrittura su stderr e file.",
+      "dependencies": ["log_prefix", "emit_json_diagnostics", "is_truthy", "date", "printf"]
+    },
+    {
+      "name": "log_info_user",
+      "category": "PRECORE_BOOT",
+      "purpose": "Registra messaggi informativi utente non intercettati da QUIET su stderr e file log.",
+      "input": "$1 (categoria), $2 (messaggio).",
+      "output": "Scrittura su stderr e file.",
+      "dependencies": ["log_prefix", "date", "printf"]
+    },
+    {
+      "name": "dbg",
+      "category": "PRECORE_BOOT",
+      "purpose": "Visualizza messaggi di debug rapido su stderr se DEBUG!=0.",
+      "input": "Argomenti testuali $*.",
+      "output": "Testo su stderr.",
+      "dependencies": ["printf"]
+    },
+    {
+      "name": "read_secure_input",
+      "category": "PRECORE_BOOT",
+      "purpose": "Acquisisce input sensibili disabilitando l'echo del terminale su /dev/tty con ripristino sicuro su interrupt.",
+      "input": "$1 (var target), $2 (prompt), $3 (lunghezza minima), $4 (allow_verify).",
+      "output": "Stato 0 o 1, assegna il valore alla variabile target.",
+      "side_effects": "Modifica stty, trap segnali.",
+      "dependencies": ["stty", "trap", "printf", "read"]
+    },
+    {
+      "name": "ensure_config_dir",
+      "category": "PRECORE_BOOT",
+      "purpose": "Crea e blinda la directory config con permessi 700 validandone la reale scrivibilità.",
+      "input": "Nessuno.",
+      "output": "Stato 0 (scrivibile) o 1.",
+      "dependencies": ["safe_mkdir", "chmod", "rm", "log_error"]
+    },
+    {
+      "name": "write_provider_url_if_missing",
+      "category": "PRECORE_BOOT",
+      "purpose": "Scrive in modo atomico e transazionale l'URL API del provider nel file canonico (/provider-url) con permessi 600.",
+      "input": "$1 (provider), $2 (URL).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["canonical_provider_url_file", "safe_mkdir", "_tmpf", "printf", "mv", "cp", "rm", "chmod"]
+    },
+    {
+      "name": "resolve_provider_url",
+      "category": "PRECORE_BOOT",
+      "purpose": "Risolve ed esporta BASH4LLM_PROVIDER_URL controllando variabili d'ambiente, file canonico o default Groq.",
+      "input": "$1 (opzionale: provider).",
+      "output": "Stato 0 o 1, esporta BASH4LLM_PROVIDER_URL.",
+      "dependencies": ["canonical_provider_url_file", "sed", "awk", "export"]
+    },
+    {
+      "name": "provider_api_env_var_name",
+      "category": "PRECORE_BOOT",
+      "purpose": "Standardizza il nome della variabile d'ambiente deputata alla chiave API (es: 'groq' -> 'GROQ_API_KEY').",
+      "input": "$1 (provider).",
+      "output": "Nome normalizzato su stdout.",
+      "dependencies": ["printf"]
+    },
+    {
+      "name": "print_persistence_reminder",
+      "category": "PRECORE_BOOT",
+      "purpose": "Stampa avviso di sicurezza con istruzioni per rendere persistente una chiave API inserita manualmente.",
+      "input": "Nessuno (analizza BASH4LLM_KEY_MANUAL_PROMPT).",
+      "output": "Avviso formattato su stderr e reset del flag.",
+      "side_effects": "Esportazione var ambiente, reset flag.",
+      "dependencies": ["provider_api_env_var_name", "printf", "export"]
+    },
+    {
+      "name": "is_valid_json_string",
+      "category": "PRECORE_BOOT",
+      "purpose": "Valida se una stringa è un JSON sintatticamente corretto.",
+      "input": "$1 (stringa).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["jq"]
+    },
+    {
+      "name": "b64encode",
+      "category": "PRECORE_BOOT",
+      "purpose": "Codifica stdin in Base64 su riga singola senza a capo (via openssl enc o base64).",
+      "input": "Flusso da stdin.",
+      "output": "Stringa Base64 su stdout.",
+      "dependencies": ["openssl", "base64", "tr"]
+    },
+    {
+      "name": "b64decode",
+      "category": "PRECORE_BOOT",
+      "purpose": "Decodifica Base64 da stdin con folding automatico a 64 caratteri via awk per prevenire bug LibreSSL.",
+      "input": "Flusso Base64 da stdin.",
+      "output": "Flusso decodificato su stdout.",
+      "dependencies": ["awk", "openssl", "base64"]
+    },
+    {
+      "name": "file_size",
+      "category": "PRECORE_BOOT",
+      "purpose": "Restituisce la dimensione in byte di un file in modo portabile tra Linux, macOS e BSD.",
+      "input": "$1 (percorso file).",
+      "output": "Dimensione in byte su stdout (0 se assente).",
+      "dependencies": ["stat"]
+    },
+    {
+      "name": "is_valid_json_file",
+      "category": "PRECORE_BOOT",
+      "purpose": "Valida esistenza, presenza di dati e correttezza sintattica di un file JSON.",
+      "input": "$1 (percorso file).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["jq"]
+    },
+    {
+      "name": "stage_b64",
+      "category": "PRECORE_BOOT",
+      "purpose": "Codifica un payload in Base64 su file temporaneo protetto e lo sposta atomicamente a destinazione sotto lock.",
+      "input": "$1 (opzionale: sorgente), $2 (destinazione Base64).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["safe_mkdir", "_tmpf", "file_size", "lock_exec", "base64", "tr", "chmod", "mv", "rm"]
+    },
+    {
+      "name": "lock_exec",
+      "category": "PRECORE_BOOT",
+      "purpose": "Esegue un comando sotto lock flock protetto o directory fallback temporanea con recupero automatico da crash.",
+      "input": "$1 (file lock), $2 (timeout lock, default 10), seguiti da -- e comandi.",
+      "output": "Stato comando, 124 timeout, 15 symlink rilevato.",
+      "dependencies": ["safe_mkdir", "flock", "mkdir", "rmdir", "kill", "date", "sleep", "log_error"]
+    },
+    {
+      "name": "_mktemp_in_dir",
+      "category": "PRECORE_BOOT",
+      "purpose": "Crea un file temporaneo univoco e protetto all'interno della directory specificata.",
+      "input": "$1 (cartella base), $2 (opzionale: prefisso).",
+      "output": "Percorso file temporaneo su stdout o codice 15.",
+      "dependencies": ["_tmpf", "log_error"]
+    },
+    {
+      "name": "show_payload_head",
+      "category": "PRECORE_BOOT",
+      "purpose": "Visualizza su stderr le prime n righe del payload d'invio (decodificando al volo se .b64) per debug.",
+      "input": "$1 (percorso payload, default $PAYLOAD), $2 (righe max, default 200).",
+      "output": "Righe su stderr.",
+      "dependencies": ["b64decode", "head", "printf"]
+    },
+    {
+      "name": "atomic_write",
+      "category": "PRECORE_BOOT",
+      "purpose": "Scrive atomicamente e transazionalmente su file da stdin con permessi 600 sotto lock esclusivo.",
+      "input": "$1 (file destinazione), $2 (timeout lock, default 10).",
+      "output": "Stato 0 o codice d'errore BASH4LLM_ERR_TMP.",
+      "dependencies": ["safe_mkdir", "lock_exec", "mktemp", "cat", "mv", "chmod", "rm", "log_error"]
+    },
+    {
+      "name": "extract_text_from_resp",
+      "category": "PRECORE_BOOT",
+      "purpose": "Estrae in modo resiliente il testo generato dai JSON di risposta API gestendo chat completions OpenAI, delta e custom.",
+      "input": "Nessuno (analizza $RESP).",
+      "output": "Testo estratto su stdout. Ritorna 0 (successo), 1 (nessun testo), 2 (diagnostico).",
+      "dependencies": ["_tmpf", "cp", "is_valid_json_file", "jq", "cat", "log_warn", "log_error"]
+    },
+    {
+      "name": "cleanup_run_tmp_on_exit",
+      "category": "PRECORE_BOOT",
+      "purpose": "Handler di uscita globale: ripristina stty echo, rilascia lock thread e pulisce la cartella temporanea RUN_TMPDIR.",
+      "input": "Nessuno (cattura $?).",
+      "output": "Ripristino terminale e pulizia filesystem.",
+      "dependencies": ["stty", "release_thread_lock", "rm", "log_info"]
+    },
+    {
+      "name": "ensure_run_tmpdir",
+      "category": "PRECORE_BOOT",
+      "purpose": "Alloca, isola ed esporta l'ambiente temporaneo runtime (RUN_TMPDIR, PAYLOAD, RESP, ERRF) e registra la trap di pulizia.",
+      "input": "$1 (opzionale: --print).",
+      "output": "Esporta variabili temporanee. Ritorna 0 o 15.",
+      "dependencies": ["safe_mkdir", "_tmpf", "chmod", "trap", "log_error", "log_warn"]
+    },
+    {
+      "name": "b64_atomic_write",
+      "category": "PRECORE_BOOT",
+      "purpose": "Codifica stdin in Base64 e lo scrive atomicamente nel file di destinazione con permessi 600.",
+      "input": "$1 (destinazione), $2 (timeout lock, default 10).",
+      "output": "Stato 0 o 15.",
+      "dependencies": ["_tmpf", "b64encode", "atomic_write", "rm", "log_error"]
+    },
+    {
+      "name": "b64_atomic_read",
+      "category": "PRECORE_BOOT",
+      "purpose": "Legge un file Base64 e ne riversa il contenuto decodificato su stdout.",
+      "input": "$1 (percorso file).",
+      "output": "Flusso decodificato su stdout.",
+      "dependencies": ["b64decode"]
+    },
+    {
+      "name": "ui_state_write",
+      "category": "PRECORE_BOOT",
+      "purpose": "Scrive atomicamente metadati JSON di stato nella directory ui_state/ con permessi 600.",
+      "input": "$1 (nome file relativo), $2 (contenuto JSON).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["safe_mkdir", "atomic_write", "printf", "chmod", "log_error", "log_warn"]
+    },
+    {
+      "name": "run_static_config_check",
+      "category": "PRECORE_BOOT",
+      "purpose": "Linter statico: convalida permessi sicuri del file config (esce 17 se world-writable) e analizza le chiavi contro core-notes.sh.",
+      "input": "Nessuno.",
+      "output": "Esito su console. Esce con 0 o 17 (BASH4LLM_ERR_SEC).",
+      "dependencies": ["_extract_notes_section", "stat", "awk", "sed", "grep", "printf"]
+    },
+    {
+      "name": "explain_error_code",
+      "category": "PRECORE_BOOT",
+      "purpose": "Recupera in modalità Zero-Eval da core-notes.sh la definizione formale e i consigli di mitigazione per un codice d'errore o alias.",
+      "input": "$1 (codice errore o alias).",
+      "output": "Spiegazione su stderr.",
+      "dependencies": ["_extract_notes_section", "printf", "grep", "log_error", "log_warn"]
+    },
+    {
+      "name": "_resolve_provider_module_path",
+      "category": "PRECORE_BOOT",
+      "purpose": "Risolve la stringa grezza del provider identificando percorso fisico, dominio di fiducia (builtin/vendor/local) e nome canonico.",
+      "input": "$1 (stringa provider grezza).",
+      "output": "Stringa 'percorso|dominio|nome' su stdout o errore.",
+      "dependencies": ["log_error", "log_warn", "printf"]
+    },
+    {
+      "name": "load_provider_module",
+      "category": "PRECORE_BOOT",
+      "purpose": "Carica in modo isolato i driver provider esterni con copia anti-TOCTOU, verifica domini, controllo API version e filtro whitelist.",
+      "input": "$1 (nome provider).",
+      "output": "Stato 0, 17 (BASH4LLM_ERR_SEC) o 1.",
+      "side_effects": "Snapshot/restore ambiente, staging temporanei, aggiornamento provider_capabilities.json.",
+      "dependencies": ["_provider_env_snapshot", "_provider_env_restore", "_resolve_provider_module_path", "verify_module_integrity", "_verify_manifest_signature", "_tmpf", "cp", "chmod", "awk", "sort", "comm", "grep", "jq", "ui_state_write", "log_error", "log_warn"]
+    },
+    {
+      "name": "_detect_base64_opts",
+      "category": "PRECORE_BOOT",
+      "purpose": "Rileva a runtime le opzioni ottimali per base64 su varie piattaforme ed esporta B64_WRAP_OPT e B64_DECODE_OPT.",
+      "input": "Nessuno.",
+      "output": "Esporta B64_WRAP_OPT e B64_DECODE_OPT.",
+      "dependencies": ["base64", "grep", "export", "printf"]
+    },
+    {
+      "name": "_file_mtime",
+      "category": "PRECORE_BOOT",
+      "purpose": "Restituisce il timestamp Unix di ultima modifica di un file in modo portabile.",
+      "input": "$1 (percorso file).",
+      "output": "Timestamp Unix su stdout.",
+      "dependencies": ["stat"]
+    },
+    {
+      "name": "jq_safe",
+      "category": "PRECORE_BOOT",
+      "purpose": "Esegue un filtro jq scrivendo eventuali errori diagnostici in $ERRF senza causare crash dello script.",
+      "input": "$1 (filtro jq), $2 (file JSON).",
+      "output": "Stato d'uscita di jq.",
+      "dependencies": ["jq"]
+    },
+    {
+      "name": "rotate_history",
+      "category": "PRECORE_RUN",
+      "purpose": "Esegue la rotazione e manutenzione automatica dello storico eliminando file scaduti e riducendo il volume sotto lock.",
+      "input": "$1 (opzionale: timeout lock).",
+      "output": "Purgatura fisica dei file in esubero. Ritorna stato 0.",
+      "dependencies": ["find", "lock_exec", "rm", "sort", "file_size", "_file_mtime"]
+    },
+    {
+      "name": "save_to_history",
+      "category": "PRECORE_RUN",
+      "purpose": "Salva la risposta LLM in un file storico protetto (0600), aggiorna last_history.json e invoca la rotazione se attiva.",
+      "input": "$1 (testo risposta).",
+      "output": "File salvato su disco e stato UI aggiornato. Ritorna 0 o codice d'errore.",
+      "dependencies": ["date", "safe_mkdir", "_tmpf", "printf", "rm", "lock_exec", "chmod", "file_size", "basename", "jq", "ui_state_write", "rotate_history", "log_error", "log_warn"]
+    },
+    {
+      "name": "manifest_create",
+      "category": "PRECORE_RUN",
+      "purpose": "Inizializza un file manifesto JSON vuoto e la relativa copia Base64 (.b64) sotto lock esclusivo con permessi 600.",
+      "input": "$1 (percorso manifesto), $2 (opzionale: timeout lock).",
+      "output": "Manifesto JSON e .b64 creati. Ritorna 0 o 1.",
+      "dependencies": ["safe_mkdir", "dirname", "lock_exec", "mktemp", "printf", "base64", "mv", "chmod"]
+    },
+    {
+      "name": "manifest_add_part",
+      "category": "PRECORE_RUN",
+      "purpose": "Aggiunge una risorsa allegata nel manifesto: codifica Base64 in staging, aggiorna JSON via jq e rigenera la copia .b64.",
+      "input": "$1 (manifesto), $2 (nome parte), $3 (file input), $4 (MIME type), $5 (timeout lock).",
+      "output": "Record aggiunto al manifesto. Ritorna 0 o 1.",
+      "dependencies": ["safe_mkdir", "_tmpf", "b64encode", "mv", "chmod", "lock_exec", "mktemp", "cp", "base64", "jq", "rm", "log_error"]
+    },
+    {
+      "name": "manifest_read",
+      "category": "PRECORE_RUN",
+      "purpose": "Legge e restituisce il contenuto JSON del manifesto decodificando la copia .b64 se il file primario manca.",
+      "input": "$1 (percorso manifesto).",
+      "output": "Contenuto JSON su stdout. Ritorna 0 o 1.",
+      "dependencies": ["cat", "b64decode"]
+    },
+    {
+      "name": "anonymize_thread_id",
+      "category": "PRECORE_RUN",
+      "purpose": "Anonimizza crittograficamente l'identificatore del thread in memoria tramite hash SHA-256 hex a 64 caratteri (idempotente) prima di ogni scrittura su disco (INV-6).",
+      "input": "$1 (ID thread in chiaro).",
+      "output": "Esporta SAFE_THREAD_ID. Ritorna 0 o esce con 17 (BASH4LLM_ERR_SEC).",
+      "dependencies": ["openssl", "sha256sum", "shasum", "md5sum", "md5", "awk", "export", "log_error"]
+    },
+    {
+      "name": "execute_isolated_hook",
+      "category": "PRECORE_RUN",
+      "purpose": "Esegue hook pre/post in sotto-shell isolata privata di credenziali, con verifica integrità SHA-256 e parser whitelist Zero-Eval.",
+      "input": "$1 (tipo: 'pre' o 'post'), $2 (nome modulo hook), $3... (argomenti).",
+      "output": "Stato d'uscita dell'hook o 17 se fallisce la sicurezza.",
+      "dependencies": ["validate_path_security", "verify_module_integrity", "compgen", "unset", "export", "log_error"]
+    },
+    {
+      "name": "_get_file_signature",
+      "category": "PRECORE_RUN",
+      "purpose": "Calcola la firma di integrità di un file combinando digest SHA-256 e attributi fisici stat in stringa delimitata da pipe.",
+      "input": "$1 (percorso file).",
+      "output": "Stringa firma su stdout.",
+      "dependencies": ["_secure_hash_sha256", "sha256sum", "openssl", "stat", "awk", "printf"]
+    },
+    {
+      "name": "getfile_signature",
+      "category": "PRECORE_RUN",
+      "purpose": "Wrapper pubblico per _get_file_signature.",
+      "input": "$1 (percorso file).",
+      "output": "Stringa firma su stdout.",
+      "dependencies": ["_get_file_signature"]
+    },
+    {
+      "name": "_is_world_writable",
+      "category": "PRECORE_RUN",
+      "purpose": "Verifica se una directory presenta permessi non sicuri di scrittura a terzi (world-writable).",
+      "input": "$1 (percorso cartella).",
+      "output": "Stato 0 (vulnerabile) o 1 (sicura/errore).",
+      "dependencies": ["_get_perm_string", "awk"]
+    },
+    {
+      "name": "_locked_history_save",
+      "category": "PRECORE_RUN",
+      "purpose": "Routine interna per lo spostamento protetto dei file storici da invocare sotto lock.",
+      "input": "$1 (sorgente temporanea), $2 (destinazione).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["mv", "chmod"]
+    },
+    {
+      "name": "_locked_manifest_create",
+      "category": "PRECORE_RUN",
+      "purpose": "Routine interna per la creazione transazionale di manifesto JSON e copia Base64 da eseguire sotto lock.",
+      "input": "$1 (percorso manifesto).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["mktemp", "printf", "base64", "mv", "chmod"]
+    },
+    {
+      "name": "_locked_manifest_add_part",
+      "category": "PRECORE_RUN",
+      "purpose": "Routine interna per aggiornare il JSON del manifesto e la controparte Base64 sotto lock.",
+      "input": "$1 (manifesto), $2 (staging Base64), $3 (nome), $4 (MIME type).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["mktemp", "cp", "base64", "jq", "mv", "chmod", "rm"]
+    },
+    {
+      "name": "check_local_rate_limit",
+      "category": "PRECORE_RUN",
+      "purpose": "Rate limiter locale a finestra scorrevole (30s) per thread anonimizzato con gestione marker file temporanei.",
+      "input": "Nessuno (analizza BASH4LLM_RATE_LIMIT, BASH4LLM_AUTH_TOKEN, SAFE_THREAD_ID).",
+      "output": "Stato 0 (autorizzato) o 1 (limite superato).",
+      "dependencies": ["safe_mkdir", "_file_mtime", "rm", "find", "wc", "log_error", "chmod"]
+    },
+    {
+      "name": "make_tmpdir",
+      "category": "PRECORE_RUN",
+      "purpose": "Crea una directory temporanea univoca e protetta (0700) in $BASH4LLM_TMPDIR sotto lock esclusivo $TMP_LOCK.",
+      "input": "Nessuno.",
+      "output": "Percorso directory su stdout o codice 15.",
+      "dependencies": ["safe_mkdir", "chmod", "lock_exec", "_tmpf", "printf", "umask"]
+    },
+    {
+      "name": "_tmpf",
+      "category": "PRECORE_RUN",
+      "purpose": "Generatore sicuro di file (0600) o directory (0700) temporanei: impedisce Directory Traversal e applica umask 077.",
+      "input": "$1 (modalità: 'file' o 'dir'), $2 (cartella base), $3 (opzionale: prefisso).",
+      "output": "Percorso assoluto su stdout o codice 15.",
+      "dependencies": ["log_error", "chmod", "mktemp", "printf", "umask"]
+    },
+    {
+      "name": "thread_validate_id",
+      "category": "PRECORE_RUN",
+      "purpose": "Valida sintassi ID thread contro iniezioni (alfanumerico, punto, trattino, underscore, lung 1-128).",
+      "input": "$1 (thread ID).",
+      "output": "Stato 0 (valido) o 1.",
+      "dependencies": ["grep"]
+    },
+    {
+      "name": "thread_now_ts",
+      "category": "PRECORE_RUN",
+      "purpose": "Restituisce il timestamp UTC corrente in formato ISO 8601 (AAAA-MM-GGTHH:MM:SSZ).",
+      "input": "Nessuno.",
+      "output": "Timestamp su stdout.",
+      "dependencies": ["date"]
+    },
+    {
+      "name": "thread_messages_tmp_path",
+      "category": "PRECORE_RUN",
+      "purpose": "Restituisce il percorso del file provvisorio JSON contenente i messaggi del thread corrente in RUN_TMPDIR.",
+      "input": "$1 (thread ID).",
+      "output": "Percorso file su stdout.",
+      "dependencies": ["ensure_run_tmpdir", "printf"]
+    },
+    {
+      "name": "thread_sanitize_cmd",
+      "category": "PRECORE_RUN",
+      "purpose": "Pulisce le righe di comando nei log storici mascherando parametri sensibili con [REDACTED] e troncando a 256 caratteri.",
+      "input": "$1 (comando grezzo).",
+      "output": "Comando sanificato su stdout.",
+      "dependencies": ["printf", "sed", "cut"]
+    },
+    {
+      "name": "_update_thread_index",
+      "category": "PRECORE_RUN",
+      "purpose": "Aggiorna l'indice dei thread attivi in ui_state/threads/index.json sotto lock esclusivo.",
+      "input": "$1 (thread ID).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["_tmpf", "jq", "mv", "ui_state_write", "rm"]
+    },
+    {
+      "name": "_thread_delete_locked",
+      "category": "PRECORE_RUN",
+      "purpose": "Esegue la rimozione fisica del database NDJSON, del lock di concorrenza e dei metadati di un thread.",
+      "input": "$1 (thread ID), $2 (file thread), $3 (file meta), $4 (file indice), $5 (file indice provvisorio).",
+      "output": "Cancellazione file e aggiornamento indice.",
+      "dependencies": ["rm", "jq", "mv", "chmod"]
+    },
+    {
+      "name": "thread_delete_core",
+      "category": "PRECORE_RUN",
+      "purpose": "Rimuove transazionalmente un thread, i file di lock e i metadati invalidando la cache in memoria.",
+      "input": "$1 (thread ID).",
+      "output": "Stato 0 o BASH4LLM_ERR_TMP se ID non valido.",
+      "dependencies": ["thread_validate_id", "lock_exec", "_thread_delete_locked", "thread_cache_invalidate", "log_info", "log_error"]
+    },
+    {
+      "name": "_thread_rename_locked",
+      "category": "PRECORE_RUN",
+      "purpose": "Aggiorna atomicamente il file di metadati di un thread per modificarne il titolo visualizzato con permessi 600.",
+      "input": "$1 (file meta), $2 (file provvisorio), $3 (thread ID), $4 (titolo), $5 (conteggio msg), $6 (ultimo timestamp).",
+      "output": "File metadati scritto con permessi 600.",
+      "dependencies": ["jq", "mv", "chmod"]
+    },
+    {
+      "name": "thread_rename_core",
+      "category": "PRECORE_RUN",
+      "purpose": "Rinomina transazionalmente il titolo di un thread aggiornandone i metadati storici sotto lock.",
+      "input": "$1 (thread ID), $2 (nuovo titolo).",
+      "output": "Stato 0 o BASH4LLM_ERR_TMP.",
+      "dependencies": ["thread_validate_id", "_tmpf", "wc", "tail", "jq", "lock_exec", "_thread_rename_locked", "log_info", "log_error"]
+    },
+    {
+      "name": "acquire_thread_lock",
+      "category": "PRECORE_RUN",
+      "purpose": "Acquisisce un lock di processo esclusivo non-bloccante sul thread attivo aprendo il file descriptor 8 via flock.",
+      "input": "Nessuno (analizza $THREAD_ID).",
+      "output": "Stato 0 o 15 se lock attivo in altro processo.",
+      "dependencies": ["thread_validate_id", "safe_mkdir", "flock", "exec", "log_error"]
+    },
+    {
+      "name": "release_thread_lock",
+      "category": "PRECORE_RUN",
+      "purpose": "Rilascia il lock di processo esclusivo del thread attivo chiudendo il file descriptor 8.",
+      "input": "Nessuno (analizza $THREAD_ID).",
+      "output": "Stato 0 o 15.",
+      "dependencies": ["thread_validate_id", "exec", "log_error"]
+    },
+    {
+      "name": "_thread_read_window_locked",
+      "category": "PRECORE_RUN",
+      "purpose": "Estrae l'ultima porzione del database NDJSON del thread via tail senza scansioni ridondanti.",
+      "input": "$1 (file thread), $2 (numero righe n), $3 (file temporaneo).",
+      "output": "Righe scritte nel file provvisorio.",
+      "dependencies": ["tail", "cp"]
+    },
+    {
+      "name": "thread_read_window",
+      "category": "PRECORE_RUN",
+      "purpose": "Estrae le ultime n interazioni da NDJSON thread sotto lock, unificandole in JSON con try-catch jq e aggiornando i metadati UI.",
+      "input": "$1 (thread ID), $2 (finestra n, default 10), $3 (output JSON).",
+      "output": "File JSON strutturato con permessi 600. Ritorna 0 o 1.",
+      "dependencies": ["thread_validate_id", "safe_mkdir", "_tmpf", "lock_exec", "_thread_read_window_locked", "jq", "mv", "cp", "rm", "ui_state_write", "ensure_run_tmpdir", "log_error", "log_warn"]
+    },
+    {
+      "name": "thread_append",
+      "category": "PRECORE_RUN",
+      "purpose": "Accoda un messaggio a NDJSON thread (0600) con ID deterministico SHA-256, lock flock e aggiornamento metadati/indice UI.",
+      "input": "$1 (thread ID), $2 (ruolo), $3 (contenuto), $4 (metadati JSON).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["thread_validate_id", "thread_now_ts", "safe_mkdir", "_tmpf", "ui_state_write", "lock_exec", "_update_thread_index", "ensure_run_tmpdir", "jq", "sed", "awk", "sha256sum", "openssl", "flock", "chmod", "wc", "tail", "log_error", "log_warn", "log_info"]
+    },
+    {
+      "name": "_thread_hash",
+      "category": "PRECORE_RUN",
+      "purpose": "Genera un digest crittografico SHA-256 per l'indicizzazione univoca dei parametri in cache.",
+      "input": "$1 (stringa).",
+      "output": "Digest SHA-256 su stdout.",
+      "dependencies": ["sha256sum", "awk", "openssl", "base64", "tr", "cut", "printf"]
+    },
+    {
+      "name": "thread_cache_key",
+      "category": "PRECORE_RUN",
+      "purpose": "Calcola la chiave univoca di cache nel formato '<thread_id>|<hash_parametri>'.",
+      "input": "$1 (thread ID), $2 (stringa parametri).",
+      "output": "Chiave cache su stdout.",
+      "dependencies": ["_thread_hash", "printf"]
+    },
+    {
+      "name": "thread_cache_get",
+      "category": "PRECORE_RUN",
+      "purpose": "Recupera i dati dalla cache se il record non è scaduto rispetto al timestamp Unix in riga 1; se scaduto, elimina il file.",
+      "input": "$1 (thread ID), $2 (parametri), $3 (opzionale: file output).",
+      "output": "Dati su stdout/file. Ritorna 0 (valido) o 1 (scaduto/mancante).",
+      "dependencies": ["thread_cache_key", "date", "rm", "tail", "read"]
+    },
+    {
+      "name": "thread_cache_set",
+      "category": "PRECORE_RUN",
+      "purpose": "Salva i dati in cache anteponendo la scadenza assoluta in riga 1 con permessi 600 (TTL default 300s).",
+      "input": "$1 (thread ID), $2 (parametri), $3 (TTL in secondi, default 300), $4 (opzionale: sorgente).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["thread_cache_key", "_tmpf", "date", "cat", "mv", "rm", "chmod"]
+    },
+    {
+      "name": "thread_cache_invalidate",
+      "category": "PRECORE_RUN",
+      "purpose": "Invalida e rimuove fisicamente i file di cache per un record specifico o per l'intera sessione thread.",
+      "input": "$1 (thread ID), $2 (opzionale: parametri specifici).",
+      "output": "Stato 0 o 1.",
+      "dependencies": ["thread_cache_key", "rm"]
+    },
+    {
+      "name": "_normalize_bool_env",
+      "category": "PRECORE_RUN",
+      "purpose": "Uniforma le variabili booleane d'ambiente (ALLOW_API_CALLS, DRY_RUN, DEBUG) convertendo valori testuali in 0 o 1 numerici.",
+      "input": "Nessuno.",
+      "output": "Esporta variabili conformi.",
+      "dependencies": ["is_truthy", "declare", "export"]
+    },
+    {
+      "name": "_exec_curl_secure",
+      "category": "PRECORE_RUN",
+      "purpose": "Percorso unico ed autorevole per tutte le chiamate HTTP/cURL (INV-1). Isola gli header sensibili in un file temporaneo 0600 passato via -H @'$hdr_file' escludendo segreti da argv/ps aux.",
+      "input": "$1 (metodo HTTP, default POST), $2 (URL), $3 (chiave API), $4 (payload file), $5 (out file), $6 (err file), $7 (streaming flag 1/0), $8 (opzioni extra cURL).",
+      "output": "Codice stato cURL.",
+      "side_effects": "Connessione di rete, allocazione e rimozione immediata file header.",
+      "dependencies": ["_tmpf", "printf", "chmod", "curl", "rm"]
+    },
+    {
+      "name": "buildpayload_groq",
+      "category": "PROVIDER",
+      "purpose": "Compila il JSON di payload per Groq Chat Completions gestendo messaggi, temperature, max_tokens e staging Base64.",
+      "input": "Variabili globali STREAM_MODE, TEMPERATURE/TURE, MAX_TOKENS, JSON_INPUT, MESSAGES_JSON, BUILD_MESSAGES_FILE, CONTENT, SYSTEM_PROMPT, MODEL, RUN_TMPDIR.",
+      "output": "Assegna e esporta PAYLOAD. Ritorna 0 o BASH4LLM_ERR_TMP.",
+      "dependencies": ["_mktemp_in_dir", "_tmpf", "is_truthy", "is_valid_json_string", "is_valid_json_file", "stage_b64", "log_error", "log_info", "log_warn", "grep", "jq", "rm", "wc", "head", "export"]
+    },
+    {
+      "name": "call_api_groq",
+      "category": "PROVIDER",
+      "purpose": "Esegue una richiesta API sincrona non-streaming verso Groq tramite _exec_curl_secure() salvando la risposta in $RESP.",
+      "input": "BASH4LLM_PROVIDER_URL, GROQ_API_KEY, PAYLOAD, RUN_TMPDIR, RESP, ERRF.",
+      "output": "Salva risposta in $RESP. Ritorna 0, BASH4LLM_ERR_CURL_FAILED o BASH4LLM_ERR_API.",
+      "dependencies": ["enforce_network_policy", "_tmpf", "b64decode", "_exec_curl_secure", "log_error", "log_info", "mv", "cp", "chmod", "rm", "cat"]
+    },
+    {
+      "name": "call_api_streaming_groq",
+      "category": "PROVIDER",
+      "purpose": "Esegue una chiamata API in streaming token SSE verso Groq via _exec_curl_secure() con elaborazione unbuffered su stdout e ricostruzione JSON finale in $RESP.",
+      "input": "GROQ_API_KEY, BASH4LLM_API_KEY, PAYLOAD, BASH4LLM_PROVIDER_URL, RUN_TMPDIR, RESP, QUIET.",
+      "output": "Flusso token su stdout, file JSON sintetico in $RESP. Ritorna 0 o codici d'errore.",
+      "dependencies": ["enforce_network_policy", "_tmpf", "b64decode", "_exec_curl_secure", "ui_state_write", "log_error", "log_info", "ensure_run_tmpdir", "jq", "tee", "grep", "sed", "mv", "cp", "chmod", "rm", "date"]
+    },
+    {
+      "name": "refresh_models_groq",
+      "category": "PROVIDER",
+      "purpose": "Aggiorna la lista modelli locale interrogando l'endpoint /openai/v1/models di Groq via _exec_curl_secure() e salvando in MODELS_FILE sotto lock.",
+      "input": "GROQ_API_KEY, BASH4LLM_PROVIDER_URL, MAX_MODELS, MODELS_FILE, MODELS_LOCK.",
+      "output": "File MODELS_FILE aggiornato. Ritorna 0 o codici d'errore.",
+      "dependencies": ["ensure_run_tmpdir", "resolve_provider_url", "_exec_curl_secure", "safe_mkdir", "_mktemp_in_dir", "_tmpf", "b64_atomic_write", "lock_exec", "log_info_user", "log_error", "mktemp", "rm", "jq", "awk", "sed", "sort", "cat", "base64", "chmod"]
+    },
+    {
+      "name": "validate_model_groq",
+      "category": "PROVIDER",
+      "purpose": "Convalida la compatibilità del modello per Groq delegando a validate_model_core.",
+      "input": "$1 (modello).",
+      "output": "Stato 0 (valido) o 1.",
+      "dependencies": ["validate_model_core"]
+    },
+    {
+      "name": "validate_key_groq",
+      "category": "PROVIDER",
+      "purpose": "Diagnostica la validità della chiave API inviando una richiesta GET di test (timeout 10s) all'endpoint dei modelli via _exec_curl_secure().",
+      "input": "$1 (chiave API).",
+      "output": "Codice stato: 0 (valida), 1 (non valida), 28 (timeout).",
+      "dependencies": ["_mktemp_in_dir", "_tmpf", "_exec_curl_secure", "mktemp", "rm"]
+    },
+    {
+      "name": "auto_select_model_groq",
+      "category": "PROVIDER",
+      "purpose": "Seleziona il primo modello supportato locale scansionando MODELS_FILE e la prima riga del file canonico di modello.",
+      "input": "Nessuno.",
+      "output": "Nome modello su stdout e stato 0 o 1.",
+      "dependencies": ["canonical_model_file", "_normalize_model_name", "is_supported_model", "head"]
+    },
+    {
+      "name": "validate_provider_interface",
+      "category": "CORE_SETUP",
+      "purpose": "Convalida che il driver provider implementi le funzioni obbligatorie (buildpayload_<p>, call_api_<p>) e traccia quelle opzionali.",
+      "input": "$1 (nome identificativo del provider).",
+      "output": "Ritorna stato 0 se conforme, 1 in caso contrario.",
+      "dependencies": ["type", "log_error", "log_info"]
+    },
+    {
       "name": "call_provider",
       "category": "CORE_SETUP",
-      "purpose": "Esegue in modo dinamico una specifica funzione dichiarata da un modulo provider esterno, a patto che la funzione risulti regolarmente caricata in memoria.",
-      "input": "$1 (nome della funzione da richiamare), seguito in coda dai relativi parametri da inoltrare.",
-      "output": "Restituisce lo stato d'uscita della funzione eseguita, o il codice di errore 127 se la funzione non è definita nel runtime.",
+      "purpose": "Esegue in modo dinamico una specifica funzione dichiarata da un modulo provider esterno caricata in memoria.",
+      "input": "$1 (nome funzione), seguito dai parametri da inoltrare.",
+      "output": "Stato d'uscita della funzione eseguita o 127 se non definita.",
       "dependencies": ["type"]
     },
     {
       "name": "validate_provider_key_dispatch",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione della validazione formale della chiave API richiamando la routine dedicata del provider attivo (es. validate_key_groq).",
-      "input": "$1 (chiave API da convalidare).",
-      "output": "Ritorna lo stato d'uscita del validatore specifico, o 127 se la funzione non è implementata dal provider.",
+      "purpose": "Dispaccia la validazione della chiave API delegando alla routine dedicata del provider attivo (validate_key_<p>).",
+      "input": "$1 (chiave API).",
+      "output": "Stato del validatore o 127 se non implementata.",
       "dependencies": ["type"]
     },
     {
       "name": "refresh_models_dispatch",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione dell'aggiornamento dei modelli richiamando la routine dedicata del provider attivo (es. refresh_models_groq). Tenta prioritariamente l'invocazione passando il percorso del file di destinazione ed esegue un fallback sulla versione senza argomenti se necessario. Al rientro con successo, invoca print_persistence_reminder.",
-      "input": "$1 (opzionale: percorso del file di modelli, default $MODELS_FILE).",
-      "output": "Lista locale dei modelli aggiornata sul disco. Ritorna stato 0 se completato con successo, o codice d'errore in caso di fallimenti del provider o se la funzione non è implementata (127).",
+      "purpose": "Dispaccia l'aggiornamento dei modelli a refresh_models_<p> del provider attivo e invoca print_persistence_reminder a completamento.",
+      "input": "$1 (opzionale: percorso file modelli, default $MODELS_FILE).",
+      "output": "Lista modelli aggiornata su disco. Ritorna 0 o codice d'errore.",
       "dependencies": ["type", "log_error", "log_info", "print_persistence_reminder"]
     },
     {
       "name": "validate_model_dispatch",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia la validazione sintattica e di compatibilità del modello richiamando la routine dedicata del provider attivo (es. validate_model_groq). Se il provider non supporta la convalida specializzata, emette un avvertimento una tantum ed esegue una convalida permissiva di fallback.",
-      "input": "$1 (nome del modello).",
-      "output": "Ritorna lo stato di uscita del validatore o 0 se opera in convalida permissiva.",
+      "purpose": "Dispaccia la validazione del modello a validate_model_<p> con fallback permissivo e avviso una tantum se non implementata.",
+      "input": "$1 (nome modello).",
+      "output": "Stato del validatore o 0.",
       "dependencies": ["type", "log_warn"]
     },
     {
       "name": "auto_select_model_dispatch",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia la selezione automatica del modello chiamando la routine nativa del provider attivo (es. auto_select_model_groq).",
+      "purpose": "Dispaccia l'auto-selezione del modello chiamando auto_select_model_<p> del provider attivo.",
       "input": "Nessuno.",
-      "output": "Stampa il nome del modello selezionato su stdout. Ritorna stato 0 in caso di successo, 127 se non supportato.",
+      "output": "Nome modello su stdout e stato 0 o 127.",
       "dependencies": ["type"]
     },
     {
       "name": "_lock_security_guards",
       "category": "CORE_SETUP",
-      "purpose": "Marca le funzioni critiche di sicurezza, mediazione di rete e gestione del filesystem come 'readonly -f' al termine del bootstrap, impedendone il hijacking o la ridefinizione in memoria da parte di script o sotto-shell.",
+      "purpose": "Marca le funzioni critiche di sicurezza, mediazione di rete e filesystem come 'readonly -f' impedendone il monkey-patching in memoria.",
       "input": "Nessuno.",
-      "output": "Funzioni bloccate come read-only nel contesto di memoria dello script.",
+      "output": "Funzioni bloccate come read-only in memoria.",
       "dependencies": ["readonly"]
     },
     {
       "name": "resolve_model",
       "category": "CORE_SETUP",
-      "purpose": "Risolve ed assegna il modello LLM finale da adottare seguendo un ordine di precedenza sequenziale: 1. Se impostato via parametro CLI (-m/--model), adotta direttamente tale scelta. 2. Identifica il provider attivo. 3. Tenta di leggere la prima riga del file di configurazione del modello per tale provider (model.<provider>). Se presente, valido e supportato, lo adotta dopo averlo normalizzato. 4. Tenta di richiamare auto_select_model_dispatch. 5. Scansiona il file dei modelli locali ($MODELS_FILE) fino al limite $MAX_MODELS alla ricerca del primo modello valido. 6. Tenta di recuperare il modello dal file di configurazione globale (config). 7. Cerca nella whitelist $ALLOWED_MODELS. Se tutte le ricerche falliscono, restituisce un errore.",
+      "purpose": "Risolve ed assegna il modello LLM finale seguendo l'ordine di precedenza: 1) Override CLI (-m); 2) model.<provider>; 3) auto_select_model_dispatch; 4) MODELS_FILE; 5) config globale; 6) whitelist ALLOWED_MODELS.",
       "input": "Nessuno.",
-      "output": "Ritorna stato 0 se risolto (assegnando il nome del modello a $MODEL), 1 in caso di fallimento.",
-      "side_effects": "Letture sul filesystem, invocazione dei validatori.",
-      "dependencies": ["canonical_model_file", "canonical_provider_file", "sed", "awk", "validate_model_core", "validate_model_dispatch", "auto_select_model_dispatch", "_normalize_model_name", "is_supported_model", "log_warn", "log_error"]
+      "output": "Assegna FINAL_MODEL e ritorna 0, oppure 1 in caso di fallimento.",
+      "dependencies": ["canonical_model_file", "canonical_provider_file", "canonical_config_dir", "validate_model_core", "validate_model_dispatch", "auto_select_model_dispatch", "_normalize_model_name", "is_supported_model", "log_warn", "log_error", "sed", "awk"]
     },
     {
       "name": "build_payload_from_vars",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia ed orchestra la costruzione del file JSON di richiesta API richiamando dinamicamente la routine dedicata del provider attivo (buildpayload_<provider>).",
+      "purpose": "Dispaccia la costruzione del payload JSON a buildpayload_<p> del provider attivo.",
       "input": "Nessuno.",
-      "output": "Generazione del file di payload. Ritorna stato 0, o termina lo script con codice d'errore BASH4LLM_ERR_API se la funzione non è implementata.",
+      "output": "Generazione file payload. Ritorna 0 o esce con codice 16.",
       "dependencies": ["ensure_run_tmpdir", "call_provider", "log_error"]
     },
     {
       "name": "call_api_once",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione di una singola chiamata API sincrona non-streaming richiamando la routine dedicata del provider attivo (call_api_<provider>). Se è attiva la simulazione dry-run, esclude la chiamata reale e visualizza l'intestazione del payload d'invio.",
+      "purpose": "Dispaccia una singola chiamata API sincrona non-streaming a call_api_<p> (in dry-run mostra l'header del payload).",
       "input": "Nessuno.",
-      "output": "Ritorna lo stato dell'esecuzione della chiamata o 0 se operato in simulazione.",
+      "output": "Stato d'uscita dell'API o 0 in dry-run.",
       "dependencies": ["call_provider", "show_payload_head", "log_info", "log_error"]
     },
     {
       "name": "call_api_streaming",
       "category": "CORE_SETUP",
-      "purpose": "Dispaccia l'esecuzione della chiamata API in streaming richiamando la routine dedicata del provider attivo (call_api_streaming_<provider>) sotto lock di thread esclusivo. Applica il controllo del rate-limiting e ripristina i segnali per catturare in sicurezza l'interruzione utente (SIGINT/Ctrl+C) rilasciando il lock.",
+      "purpose": "Dispaccia la chiamata API in streaming a call_api_streaming_<p> sotto lock di thread e verifica rate limit locale.",
       "input": "Nessuno.",
-      "output": "Ritorna lo stato dell'esecuzione o 0 se simulato via dry-run.",
-      "dependencies": ["acquire_thread_lock", "release_thread_lock", "check_local_rate_limit", "call_provider", "show_payload_head", "log_info", "log_error"]
+      "output": "Stato d'uscita dell'API o 0 in dry-run.",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "check_local_rate_limit", "call_provider", "show_payload_head", "log_info", "log_error", "trap"]
     },
     {
       "name": "extract_api_error",
       "category": "CORE_SETUP",
-      "purpose": "Ispeziona ed estrae in modo strutturato l'eventuale messaggio d'errore formale restituito dal provider all'interno del file di risposta $RESP (ricercando campi errore standard nel JSON o leggendo la prima riga di testo crudo).",
+      "purpose": "Estrae in modo strutturato l'eventuale messaggio d'errore formale restituito dal provider nel file $RESP.",
       "input": "Nessuno (analizza $RESP).",
-      "output": "Messaggio d'errore stampato su standard output.",
-      "dependencies": ["jq", "awk"]
+      "output": "Messaggio d'errore su stdout.",
+      "dependencies": ["jq", "awk", "head"]
     },
     {
       "name": "detect_empty_edge_case",
       "category": "CORE_SETUP",
-      "purpose": "Rileva ed intercetta 'risposte vuote' anomale dei provider (situazioni in cui l'API restituisce HTTP 200 e termina la generazione con motivo 'stop' o assenza di token, ma senza produrre testo utile). Analizza $RESP ed estrae metadati come ID richiesta, finish reason e conteggio token.",
-      "input": "Nessuno.",
-      "output": "Assegna il verdetto a $BASH4LLM_EDGE_EMPTY (1 se rilevato caso vuoto anomalo, 0 altrimenti) e memorizza i dettagli nelle variabili globali ($BASH4LLM_EDGE_REQ_ID, $BASH4LLM_EDGE_FINISH_REASON, $BASH4LLM_EDGE_COMPLETION_TOKENS).",
-      "side_effects": "Duplicazione temporanea del file per l'analisi.",
+      "purpose": "Rileva ed intercetta risposte vuote anomale dei provider (HTTP 200 con finish_reason 'stop' e token <= 1 ma senza testo).",
+      "input": "Nessuno (analizza $RESP).",
+      "output": "Popola BASH4LLM_EDGE_EMPTY (0/1), BASH4LLM_EDGE_REQ_ID, BASH4LLM_EDGE_FINISH_REASON, BASH4LLM_EDGE_COMPLETION_TOKENS.",
       "dependencies": ["_tmpf", "cp", "is_valid_json_file", "jq", "rm"]
     },
     {
       "name": "finalize_and_output",
       "category": "CORE_SETUP",
-      "purpose": "Applica la sanitizzazione dell'output se SANITIZE_OUTPUT=1 (via security/output-sanitizer.sh o fallback POSIX), quindi formatta e visualizza i risultati secondo $OUTPUT_MODE (testo, raw, json o pretty). Se l'output testuale supera $THRESHOLD o se è richiesto via --save, salva i risultati su disco in modo transazionale tramite staging temporaneo e lock esclusivi.",
-      "input": "$1 (formato: json, pretty, raw, text), $2 (stringa di testo del risultato).",
-      "output": "Output stampato a schermo secondo la formattazione richiesta. File archiviato su disco se abilitato. Ritorna stato 0 o codice d'errore BASH4LLM_ERR_TMP.",
-      "side_effects": "Scrittura a schermo, generazione e spostamento atomico di file storici, creazione sicura di directory.",
-      "dependencies": ["is_truthy", "verify_module_integrity", "_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "safe_mkdir", "dirname", "lock_exec", "log_error"]
+      "purpose": "Formatta e stampa i risultati secondo $OUTPUT_MODE (text, raw, json, pretty); sanifica con output-sanitizer.sh se richiesto e salva su disco se supera $THRESHOLD o forzato da --save.",
+      "input": "$1 (formato: json, pretty, raw, text), $2 (testo risultato).",
+      "output": "Output su stdout e salvataggio transazionale su disco opzionale. Ritorna 0 o 15.",
+      "dependencies": ["is_truthy", "verify_module_integrity", "_tmpf", "cp", "cat", "jq", "printf", "wc", "tr", "date", "safe_mkdir", "dirname", "lock_exec", "log_error", "log_warn", "chmod"]
     },
     {
       "name": "validate_response_syntax",
       "category": "CORE_SETUP",
-      "purpose": "Esegue la validazione sintattica della risposta restituita dal modello. Quando VALIDATE_SML=1, verifica la presenza delle intestazioni obbligatorie dello standard SML v2.0 (SML_VERSION: 2.0, LISTEN_SUMMARY:, CONVERSATION_OUTCOME:, PROPOSED_TRANSITION:, EVIDENCE_TYPE:). Quando VALIDATE_REGEX è definita, verifica che la risposta rispetti l'espressione regolare POSIX ERE fornita.",
-      "input": "$1 (testo della risposta da convalidare).",
-      "output": "Ritorna stato 0 se la sintassi è valida, 1 altrimenti.",
+      "purpose": "Valida la sintassi della risposta estratta: standard EBNF SML v2.0 (se VALIDATE_SML=1) o espressione regolare POSIX ERE (se VALIDATE_REGEX è definita).",
+      "input": "$1 (testo risposta).",
+      "output": "Stato 0 se valida, 1 altrimenti.",
       "dependencies": ["is_truthy", "grep"]
     },
     {
       "name": "perform_request_once",
       "category": "CORE_SETUP",
-      "purpose": "Orchestra l'esecuzione complessiva di una singola chiamata API sincrona non-streaming, protetta da lock sul thread attivo e ripristino sicuro dei segnali. Gestisce i retry automatici in caso di errori di rete (fino a $MAX_RETRIES), gli hook pre/post esecuzione (execute_isolated_hook), il controllo di rate-limiting (check_local_rate_limit), la validazione sintattica (validate_response_syntax), l'estrazione testuale, la diagnostica delle risposte vuote e l'aggiornamento dello stato UI in last_api.json.",
-      "input": "Nessuno.",
-      "output": "Output generato stampato su console e file di log aggiornati. Ritorna stato 0 se completata con successo, o codice d'errore BASH4LLM_ERR_API in caso di fallimento.",
-      "side_effects": "Tentativi multipli di rete, sospensione temporanea del processo, aggiornamenti dello stato UI, messaggi diagnostici su stderr, gestione dei file lock di concorrenza.",
-      "dependencies": ["acquire_thread_lock", "release_thread_lock", "execute_isolated_hook", "check_local_rate_limit", "call_api_once", "extract_text_from_resp", "validate_response_syntax", "detect_empty_edge_case", "jq", "ui_state_write", "extract_api_error", "finalize_and_output", "sleep", "log_info", "log_error", "log_warn"]
+      "purpose": "Orchestratore transazionale della richiesta sincrona: lock thread, hook pre/post isolati, rate limiting, retry loop con backoff, validazione sintattica e aggiornamento last_api.json.",
+      "input": "Argomenti $@.",
+      "output": "Output su console e codici stato (0 successo, 13 BASH4LLM_ERR_PARSE, 16 BASH4LLM_ERR_API, 17 BASH4LLM_ERR_SEC).",
+      "dependencies": ["acquire_thread_lock", "release_thread_lock", "execute_isolated_hook", "check_local_rate_limit", "call_api_once", "extract_text_from_resp", "validate_response_syntax", "detect_empty_edge_case", "ui_state_write", "extract_api_error", "finalize_and_output", "b64decode", "sleep", "log_info", "log_error", "log_warn", "trap", "jq", "head", "printf"]
     },
     {
       "name": "collect_input_from_files",
       "category": "CORE_SETUP",
-      "purpose": "Legge e concatena in un'unica stringa i contenuti di una lista di file di input previa validazione di sicurezza via validate_file_input, inserendo delimitatori visivi strutturati tra i file per consentire al modello LLM di distinguere nettamente le sorgenti.",
-      "input": "Array di percorsi di file ($@).",
-      "output": "Stringa di testo unificata stampata su stdout. Interrompe lo script con codice d'uscita 17 (BASH4LLM_ERR_SEC) se un file contiene byte nulli o dati binari non sicuri, o BASH4LLM_ERR_TMP se un file non è leggibile.",
+      "purpose": "Legge e concatena i file di input (-f) previa validazione di sicurezza via validate_file_input (arresta con 17 se non sicuri).",
+      "input": "Array di percorsi file ($@).",
+      "output": "Testo concatenato con delimitatori su stdout.",
       "dependencies": ["file_readable", "validate_file_input", "cat", "log_error"]
     },
     {
       "name": "expand_args_to_content",
       "category": "CORE_SETUP",
-      "purpose": "Converte gli argomenti CLI posizionali in frammenti di prompt. Se un argomento corrisponde a un percorso file esistente e leggibile, ne valida la sicurezza via validate_file_input, ne legge e ne riversa il contenuto formattato all'interno del prompt complessivo, altrimenti lo accoda direttamente come testo letterale.",
-      "input": "Elementi accumulati nell'array $ARGS.",
-      "output": "Stringa di prompt unificata stampata su stdout.",
+      "purpose": "Converte gli argomenti CLI posizionali in testo di prompt: legge i file esistenti validati o accoda direttamente le stringhe letterali.",
+      "input": "Elementi dell'array $ARGS.",
+      "output": "Testo unificato su stdout.",
       "dependencies": ["file_readable", "validate_file_input", "cat", "log_error"]
     },
     {
       "name": "file_readable",
       "category": "CORE_SETUP",
-      "purpose": "Convalida se il percorso indicato corrisponde a un file regolare effettivamente leggibile dall'utente corrente.",
+      "purpose": "Convalida se un percorso corrisponde a un file regolare effettivamente leggibile.",
       "input": "$1 (percorso file).",
-      "output": "Ritorna stato 0 se leggibile, 1 in caso contrario."
+      "output": "Stato 0 se leggibile, 1 altrimenti."
     },
     {
       "name": "is_supported_model",
       "category": "CORE_SETUP",
-      "purpose": "Analizza il nome del modello e ne convalida la compatibilità con Bash4LLM⁺. Filtra e scarta (ritornando stato 1) modelli che richiedono formati non-testuali esclusivi (immagini, visione/VQA, audio/speech/whisper, tts, embedding o vettori, modelli multimodali non-standard), garantendo che siano inviati solo modelli di testo compatibili.",
-      "input": "$1 (nome del modello).",
-      "output": "Ritorna stato 0 se supportato, 1 se escluso.",
+      "purpose": "Verifica che il modello sia compatibile con I/O testuale escludendo modelli per visione, audio/whisper, tts, embedding o multimodali.",
+      "input": "$1 (nome modello).",
+      "output": "Stato 0 se supportato, 1 se escluso.",
       "dependencies": ["tr"]
     },
     {
       "name": "list_models_cli",
       "category": "CORE_SETUP",
-      "purpose": "Formatta e visualizza sulla console l'elenco dei modelli disponibili memorizzati in locale, evidenziando chiaramente quali modelli non sono supportati (perché richiedono input non-testuali) in modo che l'utente non selezioni configurazioni non ammesse.",
-      "input": "Nessuno (scansiona $MODELS_FILE).",
-      "output": "Elenco stampato su stderr. Ritorna stato 0 se completato, 1 se il file dei modelli è assente o vuoto.",
+      "purpose": "Formatta ed elenca a schermo i modelli locali normalizzati evidenziando con badge colorato quelli non supportati per I/O testuale.",
+      "input": "Nessuno (analizza $MODELS_FILE).",
+      "output": "Elenco su stdout. Ritorna 0 o 1.",
       "dependencies": ["_normalize_model_name", "is_supported_model", "printf"]
     },
     {
       "name": "validate_model_core",
       "category": "CORE_SETUP",
-      "purpose": "Algoritmo centrale di validazione dei modelli. Normalizza il nome rimuovendo prefissi e spazi tramite il normalizzatore nativo del core. Controlla se è registrato nel file dei modelli locali e verifica se è escluso per via di formati non testuali via is_supported_model.",
+      "purpose": "Algoritmo centrale di validazione: normalizza il nome, controlla presenza locale in MODELS_FILE e conformità con is_supported_model.",
       "input": "$1 (nome modello).",
-      "output": "Ritorna stato 0 se valido, 1 in caso d'errore (emettendo dettagli tramite log_error).",
-      "dependencies": ["_normalize_model_name", "grep", "is_supported_model", "log_error"]
+      "output": "Stato 0 se valido, 1 in caso d'errore.",
+      "dependencies": ["_normalize_model_name", "grep", "awk", "is_supported_model", "log_error"]
     },
     {
       "name": "load_local_config",
       "category": "CORE_SETUP",
-      "purpose": "Carica in memoria i parametri di configurazione definiti dall'utente nel file di configurazione locale (config all'interno della cartella $BASH4LLM_CONFIG_DIR), interpretando le righe chiave/valore e impostando le variabili globali corrispondenti (MODEL, TEMPERATURE/TURE, MAX_TOKENS, OUTPUT_MODE/FORMAT, THRESHOLD). Ignora commenti e righe vuote.",
+      "purpose": "Carica in memoria i parametri chiave/valore dal file config locale (MODEL, TEMPERATURE/TURE, MAX_TOKENS, FORMAT, THRESHOLD).",
       "input": "Nessuno.",
-      "output": "Assegnazione di variabili globali di ambiente."
+      "output": "Assegnazione variabili globali in memoria."
     },
     {
       "name": "load_whitelist",
       "category": "CORE_SETUP",
-      "purpose": "Carica in memoria e normalizza l'elenco di tutti i modelli autorizzati presenti nel file dei modelli locali per comporre la stringa globale di whitelist $ALLOWED_MODELS usata per i filtri di convalida dei modelli.",
-      "input": "Nessuno.",
-      "output": "Popola la variabile globale $ALLOWED_MODELS con i nomi normalizzati separati da a capo.",
+      "purpose": "Carica e normalizza tutti i modelli autorizzati presenti in MODELS_FILE popolando la stringa globale ALLOWED_MODELS.",
+      "input": "Nessuno (analizza $MODELS_FILE).",
+      "output": "Popola ALLOWED_MODELS.",
       "dependencies": ["_normalize_model_name"]
     },
     {
       "name": "is_tty_out",
       "category": "CORE_SETUP",
-      "purpose": "Verifica se lo standard output (stdout) dello script è collegato a un terminale interattivo (TTY) reale anziché essere ridiretto a un file o pipeline.",
+      "purpose": "Verifica se lo standard output è collegato a un terminale interattivo TTY reale.",
       "input": "Nessuno.",
-      "output": "Ritorna stato 0 se TTY, 1 in caso contrario."
-    },
-    {
-      "name": "validate_provider_interface",
-      "category": "CORE_SETUP",
-      "purpose": "Convalida che il modulo del provider caricato in memoria implementi correttamente le specifiche dell'interfaccia di Bash4LLM⁺. Verifica la presenza fisica delle funzioni obbligatorie (buildpayload_<provider> e call_api_<provider>), e traccia a scopo informativo la presenza o assenza di metodi opzionali (streaming, validazione modelli, auto-selezione, refresh modelli).",
-      "input": "$1 (nome identificativo del provider da analizzare).",
-      "output": "Ritorna stato 0 se l'interfaccia obbligatoria è pienamente implementata, 1 in caso contrario (emettendo errori critici loggati).",
-      "dependencies": ["type", "log_error", "log_info"]
+      "output": "Stato 0 se TTY, 1 altrimenti."
     },
     {
       "name": "_cleanup_sourced_env",
       "category": "CORE_SETUP",
-      "purpose": "Pulisce lo spazio dei nomi della shell rimuovendo le funzioni interne private esportate durante l'integrazione interattiva via sourcing (quando BASH_SOURCE[0] != $0), prevenendo l'inquinamento dell'ambiente interattivo dell'utente.",
+      "purpose": "Pulisce lo spazio dei nomi della shell rimuovendo le funzioni interne private esportate durante l'integrazione via sourcing.",
       "input": "Nessuno.",
-      "output": "Effettua l'unset delle funzioni di runtime interne.",
+      "output": "Unset delle funzioni di runtime interne.",
       "dependencies": ["unset"]
     },
     {
       "name": "assemble_content",
       "category": "CORE_PROVIDER",
-      "purpose": "Compila ed organizza la stringa del prompt di input principale $CONTENT che verrà inviata al modello LLM. Segue una catena di priorità esclusive: 1. Se è configurato un JSON utente in $JSON_INPUT, pulisce $CONTENT ed esce. 2. Se l'utente ha inserito dei file via parametro -f ($FILE_INPUTS), ne raccoglie ed unifica i contenuti via collect_input_from_files. Se sono presenti argomenti posizionali aggiuntivi, li annette in coda. 3. Se è richiesto l'uso di un template ($TEMPLATE), sostituisce la stringa segnaposto {{CONTENT}} rimpiazzandola con il prompt inserito. 4. Se è presente dell'input catturato dallo standard input ($STDIN_CONTENT), lo adotta come prompt principale. 5. Se vi sono solo argomenti CLI posizionali in $ARGS, li converte ed unisce via expand_args_to_content.",
-      "input": "Nessuno.",
-      "output": "Stringa compilata assegnata alla variabile globale $CONTENT.",
-      "side_effects": "Lettura file, generazione e distruzione di file di staging temporanei sul disco.",
+      "purpose": "Compila ed unifica la stringa del prompt finale $CONTENT seguendo le priorità: 1) JSON_INPUT; 2) file -f + posizionali; 3) template {{CONTENT}}; 4) STDIN_CONTENT; 5) argomenti posizionali $ARGS.",
+      "input": "Nessuno (analizza JSON_INPUT, FILE_INPUTS, TEMPLATE, STDIN_CONTENT, ARGS).",
+      "output": "Stringa compilata assegnata a CONTENT.",
+      "side_effects": "Lettura file, staging temporaneo atomico, sostituzione awk.",
       "dependencies": ["collect_input_from_files", "expand_args_to_content", "cat", "ensure_run_tmpdir", "_mktemp_in_dir", "awk", "mv", "rm", "printf"]
     }
   ]

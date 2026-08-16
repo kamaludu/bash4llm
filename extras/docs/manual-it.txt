@@ -12,6 +12,7 @@ SINTASSI
     echo "prompt" | bash4llm [OPZIONI]
     bash4llm --batch BATCH_FILE [OPZIONI]
     bash4llm --chat [OPZIONI]
+    bash4llm --gui [OPZIONI]
     bash4llm --vault
 
 DESCRIZIONE
@@ -120,8 +121,8 @@ OPZIONI
         --title <testo>.
 
     --title TESTO
-        Specifies the new user-facing title string when executing thread 
-        renaming via --rename-thread.
+        Specifica la nuova stringa del titolo visibile all'utente durante 
+        l'esecuzione della ridenominazione del thread tramite --rename-thread.
 
   Sezione 4: Output e Formattazione
     --json
@@ -237,10 +238,18 @@ OPZIONI
         Imposta e archivia permanentemente il modello specificato come scelta 
         predefinita per il provider attualmente attivo nel sistema.
 
-  Sezione 8: Interfaccia Utente Interattiva, Diagnostica e Ispezione
+  Sezione 8: Interfacce Interattive, Diagnostica e Ispezione
     --chat, --tui
-        Lancia la sessione TUI REPL interattiva a schermo intero per conversazioni 
-        continue.
+        Avvia la sessione REPL interattiva TUI a schermo intero per conversazioni 
+        continue da terminale.
+
+    --gui, --webapp
+        Avvia l'interfaccia grafica WebApp GUI locale nel browser web (basata 
+        sul runtime Python 3.10+ con FastAPI e Uvicorn in extras/gui-py).
+        Esegue il binding esclusivo sull'interfaccia di loopback (127.0.0.1) 
+        allocando dinamicamente una porta libera nell'intervallo 19970-20069, 
+        genera un token di autenticazione monouso (One-Time Auth URL) e protegge 
+        la sessione tramite cookie di sicurezza e token anti-CSRF.
 
     --quiet
         Silenziatore di runtime. Inibisce tutte le stampe informative e gli 
@@ -346,6 +355,11 @@ VARIABILI D'AMBIENTE
     BASH4LLM_ROOT
         Percorso alternativo utilizzato per derivare la directory radice se 
         BASH4LLM_DIR non è dichiarata esplicitamente.
+
+    BASH4LLM_CORE_SCRIPT
+        Percorso assoluto o relativo esplicito dello script eseguibile core 
+        bash4llm, utilizzato dai wrapper e dall'adattatore GUI per la risoluzione 
+        deterministica a prova di fail-fast.
 
     BASH4LLM_CONFIG_DIR
         Directory contenente le impostazioni utente permanenti (predefinito: $BASH4LLM_DIR/config).
@@ -454,6 +468,11 @@ VARIABILI D'AMBIENTE
     BASH4LLM_AUTH_TOKEN
         Token segreto di autorizzazione che supera i controlli di rate-limiting locali.
 
+    BASH4LLM_GUI_NO_BROWSER
+        Flag booleano (1 o 0). Se impostato su 1, inibisce l'apertura automatica 
+        del browser web all'avvio del server WebApp GUI (disabilitata 
+        automaticamente anche su ambienti Termux/Android).
+
     FALLBACK_PAYLOAD
         Payload di fallback codificato in Base64 generato dagli hook post-esecuzione 
         in caso di fallimento delle API.
@@ -479,7 +498,7 @@ VARIABILI D'AMBIENTE
         Flag di controllo transazioni esterne. Se impostato su 0, blocca le chiamate di rete.
 
     BASH4LLM_SKIP_NETWORK
-        Inhibits network calls and forces dry-run simulated execution.
+        Inibisce le chiamate di rete e forza l'esecuzione simulata in modalità dry-run.
 
     BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET
         Se impostato su 1, blocca le connessioni esterne ogni volta che QUIET=1 è attivo.
@@ -527,7 +546,7 @@ CODICI DI USCITA
         del modulo SHA-256 rispetto a manifest.sha256.
 
 MODALITÀ OPERATIVE
-    bash4llm implementa sei modalità operative principali:
+    bash4llm implementa sette modalità operative principali:
 
   1. Richiesta Singola (Predefinita)
     Acquisisce il prompt, risolve provider e modello, convalida le chiavi API, impone il 
@@ -549,6 +568,14 @@ MODALITÀ OPERATIVE
   6. Sessione con Sourcing e Autocompletamento Shell (. ./bash4llm)
     Il sourcing di bash4llm in una shell interattiva attiva sblocca la sessione del 
     Vault in RAM ($_B4L_RT_CTX) e carica automaticamente bash4llm-completion.sh.
+
+  7. Interfaccia Grafica WebApp (--gui, --webapp)
+    Avvia il server asincrono FastAPI/Uvicorn locale tramite il wrapper 
+    extras/gui-py/gui-py.sh. Fornisce una Single Page Application (SPA) con 
+    gestione completa di chat multi-thread persistenti, upload di allegati (-f), 
+    streaming di token in tempo reale via Server-Sent Events (SSE), sblocco in 
+    RAM e gestione del Vault OpenSSL (_B4L_RT_CTX), configurazione dei parametri 
+    a runtime e validazione dello schema SML Gate.
 
 DETTAGLI DI IMPLEMENTAZIONE INTERNA
     Questa sezione descrive gli algoritmi principali e le logiche di sicurezza.
@@ -591,6 +618,25 @@ DETTAGLI DI IMPLEMENTAZIONE INTERNA
     extras/docs/bash4llm-completion.sh, registrando il completamento con il tasto Tab 
     per tutte le opzioni CLI, provider, modelli e codici di errore senza side-effect.
 
+  8. Architettura dell'Adattatore GUI WebApp Asincrono e Sicurezza T3
+    L'adattatore Python (extras/gui-py) implementa un'architettura rigorosamente 
+    isolata e asincrona:
+    - Process Isolation & T3 Tempdir: valida la cartella temporanea rifiutando 
+      i percorsi di sistema condivisi (/tmp, /var/tmp) e imponendo permessi 0700 
+      e verifica dell'UID proprietario.
+    - Single-Instance Advisory Lock: applica un lock non bloccante a livello 
+      kernel (0600) per impedire istanze concorrenti.
+    - Loopback Binding & CSRF Protection: accetta richieste esclusivamente su 
+      127.0.0.1, localhost o [::1], valida gli header Host/Origin ed esige un 
+      token anti-CSRF generato crittograficamente per ogni operazione mutante.
+    - Deadlock-Free Subprocess IPC: invoca il core bash4llm gestendo in modo 
+      concorrente (asyncio.gather) la scrittura su stdin UTF-8, la lettura a 
+      blocchi di stdout per lo streaming SSE dei token, il parsing delle diagnosi 
+      JSON su stderr e la chiusura sicura dei descrittori pipe.
+    - RAM Lifecycle & Graceful Shutdown: applica garbage collection in memoria 
+      sui job completati (TTL 2 ore, max 200 record) ed esegue l'auto-spegnimento 
+      pulito (SIGINT) dopo 120 secondi continui di inattività dei client.
+
 RISOLUZIONE PROBLEMI E DIAGNOSTICA
     Risposte Vuote Anomale (Empty Completion)
         Rilevate automaticamente tramite detect_empty_edge_case quando viene restituito HTTP 200 
@@ -598,4 +644,19 @@ RISOLUZIONE PROBLEMI E DIAGNOSTICA
 
     Errori di Connessione o Timeout dei Lock
         Se si verifica il codice di uscita 15 con messaggi di timeout, verificare che non vi siano 
-        istanze in background che mantengono i lock, oppure aumentare i valori BASH4LLM_LOCK_TIMEOUT_....
+        istanze in background che mantengono i lock, oppure aumentare i valori delle variabili 
+        BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS e BASH4LLM_LOCK_TIMEOUT_HISTORY.
+
+AUTORE
+    Sviluppato e mantenuto da Cristian Evangelisti (opensource@cevangel.anonaddy.me).
+    Repository ufficiale: https://github.com/kamaludu/bash4llm
+
+COPYRIGHT E LICENZA
+    Copyright (C) 2026 Cristian Evangelisti.
+    Licenza GPLv3+: GNU GPL versione 3 o successiva <https://gnu.org/licenses/gpl.html>.
+    Questo è software libero: si è liberi di modificarlo e ridistribuirlo. Non vi è ALCUNA GARANZIA.
+
+SEGNALAZIONE BUG
+    Segnalare problemi e richieste di miglioramento tramite issue tracker ufficiale:
+    https://github.com/kamaludu/bash4llm/issues
+    

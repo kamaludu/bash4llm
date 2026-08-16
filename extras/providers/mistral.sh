@@ -265,7 +265,7 @@ call_api_mistral() {
 
   # Execute HTTP POST request via Authoritative Secure Path (Redacts Bearer Token from argv)
   local -a extra_opts=(-w '%{http_code} %{time_total}')
-  _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "$tmpresp" "$ERRF" 0 extra_opts >"$tmpout" || true
+  _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "$tmpresp" "$ERRF" 0 "${extra_opts[@]}" >"$tmpout" || true
 
   read -r http_code time_total < "$tmpout" 2>/dev/null || {
     http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
@@ -344,19 +344,19 @@ call_api_streaming_mistral() {
   # Unbuffered streaming pipeline via Authoritative Network Path (Redacts Bearer Token from argv)
   _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "" "$ERRF" 1 | \
   tee -a "$RESP_RAW" | \
-  jq --unbuffered -R -r '
+  jq --unbuffered -j -R '
     if startswith("data: ") then
       sub("^data:[[:space:]]*"; "") |
       select(. != "[DONE]") |
-      try (fromjson | .choices[]?.delta?.content // "") catch ""
+      try (fromjson | .choices[]?.delta?.content // empty) catch empty
     else
       try (
         fromjson | 
-        if .error.message then ("\nAPI Error: " + .error.message) 
-        elif .message then ("\nAPI Error: " + .message) 
+        if .error.message then ("\nAPI Error: " + .error.message + "\n") 
+        elif .message then ("\nAPI Error: " + .message + "\n") 
         else empty end
       ) catch empty
-    fi
+    end
   '
 
   rc=${PIPESTATUS[0]:-0}
@@ -438,7 +438,7 @@ refresh_models_mistral() {
 
   # Execute GET request via Authoritative Secure Path
   local -a extra_opts=(-s -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$out" "$errf" 0 extra_opts || echo "CURL_FAILED")"
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$out" "$errf" 0 "${extra_opts[@]}" || echo "CURL_FAILED")"
 
   if [ "$http_code" = "CURL_FAILED" ] || [ ! -f "$out" ]; then
     dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
@@ -532,7 +532,7 @@ validate_key_mistral() {
 
   # GET call via Authoritative Secure Path
   local -a key_val_opts=(--max-time 10 -s -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 key_val_opts || echo "CURL_ERR")"
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 "${key_val_opts[@]}" || echo "CURL_ERR")"
   curl_rc=$?
 
   rm -f "$tmpout" "$errf" 2>/dev/null || true

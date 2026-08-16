@@ -66,6 +66,8 @@ _bash4llm_completions() {
         --raw
         --chat
         --tui
+        --gui
+        --webapp
         --show-config
         --diagnostics
         --diagnostic

@@ -31,8 +31,8 @@ ulimit -c 0 2>/dev/null || true
 # RELEASE VERSION METADATA
 # ======================================
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.5"
-SCRIPT_DATE="2026-08-07"
+SCRIPT_VERSION="2.8.5.3"
+SCRIPT_DATE="2026-08-16"
 
 # Core Provider API Contract Version
 BASH4LLM_SUPPORTED_PROVIDER_API=1
@@ -3576,10 +3576,10 @@ _exec_curl_secure() {
 
   [ -n "$url" ] || return "$BASH4LLM_ERR_API"
 
-  local hdr_file="" hdr_target="" rc=0
+  local hdr_file="" rc=0
   local target_dir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR}}"
 
-  # 1. Isolation: Write sensitive headers strictly to a 0600 temp file inside RUN_TMPDIR
+  # 1. Isolation: Write sensitive headers strictly to a 0600 temp file inside target_dir
   hdr_file="$(_tmpf file "$target_dir" curl_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
 
   if [ -n "$api_key" ]; then
@@ -3593,21 +3593,7 @@ _exec_curl_secure() {
   fi
   chmod 600 "$hdr_file" 2>/dev/null || true
 
-  # 2. FD Redirection: Hide header file path from process inspection if supported
-  hdr_target="$hdr_file"
-  if [ "${BASH4LLM_PLAT_CYGWIN:-0}" -eq 0 ] && exec 3< "$hdr_file" 2>/dev/null; then
-    if [ -e "/dev/fd/3" ]; then
-      hdr_target="/dev/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    elif [ -e "/proc/self/fd/3" ]; then
-      hdr_target="/proc/self/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    else
-      exec 3<&- 2>/dev/null || true
-    fi
-  fi
-
-  # 3. Construct command vector securely without putting tokens in argv
+  # 2. Construct command vector securely without putting tokens in argv
   local -a cmd=(curl)
   if [ "$is_streaming" -eq 1 ]; then
     cmd+=(--http1.1 -sS -N)
@@ -3617,7 +3603,7 @@ _exec_curl_secure() {
     cmd+=("${CURL_BASE_OPTS[@]}")
   fi
 
-  cmd+=(-X "$method" -H @"$hdr_target")
+  cmd+=(-X "$method" -H @"$hdr_file")
 
   if [ -n "$payload_file" ] && [ -f "$payload_file" ]; then
     cmd+=(--data-binary @"$payload_file")
@@ -3635,7 +3621,7 @@ _exec_curl_secure() {
 
   cmd+=("$url")
 
-  # 4. Single Execution Path
+  # 3. Single Execution Path
   if [ -n "$err_file" ]; then
     "${cmd[@]}" < /dev/null 2>"$err_file"
     rc=$?
@@ -3644,7 +3630,7 @@ _exec_curl_secure() {
     rc=$?
   fi
 
-  exec 3<&- 2>/dev/null || true
+  # 4. Immediate cleanup of sensitive header file
   [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
 
   return "$rc"
@@ -3876,13 +3862,13 @@ call_api_groq() {
 # --------------------------------------------------
 call_api_streaming_groq() {
   local tmp_payload="" provider_url="" resp_raw="" resp_lines="" resp_valid="" resp_chunks="" resp_tmp="" rc=0 now_ts="" decoded_payload="" finish_reason="" req_id="" edgecase=0 send_payload="" http_code="" resp_json_tmp="" api_json=""
-  local curl_err_log="" _line="" hdr_file="" hdr_target="" api_key="" custom_key_var=""
+  local curl_err_log="" _line="" api_key="" custom_key_var=""
 
   if ! enforce_network_policy >/dev/null 2>&1; then
     if is_truthy "${DRY_RUN:-0}" || is_truthy "${BASH4LLM_SKIP_NETWORK:-0}"; then
       if [ "${DEBUG:-0}" -eq 1 ]; then
         show_payload_head "${PAYLOAD:-}" 200 || true
-        log_info "DRYRUN" "DRY-RUN: skipping streaming HTTP call"
+        log_info "DRYRUN" "DRY-RUN/SKIP_NETWORK: skipping streaming HTTP call"
       fi
       return 0
     fi
@@ -3924,29 +3910,10 @@ call_api_streaming_groq() {
   resp_chunks="$(_tmpf file "$RUN_TMPDIR" resp.chunks.json 2>/dev/null)"
   curl_err_log="$(_tmpf file "$RUN_TMPDIR" curl_stream.err 2>/dev/null)"
 
-  hdr_file="$(_tmpf file "$RUN_TMPDIR" curl_stream_hdr 2>/dev/null)" || return "$BASH4LLM_ERR_TMP"
-  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$api_key" > "$hdr_file"
-  chmod 600 "$hdr_file" 2>/dev/null || true
-
-  hdr_target="$hdr_file"
-  if exec 3< "$hdr_file" 2>/dev/null; then
-    if [ -e "/dev/fd/3" ]; then
-      hdr_target="/dev/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    elif [ -e "/proc/self/fd/3" ]; then
-      hdr_target="/proc/self/fd/3"
-      rm -f "$hdr_file" 2>/dev/null || true
-    else
-      exec 3<&- 2>/dev/null || true
-    fi
-  fi
-
   decoded_payload="$(_tmpf file "$RUN_TMPDIR" payload.dec 2>/dev/null)" || true
   if [[ "$tmp_payload" == *.b64 ]]; then
     if ! b64decode < "$tmp_payload" > "$decoded_payload" 2>"$curl_err_log"; then
       log_error "B64DECODE" "base64 decode failed for payload"
-      exec 3<&- 2>/dev/null || true
-      [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
       rm -f "$decoded_payload" "$curl_err_log" 2>/dev/null || true
       return "$BASH4LLM_ERR_TMP"
     fi
@@ -3955,40 +3922,32 @@ call_api_streaming_groq() {
     send_payload="$tmp_payload"
   fi
 
-  CURL_CMD=(curl --http1.1 -sS -N)
-  if [ -n "${CURL_BASE_OPTS[*]:-}" ]; then
-    CURL_CMD+=("${CURL_BASE_OPTS[@]}")
-  fi
-  CURL_CMD+=( -H @"$hdr_target" )
-
   if [ "${QUIET:-0}" -ne 1 ] && [ -t 2 ]; then
     printf '\n' >&2
   fi
 
+  # Single-pass unbuffered streaming pipeline via Authoritative Network Path
   _exec_curl_secure "POST" "$provider_url" "$api_key" "$send_payload" "" "$curl_err_log" 1 | \
   tee "$resp_raw" | \
-  jq --unbuffered -R -r '
+  jq --unbuffered -j -R '
     if startswith("data: ") then
       sub("^data:[[:space:]]*"; "") |
       select(. != "[DONE]") |
-      try (fromjson | .choices[0] | (.delta.content // .message.content // "")) catch ""
+      try (fromjson | .choices[0] | (.delta.content // .message.content // empty)) catch empty
     else
       try (
         fromjson | 
-        if .error.message then ("\nAPI Error: " + .error.message) 
-        elif .message then ("\nAPI Error: " + .message) 
+        if .error.message then ("\nAPI Error: " + .error.message + "\n") 
+        elif .message then ("\nAPI Error: " + .message + "\n") 
         else empty end
       ) catch empty
-    fi
+    end
   '
 
   rc=${PIPESTATUS[0]:-0}
   [ "$rc" -eq 141 ] && rc=0
 
   rm -f "$decoded_payload" 2>/dev/null || true
-
-  exec 3<&- 2>/dev/null || true
-  [ -f "$hdr_file" ] && rm -f "$hdr_file" 2>/dev/null || true
 
   # Ensure network errors return the canonical exit code BASH4LLM_ERR_CURL_FAILED (12)
   if [ "$rc" -ne 0 ]; then
@@ -5334,6 +5293,35 @@ while [ $# -gt 0 ]; do
       # Atomic process image transfer forwarding all remaining positional arguments
       exec bash "$suite_script" "$@"
       ;;
+    --gui|--webapp)
+      shift
+      gui_script="${BASH4LLM_EXTRAS_DIR}/gui-py/gui-py.sh"
+
+      # 1. Verifica di esistenza e leggibilità (Fail-Closed)
+      if [ ! -f "$gui_script" ] || [ ! -r "$gui_script" ]; then
+        log_error "GUI" "GUI module 'gui-py' is not installed. Please run: ./bash4llm --install-extras"
+        exit "${BASH4LLM_ERR_TMP:-15}"
+      fi
+
+      # 2. Strict POSIX Path Security & Ownership Check (INV-4)
+      if ! validate_path_security "$gui_script"; then
+        log_error "SEC" "Path security validation failed for GUI launcher: $gui_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      # 3. Validazione di Integrità Crittografica SHA-256 rispetto al Manifest Vendor
+      if ! verify_module_integrity "$gui_script"; then
+        log_error "SEC" "GUI launcher failed SHA-256 integrity check: $gui_script"
+        exit "${BASH4LLM_ERR_SEC:-17}"
+      fi
+
+      if [ "${DEBUG:-0}" -eq 1 ]; then
+        log_info "GUI" "Delegating execution to verified GUI launcher: $gui_script"
+      fi
+
+      # 4. Atomic Process Image Transfer forwarding remaining positional CLI arguments
+      exec bash "$gui_script" "$@"
+      ;;
     --provider|--providers)
       if [ "$#" -ge 2 ] && [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
         PROVIDER_CLI="$2"
@@ -5700,6 +5688,7 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] || [ "${INSTALL_EXTRAS:-0}" -eq 1 ]; then
     # Granular Execution Permissions: Grant executable bits ONLY to direct CLI entrypoints
     chmod 700 "$DEST_BASE/security/output-sanitizer.sh" 2>/dev/null || true
     chmod 700 "$DEST_BASE/chat/tui-repl.sh" 2>/dev/null || true
+    chmod 700 "$DEST_BASE/gui-py/gui-py.sh" 2>/dev/null || true
     find "$DEST_BASE/test" -type f -name "*.sh" -exec chmod 700 {} + 2>/dev/null || true
     
     # Verify integrity of newly installed extras against manifest

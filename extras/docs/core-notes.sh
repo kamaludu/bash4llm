@@ -411,7 +411,7 @@ Blocks of Code / Flows
 - CORE_SETUP_CLI_PARSE: Evaluation of arguments and parameter mapping.
 - CORE_SETUP_SESSION_ENGINE: Pre-checks syntax and sources the external session-engine script.
 - CORE_SETUP_NORM_FLAGS: Validates API callers, normalizes flag booleans, and dynamically populates provider lists.
-- CORE_SETUP_ACTIONS: Execution of static listings, raw listing flags (--list-providers-raw, --list-models-raw), configuration check, installations (--install-extras with Least-Privilege chmod), --run-all-tests master suite, and thread creations.
+- CORE_SETUP_ACTIONS: Execution of static listings, raw listing flags (--list-providers-raw, --list-models-raw), configuration check, installations (--install-extras with Least-Privilege chmod including gui-py/gui-py.sh), --run-all-tests master suite, WebApp GUI launcher delegation (--gui/--webapp), and thread creations.
 
 ----------------------------------------
 CORE_PROVIDER (discovery, selection, persistence)
@@ -531,8 +531,8 @@ BASH4LLM_RATE_LIMIT, FALLBACK_PAYLOAD, BASH4LLM_AUTH_TOKEN, BASH4LLM_LOCK_TIMEOU
 BASH4LLM_HISTORY_MAX_FILES, BASH4LLM_HISTORY_MAX_BYTES, BASH4LLM_HISTORY_KEEP_DAYS, ALLOWED_MODELS, MAX_MODELS,
 CURL_BASE_OPTS, FORMAT, BASH4LLM_API_KEY, BASH4LLM_API_URL, BASH4LLM_PROVIDER_URL, B64_WRAP_OPT,
 B64_DECODE_OPT, GROQ_API_KEY, PROVIDER_API_ENV_groq, SCRIPT_NAME, SCRIPT_VERSION, SCRIPT_DATE, SCRIPTDIR,
-CANONICAL_EXTRAS_DIR, LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR, BASH4LLM_TEMPLATES_DIR, THREAD_DIR,
-HISTORY_LOCK, TMP_LOCK, BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS, BASH4LLM_LOCK_TIMEOUT_HISTORY,
+BASH4LLM_CORE_SCRIPT, CANONICAL_EXTRAS_DIR, LEGACY_EXTRAS_DIR, BASH4LLM_MODELS_DIR, BASH4LLM_TEMPLATES_DIR,
+THREAD_DIR, HISTORY_LOCK, TMP_LOCK, BASH4LLM_LOCK_TIMEOUT_TMP, BASH4LLM_LOCK_TIMEOUT_MODELS, BASH4LLM_LOCK_TIMEOUT_HISTORY,
 LAST_CHECK_LINES, BOOTSTRAP_ONLY, _engine_path, _engine_available, BASH4LLM_SESSION_ENGINE,
 BASH4LLM_SESSION_TARGET_BYTES, BASH4LLM_ROOT, BASH4LLM_SKIP_NETWORK, BASH4LLM_ENFORCE_NO_NETWORK_IF_QUIET,
 ALLOW_API_CALLS, BASH4LLM_LOG, BASH4LLM_IGNORE_SEC_CHECKS, BASH4LLM_SIG_HASH, BASH4LLM_REQUIRE_MANIFEST_SIG,
@@ -570,6 +570,7 @@ OPERATIONAL TIPS (concise)
 - To add a provider: install bash4llm.d/extras/providers/<prov>.sh implementing buildpayload_<prov> and call_api_<prov>.
 - To refresh models: bash4llm --refresh-models (dispatches to refresh_models_<prov>).
 - To run automated tests: bash4llm --run-all-tests (executes verified master test suite run-all-tests.sh).
+- To launch the Python WebApp GUI: bash4llm --gui or bash4llm --webapp (executes verified extras/gui-py/gui-py.sh launcher).
 - To debug model selection: check bash4llm.d/config/model.<provider>, bash4llm.d/models/models.txt, and MODEL env.
 - Preflight checklist before release: verify perms (700/600), ensure _tmpf rejects /tmp, run static checks (--check-config), test enforce_network_policy with DRY_RUN.
 - To resolve BASH4LLM_ERR_SEC (17), secure your configuration files by running: chmod 600 bash4llm.d/config/config && chmod 700 bash4llm.d
@@ -578,7 +579,7 @@ OPERATIONAL TIPS (concise)
 CHANGE NOTES (summary)
 ----------------------------------------
 This document provides the reference core notes aligned to:
-- bash4llm (v2.8.5)
+- bash4llm (v2.8.5) — includes WebApp GUI launcher support (--gui/--webapp)
 All critical primitives, structures, aliases, and invariants from the SPEC are documented above.
 
 ----------------------------------------

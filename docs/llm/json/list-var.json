@@ -1,8 +1,9 @@
 {
   "metadata": {
     "software": "Bash4LLM⁺",
-    "version": "2.8.5",
-    "date": "2026-08-07"
+    "version": "2.8.5.3",
+    "date": "2026-08-16",
+    "description": "Catalogo delle variabili di stato, configurazione e runtime di Bash4LLM⁺"
   },
   "variables": [
     {
@@ -15,19 +16,19 @@
       "name": "SCRIPT_VERSION",
       "category": "PRECORE_BOOT",
       "description": "Versione corrente del software.",
-      "value_definition": "Impostata a \"2.8.5\"."
+      "value_definition": "Impostata a \"2.8.5.3\"."
     },
     {
       "name": "SCRIPT_DATE",
       "category": "PRECORE_BOOT",
-      "description": "Data di rilascio dello script.",
-      "value_definition": "Impostata a \"2026-08-07\"."
+      "description": "Data ufficiale di rilascio dello script.",
+      "value_definition": "Impostata a \"2026-08-16\"."
     },
     {
       "name": "BASH4LLM_SUPPORTED_PROVIDER_API",
       "category": "PRECORE_BOOT",
       "description": "Versione del contratto API supportata per i moduli provider di estensione esterni.",
-      "value_definition": "Esportata come valore 1."
+      "value_definition": "Esportata come valore numerico 1."
     },
     {
       "name": "BASH4LLM_PLAT_ANDROID",
@@ -152,7 +153,7 @@
     {
       "name": "BASH4LLM_ERR_SEC",
       "category": "PRECORE_BOOT",
-      "description": "Costante numerica di errore associata a violazioni di sicurezza (es. permessi di scrittura di altri gruppi sul file di configurazione o dipendenze non sicure).",
+      "description": "Costante numerica di errore associata a violazioni di sicurezza (es. permessi errati o manomissione moduli).",
       "value_definition": "Valore 17."
     },
     {
@@ -294,6 +295,12 @@
       "value_definition": "Impostato su PROVIDERS_DIR di ambiente o sotto $BASH4LLM_EXTRAS_DIR/providers."
     },
     {
+      "name": "CANONICAL_LOCAL_EXTRAS_DIR",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso canonico delle estensioni locali ($BASH4LLM_DIR/local-extras).",
+      "value_definition": "Impostato a $BASH4LLM_DIR/local-extras."
+    },
+    {
       "name": "BASH4LLM_LOCAL_EXTRAS_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory per le estensioni gestite dall'utente nel dominio locale.",
@@ -312,6 +319,12 @@
       "value_definition": "Posizionata sotto $BASH4LLM_HISTORY_DIR/threads."
     },
     {
+      "name": "TMPDIR",
+      "category": "PRECORE_BOOT",
+      "description": "Override della variabile TMPDIR di sistema forzato su BASH4LLM_TMPDIR per garantire l'isolamento locale di cURL e temporanei.",
+      "value_definition": "Esportata come $BASH4LLM_TMPDIR."
+    },
+    {
       "name": "BASH4LLM_RATES_DIR",
       "category": "PRECORE_BOOT",
       "description": "Directory usata dal rate-limiter per tracciare le transazioni attive per thread.",
@@ -322,6 +335,12 @@
       "category": "PRECORE_BOOT",
       "description": "Variabile che definisce l'attivazione del modulo OpenSSL Key Vault. Se valorizzata a 1, carica openssl-helper.sh.",
       "value_definition": "Prelevata dal file locale config o impostata su 1 di default."
+    },
+    {
+      "name": "_BASH4LLM_OPENSSL_HELPER",
+      "category": "PRECORE_BOOT",
+      "description": "Percorso del modulo helper crittografico OpenSSL.",
+      "value_definition": "Impostato a $BASH4LLM_EXTRAS_DIR/security/openssl-helper.sh."
     },
     {
       "name": "BASH4LLM_OPENSSL_ACTIVE",
@@ -446,7 +465,7 @@
     {
       "name": "BASH4LLM_HISTORY_MAX_FILES",
       "category": "PRECORE_RUN",
-      "description": "Soglia numerica massima di file memorizzabili nello storico delle risposte. Superata la soglia, i file più vecchi vengono rimossi.",
+      "description": "Soglia numerica massima di file memorizzabili nello storico delle risposte.",
       "value_definition": "Default 100."
     },
     {
@@ -458,20 +477,32 @@
     {
       "name": "BASH4LLM_HISTORY_KEEP_DAYS",
       "category": "PRECORE_RUN",
-      "description": "Limite di tempo espresso in giorni per la conservazione dei log e dello storico. I file più vecchi della soglia vengono eliminati.",
+      "description": "Limite di tempo espresso in giorni per la conservazione dei log e dello storico.",
       "value_definition": "Default 90."
     },
     {
       "name": "THREAD_CACHE_DIR",
       "category": "PRECORE_RUN",
       "description": "Directory destinata a contenere la cache dei parametri e delle risposte dei thread attivi.",
-      "value_definition": "Posizionata sotto la cartella di configurazione utente alla voce thread_cache/."
+      "value_definition": "Posizionata sotto $BASH4LLM_CONFIG_DIR/thread_cache."
+    },
+    {
+      "name": "LAST_CHECK_LINES",
+      "category": "PRECORE_RUN",
+      "description": "Numero di righe analizzate per i controlli di integrità dello storico.",
+      "value_definition": "Default 50."
     },
     {
       "name": "CONTENT",
       "category": "PRECORE_RUN",
       "description": "Prompt testuale primario dell'utente.",
       "value_definition": "Assegnato a CONTENT."
+    },
+    {
+      "name": "PROVIDER",
+      "category": "PRECORE_RUN",
+      "description": "Identificatore del provider API attivo.",
+      "value_definition": "Default \"groq\"."
     },
     {
       "name": "JSON_INPUT",
@@ -482,43 +513,43 @@
     {
       "name": "THREAD_ID",
       "category": "PRECORE_RUN",
-      "description": "Identificatore alfanumerico del thread di chat corrente, utilizzato per raggruppare e persistere il contesto dei messaggi in interazioni multi-turno.",
+      "description": "Identificatore alfanumerico del thread di chat corrente, sincronizzato con SAFE_THREAD_ID.",
       "value_definition": "Ereditato o configurato via CLI."
     },
     {
       "name": "THREAD_WINDOW",
       "category": "PRECORE_RUN",
-      "description": "Numero massimo di messaggi storici da estrarre e accodare dal log di thread per comporre la finestra di contesto della chat.",
-      "value_definition": "Configurato via CLI o impostazioni di thread."
+      "description": "Numero massimo di messaggi storici da estrarre dal log di thread per comporre la finestra di contesto.",
+      "value_definition": "Default 10."
     },
     {
       "name": "TEMPLATE",
       "category": "PRECORE_RUN",
-      "description": "Nome identificativo del file di template da applicare per formattare o arricchire il prompt dell'utente prima dell'invio.",
+      "description": "Nome identificativo del file di template da applicare per arricchire il prompt.",
       "value_definition": "Ereditato o configurato via CLI."
     },
     {
       "name": "BATCH_FILE",
       "category": "PRECORE_RUN",
-      "description": "Percorso di un file contenente una serie ordinata di prompt (uno per riga) da elaborare in sequenza.",
+      "description": "Percorso di un file contenente una serie ordinata di prompt da elaborare in sequenza batch.",
       "value_definition": "Ereditato o configurato via CLI."
     },
     {
       "name": "CHAT_MODE",
       "category": "PRECORE_RUN",
-      "description": "Flag booleano che abilita l'interfaccia interattiva di chat multi-turno da terminale.",
+      "description": "Flag booleano che abilita l'interfaccia interattiva TUI REPL da terminale.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "SET_DEFAULT_MODEL",
       "category": "PRECORE_RUN",
-      "description": "Nome del modello da memorizzare e configurare come scelta predefinita persistente per il provider attivo.",
+      "description": "Nome del modello da memorizzare come scelta predefinita per il provider attivo.",
       "value_definition": "Ereditato o configurato via CLI."
     },
     {
       "name": "REFRESH_MODELS",
       "category": "PRECORE_RUN",
-      "description": "Flag booleano per forzare l'allineamento e l'interrogazione delle API esterne al fine di aggiornare la lista locale dei modelli supportati.",
+      "description": "Flag booleano per forzare l'allineamento dei modelli locali con le API remote.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
@@ -530,128 +561,158 @@
     {
       "name": "FORCE_SAVE_MODE",
       "category": "PRECORE_RUN",
-      "description": "Regola il salvataggio dell'output testuale generato sul disco.",
-      "value_definition": "Valori: 'save' forza il salvataggio, 'nosave' lo disabilita, 0 adotta il comportamento standard basato sulla soglia di caratteri."
+      "description": "Regola la persistenza dell'output testuale sul disco.",
+      "value_definition": "Valori: 'save', 'nosave', o 0 (basato su THRESHOLD)."
     },
     {
       "name": "OUT_PATH",
       "category": "PRECORE_RUN",
-      "description": "Percorso del file o della directory personalizzata in cui archiviare i risultati restituiti dalle API.",
+      "description": "Percorso personalizzato per archiviare i risultati restituiti dalle API.",
       "value_definition": "Ereditato o configurato via CLI."
     },
     {
       "name": "SYSTEM_PROMPT",
       "category": "PRECORE_RUN",
-      "description": "Prompt di sistema personalizzato utilizzato per istruire o condizionare il comportamento e il tono del modello LLM.",
+      "description": "Prompt di sistema personalizzato per istruire il comportamento del modello.",
       "value_definition": "Ereditato o configurato via CLI."
+    },
+    {
+      "name": "TEMPERATURE",
+      "category": "PRECORE_RUN",
+      "description": "Valore numerico decimale che regola la temperatura di campionamento delle risposte LLM.",
+      "value_definition": "Eredita ${TEMPERATURE}, ${TURE} o adotta 1.0."
     },
     {
       "name": "TURE",
       "category": "PRECORE_RUN",
-      "description": "Valore numerico decimale che regola la temperatura di campionamento delle risposte delle API. Sincronizzato bidirezionalmente con TEMPERATURE.",
-      "value_definition": "Eredita ${TEMPERATURE}, ${TURE} o adotta 1.0."
+      "description": "Alias bidirezionale di TEMPERATURE.",
+      "value_definition": "Sincronizzato con TEMPERATURE."
     },
     {
       "name": "MAX_TOKENS",
       "category": "PRECORE_RUN",
-      "description": "Limite di token generabili nella risposta.",
+      "description": "Limite massimo di token generabili nella risposta.",
       "value_definition": "Default 4096."
     },
     {
       "name": "MODEL",
       "category": "PRECORE_RUN",
-      "description": "Nome identificativo del modello LLM richiesto per l'elaborazione.",
+      "description": "Nome identificativo del modello LLM richiesto per l'inferenza.",
       "value_definition": "Ereditato o configurato via CLI/config."
     },
     {
       "name": "AUTO_POLICY",
       "category": "PRECORE_RUN",
-      "description": "Politica adottata per la selezione automatica del modello di fallback in assenza di un modello espresso esplicitamente dall'utente.",
+      "description": "Politica di fallback per la selezione automatica del modello.",
       "value_definition": "Default \"preferred\"."
     },
     {
       "name": "QUIET",
       "category": "PRECORE_RUN",
-      "description": "Flag booleano per inibire i messaggi informativi e limitare l'output ai soli risultati o errori bloccanti.",
+      "description": "Flag booleano per inibire i messaggi informativi.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "DRY_RUN",
       "category": "PRECORE_RUN",
-      "description": "Flag booleano per simulare l'esecuzione ed escludere l'invio reale di chiamate di rete esterne.",
+      "description": "Flag booleano per simulare l'esecuzione ed escludere le chiamate di rete reali.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "STREAM_MODE",
       "category": "PRECORE_RUN",
-      "description": "Flag booleano per attivare la ricezione e la visualizzazione a schermo dei token in tempo reale (streaming).",
+      "description": "Flag booleano per attivare la ricezione in streaming dei token in tempo reale (SSE).",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "OUTPUT_MODE",
       "category": "PRECORE_RUN",
-      "description": "Configura lo stile di visualizzazione dei risultati restituiti dallo script.",
-      "value_definition": "Valori ammessi: text, raw, json, pretty."
+      "description": "Stile di visualizzazione dei risultati restituiti dallo script.",
+      "value_definition": "Valori ammessi: text, raw, json, pretty (default text)."
     },
     {
       "name": "THRESHOLD",
       "category": "PRECORE_RUN",
-      "description": "Soglia limite espressa in caratteri al di sopra della quale i risultati delle API vengono salvati nello storico.",
+      "description": "Soglia in caratteri sopra la quale la risposta viene salvata automaticamente nello storico.",
       "value_definition": "Default 1000."
     },
     {
       "name": "MAX_RETRIES",
       "category": "PRECORE_RUN",
-      "description": "Limite di tentativi di connessione da effettuare in caso di errori di rete temporanei.",
+      "description": "Limite massimo di tentativi di riconnessione in caso di errori temporanei di rete.",
       "value_definition": "Default 1."
     },
     {
       "name": "SUPPORTED_PROVIDERS",
       "category": "PRECORE_RUN",
-      "description": "Elenco testuale dei provider supportati identificati dal runtime.",
-      "value_definition": "Generato dinamicamente scansionando i domini vendor e locali; default \"groq\"."
-    },
-    {
-      "name": "PROVIDER",
-      "category": "PRECORE_RUN",
-      "description": "Identificatore del provider API attivo.",
-      "value_definition": "Default \"groq\"."
+      "description": "Elenco dei provider supportati identificati dal runtime.",
+      "value_definition": "Default \"groq gemini huggingface mistral\"."
     },
     {
       "name": "CURL_BASE_OPTS",
       "category": "PRECORE_RUN",
-      "description": "Array contenente i parametri base immutabili passati a curl per ogni chiamata di rete.",
+      "description": "Array dei parametri base immutabili passati a curl.",
       "value_definition": "Contiene: --silent, --show-error, --no-buffer, --max-time 120."
+    },
+    {
+      "name": "FALLBACK_PAYLOAD",
+      "category": "PRECORE_RUN",
+      "description": "Payload Base64 alternativo impostato da hook di post-esecuzione in caso di errore.",
+      "value_definition": "Valorizzato tramite execute_isolated_hook."
+    },
+    {
+      "name": "TRANSFORMED_PAYLOAD",
+      "category": "PRECORE_RUN",
+      "description": "Payload Base64 trasformato in memoria da hook post-esecuzione per sovrascrivere l'output finale.",
+      "value_definition": "Valorizzato tramite execute_isolated_hook."
+    },
+    {
+      "name": "BASH4LLM_RATE_LIMIT",
+      "category": "PRECORE_RUN",
+      "description": "Soglia numerica di richieste per 30 secondi per thread nel rate limiter locale.",
+      "value_definition": "Numero intero o \"unlimited\"."
+    },
+    {
+      "name": "BASH4LLM_AUTH_TOKEN",
+      "category": "PRECORE_RUN",
+      "description": "Token autorizzato per bypassare il controllo del rate limiter locale.",
+      "value_definition": "Stringa alfanumerica protetta."
     },
     {
       "name": "BASH4LLM_EDGE_EMPTY",
       "category": "PRECORE_RUN",
-      "description": "Flag diagnostico interno impostato a 1 quando viene intercettata una risposta vuota anomala dall'API.",
+      "description": "Flag diagnostico impostato a 1 quando viene rilevata una risposta vuota anomala dal provider.",
       "value_definition": "Valore 0 o 1, aggiornato da detect_empty_edge_case."
     },
     {
       "name": "BASH4LLM_EDGE_REQ_ID",
       "category": "PRECORE_RUN",
-      "description": "ID di tracciamento della richiesta per scopi di diagnosi in caso di edge case.",
-      "value_definition": "Estratto dall'header x_groq o id del JSON di risposta."
+      "description": "ID richiesta estratto dalla risposta per fini diagnostici.",
+      "value_definition": "Estratto dal JSON di risposta."
     },
     {
       "name": "BASH4LLM_EDGE_FINISH_REASON",
       "category": "PRECORE_RUN",
-      "description": "Motivo di completamento della risposta (finish_reason) rilevato nell'edge case.",
-      "value_definition": "Estratto dalla risposta del provider."
+      "description": "Motivo di completamento della risposta rilevato nell'edge case.",
+      "value_definition": "Estratto dal JSON di risposta."
     },
     {
       "name": "BASH4LLM_EDGE_COMPLETION_TOKENS",
       "category": "PRECORE_RUN",
-      "description": "Numero di token generati durante la risposta per controlli di diagnostica.",
-      "value_definition": "Estratto dal campo usage del JSON."
+      "description": "Numero di token di completamento restituiti nell'oggetto usage.",
+      "value_definition": "Valore numerico estratto dal JSON."
     },
     {
       "name": "GROQ_API_KEY",
       "category": "PROVIDER",
-      "description": "Chiave API deputata all'autenticazione delle chiamate di rete verso i servizi del provider Groq.",
-      "value_definition": "Eredita ${GROQ_API_KEY}."
+      "description": "Chiave API per l'autenticazione verso i servizi del provider Groq.",
+      "value_definition": "Eredita ${GROQ_API_KEY} o dalla variabile personalizzata in PROVIDER_API_ENV_groq."
+    },
+    {
+      "name": "PROVIDER_API_ENV_groq",
+      "category": "PROVIDER",
+      "description": "Nome dell'eventuale variabile d'ambiente personalizzata da cui estrarre la chiave API di Groq.",
+      "value_definition": "Configurato dall'utente."
     },
     {
       "name": "LOADED_PROVIDER_NAME",
@@ -678,100 +739,28 @@
       "value_definition": "Risolto da resolve_provider_url."
     },
     {
-      "name": "JSON_INPUT",
-      "category": "CORE_SETUP",
-      "description": "Input strutturato in formato JSON fornito direttamente dall'utente.",
-      "value_definition": "Eredita ${JSON_INPUT}."
-    },
-    {
-      "name": "TEMPLATE",
-      "category": "CORE_SETUP",
-      "description": "Nome identificativo del file di template da applicare.",
-      "value_definition": "Eredita ${TEMPLATE}."
-    },
-    {
-      "name": "BATCH_FILE",
-      "category": "CORE_SETUP",
-      "description": "Percorso del file contenente l'elenco di prompt per l'elaborazione batch.",
-      "value_definition": "Eredita ${BATCH_FILE}."
-    },
-    {
-      "name": "CHAT_MODE",
-      "category": "CORE_SETUP",
-      "description": "Flag booleano che abilita l'interfaccia interattiva di chat.",
-      "value_definition": "Valore 1 o 0, default 0; eredita ${CHAT_MODE}."
-    },
-    {
-      "name": "SET_DEFAULT_MODEL",
-      "category": "CORE_SETUP",
-      "description": "Nome del modello da impostare come default persistente per il provider.",
-      "value_definition": "Eredita ${SET_DEFAULT_MODEL}."
-    },
-    {
-      "name": "LIST_MODELS",
-      "category": "CORE_SETUP",
-      "description": "Flag booleano per visualizzare la lista dei modelli.",
-      "value_definition": "Valore 1 o 0, default 0; eredita ${LIST_MODELS}."
-    },
-    {
       "name": "LIST_PROVIDERS",
       "category": "CORE_SETUP",
       "description": "Flag booleano per visualizzare la lista dei provider installati.",
-      "value_definition": "Valore 1 o 0, default 0; eredita ${LIST_PROVIDERS}."
+      "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "LIST_PROVIDERS_RAW",
       "category": "CORE_SETUP",
       "description": "Flag booleano interno che richiede la stampa dei provider in formato stringa crudo.",
-      "value_definition": "Configurato internamente."
+      "value_definition": "Configurato internamente via CLI."
     },
     {
       "name": "LIST_MODELS_RAW",
       "category": "CORE_SETUP",
       "description": "Flag booleano interno che richiede la stampa dei modelli locali in formato stringa crudo.",
-      "value_definition": "Configurato internamente."
-    },
-    {
-      "name": "FORCE_SAVE_MODE",
-      "category": "CORE_SETUP",
-      "description": "Regola il salvataggio dei risultati sul disco.",
-      "value_definition": "Eredita ${FORCE_SAVE_MODE}."
-    },
-    {
-      "name": "OUT_PATH",
-      "category": "CORE_SETUP",
-      "description": "Percorso di output personalizzato.",
-      "value_definition": "Eredita ${OUT_PATH}."
-    },
-    {
-      "name": "DRY_RUN",
-      "category": "CORE_SETUP",
-      "description": "Flag booleano di simulazione.",
-      "value_definition": "Eredita ${DRY_RUN}."
-    },
-    {
-      "name": "STREAM_MODE",
-      "category": "CORE_SETUP",
-      "description": "Flag booleano per attivare la ricezione dei token in streaming.",
-      "value_definition": "Eredita ${STREAM_MODE}."
-    },
-    {
-      "name": "QUIET",
-      "category": "CORE_SETUP",
-      "description": "Flag booleano per inibire i log informativi.",
-      "value_definition": "Eredita ${QUIET}."
+      "value_definition": "Configurato internamente via CLI."
     },
     {
       "name": "INSTALL_EXTRAS",
       "category": "CORE_SETUP",
-      "description": "Flag booleano per attivare l'installazione delle estensioni.",
+      "description": "Flag booleano per attivare l'installazione o sincronizzazione delle estensioni vendor.",
       "value_definition": "Eredita ${INSTALL_EXTRAS}."
-    },
-    {
-      "name": "DEBUG",
-      "category": "CORE_SETUP",
-      "description": "Flag per attivare l'output di tracciamento dello sviluppo.",
-      "value_definition": "Eredita ${DEBUG}."
     },
     {
       "name": "PROVIDER_CLI",
@@ -782,7 +771,7 @@
     {
       "name": "PROVIDER_INTERACTIVE",
       "category": "CORE_SETUP",
-      "description": "Flag booleano che richiede la visualizzazione del menu interattivo di selezione del provider.",
+      "description": "Flag booleano che richiede la visualizzazione del menu interattivo di selezione provider.",
       "value_definition": "Default 0."
     },
     {
@@ -800,20 +789,14 @@
     {
       "name": "FILE_INPUTS",
       "category": "CORE_SETUP",
-      "description": "Array adibito ad accumulare i percorsi dei file passati dall'utente con l'opzione -f per essere annessi al contesto del prompt.",
+      "description": "Array adibito ad accumulare i percorsi dei file passati con -f per essere annessi al contesto del prompt.",
       "value_definition": "Inizializzato come array vuoto (())."
     },
     {
       "name": "ARGS",
       "category": "CORE_SETUP",
-      "description": "Array adibito ad accumulare gli argomenti posizionali non riconosciuti passati via CLI (trattati come prompt o percorsi file).",
+      "description": "Array adibito ad accumulare gli argomenti posizionali residui passati via CLI.",
       "value_definition": "Inizializzato come array vuoto (())."
-    },
-    {
-      "name": "OUTPUT_MODE",
-      "category": "CORE_SETUP",
-      "description": "Configura lo stile di visualizzazione dei risultati.",
-      "value_definition": "Eredita ${OUTPUT_MODE}, default \"text\"."
     },
     {
       "name": "MODEL_CLI_SET",
@@ -825,12 +808,12 @@
       "name": "INSTALL_EXTRAS_SRC",
       "category": "CORE_SETUP",
       "description": "Percorso della directory sorgente da cui prelevare le estensioni da installare.",
-      "value_definition": "Determinata dinamicamente o tramite parametri."
+      "value_definition": "Configurato dinamicamente o tramite CLI."
     },
     {
       "name": "BOOTSTRAP_ONLY",
       "category": "CORE_SETUP",
-      "description": "Flag booleano per arrestare lo script immediatamente dopo la fase di bootstrap e importazione dei moduli.",
+      "description": "Flag booleano per arrestare lo script immediatamente dopo la fase di bootstrap.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
@@ -842,8 +825,26 @@
     {
       "name": "RUN_SUITE",
       "category": "CORE_SETUP",
-      "description": "Flag booleano che richiede l'esecuzione automatizzata della Master Test Suite via CLI (--run-all-tests).",
+      "description": "Flag booleano che richiede l'esecuzione automatizzata della Master Test Suite (--test/--run-all-tests).",
       "value_definition": "Valore 1 o 0, default 0."
+    },
+    {
+      "name": "gui_script",
+      "category": "CORE_SETUP",
+      "description": "Percorso locale dello script launcher della WebApp GUI Python.",
+      "value_definition": "Valorizzato come $BASH4LLM_EXTRAS_DIR/gui-py/gui-py.sh."
+    },
+    {
+      "name": "suite_script",
+      "category": "CORE_SETUP",
+      "description": "Percorso locale dello script orchestratore della Master Test Suite.",
+      "value_definition": "Valorizzato come $BASH4LLM_EXTRAS_DIR/test/run-all-tests.sh."
+    },
+    {
+      "name": "tui_script",
+      "category": "CORE_SETUP",
+      "description": "Percorso locale dello script del terminale interattivo TUI REPL.",
+      "value_definition": "Valorizzato come $BASH4LLM_EXTRAS_DIR/chat/tui-repl.sh."
     },
     {
       "name": "DELETE_THREAD",
@@ -854,62 +855,92 @@
     {
       "name": "DELETE_THREAD_ID",
       "category": "CORE_SETUP",
-      "description": "Identificatore alfanumerico del thread da eliminare passato tramite l'opzione --delete-thread.",
-      "value_definition": "Assegnata a DELETE_THREAD_ID, vuota di default."
+      "description": "Identificatore alfanumerico del thread da eliminare passato tramite --delete-thread.",
+      "value_definition": "Stringa ID thread anonimizzata."
     },
     {
       "name": "RENAME_THREAD",
       "category": "CORE_SETUP",
-      "description": "Flag booleano che richiede la ridenominazione dei metadati storici di un thread.",
+      "description": "Flag booleano che richiede la ridenominazione dei metadati di un thread.",
       "value_definition": "Valore 1 o 0, default 0."
     },
     {
       "name": "RENAME_THREAD_ID",
       "category": "CORE_SETUP",
-      "description": "Identificatore alfanumerico del thread da rinominare passato tramite l'opzione --rename-thread.",
-      "value_definition": "Assegnata a RENAME_THREAD_ID, vuota di default."
+      "description": "Identificatore alfanumerico del thread da rinominare passato tramite --rename-thread.",
+      "value_definition": "Stringa ID thread anonimizzata."
     },
     {
       "name": "RENAME_TITLE",
       "category": "CORE_SETUP",
-      "description": "Titolo testuale da applicare al thread in ridenominazione.",
-      "value_definition": "Assegnata a RENAME_TITLE via opzione --title, vuota di default."
+      "description": "Titolo testuale da applicare al thread in ridenominazione via --title.",
+      "value_definition": "Stringa titolo."
     },
     {
       "name": "_B4L_RT_CTX",
       "category": "CORE_SETUP",
-      "description": "Variabile d'ambiente temporanea in cui memorizzare in memoria il token di sblocco del Key Vault crittografico durante le sessioni interattive parent-shell.",
-      "value_definition": "Impostata dinamicamente su sblocco del vault."
+      "description": "Variabile d'ambiente temporanea in cui memorizzare il token di sblocco del Vault durante sessioni parent-shell.",
+      "value_definition": "Impostata su sblocco del Vault."
     },
     {
       "name": "_engine_path",
       "category": "CORE_SETUP",
-      "description": "Percorso relativo/assoluto dello script del Session Engine esterno.",
+      "description": "Percorso dello script del Session Engine esterno.",
       "value_definition": "Impostato a $BASH4LLM_EXTRAS_DIR/session/session-engine.sh."
     },
     {
       "name": "_engine_available",
       "category": "CORE_SETUP",
-      "description": "Flag booleano interno che attesta se il Session Engine è caricato ed operativo nel runtime corrente.",
-      "value_definition": "Valore 1 (operativo) o 0 (non caricato o fallito)."
+      "description": "Flag booleano interno che attesta se il Session Engine è caricato ed operativo nel runtime.",
+      "value_definition": "Valore 1 (operativo) o 0 (non disponibile)."
     },
     {
       "name": "_supported_providers_arr",
       "category": "CORE_SETUP",
-      "description": "Array interno che elenca e indicizza tutti i moduli provider supportati ed installati.",
-      "value_definition": "Inizializzato internamente."
-    },
-    {
-      "name": "_supported_providers_arr",
-      "category": "CORE_PROVIDER",
       "description": "Array interno per l'indicizzazione dei provider rilevati.",
       "value_definition": "Mappato durante la scansione delle directory vendor e locali."
     },
     {
-      "name": "SUPPORTED_PROVIDERS",
+      "name": "PROVIDER_INTERACTIVE_SELECTED",
       "category": "CORE_PROVIDER",
-      "description": "Elenco testuale unificato dei provider supportati.",
-      "value_definition": "Nomi dei provider separati da caratteri di spazio."
+      "description": "Flag booleano interno attestante l'avvenuta selezione del provider via menu interattivo.",
+      "value_definition": "Valore 1 o 0."
+    },
+    {
+      "name": "FINAL_MODEL",
+      "category": "CORE_PROVIDER",
+      "description": "Nome del modello finale risolto e validato pronto per l'inferenza.",
+      "value_definition": "Assegnato da resolve_model."
+    },
+    {
+      "name": "STDIN_CONTENT",
+      "category": "CORE_PROVIDER",
+      "description": "Buffer di memoria per il flusso di testo catturato da standard input.",
+      "value_definition": "Assegnato da cat - su pipe."
+    },
+    {
+      "name": "BASH4LLM_CORE_SCRIPT",
+      "category": "CORE_PROVIDER",
+      "description": "Percorso canonico dello script core esportato nell'ambiente prima del passaggio a TUI REPL.",
+      "value_definition": "Valorizzato come ${SCRIPTDIR}/$(basename \"${BASH_SOURCE[0]}\")."
+    },
+    {
+      "name": "BASH4LLM_ACTIVE_THREAD",
+      "category": "CORE_PROVIDER",
+      "description": "Variabile di contesto esportata contenente l'ID del thread attivo.",
+      "value_definition": "Esportata come ${THREAD_ID} per la TUI."
+    },
+    {
+      "name": "BASH4LLM_ACTIVE_MODEL",
+      "category": "CORE_PROVIDER",
+      "description": "Variabile di contesto esportata contenente il modello LLM risolto.",
+      "value_definition": "Esportata come ${MODEL} per la TUI."
+    },
+    {
+      "name": "BASH4LLM_ACTIVE_TEMPERATURE",
+      "category": "CORE_PROVIDER",
+      "description": "Variabile di contesto esportata contenente la temperatura attiva.",
+      "value_definition": "Esportata come ${TEMPERATURE} per la TUI."
     }
   ]
 }

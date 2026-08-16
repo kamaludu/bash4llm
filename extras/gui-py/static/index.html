@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Bash4LLM⁺ Web Interface - Resilient, accessible, Bash-first client for Large Language Models">
+  <title>Bash4LLM⁺ WebApp</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Mobile Off-canvas Backdrop Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay" tabindex="-1" aria-hidden="true"></div>
+
+    <!-- Navigation & Thread History Drawer -->
+    <aside id="sidebar" class="sidebar" aria-label="Session Navigation">
+      <header class="sidebar-header">
+        <div class="brand-badge btn-block"> Bash4LLM⁺  WebApp </div>
+        <div class="header-actions">
+          <button type="button" id="btn-new-thread" class="btn btn-primary btn-sm" data-i18n="new_thread">+ New Thread</button>
+          <button type="button" id="btn-close-sidebar" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
+        </div>
+      </header>
+
+      <nav class="thread-list-container" aria-label="Thread History">
+        <ul id="thread-list" class="thread-list"></ul>
+      </nav>
+
+      <footer class="sidebar-footer">
+        <!-- Row 1: Tools & Configuration (50% / 50% Grid) -->
+        <div class="footer-grid">
+          <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">
+            <span aria-hidden="true">🔒</span>
+            <span data-i18n="vault">Vault</span>
+          </button>
+          <button type="button" id="btn-settings" class="btn btn-secondary btn-sm">
+            <span aria-hidden="true">⚙️</span>
+            <span data-i18n="settings">Settings</span>
+          </button>
+        </div>
+
+        <!-- Row 2: Documentation & Help Link (100% Full Width) -->
+        <a href="/static/help.html" class="btn btn-secondary btn-sm btn-block">
+          <span aria-hidden="true">❓</span>
+          <span data-i18n="help">Help</span>
+        </a>
+
+        <!-- Row 3: Server Status & Shutdown Control (50% / 50% Grid) -->
+        <div class="footer-grid">
+          <div class="status-indicator">
+            <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
+            <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
+          </div>
+          <button type="button" id="btn-shutdown" class="btn btn-danger btn-sm" title="Shutdown Server">
+            <span aria-hidden="true">🛑</span>
+            <span data-i18n="shutdown">Stop</span>
+          </button>
+        </div>
+      </footer>
+    </aside>
+
+    <!-- Main Chat Workspace -->
+    <main class="chat-viewport">
+      <header class="chat-header">
+        <div class="chat-header-left">
+          <button type="button" id="btn-toggle-sidebar" class="btn-icon" aria-label="Toggle Sidebar Navigation">
+            <span aria-hidden="true">☰</span>
+          </button>
+          <div class="header-thread-info">
+            <h1 id="current-thread-title" class="current-thread-title">Chat</h1>
+            <button type="button" id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot">
+              <span aria-hidden="true">📊</span>
+              <span data-i18n="stats">Stats</span>
+            </button>
+            <button type="button" id="btn-delete-thread" class="badge-stats" title="Delete Current Thread">
+              <span aria-hidden="true">🗑️</span>
+              <span data-i18n="delete">Delete</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="active-params-badge" id="active-params-badge" aria-label="Active LLM Configuration">
+          <span id="badge-provider">groq</span> / <span id="badge-model">default</span>
+        </div>
+      </header>
+
+      <!-- Message Feed & Streaming Area -->
+      <section id="chat-messages" class="chat-messages" aria-live="polite" aria-atomic="false" aria-label="Chat Conversation Log"></section>
+
+      <!-- Interactive Input Form & Toolbar -->
+      <footer class="chat-footer">
+        <div id="attachment-list" class="attachment-list" aria-label="Attached files"></div>
+
+        <form id="chat-form" action="/api/chat" method="POST" class="chat-form">
+          <input type="hidden" name="thread_id" id="form-thread-id" value="default">
+          <input type="hidden" name="stream" id="form-stream" value="true">
+
+          <div class="textarea-wrapper">
+            <label for="prompt-input" class="sr-only" data-i18n="prompt_label">User Prompt</label>
+            <textarea 
+              name="prompt" 
+              id="prompt-input" 
+              class="prompt-textarea" 
+              rows="2" 
+              placeholder="Type your prompt here..." 
+              data-i18n-placeholder="prompt_placeholder" 
+              required></textarea>
+
+            <div class="input-toolbar">
+              <div class="input-toolbar-left">
+                <input type="file" id="file-upload-input" class="hidden-file-input">
+                <label for="file-upload-input" class="btn-tool" title="Attach Context File (-f)">
+                  <span aria-hidden="true">📎</span>
+                  <span data-i18n="attach">Attach</span>
+                </label>
+
+                <label for="select-template" class="sr-only" data-i18n="template_label">Select Prompt Template</label>
+                <select id="select-template" class="select-tool" title="Apply Prompt Template">
+                  <option value="" data-i18n="no_template">-- No Template --</option>
+                </select>
+
+                <div class="checkbox-tool-wrapper">
+                  <input type="checkbox" id="check-stream" checked>
+                  <label for="check-stream" class="checkbox-tool-label" title="Toggle Real-Time Streaming" data-i18n="stream_label">Stream</label>
+                </div>
+
+                <div class="checkbox-tool-wrapper">
+                  <input type="checkbox" id="check-sml-gate">
+                  <label for="check-sml-gate" class="checkbox-tool-label" title="Validate SML v2.0 Safety Gate" data-i18n="sml_gate">SML Gate</label>
+                </div>
+              </div>
+
+              <div class="input-actions">
+                <button type="submit" id="btn-send" class="btn btn-submit" data-i18n="send">Send</button>
+                <button type="button" id="btn-cancel" class="btn btn-danger hidden" data-i18n="cancel">Stop</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Runtime Settings Modal Dialog -->
+  <dialog id="settings-modal" class="modal" aria-labelledby="settings-title" aria-modal="true">
+    <div class="modal-card">
+      <header class="modal-header">
+        <h2 id="settings-title" class="modal-title">
+          <span aria-hidden="true">⚙️</span>
+          <span data-i18n="settings_title">Runtime Settings</span>
+        </h2>
+      </header>
+
+      <div class="modal-body">
+        <div class="modal-form-body">
+          <div class="form-group">
+            <label for="select-provider" class="form-label" data-i18n="provider">Provider</label>
+            <select id="select-provider" class="form-control"></select>
+          </div>
+
+          <div class="form-group">
+            <label for="select-model" class="form-label" data-i18n="model">Model</label>
+            <div class="input-with-actions">
+              <select id="select-model" class="form-control"></select>
+              <button type="button" id="btn-set-default-model" class="btn btn-secondary btn-sm" title="Set as default model for provider" data-i18n="set_default">Set Default</button>
+              <button type="button" id="btn-refresh-models" class="btn btn-secondary btn-sm" title="Refresh models list from provider" aria-label="Refresh Models">🔄</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="input-system-prompt" class="form-label" data-i18n="system_prompt">System Prompt</label>
+            <textarea id="input-system-prompt" class="form-control" rows="3" placeholder="Optional system instructions..." data-i18n-placeholder="system_prompt_placeholder"></textarea>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="input-temperature" class="form-label" data-i18n="temperature">Temperature (0.0 - 2.0)</label>
+              <input type="number" id="input-temperature" class="form-control" step="0.1" min="0.0" max="2.0" value="1.0">
+            </div>
+
+            <div class="form-group">
+              <label for="input-max-tokens" class="form-label" data-i18n="max_tokens">Max Tokens</label>
+              <input type="number" id="input-max-tokens" class="form-control" step="128" min="1" max="128000" placeholder="Default (4096)" data-i18n-placeholder="max_tokens_placeholder">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="select-context-mode" class="form-label" data-i18n="context_strategy">Context Window Strategy</label>
+            <select id="select-context-mode" class="form-control">
+              <option value="messages" data-i18n="ctx_messages">Message Count Window (N Messages)</option>
+              <option value="bytes" data-i18n="ctx_bytes">Token/Byte Budget Mode (Target Bytes)</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="group-thread-window">
+            <label for="input-thread-window" class="form-label" data-i18n="thread_window">History Window Messages (N)</label>
+            <input type="number" id="input-thread-window" class="form-control" step="1" min="1" max="100" value="10">
+          </div>
+
+          <div class="form-group hidden" id="group-target-bytes">
+            <label for="select-target-bytes" class="form-label" data-i18n="target_budget">Token Target Budget</label>
+            <select id="select-target-bytes" class="form-control">
+              <option value="8192">8 KB (~2,000 Tokens)</option>
+              <option value="16384">16 KB (~4,000 Tokens)</option>
+              <option value="32768" selected>32 KB (~8,000 Tokens - Default)</option>
+              <option value="65536">64 KB (~16,000 Tokens)</option>
+              <option value="131072">128 KB (~32,000 Tokens)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-label-wrapper">
+              <input type="checkbox" id="check-settings-stream" checked>
+              <label for="check-settings-stream" class="checkbox-form-label" data-i18n="enable_streaming">Enable Real-Time Streaming Output</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-label-wrapper">
+              <input type="checkbox" id="check-sanitize" checked>
+              <label for="check-sanitize" class="checkbox-form-label" data-i18n="sanitize_output">Enable Output Sanitization (Strip ANSI &amp; Binaries)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="modal-actions">
+        <button type="button" id="btn-save-settings" class="btn btn-primary" data-i18n="save">Save</button>
+        <button type="button" id="btn-close-settings" class="btn btn-secondary" data-i18n="close">Close</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- OpenSSL Key Vault Modal Dialog -->
+  <dialog id="vault-modal" class="modal" aria-labelledby="vault-title" aria-modal="true">
+    <div class="modal-card">
+      <header class="modal-header">
+        <h2 id="vault-title" class="modal-title">
+          <span aria-hidden="true">🔒</span>
+          <span data-i18n="vault_title">OpenSSL Key Vault</span>
+        </h2>
+      </header>
+
+      <div class="modal-body">
+        <div id="vault-status-banner" class="vault-banner">
+          <span id="vault-status-text" class="vault-status-text">Checking Vault status...</span>
+        </div>
+
+        <!-- Unlock / Initialize Vault Section -->
+        <section id="vault-unlock-section" class="form-group">
+          <div class="form-group">
+            <label for="input-master-password" class="form-label" data-i18n="master_password">Master Password</label>
+            <input type="password" id="input-master-password" class="form-control" placeholder="Enter Master Password (min 11 chars)" data-i18n-placeholder="master_password_placeholder">
+          </div>
+
+          <!-- Password confirmation field (revealed on clean install / uninitialized vault) -->
+          <div class="form-group hidden" id="group-confirm-password">
+            <label for="input-confirm-password" class="form-label" data-i18n="confirm_master_password">Confirm Master Password</label>
+            <input type="password" id="input-confirm-password" class="form-control" placeholder="Confirm Master Password" data-i18n-placeholder="confirm_password_placeholder">
+          </div>
+
+          <div class="form-actions-inline mt-1">
+            <button type="button" id="btn-unlock-vault" class="btn btn-primary btn-block" data-i18n="unlock_session">Unlock Vault Session</button>
+          </div>
+        </section>
+
+        <!-- Provider API Key Management Section (Revealed when unlocked) -->
+        <section id="vault-key-section" class="vault-key-section hidden">
+          <!-- Configured Providers Listing -->
+          <div class="form-group" id="group-vault-saved-keys">
+            <h3 class="section-subtitle" data-i18n="saved_keys_title">Configured Providers</h3>
+            <div id="vault-saved-keys-list" class="attachment-list" aria-label="Configured Providers"></div>
+          </div>
+
+          <h3 class="section-subtitle" data-i18n="save_api_key_title">Save Provider API Key</h3>
+
+          <div class="form-group">
+            <label for="select-vault-provider" class="form-label" data-i18n="provider">Provider</label>
+            <select id="select-vault-provider" class="form-control"></select>
+          </div>
+
+          <!-- Custom Provider Input field (revealed when custom provider selected) -->
+          <div class="form-group hidden" id="group-custom-provider">
+            <label for="input-vault-custom-provider" class="form-label" data-i18n="custom_provider">Custom Provider Name</label>
+            <input type="text" id="input-vault-custom-provider" class="form-control" placeholder="e.g. ollama, mistral, openai" data-i18n-placeholder="custom_provider_placeholder">
+          </div>
+
+          <div class="form-group">
+            <label for="input-vault-api-key" class="form-label" data-i18n="api_key">API Key</label>
+            <input type="password" id="input-vault-api-key" class="form-control" placeholder="Paste API Key here" data-i18n-placeholder="api_key_placeholder">
+          </div>
+
+          <div class="form-actions-inline mt-1">
+            <button type="button" id="btn-save-vault-key" class="btn btn-primary btn-block" data-i18n="save_encrypted_key">Save Encrypted Key</button>
+          </div>
+        </section>
+      </div>
+
+      <footer class="modal-actions">
+        <button type="button" id="btn-close-vault" class="btn btn-secondary" data-i18n="close">Close</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- Session Engine Snapshot Modal Dialog -->
+  <dialog id="snapshot-modal" class="modal" aria-labelledby="snapshot-title" aria-modal="true">
+    <div class="modal-card">
+      <header class="modal-header">
+        <h2 id="snapshot-title" class="modal-title">
+          <span aria-hidden="true">📊</span>
+          <span data-i18n="snapshot_title">Session Engine Snapshot</span>
+        </h2>
+      </header>
+
+      <div class="modal-body">
+        <section id="snapshot-details" class="snapshot-details" aria-live="polite">
+          <p>Loading session stats...</p>
+        </section>
+      </div>
+
+      <footer class="modal-actions">
+        <button type="button" id="btn-close-snapshot" class="btn btn-secondary" data-i18n="close">Close</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- Unified ES6 Client Script -->
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

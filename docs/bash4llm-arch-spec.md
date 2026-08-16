@@ -1,4 +1,4 @@
-# SPECIFICA TECNICA DEL SISTEMA BASH4LLM⁺ (v2.8.5)  🇮🇹 [🇬🇧](bash4llm-arch-spec-en.md)
+# SPECIFICA TECNICA DEL SISTEMA BASH4LLM⁺ (v2.8.5+)  🇮🇹 [🇬🇧](bash4llm-arch-spec-en.md)
 
 ## SEZIONE 1: ARCHITETTURA GENERALE E RELAZIONI TRA MACRO-SEZIONI
 
@@ -56,6 +56,7 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, la bonifi
     * `DEBUG`, `BASH4LLM_DEBUG`: Configurazione dei tracciamenti di sviluppo.
     * `BASH4LLM_DIR`, `BASH4LLM_ROOT`: Percorso radice di installazione.
     * `BASH4LLM_CONFIG_DIR`, `BASH4LLM_MODELS_DIR`, `BASH4LLM_TEMPLATES_DIR`, `BASH4LLM_HISTORY_DIR`, `BASH4LLM_TMPDIR`, `BASH4LLM_RUN_DIR`, `BASH4LLM_LOCKS_DIR`, `BASH4LLM_RATES_DIR`, `BASH4LLM_EXTRAS_DIR`, `PROVIDERS_DIR`, `BASH4LLM_LOCAL_EXTRAS_DIR`, `LOCAL_PROVIDERS_DIR`: Directory di lavoro operative (vendor e local).
+    * `BASH4LLM_GUI_NO_BROWSER`: Flag booleano (1 o 0) per disabilitare l'avvio automatico del browser da parte della WebApp GUI.
     * `MAX_STAGE_BYTES`: Soglia massima di byte per i payload Base64 (default `10485760` byte, pari a 10MB).
     * `MAX_MODELS`: Limite massimo di modelli locali (default `200`).
     * `BASH4LLM_LOG`: Percorso del file di tracciamento centralizzato.
@@ -66,6 +67,7 @@ Questa macro-sezione gestisce l'inizializzazione primaria della shell, la bonifi
     * `BASH4LLM_IGNORE_SEC_CHECKS`: Ignora i controlli di proprietà POSIX se impostato a 1 (utile per WSL/Cygwin).
 * **Variabili Scritte/Modificate**:
     * `SCRIPTDIR`: Risoluzione assoluta del percorso dello script.
+    * `BASH4LLM_CORE_SCRIPT`: Percorso canonico autoritativo dello script core `bash4llm` esportato per i wrapper.
     * `CANONICAL_EXTRAS_DIR`, `LEGACY_EXTRAS_DIR`, `CANONICAL_LOCAL_EXTRAS_DIR`: Percorsi normalizzati delle estensioni fisiche e locali.
     * `MODELS_FILE`: File locale della whitelist dei modelli (`<provider>.txt`).
     * `PROVIDER_FILE`: File locale contenente l'ultimo provider selezionato (`provider`).
@@ -234,7 +236,7 @@ Gestisce il parsing dei parametri da riga di comando (CLI), l'interfaccia di dis
 * **Attività**: Normalizzazione delle opzioni CLI di esportazione grezza e listing dei provider o modelli locali (`--list-providers`, `--list-providers-raw`, `--list-models-raw`).
 
 #### Sezione 7: `CORE_SETUP_ACTIONS`
-* **Attività**: Gestione ed esecuzione immediata dei comandi CLI brevi che non richiedono chiamate di rete ai modelli LLM: cancellazione thread (`--delete-thread`), rinomina thread (`--rename-thread`), inizializzazione manuale (`--init-thread`), listing provider e modelli, salvataggio del modello predefinito (`--set-default`), avvio console Vault (`--vault`), esecuzione della Master Test Suite (`--run-all-tests`) ed installazione/sincronizzazione del pacchetto `extras` con verifica di integrità del manifesto SHA-256 e firma Ed25519 con blindatura dei permessi (`700`/`600`).
+* **Attività**: Gestione ed esecuzione immediata dei comandi CLI brevi che non richiedono chiamate di rete ai modelli LLM: cancellazione thread (`--delete-thread`), rinomina thread (`--rename-thread`), inizializzazione manuale (`--init-thread`), listing provider e modelli, salvataggio del modello predefinito (`--set-default`), avvio console Vault (`--vault`), **delega dell'avvio della WebApp GUI (`--gui`/`--webapp`) verso `extras/gui-py/gui-py.sh`**, esecuzione della Master Test Suite (`--run-all-tests`) ed installazione/sincronizzazione del pacchetto `extras` con verifica di integrità del manifesto SHA-256 e firma Ed25519 con blindatura dei permessi (`700`/`600`, con `0700` per `gui-py/gui-py.sh`).
 
 ---
 
@@ -311,6 +313,7 @@ bash4llm.d/
 │           ├── history.lock               # Lock di sincronizzazione della cronologia
 │           └── tmp.lock                   # Lock di allocazione file temporanei
 ├── tmp/                                   # Area sicura ad accesso esclusivo (700)
+│   ├── gui_uploads/                       # File di contesto temporanei caricati da interfaccia web (600)
 │   └── rates/                             # Tracciamento transazioni rate limiting (700)
 │       └── <safe_thread_id>/              # Timestamp delle richieste per finestra scorrevole
 ├── local-extras/                          # Estensioni utente non tracciate dal manifesto di rete (700)
@@ -319,11 +322,67 @@ bash4llm.d/
     ├── manifest.sha256                    # Manifesto dell'integrità crittografica SHA-256 (600)
     ├── manifest.sha256.sig                # Firma crittografica Ed25519 del manifesto (600)
     ├── official-ed25519.pub               # Chiave pubblica ufficiale per verifica firma Ed25519 (600)
-    ├── chat/                              # Interfaccia di chat interattiva (tui-repl.sh, SPEC-TUI.md, langs/)
-    ├── hooks/                             # Moduli di estensione pre/post esecuzione (sml-gate.sh, hook.sh)
-    ├── security/                          # Sicurezza (openssl-helper.sh, output-sanitizer.sh, generate-manifest.sh)
-    ├── test/                              # Suite di test automatizzata (run-all-tests.sh, scintilla-t3.sh, stress.sh, ecc.)
-    ├── docs/                              # Documentazione (core-notes.sh, help.txt, manual-it.txt, bash4llm-completion.sh)
-    ├── providers/                         # Provider aggiuntivi Vendor (gemini.sh, huggingface.sh, mistral.sh)
-    └── session/                           # Ottimizzazione e sessioni (session-engine.sh)
+    ├── chat/                              # Text User Interface (TUI) REPL & Translations (700)
+    │   ├── langs/                         # File di internazionalizzazione TUI (.properties)
+    │   │   ├── de.properties
+    │   │   ├── en.properties
+    │   │   ├── es.properties
+    │   │   ├── fr.properties
+    │   │   └── it.properties
+    │   ├── SPEC-TUI.md                    # Specifica tecnica del modulo TUI
+    │   └── tui-repl.sh                    # Entrypoint CLI REPL interattivo (700)
+    ├── docs/                              # Documentazione e moduli shell di riferimento
+    │   ├── bash4llm-completion.sh         # Modulo nativo di autocompletamento shell
+    │   ├── core-notes.sh                  # Note di design ed architettura core
+    │   ├── help.txt                       # Guida rapida CLI
+    │   ├── manual-en.txt                  # Manuale utente completo in inglese
+    │   └── manual-it.txt                  # Manuale utente completo in italiano
+    ├── gui-py/                            # Interfaccia grafica WebApp Python 3.10+ (700)
+    │   ├── gui-py.sh                      # Launcher CLI Wrapper (POSIX Bash 4.0+, 700)
+    │   ├── main.py                        # Entrypoint Adapter asincrono (FastAPI + Uvicorn)
+    │   ├── config.py                      # Dataclass, Runtime Settings, Temp Validation
+    │   ├── models.py                      # Dataclass Job, State Enum, Termination Cause
+    │   ├── security.py                    # Isolamento tempdir T3, Advisory Lock, Host/CSRF
+    │   ├── ipc.py                         # Subprocess Executor, Pipe I/O, SSE Dispatcher
+    │   ├── static/                        # SPA HTML5, CSS zero-framework, app.js, help.html, error.html
+    │   │   ├── index.html
+    │   │   ├── help.html
+    │   │   ├── error.html
+    │   │   ├── style.css
+    │   │   └── app.js
+    │   └── langs/                         # Traduzioni multilingue (.json)
+    │       ├── de.json
+    │       ├── en.json
+    │       ├── es.json
+    │       ├── fr.json
+    │       └── it.json
+    ├── hooks/                             # Moduli di estensione e safety gate
+    │   └── sml-gate.sh                    # Semantic Safety Gate (Structured Metadata Layout)
+    ├── providers/                         # Moduli provider aggiuntivi Vendor
+    │   ├── gemini.sh
+    │   ├── huggingface.md
+    │   ├── huggingface.sh
+    │   └── mistral.sh
+    ├── security/                          # Sicurezza, cifratura e sanificazione output
+    │   ├── OPENSSL-HELPER.md
+    │   ├── generate-manifest.sh           # Generatore manifest ed25519 signer
+    │   ├── openssl-helper.sh              # Motore Key Vault crittografato OpenSSL (600)
+    │   └── output-sanitizer.sh            # Filtro ANSI Zero-Eval e sanificatore output (700)
+    ├── session/                           # Motore avanzato di gestione sessioni
+    │   ├── README.md
+    │   ├── session-engine.sh              # Script principale session engine
+    │   └── struttura.md
+    └── test/                              # Suite di test automatizzata e hardening
+        ├── README-tests.md
+        ├── compatibility.sh
+        ├── concurrency.sh
+        ├── hardening.sh
+        ├── help-test.txt
+        ├── regression.sh
+        ├── run-all-tests.sh               # Master Unified Automated Test Suite (700)
+        ├── sanity.sh
+        ├── scintilla-t3.sh                # SCINTILLA Core — T3 Test Suite
+        └── stress.sh
 ```
+
+---

@@ -13,11 +13,11 @@
         },
         {
           "var": "SCRIPT_VERSION",
-          "init": "\"2.8.5\""
+          "init": "\"2.8.5.3\""
         },
         {
           "var": "SCRIPT_DATE",
-          "init": "\"2026-08-07\""
+          "init": "\"2026-08-16\""
         },
         {
           "var": "BASH4LLM_SUPPORTED_PROVIDER_API",
@@ -505,7 +505,7 @@
       "blocks": [
         {
           "blk": "PRECORE_BOOT_SETUP_SHELL",
-          "body": "if [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then\n  set -euo pipefail\nfi\nunset BASH_ENV ENV CDPATH GLOBIGNORE\nulimit -c 0 2>/dev/null || true\nSCRIPT_NAME=\"bash4llm\"\nSCRIPT_VERSION=\"2.8.5\"\nSCRIPT_DATE=\"2026-08-07\"\nBASH4LLM_SUPPORTED_PROVIDER_API=1\nexport BASH4LLM_SUPPORTED_PROVIDER_API"
+          "body": "if [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then\n  set -euo pipefail\nfi\nunset BASH_ENV ENV CDPATH GLOBIGNORE\nulimit -c 0 2>/dev/null || true\nSCRIPT_NAME=\"bash4llm\"\nSCRIPT_VERSION=\"2.8.5.3\"\nSCRIPT_DATE=\"2026-08-16\"\nBASH4LLM_SUPPORTED_PROVIDER_API=1\nexport BASH4LLM_SUPPORTED_PROVIDER_API"
         },
         {
           "blk": "PRECORE_BOOT_ENVIRONMENT_AUTODETECTION",

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Bash4LLM⁺ WebApp - HTTP Security &amp; Session Error Notification">
+  <title>{{ERROR_STATUS_CODE}} - Bash4LLM⁺</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<!-- Semantic data-page attribute for client runtime routing & early exit -->
+<body data-page="error">
+  <div class="app-layout error-layout">
+    <main class="error-card" aria-labelledby="error-title">
+      <header class="error-header">
+        <div class="brand-badge">Bash4LLM⁺</div>
+        <h1 id="error-title" class="error-title">{{ERROR_TITLE}}</h1>
+      </header>
+
+      <section class="error-body">
+        <div class="error-code-badge" id="error-code">{{ERROR_STATUS_CODE}}</div>
+
+        <p class="error-message" id="error-message">
+          {{ERROR_MESSAGE}}
+        </p>
+
+        <!-- Visual separator between error diagnosis and recovery instructions -->
+        <hr class="error-divider">
+
+        <div class="error-instructions">
+          <p class="instruction-text" data-i18n="error_instruction_cli">
+            To start a new secure WebApp session, run the following command in your terminal:
+          </p>
+
+          <pre class="terminal-box" tabindex="0"><code>./bash4llm --gui</code></pre>
+
+          <p class="instruction-subtext" data-i18n="error_instruction_url">
+            Then open the generated One-Time Authentication URL in your web browser.
+          </p>
+        </div>
+      </section>
+
+      <footer class="error-actions">
+        <a href="/static/help.html" class="btn btn-secondary" data-i18n="help">❓ Help</a>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Unified ES6 Client Script -->
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>
