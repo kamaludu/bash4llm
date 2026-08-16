@@ -235,39 +235,39 @@ Each generation request submitted to the WebApp is encapsulated in a `Job` objec
        [ Client POST /api/chat ]
                    │
                    ▼
-              ┌─────────┐
-              │ CREATED │ (Allocated in memory registry)
-              └────┬────┘
+             ┌─────────┐
+             │  CREATED  │ (Allocated in memory registry)
+             └────┬────┘
                    │
                    ▼
-             ┌──────────┐
-             │ STARTING │ (Asyncio subprocess invocation)
-             └─────┬────┘
+            ┌──────────┐
+            │  STARTING  │ (Asyncio subprocess invocation)
+            └─────┬────┘
                    │
                    ▼
-              ┌─────────┐
-              │ RUNNING │ (Prompt injection via stdin pipe)
-              └────┬────┘
+             ┌─────────┐
+             │  RUNNING  │ (Prompt injection via stdin pipe)
+             └────┬────┘
                    │
                    ▼
              ┌───────────┐
-             │ STREAMING │ (Token streaming via SSE)
+             │  STREAMING  │ (Token streaming via SSE)
              └─────┬─────┘
-                   │
-     ┌─────────────┼───────────────────────────┐
-     │             │                           │
-     ▼             ▼                           ▼
-┌───────────┐ ┌──────────┐            ┌──────────────────┐
-│ COMPLETED │ │  FAILED  │            │ CANCEL_REQUESTED │
-└───────────┘ └──────────┘            └────────┬─────────┘
-(Exit Code 0) (Exit Code != 0                   │
-               or JSON error)         ┌─────────┴─────────┐
-                                      │  Process Killed   │
-                                      └─────────┬─────────┘
+                    │
+     ┌────────────┼────────────────────────┐
+     │              │                            │
+     ▼             ▼                            ▼
+┌───────────┐ ┌──────────┐         ┌──────────────────┐
+│  COMPLETED  │ │  FAILED.   │         │  CANCEL_REQUESTED   │
+└───────────┘ └──────────┘         └────────┬─────────┘
+(Exit Code 0)   (Exit Code != 0                   │
+                 or JSON error)       ┌─────────┴─────────┐
+                                      │    Process Killed    │
+                                      └────────┬──────────┘
                                                 │
                                                 ▼
                                          ┌───────────┐
-                                         │ CANCELLED │
+                                         │  CANCELLED  │
                                          └───────────┘
 ```
 
