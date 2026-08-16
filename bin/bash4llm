@@ -31,8 +31,8 @@ ulimit -c 0 2>/dev/null || true
 # RELEASE VERSION METADATA
 # ======================================
 SCRIPT_NAME="bash4llm"
-SCRIPT_VERSION="2.8.5.2"
-SCRIPT_DATE="2026-08-15"
+SCRIPT_VERSION="2.8.5.3"
+SCRIPT_DATE="2026-08-16"
 
 # Core Provider API Contract Version
 BASH4LLM_SUPPORTED_PROVIDER_API=1
