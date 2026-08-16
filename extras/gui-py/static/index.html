@@ -27,16 +27,6 @@
       </nav>
 
       <footer class="sidebar-footer">
-        <!-- Server Status Indicator & Shutdown Action (Horizontal Alignment) -->
-        <div class="status-indicator">
-          <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
-          <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
-          <button type="button" id="btn-shutdown" class="btn btn-danger btn-sm" title="Shutdown Server">
-            <span aria-hidden="true">🛑</span>
-            <span data-i18n="shutdown">Stop</span>
-          </button>
-        </div>
-
         <!-- Secondary Navigation & Modal Triggers -->
         <div class="footer-actions">
           <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">
@@ -51,7 +41,16 @@
             <span aria-hidden="true">❓</span>
             <span data-i18n="help">Help</span>
           </a>
-        </div>
+        </div>        
+        <!-- Server Status Indicator & Shutdown Action (Horizontal Alignment) -->
+        <div class="status-indicator">
+          <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
+          <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
+          <button type="button" id="btn-shutdown" class="btn btn-danger btn-sm" title="Shutdown Server">
+            <span aria-hidden="true">🛑</span>
+            <span data-i18n="shutdown">Stop</span>
+          </button>
+        </div>        
       </footer>
     </aside>
 
