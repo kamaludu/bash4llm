@@ -518,17 +518,6 @@ function setupEventListeners() {
   on("btn-close-sidebar")("click", () => toggleSidebar(false));
   on("sidebar-overlay")("click", () => toggleSidebar(false));
 
-  // Chat Prompt Keyboard Ergonomics (Enter = Submit, Shift+Enter = Newline)
-  const promptInputEl = $("prompt-input");
-  if (promptInputEl) {
-    promptInputEl.addEventListener("keydown", e => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        $("chat-form")?.requestSubmit();
-      }
-    });
-  }
-
   on("file-upload-input")("change", async e => {
     const file = e.target.files[0];
     if (!file) return;
