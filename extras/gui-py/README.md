@@ -237,7 +237,7 @@ Ogni richiesta di generazione inviata alla WebApp viene incapsulata in un oggett
 * **`CANCEL_REQUESTED`**: È stata ricevuta una richiesta `POST /api/jobs/{job_id}/cancel`. L'Adapter ha avviato la procedura di terminazione dell'albero dei processi.
 * **`CANCELLED`**: Il processo `bash4llm` è stato terminato con successo da segnale di sistema (`SIGTERM` o `SIGKILL`). Il campo `termination_cause` viene valorizzato.
 * **`COMPLETED`**: Il processo `bash4llm` è uscito spontaneamente con exit code `0`. La risposta completa è memorizzata nel buffer di RAM `prompt_response`.
-* **`FAILED`**: Il processo è uscito con exit code non-zero oppure il core ha emesso un errore di diagnostica JSON su `stderr` (`core_error_code` $10\div17$).
+* **`FAILED`**: Il processo è uscito con exit code non-zero oppure il core ha emesso un errore di diagnostica JSON su `stderr` (`core_error_code` $10\div17$ ).
 
 ### Gestione Multi-Tab & Active Clients
 
@@ -252,9 +252,9 @@ Un client è considerato **Attivo** se si verifica almeno una delle seguenti con
 Per evitare che il server Python rimanga in esecuzione indefinitamente in background alla chiusura del browser, l'Adapter esegue un task asincrono permanente (`graceful_shutdown_checker`).
 
 Il server si arresta automaticamente inviando un segnale `SIGINT` a se stesso se e solo se è soddisfatta la seguente equazione logico-temporale:
-
-$$\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 15.0\text{s}$$
-
+```math
+\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 15.0\text{s}
+```
 *Nota Ingegneristica*: L'indicatore `server_has_seen_first_client` previene lo spegnimento precoce del server durante la fase di avvio (bootstrap), garantendo all'utente il tempo necessario per completare il primo reindirizzamento d'autenticazione.
 
 ### Gestione dei Sottoprocessi e Pulizia Cross-Platform
@@ -335,9 +335,13 @@ Per servire la cronologia dei messaggi di conversazione senza eseguire sottoproc
 
 1. **Validazione Sintattica**: Verificato l'ID della conversazione tramite la regex `^[A-Za-z0-9._-]{1,128}$`.
 2. **Ricerca di Livello 1 (Digest SHA-256)**: Calcolo dell'hash nativo `sha256_hex = hashlib.sha256(thread_id.encode('utf-8')).hexdigest()`. Tenta l'apertura del file:
-   $$\text{bash4llm.d/history/threads/}\{\text{sha256\_hex}\}\text{.ndjson}$$
+```math
+\text{bash4llm.d/history/threads/}\{\text{sha256\_hex}\}\text{.ndjson}
+```
 3. **Ricerca di Livello 2 (Fallback Retrocompatibile)**: Se il file sopra non esiste, tenta l'apertura del file con ID in chiaro:
-   $$\text{bash4llm.d/history/threads/}\{\text{thread\_id}\}\text{.ndjson}$$
+```math
+\text{bash4llm.d/history/threads/}\{\text{thread\_id}\}\text{.ndjson}
+```
 4. Se entrambi i file non esistono, l'Adapter restituisce un array vuoto `[]`.
 
 ### Trattamento di `ui_state/last_api.json`
@@ -421,7 +425,7 @@ Se il file d'indice `ui_state/threads/index.json` non è presente o risulta sint
 | `/api/stream/{job}`|`GET`| Cookie Session | - | `200 OK` (`text/event-stream`) | Subscription SSE al `job_id` (limitato alla sessione proprietaria). |
 
 ### Semantica dell'Esito `HTTP 202 Accepted`
-La risposta `HTTP 202 Accepted` restituita dall'endpoint `POST /api/chat` indica unicamente che la richiesta è stata validata sintatticamente e l'oggetto `Job` è stato **allocato nel runtime dell'Adapter**. Gli eventuali errori di esecuzione dello script Bash o dell'API remota (codici di errore $10\div17$) vengono veicolati in modo asincrono all'interno dello stream SSE e nell'oggetto Job interrogabile via `GET /api/jobs/{id}`.
+La risposta `HTTP 202 Accepted` restituita dall'endpoint `POST /api/chat` indica unicamente che la richiesta è stata validata sintatticamente e l'oggetto `Job` è stato **allocato nel runtime dell'Adapter**. Gli eventuali errori di esecuzione dello script Bash o dell'API remota (codici di errore $10\div17$ ) vengono veicolati in modo asincrono all'interno dello stream SSE e nell'oggetto Job interrogabile via `GET /api/jobs/{id}`.
 
 ---
 
