@@ -26,6 +26,71 @@ from models import Job, JobState, TerminationCause
 THREAD_ID_REGEX = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
+def append_assistant_history_ndjson(
+    history_dir: str,
+    thread_id: str,
+    content: str,
+    model: Optional[str] = None
+) -> None:
+    """
+    Safely appends the completed assistant response to the session/thread NDJSON
+    history, guaranteeing persistence across refreshes regardless of provider streaming quirks.
+    """
+    if not THREAD_ID_REGEX.match(thread_id) or not content or not content.strip():
+        return
+
+    sha256_hex = hashlib.sha256(thread_id.encode('utf-8')).hexdigest()
+    
+    sessions_dir = os.path.join(history_dir, "sessions")
+    threads_dir = os.path.join(history_dir, "threads")
+    os.makedirs(sessions_dir, mode=0o700, exist_ok=True)
+    os.makedirs(threads_dir, mode=0o700, exist_ok=True)
+
+    target_files = [
+        os.path.join(sessions_dir, f"{sha256_hex}.ndjson"),
+        os.path.join(threads_dir, f"{sha256_hex}.ndjson")
+    ]
+
+    ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    content_hash = hashlib.sha256(f"assistant|{content}".encode('utf-8')).hexdigest()
+    record = {
+        "ts": ts,
+        "role": "assistant",
+        "content": content,
+        "hash": content_hash,
+        "schema_version": "1",
+        "meta": {
+            "source": "provider",
+            "model": model or "unknown",
+            "id": ""
+        }
+    }
+    line_to_write = json.dumps(record, separators=(',', ':')) + "\n"
+
+    for target_file in target_files:
+        already_appended = False
+        if os.path.isfile(target_file) and os.path.getsize(target_file) > 0:
+            try:
+                with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                    if lines:
+                        last_line = lines[-1].strip()
+                        if last_line:
+                            last_obj = json.loads(last_line)
+                            if last_obj.get("role") == "assistant" and last_obj.get("content") == content:
+                                already_appended = True
+            except Exception:
+                pass
+
+        if not already_appended:
+            try:
+                with open(target_file, "a", encoding="utf-8") as f:
+                    f.write(line_to_write)
+                os.chmod(target_file, 0o600)
+            except Exception:
+                pass
+
+
 async def execute_job_subprocess(
     job: Job,
     core_script_path: str,
@@ -171,6 +236,17 @@ async def execute_job_subprocess(
         elif process.returncode == 0:
             job.state = JobState.COMPLETED
             job.termination_cause = TerminationCause.NATURAL
+            
+            # Persist assistant response directly to ensure history consistency
+            if job.prompt_response and job.prompt_response.strip():
+                history_dir = sanitized_env.get("BASH4LLM_HISTORY_DIR")
+                if history_dir:
+                    append_assistant_history_ndjson(
+                        history_dir=history_dir,
+                        thread_id=safe_thread_id,
+                        content=job.prompt_response,
+                        model=job.model
+                    )
         else:
             job.state = JobState.FAILED
             job.termination_cause = TerminationCause.CORE_EXIT
@@ -179,7 +255,6 @@ async def execute_job_subprocess(
             if job.core_error_code == 10:
                 job.core_error_reason = "Vault is locked or API key missing. Please unlock the Vault or save an API key."
             elif not job.core_error_reason and stderr_lines:
-                # Extract clean error message from stderr
                 error_candidates = [l for l in stderr_lines if "ERROR:" in l or "FATAL:" in l]
                 job.core_error_reason = error_candidates[-1] if error_candidates else stderr_lines[-1]
 
@@ -254,30 +329,69 @@ async def cancel_job_process(job: Job) -> bool:
 
 
 def read_thread_history_ndjson(history_dir: str, thread_id: str) -> List[Dict[str, Any]]:
+    """
+    Reads thread and session history across all canonical directories (sessions and threads)
+    supporting both plain-text IDs and SHA-256 hashed filenames.
+    """
     if not THREAD_ID_REGEX.match(thread_id):
         return []
 
-    # Strict SHA-256 Thread ID Anonymization matching bash4llm core (Closed-World Data)
     sha256_hex = hashlib.sha256(thread_id.encode('utf-8')).hexdigest()
-    target_file = os.path.join(history_dir, "threads", f"{sha256_hex}.ndjson")
 
-    if not (os.path.isfile(target_file) and os.access(target_file, os.R_OK)):
+    candidate_dirs = [
+        os.path.join(history_dir, "sessions"),
+        os.path.join(history_dir, "threads")
+    ]
+
+    files_to_read: List[str] = []
+
+    for d in candidate_dirs:
+        if not os.path.isdir(d):
+            continue
+        for base_name in (sha256_hex, thread_id):
+            base_path = os.path.join(d, f"{base_name}.ndjson")
+            if os.path.isfile(base_path) and os.access(base_path, os.R_OK):
+                if base_path not in files_to_read:
+                    files_to_read.append(base_path)
+
+            try:
+                seg_files = []
+                for fname in sorted(os.listdir(d)):
+                    if fname.startswith(f"{base_name}.") and fname.endswith(".ndjson"):
+                        full_p = os.path.join(d, fname)
+                        if full_p not in files_to_read and not fname.endswith(".gz"):
+                            seg_files.append(full_p)
+                files_to_read.extend(seg_files)
+            except Exception:
+                pass
+
+        if files_to_read:
+            break
+
+    if not files_to_read:
         return []
 
     messages: List[Dict[str, Any]] = []
-    try:
-        with open(target_file, 'r', encoding='utf-8', errors='replace') as f:
-            for line in f:
-                line_str = line.strip()
-                if not line_str:
-                    continue
-                try:
-                    msg_obj = json.loads(line_str)
-                    messages.append(msg_obj)
-                except Exception:
-                    continue
-    except Exception:
-        return []
+    for file_path in files_to_read:
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    try:
+                        msg_obj = json.loads(line_str)
+                        if isinstance(msg_obj, dict):
+                            role = msg_obj.get("role")
+                            content = msg_obj.get("content")
+                            if role is not None and content is not None:
+                                messages.append({"role": role, "content": content})
+                            else:
+                                messages.append(msg_obj)
+                    except Exception:
+                        continue
+        except Exception:
+            continue
 
     return messages
 
@@ -289,71 +403,95 @@ async def get_session_snapshot_ipc(
     tmp_dir: str,
     thread_id: str
 ) -> Dict[str, Any]:
+    """
+    Executes session_engine_snapshot or falls back to multi-directory calculation
+    guaranteeing accurate statistics for message counts, segments, and byte size.
+    """
     if not THREAD_ID_REGEX.match(thread_id):
         return {"error": "Invalid thread_id format"}
 
     session_engine_script = os.path.join(extras_dir, "session", "session-engine.sh")
     
-    # Contract Guarantee: Ensure both threads and sessions directories exist (0700)
     os.makedirs(os.path.join(history_dir, "threads"), mode=0o700, exist_ok=True)
     os.makedirs(os.path.join(history_dir, "sessions"), mode=0o700, exist_ok=True)
 
     sha256_hex = hashlib.sha256(thread_id.encode('utf-8')).hexdigest()
-    thread_file = os.path.join(history_dir, "threads", f"{sha256_hex}.ndjson")
 
-    # If session engine script is present, try generating the formal snapshot
     if os.path.isfile(session_engine_script):
-        out_file = os.path.join(tmp_dir, f"snapshot_{secrets.token_hex(8)}.json")
+        for test_sid in (sha256_hex, thread_id):
+            out_file = os.path.join(tmp_dir, f"snapshot_{secrets.token_hex(8)}.json")
 
-        env = {**os.environ}
-        env["BASH4LLM_DIR"] = os.path.dirname(config_dir)
-        env["BASH4LLM_CONFIG_DIR"] = config_dir
-        env["BASH4LLM_HISTORY_DIR"] = history_dir
-        env["BASH4LLM_EXTRAS_DIR"] = extras_dir
-        env["RUN_TMPDIR"] = tmp_dir
-        env["BASH4LLM_TMPDIR"] = tmp_dir
-        env["B4L_IPC_THREAD_ID"] = sha256_hex
-        env["B4L_IPC_OUT_FILE"] = out_file
-        env["B4L_IPC_ENGINE_SCRIPT"] = session_engine_script
+            env = {**os.environ}
+            env["BASH4LLM_DIR"] = os.path.dirname(config_dir)
+            env["BASH4LLM_CONFIG_DIR"] = config_dir
+            env["BASH4LLM_HISTORY_DIR"] = history_dir
+            env["BASH4LLM_EXTRAS_DIR"] = extras_dir
+            env["RUN_TMPDIR"] = tmp_dir
+            env["BASH4LLM_TMPDIR"] = tmp_dir
+            env["B4L_IPC_THREAD_ID"] = test_sid
+            env["B4L_IPC_OUT_FILE"] = out_file
+            env["B4L_IPC_ENGINE_SCRIPT"] = session_engine_script
 
-        bash_code = """
-        source "$B4L_IPC_ENGINE_SCRIPT"
-        session_engine_snapshot "$B4L_IPC_THREAD_ID" "$B4L_IPC_OUT_FILE"
-        """
+            bash_code = """
+            source "$B4L_IPC_ENGINE_SCRIPT"
+            session_engine_snapshot "$B4L_IPC_THREAD_ID" "$B4L_IPC_OUT_FILE"
+            """
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "bash", "-c", bash_code,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env
-            )
-            await proc.communicate()
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "bash", "-c", bash_code,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env
+                )
+                await proc.communicate()
 
-            if os.path.isfile(out_file) and os.path.getsize(out_file) > 0:
-                try:
-                    with open(out_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    return data
-                finally:
+                if os.path.isfile(out_file) and os.path.getsize(out_file) > 0:
                     try:
-                        os.remove(out_file)
-                    except OSError:
-                        pass
-        except Exception:
-            pass
+                        with open(out_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        stats = data.get("stats", {})
+                        if stats.get("message_count", 0) > 0:
+                            return data
+                    finally:
+                        try:
+                            os.remove(out_file)
+                        except OSError:
+                            pass
+            except Exception:
+                pass
 
-    # Defensive Zero-State Fallback: Compute valid snapshot data directly from history
     messages = read_thread_history_ndjson(history_dir, thread_id)
-    file_size_bytes = os.path.getsize(thread_file) if os.path.isfile(thread_file) else 0
-    segment_count = 1 if os.path.isfile(thread_file) else 0
+    
+    total_size_bytes = 0
+    segment_count = 0
+    candidate_dirs = [
+        os.path.join(history_dir, "sessions"),
+        os.path.join(history_dir, "threads")
+    ]
+    
+    scanned_files = set()
+    for d in candidate_dirs:
+        if not os.path.isdir(d):
+            continue
+        for base_name in (sha256_hex, thread_id):
+            try:
+                for fname in os.listdir(d):
+                    if fname == f"{base_name}.ndjson" or (fname.startswith(f"{base_name}.") and (fname.endswith(".ndjson") or fname.endswith(".ndjson.gz"))):
+                        fpath = os.path.join(d, fname)
+                        if fpath not in scanned_files and os.path.isfile(fpath):
+                            scanned_files.add(fpath)
+                            segment_count += 1
+                            total_size_bytes += os.path.getsize(fpath)
+            except Exception:
+                pass
 
     return {
         "session_id": thread_id,
         "stats": {
             "message_count": len(messages),
-            "segments": segment_count,
-            "total_size_bytes": file_size_bytes
+            "segments": max(segment_count, 1 if messages else 0),
+            "total_size_bytes": total_size_bytes
         },
         "last_messages": messages[-50:] if messages else [],
         "summaries": []
@@ -529,7 +667,6 @@ async def save_vault_api_key_ipc(
     fi
     [ -n "$current_payload" ] || current_payload="{}"
     
-    # Lowercase provider normalization
     prov="$(printf '%s' "$B4L_IPC_PROVIDER" | tr '[:upper:]' '[:lower:]')"
     
     updated_payload="$(printf '%s' "$current_payload" | jq --arg p "$prov" --arg k "$B4L_IPC_API_KEY" '.[$p] = $k' 2>/dev/null)"
