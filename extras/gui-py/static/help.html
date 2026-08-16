@@ -44,9 +44,11 @@
             <ul class="help-list">
               <li><span class="badge-term">+ New Thread</span>: Create a new session thread.</li>
               <li><span class="badge-term">Thread List</span>: Switch between active conversation histories.</li>
+              <li><span class="badge-term">🗑️ Delete</span>: Permanently delete current conversation thread or clear default chat history.</li>
               <li><span class="badge-term">📊 Stats</span>: View message counts, segment allocations, and total byte usage.</li>
               <li><span class="badge-term">🔒 Vault</span>: Open OpenSSL master key manager dialog.</li>
               <li><span class="badge-term">⚙️ Settings</span>: Open runtime parameter configuration modal.</li>
+              <li><span class="badge-term">🛑 Stop (Server)</span>: Cleanly shut down and terminate the local WebApp backend server.</li>
             </ul>
 
             <h3 class="section-subtitle">✍️ Input Controls</h3>
@@ -54,6 +56,7 @@
               <li><span class="badge-term">Prompt</span>: Enter user query or instruction.</li>
               <li><span class="badge-term">📎 Attach</span>: Upload context file (mapped to <code>-f</code> flag).</li>
               <li><span class="badge-term">Templates</span>: Apply structured prompt template from repository.</li>
+              <li><span class="badge-term">Stream</span>: Toggle real-time token streaming on or off (blocking full-response mode).</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
                 Structured Metadata Layout validator. Forces validation of the AI output schema (requires mandatory <code>LISTEN_SUMMARY</code> and <code>CONVERSATION_OUTCOME</code> blocks). If the model hallucinates or fails the schema, SML Gate blocks execution and flags output as unverified.
@@ -93,9 +96,11 @@
             <ul class="help-list">
               <li><span class="badge-term">+ Nuova Chat</span>: Crea un nuovo thread di sessione.</li>
               <li><span class="badge-term">Elenco thread</span>: Seleziona un thread per cambiare cronologia conversazione.</li>
+              <li><span class="badge-term">🗑️ Elimina</span>: Elimina definitivamente la chat corrente o cancella la cronologia della chat predefinita.</li>
               <li><span class="badge-term">📊 Statistiche</span>: Visualizza conteggio messaggi, segmenti e utilizzo byte.</li>
               <li><span class="badge-term">🔒 Vault</span>: Apri la finestra modale del gestore chiavi crittografate.</li>
               <li><span class="badge-term">⚙️ Impostazioni</span>: Configura i parametri di esecuzione a runtime.</li>
+              <li><span class="badge-term">🛑 Arresta (Server)</span>: Arresta in modo sicuro e chiudi l'istanza del server backend locale.</li>
             </ul>
 
             <h3 class="section-subtitle">✍️ Controlli di input</h3>
@@ -103,6 +108,7 @@
               <li><span class="badge-term">Prompt</span>: Inserisci la query o l'istruzione per il modello.</li>
               <li><span class="badge-term">📎 Allega</span>: Carica un file di contesto (flag <code>-f</code>).</li>
               <li><span class="badge-term">Template</span>: Applica un template di prompt predefinito.</li>
+              <li><span class="badge-term">Stream</span>: Attiva o disattiva la generazione in tempo reale (passando alla modalità risposta intera).</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
                 (Structured Metadata Layout) Verifica che la risposta dell'IA rispetti lo schema obbligatorio (blocchi <code>LISTEN_SUMMARY</code> e <code>CONVERSATION_OUTCOME</code>). In caso di allucinazione o schema incompleto, SML Gate blocca l'output non conforme.
@@ -142,9 +148,11 @@
             <ul class="help-list">
               <li><span class="badge-term">+ Nuevo chat</span>: Crea un nuevo hilo de sesión.</li>
               <li><span class="badge-term">Lista de hilos</span>: Cambia entre historiales de conversación activos.</li>
+              <li><span class="badge-term">🗑️ Eliminar</span>: Elimina permanentemente el chat actual o limpia el historial predeterminado.</li>
               <li><span class="badge-term">📊 Estadísticas</span>: Visualiza el recuento de mensajes y uso de bytes.</li>
               <li><span class="badge-term">🔒 Vault</span>: Abre el gestor de claves OpenSSL.</li>
               <li><span class="badge-term">⚙️ Configuración</span>: Abre los parámetros de ejecución.</li>
+              <li><span class="badge-term">🛑 Detener (Servidor)</span>: Apaga y finaliza de forma segura el servidor local de la WebApp.</li>
             </ul>
 
             <h3 class="section-subtitle">✍️ Controles de entrada</h3>
@@ -152,6 +160,7 @@
               <li><span class="badge-term">Prompt</span>: Introduce la consulta o instrucción.</li>
               <li><span class="badge-term">📎 Adjuntar</span>: Sube un archivo de contexto (opción <code>-f</code>).</li>
               <li><span class="badge-term">Plantillas</span>: Aplica una plantilla de prompt.</li>
+              <li><span class="badge-term">Stream</span>: Alterna la transmisión en tiempo real de tokens.</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
                 Valida el esquema Structured Metadata Layout (bloques <code>LISTEN_SUMMARY</code> y <code>CONVERSATION_OUTCOME</code>).
@@ -185,9 +194,11 @@
             <ul class="help-list">
               <li><span class="badge-term">+ Nouveau chat</span>: Créer un nouveau fil de conversation.</li>
               <li><span class="badge-term">Liste des threads</span>: Naviguer dans l'historique.</li>
+              <li><span class="badge-term">🗑️ Supprimer</span>: Supprimer définitivement le fil actuel ou effacer l'historique par défaut.</li>
               <li><span class="badge-term">📊 Statistiques</span>: Afficher les métriques de la session.</li>
               <li><span class="badge-term">🔒 Vault</span>: Ouvrir le coffre-fort de clés OpenSSL.</li>
               <li><span class="badge-term">⚙️ Paramètres</span>: Régler les hyperparamètres.</li>
+              <li><span class="badge-term">🛑 Arrêter (Serveur)</span>: Arrêter proprement le serveur d'application web local.</li>
             </ul>
 
             <h3 class="section-subtitle">✍️ Contrôles de saisie</h3>
@@ -195,6 +206,7 @@
               <li><span class="badge-term">Prompt</span>: Saisir votre instruction.</li>
               <li><span class="badge-term">📎 Joindre</span>: Téléverser un fichier de contexte (option <code>-f</code>).</li>
               <li><span class="badge-term">Templates</span>: Sélectionner un modèle de prompt.</li>
+              <li><span class="badge-term">Flux (Stream)</span>: Activer ou désactiver le streaming de jetons en temps réel.</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
                 Validation stricte du Structured Metadata Layout (blocs <code>LISTEN_SUMMARY</code> et <code>CONVERSATION_OUTCOME</code>).
@@ -217,9 +229,11 @@
             <ul class="help-list">
               <li><span class="badge-term">+ Neuer Chat</span>: Neuen Chat-Thread initialisieren.</li>
               <li><span class="badge-term">Thread-Liste</span>: Zwischen Unterhaltungen wechseln.</li>
+              <li><span class="badge-term">🗑️ Löschen</span>: Den aktuellen Thread dauerhaft löschen oder den Standard-Chat leeren.</li>
               <li><span class="badge-term">📊 Statistiken</span>: Sitzungsmetriken und Bytes abrufen.</li>
               <li><span class="badge-term">🔒 Vault</span>: OpenSSL-Schlüssel-Vault öffnen.</li>
               <li><span class="badge-term">⚙️ Einstellungen</span>: Laufzeitkonfiguration anpassen.</li>
+              <li><span class="badge-term">🛑 Stoppen (Server)</span>: Den lokalen WebApp-Serverprozess sicher herunterfahren.</li>
             </ul>
 
             <h3 class="section-subtitle">✍️ Eingabesteuerung</h3>
@@ -227,6 +241,7 @@
               <li><span class="badge-term">Prompt</span>: Benutzeranfrage eingeben.</li>
               <li><span class="badge-term">📎 Anhängen</span>: Kontextdatei anhängen (Flag <code>-f</code>).</li>
               <li><span class="badge-term">Templates</span>: Prompt-Vorlage anwenden.</li>
+              <li><span class="badge-term">Stream</span>: Echtzeit-Token-Streaming aktivieren oder deaktivieren.</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
                 Erzwingt Structured Metadata Layout Schemaprüfung (<code>LISTEN_SUMMARY</code> und <code>CONVERSATION_OUTCOME</code>).
