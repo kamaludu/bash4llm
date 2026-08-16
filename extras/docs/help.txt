@@ -60,9 +60,9 @@ Generation Parameters:
   --temperature <n>      Set temperature parameter (alias: --ture)
   --max <n>              Set maximum completion tokens
 
-User Interfaces (TUI & GUI WebApp):
+User Interfaces:
   --chat, --tui          Launch full-screen TUI interactive REPL session
-  --gui, --webapp        Launch local WebApp GUI interactive web interface
+  --gui, --webapp        Launch local WebApp GUI interactive Web interface
 
 Security Vault & Shell Autocompletion:
   --vault                Launch interactive console tool to manage encrypted API keys
