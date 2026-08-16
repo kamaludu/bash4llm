@@ -194,38 +194,38 @@ Ogni richiesta di generazione inviata alla WebApp viene incapsulata in un oggett
                    │
                    ▼
               ┌─────────┐
-              │ CREATED │ (Allocato in memory registry)
+              │  CREATED  │ (Allocato in memory registry)
               └────┬────┘
                    │
                    ▼
              ┌──────────┐
-             │ STARTING │ (Invocazione subprocess asyncio)
-             └─────┬────┘
+             │  STARTING  │ (Invocazione subprocess asyncio)
+             └────┬─────┘
                    │
                    ▼
               ┌─────────┐
-              │ RUNNING │ (Iniezione prompt via stdin pipe)
+              │  RUNNING  │ (Iniezione prompt via stdin pipe)
               └────┬────┘
-                   │
-                   ▼
+                    │
+                    ▼
              ┌───────────┐
-             │ STREAMING │ (Flussaggio token via SSE)
-             └─────┬─────┘
-                   │
-     ┌─────────────┼───────────────────────────┐
-     │             │                           │
-     ▼             ▼                           ▼
+             │  STREAMING  │ (Flussaggio token via SSE)
+             └──────┬────┘
+                     │
+     ┌────────────┼────────────────────────┐
+     │               │                            │
+     ▼              ▼                            ▼
 ┌───────────┐ ┌──────────┐            ┌──────────────────┐
-│ COMPLETED │ │  FAILED  │            │ CANCEL_REQUESTED │
-└───────────┘ └──────────┘            └────────┬─────────┘
-(Exit Code 0) (Exit Code != 0                   │
+│  COMPLETED  │ │   FAILED   │            │   CANCEL_REQUESTED  │
+└───────────┘ └──────────┘            └──────┬───────────┘
+  (Exit Code 0) (Exit Code != 0                   │
                o errore JSON)         ┌─────────┴─────────┐
-                                      │  Process Killed   │
-                                      └─────────┬─────────┘
+                                      │     Process Killed   │
+                                      └────────┬──────────┘
                                                 │
                                                 ▼
                                          ┌───────────┐
-                                         │ CANCELLED │
+                                         │ CANCELLED   │
                                          └───────────┘
 ```
 
