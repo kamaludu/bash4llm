@@ -189,7 +189,7 @@ extras/gui-py/
 
 Ogni richiesta di generazione inviata alla WebApp viene incapsulata in un oggetto `Job` gestito in memoria RAM dall'Adapter Python.
 
-```
+```text
        [ Client POST /api/chat ]
                    │
                    ▼
@@ -358,7 +358,7 @@ Se il file d'indice `ui_state/threads/index.json` non è presente o risulta sint
 
 ### Architettura di Sicurezza Ad Albero
 
-```
+```text
 [Richiesta HTTP GET / o POST /api/chat]
         │
         ├── 1. Host Validation (Allowlist: 127.0.0.1, localhost, [::1])
