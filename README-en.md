@@ -20,11 +20,10 @@
 
 # Bash4LLM⁺   [🇮🇹](README.md) 🇬🇧
 
-Bash environment CLI wrapper for interfacing with OpenAI standard compatible LLM APIs. Integrates a default provider (Groq) and is extensible to other providers via additional modules.
+A Bash-native wrapper for interfacing with OpenAI-compatible LLM APIs. It includes a built-in default provider (Groq) and is extensible to additional providers via modular drivers (e.g., Gemini, Mistral, HuggingFace).  
+It offers three interaction modes: direct command-line execution (**CLI**) and a fullscreen interactive terminal (**TUI REPL**) — both 100% Bash-native —, as well as a local browser-based graphical interface (**WebApp GUI**) provided as an optional extension (requires Python 3.10+).
 
-The project is structured as a standalone Bash script with no external dependencies beyond standard POSIX commands and basic shell utilities.
-
-Native compatibility: Linux, macOS, WSL, Cygwin, Termux (Android), and BSD.
+Native compatibility: Linux, macOS, WSL and Cygwin (Windows), Termux (Android), BSD.
 
 ---
 
@@ -46,8 +45,10 @@ Native compatibility: Linux, macOS, WSL, Cygwin, Termux (Android), and BSD.
   Dynamic loading of external provider modules (`builtin`, `vendor`, `local`) into an anti-TOCTOU staging copy, with SHA-256 hash integrity verification and validation of the manifest's Ed25519 cryptographic signature (`manifest.sha256.sig`).
 * **Deterministic validation**  
   Native support for response syntax validation (`--validate-sml` for SML v2.0, `--validate-regex`), zero-eval ANSI sanitization (`--sanitize`), structured JSON diagnostics (`--json-diagnostics`), function immutability guards (`readonly -f`), and local sliding-window rate limiting (30s).
+* **Local WebApp GUI interface (`--gui`, `--webapp`)**:
+ Responsive WebApp based on a Python/FastAPI stack and a Vanilla JS/CSS frontend (Zero CDN). Features a *Thin Adapter / Domain-Stateless* architecture with real-time token streaming via SSE, exclusive loopback binding (`127.0.0.1`), One-Time URL authentication, `HttpOnly` / `SameSite=Strict` cookies, and constant-time Anti-CSRF protection.
 
-📘 **Architectural Documentation**: For a detailed analysis of macro-sections, isolation mechanisms and memory layout, see the **[TECHNICAL SPECIFICATION OF THE BASH4LLM⁺ SYSTEM (v2.8.5)](docs/bash4llm-arch-spec-en.md)**.
+📘 **Architectural Documentation**: For a detailed analysis of macro-sections, isolation mechanisms and memory layout, see the **[TECHNICAL SPECIFICATION OF THE BASH4LLM⁺ SYSTEM](docs/bash4llm-arch-spec-en.md)**.
 
 ---
 
@@ -62,6 +63,15 @@ Required packages in `PATH`:
 * **awk**
 * **curl**
 * **jq**
+
+*Optional requirements for the GUI WebApp (--gui, --webapp):* 
+**Python** (version 3.10 or higher) 
+**Python Packages**: fastapi, uvicorn, pydantic
+```sh
+  pip install --user fastapi "uvicorn[standard]" pydantic
+```
+
+*(CLI and TUI mode usage remains 100% native Bash/POSIX with no Python dependencies).*
 
 ---
 
@@ -222,7 +232,8 @@ The `./bash4llm` executable integrates continuous checks on code and execution e
 | `--quiet` | No | Omits non-essential informational messages on stderr. |
 | `--stream` | No | Enables streaming reception (Server-Sent Events). |
 | `--no-stream` | No | Disables streaming for current request. |
-| `--chat` | No | Launches interactive TUI/REPL interface. |
+| `--chat`, `--tui` | No | Launches interactive TUI/REPL interface. |
+| `--gui`, `--webapp` | No | Launch the local WebApp GUI in a browser. |
 | `--bootstrap-only` | No | Executes startup phase and checks filesystem, then exits. |
 | `--test`, `--run-all-tests` | No | Invokes the automated test suite orchestrator. |
 
@@ -241,6 +252,7 @@ The `./bash4llm` executable integrates continuous checks on code and execution e
 | `--print-provider-file` | No | Prints path of active provider persistence file on screen. |
 | `--print-model-file [provider]` | Optional | Prints path of model file for provider on screen. |
 | `--version` | No | Shows script version. |
+| `--install-extras` | Optional | Installs the entire extras package into bash4llm.d/extras/ with integrity verification. Accepts the source directory path as an optional argument. |
 | `-h`, `--help` | No | Shows inline help. |
 
 ---
