@@ -20,11 +20,11 @@
 
 # Bash4LLM⁺ 🇮🇹 [🇬🇧](README-en.md)
 
-Wrapper CLI in ambiente Bash per l'interfacciamento con API LLM compatibili con lo standard OpenAI. Integra un provider predefinito (Groq) ed è estendibile ad altri provider tramite moduli aggiuntivi.
+Wrapper in ambiente Bash per l'interfacciamento con API LLM compatibili con lo standard OpenAI. Integra un provider predefinito (Groq) ed è estendibile ad altri provider tramite moduli aggiuntivi (es. gemini, mistral, huggingface). Offre tre modalità di interazione: linea di comando diretta (**CLI**) e terminale interattivo a schermo intero (**TUI REPL**) — entrambi 100% nativi in Bash —, oltre a un'interfaccia grafica su browser (**WebApp GUI**) fornita come estensione opzionale (richiede Python 3.10+).
 
-Il progetto è strutturato come uno script Bash autonomo senza dipendenze esterne oltre ai comandi POSIX standard e alle utilità di base della shell.
+Il Core del progetto è strutturato come uno script Bash autonomo senza dipendenze esterne oltre ai comandi POSIX standard e alle utilità di base della shell.
 
-Compatibilità nativa: Linux, macOS, WSL, Cygwin, Termux (Android) e BSD.
+Compatibilità nativa: Linux, macOS, WSL e Cygwin (Windows), Termux (Android), BSD.
 
 ---
 
