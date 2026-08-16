@@ -68,7 +68,7 @@ Pacchetti richiesti nel `PATH`:
 *Requisiti opzionali per la WebApp GUI (`--gui`, `--webapp`):*
 * **Python** (versione 3.10 o superiore)
 * Pacchetti Python: `fastapi`, `uvicorn`, `pydantic`
-  ```sh
+```sh
   pip install --user fastapi "uvicorn[standard]" pydantic
 ```
 *(L'uso in modalità CLI e TUI rimane al 100% nativo Bash/POSIX senza dipendenze Python).*
