@@ -64,9 +64,10 @@ Required packages in `PATH`:
 * **curl**
 * **jq**
 
-*Optional requirements for the GUI WebApp (--gui, --webapp):*  
+*Optional requirements for the GUI WebApp (`--gui`, `--webapp`):*  
+
 **Python** (version 3.10 or higher)  
-**Python Packages**: fastapi, uvicorn, pydantic
+**Python Packages**: `fastapi`, `uvicorn`, `pydantic`
 ```sh
   pip install --user fastapi "uvicorn[standard]" pydantic
 ```
