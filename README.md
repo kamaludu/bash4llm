@@ -233,7 +233,8 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 | `--quiet` | No | Omette i messaggi informativi non essenziali su stderr. |
 | `--stream` | No | Abilita la ricezione in streaming (Server-Sent Events). |
 | `--no-stream` | No | Disabilita lo streaming per la richiesta corrente. |
-| `--chat` | No | Avvia l'interfaccia interattiva TUI/REPL. |
+| `--chat`, `--tui` | No | Avvia l'interfaccia interattiva TUI/REPL. |
+| `--gui`, `--webapp` | No | Avvia l'interfaccia grafica WebApp locale su browser. |
 | `--bootstrap-only` | No | Esegue la fase di avvio e verificate filesystem, poi termina. |
 | `--test`, `--run-all-tests` | No | Invoca l'orchestratore della suite di test automatizzati. |
 
@@ -252,6 +253,7 @@ L'eseguibile `./bash4llm` integra verifiche continue sul codice e sull'ambiente 
 | `--print-provider-file` | No | Stampa a schermo il percorso del file di persistenza del provider attivo. |
 | `--print-model-file [provider]` | Opzionale | Stampa a schermo il percorso del file di modello per il provider. |
 | `--version` | No | Mostra la versione dello script. |
+| `--install-extras` | Opzionale | Installa l'intero pacchetto degli extras in bash4llm.d/extras/ con verifica di integrità. Come argomento opzionale accetta il percorso della cartella sorgente. |
 | `-h`, `--help` | No | Mostra l'aiuto in linea. |
 
 ---
