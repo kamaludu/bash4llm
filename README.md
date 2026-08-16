@@ -46,7 +46,7 @@ Compatibilità nativa: Linux, macOS, WSL e Cygwin (Windows), Termux (Android), B
   Caricamento dinamico dei moduli provider esterni (`builtin`, `vendor`, `local`) in copia di staging anti-TOCTOU, con verifica di integrità dell'hash SHA-256 e convalida della firma crittografica Ed25519 del manifesto (`manifest.sha256.sig`).
 * **Validazione deterministica**  
   Supporto nativo per la validazione sintattica delle risposte (`--validate-sml` per SML v2.0, `--validate-regex`), sanitizzazione ANSI zero-eval (`--sanitize`), diagnostica JSON strutturata (`--json-diagnostics`), guardie di immutabilità delle funzioni (`readonly -f`) e rate limiting locale a finestra scorrevole (30s).
-* **Interfaccia WebApp GUI locale (--gui, --webapp)**
+* **Interfaccia WebApp GUI locale (--gui, --webapp)**:
  WebApp responsive basata su stack Python/FastAPI e frontend Vanilla JS/CSS (Zero CDN). Architettura Thin Adapter / Domain-Stateless con streaming dei token via SSE, binding esclusivo su loopback (127.0.0.1), autenticazione tramite One-Time URL, cookie HttpOnly / SameSite=Strict e protezione Anti-CSRF in tempo costante.
 
 📘 **Documentazione Architetturale**: Per l'analisi dettagliata delle macro-sezioni, dei meccanismi di isolamento e del layout di memoria, consulta la **[Specifica Tecnica del Sistema Bash4LLM⁺](docs/bash4llm-arch-spec.md)**.
@@ -64,6 +64,14 @@ Pacchetti richiesti nel `PATH`:
 * **awk**
 * **curl**
 * **jq**
+
+*Requisiti opzionali per la WebApp GUI (`--gui`, `--webapp`):*
+* **Python** (versione 3.10 o superiore)
+* Pacchetti Python: `fastapi`, `uvicorn`, `pydantic`
+  ```sh
+  pip install --user fastapi "uvicorn[standard]" pydantic
+```
+*(L'uso in modalità CLI e TUI rimane al 100% nativo Bash/POSIX senza dipendenze Python).*
 
 ---
 
