@@ -107,6 +107,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  // Restore saved active thread from LocalStorage if available
+  const savedThread = localStorage.getItem("bash4llm_current_thread");
+  if (savedThread) {
+    currentThreadId = savedThread;
+    knownThreads.add(currentThreadId);
+  }
+
   // C. Interactive Workspace Initialization
   setupEventListeners();
   loadSettingsFromLocalStorage();
@@ -292,9 +299,12 @@ const toggleSidebar = active => {
 
 async function switchThread(tid) {
   currentThreadId = tid || "default";
+  localStorage.setItem("bash4llm_current_thread", currentThreadId);
   knownThreads.add(currentThreadId);
+  
   if ($("form-thread-id")) $("form-thread-id").value = currentThreadId;
   if ($("current-thread-title")) $("current-thread-title").textContent = currentThreadId;
+  
   document.querySelectorAll(".thread-item").forEach(el => {
     el.classList.toggle("active", el.textContent === currentThreadId);
   });
@@ -302,7 +312,12 @@ async function switchThread(tid) {
 
   try {
     const res = await apiFetch(`/api/threads/${encodeURIComponent(currentThreadId)}`);
-    renderChatHistory(res.ok ? (await res.json()).messages : []);
+    if (res.ok) {
+      const data = await res.json();
+      renderChatHistory(data.messages || []);
+    } else {
+      renderChatHistory([]);
+    }
   } catch (e) {
     renderChatHistory([]);
   }
@@ -411,15 +426,22 @@ function updateActiveBadge() {
 }
 
 function setupEventListeners() {
-  on("btn-new-thread")("click", () => {
+  on("btn-new-thread")("click", async () => {
     const autoId = `thread-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 1000)}`;
     const userChoice = prompt(t("prompt_new_thread", "Enter new thread name:"), autoId);
     if (userChoice && userChoice.trim()) {
       const sanitized = userChoice.trim().replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 128);
       if (sanitized) {
+        try {
+          await apiFetch("/api/threads", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ thread_id: sanitized })
+          });
+        } catch (e) {}
         knownThreads.add(sanitized);
-        switchThread(sanitized);
-        loadThreads();
+        await switchThread(sanitized);
+        await loadThreads();
       } else {
         alert(t("msg_invalid_thread_name", "Invalid thread name. Only letters, numbers, '.', '_' and '-' are allowed."));
       }
