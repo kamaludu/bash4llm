@@ -188,7 +188,6 @@ img, svg, video {
   font-size: 1.125rem;
   letter-spacing: -0.025em;
   padding: 0.125rem 0.5rem;
-  border-radius: var(--radius-md);
   white-space: nowrap;
 }
 
@@ -292,6 +291,35 @@ img, svg, video {
   justify-content: space-between;
   gap: 0.375rem;
   flex-wrap: wrap;
+}
+
+/* 2-Column Balanced Footer Grid (50% / 50% Split) */
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.375rem;
+}
+
+.footer-grid .btn {
+  width: 100%;
+}
+
+.footer-grid .status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--color-bg-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.3125rem 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-fg-secondary);
+  width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --------------------------------------------------------------------------
