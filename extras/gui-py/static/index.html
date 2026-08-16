@@ -15,7 +15,7 @@
     <!-- Navigation & Thread History Drawer -->
     <aside id="sidebar" class="sidebar" aria-label="Session Navigation">
       <header class="sidebar-header">
-        <div class="brand-badge">Bash4LLM⁺</div>
+        <div class="brand-badge">Bash4LLM⁺ WebApp</div>
         <div class="header-actions">
           <button type="button" id="btn-new-thread" class="btn btn-primary btn-sm" data-i18n="new_thread">+ New Thread</button>
           <button type="button" id="btn-close-sidebar" class="btn-icon sidebar-close-btn" aria-label="Close Sidebar">✕</button>
@@ -27,8 +27,8 @@
       </nav>
 
       <footer class="sidebar-footer">
-        <!-- Secondary Navigation & Modal Triggers -->
-        <div class="footer-actions">
+        <!-- Row 1: Tools & Configuration (50% / 50% Grid) -->
+        <div class="footer-grid">
           <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">
             <span aria-hidden="true">🔒</span>
             <span data-i18n="vault">Vault</span>
@@ -37,20 +37,25 @@
             <span aria-hidden="true">⚙️</span>
             <span data-i18n="settings">Settings</span>
           </button>
-          <a href="/static/help.html" class="btn btn-secondary btn-sm">
-            <span aria-hidden="true">❓</span>
-            <span data-i18n="help">Help</span>
-          </a>
-        </div>        
-        <!-- Server Status Indicator & Shutdown Action (Horizontal Alignment) -->
-        <div class="status-indicator">
-          <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
-          <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
+        </div>
+
+        <!-- Row 2: Documentation & Help Link (100% Full Width) -->
+        <a href="/static/help.html" class="btn btn-secondary btn-sm btn-block">
+          <span aria-hidden="true">❓</span>
+          <span data-i18n="help">Help</span>
+        </a>
+
+        <!-- Row 3: Server Status & Shutdown Control (50% / 50% Grid) -->
+        <div class="footer-grid">
+          <div class="status-indicator">
+            <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
+            <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
+          </div>
           <button type="button" id="btn-shutdown" class="btn btn-danger btn-sm" title="Shutdown Server">
             <span aria-hidden="true">🛑</span>
             <span data-i18n="shutdown">Stop</span>
           </button>
-        </div>        
+        </div>
       </footer>
     </aside>
 
@@ -62,7 +67,7 @@
             <span aria-hidden="true">☰</span>
           </button>
           <div class="header-thread-info">
-            <h1 id="current-thread-title" class="current-thread-title">default</h1>
+            <h1 id="current-thread-title" class="current-thread-title">WebApp</h1>
             <button type="button" id="btn-thread-stats" class="badge-stats" title="View Session Engine Snapshot">
               <span aria-hidden="true">📊</span>
               <span data-i18n="stats">Stats</span>
