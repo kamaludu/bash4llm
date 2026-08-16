@@ -213,13 +213,13 @@ Ogni richiesta di generazione inviata alla WebApp viene incapsulata in un oggett
              └──────┬────┘
                      │
      ┌────────────┼────────────────────────┐
-     │               │                            │
-     ▼              ▼                            ▼
-┌───────────┐ ┌──────────┐            ┌──────────────────┐
-│  COMPLETED  │ │   FAILED   │            │   CANCEL_REQUESTED  │
-└───────────┘ └──────────┘            └──────┬───────────┘
-  (Exit Code 0) (Exit Code != 0                   │
-               o errore JSON)         ┌─────────┴─────────┐
+     │               │                           │
+     ▼              ▼                           ▼
+┌───────────┐ ┌──────────┐          ┌──────────────────┐
+│  COMPLETED  │ │   FAILED   │          │   CANCEL_REQUESTED  │
+└───────────┘ └──────────┘          └───────┬──────────┘
+ (Exit Code 0)  (Exit Code != 0                   │
+                 o errore JSON)       ┌─────────┴─────────┐
                                       │     Process Killed   │
                                       └────────┬──────────┘
                                                 │
