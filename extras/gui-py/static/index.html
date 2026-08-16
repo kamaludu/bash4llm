@@ -27,10 +27,17 @@
       </nav>
 
       <footer class="sidebar-footer">
+        <!-- Server Status Indicator & Shutdown Action (Horizontal Alignment) -->
         <div class="status-indicator">
           <span id="status-dot" class="status-dot ready" aria-hidden="true"></span>
           <span id="status-text" class="status-text" data-i18n="status_ready">Ready</span>
+          <button type="button" id="btn-shutdown" class="btn btn-danger btn-sm" title="Shutdown Server">
+            <span aria-hidden="true">🛑</span>
+            <span data-i18n="shutdown">Stop</span>
+          </button>
         </div>
+
+        <!-- Secondary Navigation & Modal Triggers -->
         <div class="footer-actions">
           <button type="button" id="btn-vault" class="btn btn-secondary btn-sm" title="Key Vault Status">
             <span aria-hidden="true">🔒</span>
@@ -61,6 +68,10 @@
               <span aria-hidden="true">📊</span>
               <span data-i18n="stats">Stats</span>
             </button>
+            <button type="button" id="btn-delete-thread" class="badge-stats" title="Delete Current Thread">
+              <span aria-hidden="true">🗑️</span>
+              <span data-i18n="delete">Delete</span>
+            </button>
           </div>
         </div>
 
@@ -78,7 +89,7 @@
 
         <form id="chat-form" action="/api/chat" method="POST" class="chat-form">
           <input type="hidden" name="thread_id" id="form-thread-id" value="default">
-          <input type="hidden" name="stream" value="true">
+          <input type="hidden" name="stream" id="form-stream" value="true">
 
           <div class="textarea-wrapper">
             <label for="prompt-input" class="sr-only" data-i18n="prompt_label">User Prompt</label>
@@ -103,6 +114,11 @@
                 <select id="select-template" class="select-tool" title="Apply Prompt Template">
                   <option value="" data-i18n="no_template">-- No Template --</option>
                 </select>
+
+                <div class="checkbox-tool-wrapper">
+                  <input type="checkbox" id="check-stream" checked>
+                  <label for="check-stream" class="checkbox-tool-label" title="Toggle Real-Time Streaming" data-i18n="stream_label">Stream</label>
+                </div>
 
                 <div class="checkbox-tool-wrapper">
                   <input type="checkbox" id="check-sml-gate">
@@ -186,6 +202,13 @@
               <option value="65536">64 KB (~16,000 Tokens)</option>
               <option value="131072">128 KB (~32,000 Tokens)</option>
             </select>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-label-wrapper">
+              <input type="checkbox" id="check-settings-stream" checked>
+              <label for="check-settings-stream" class="checkbox-form-label" data-i18n="enable_streaming">Enable Real-Time Streaming Output</label>
+            </div>
           </div>
 
           <div class="form-group">
