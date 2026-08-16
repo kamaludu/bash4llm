@@ -90,6 +90,57 @@ def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
         return default
 
 
+def _get_threads_index_path() -> str:
+    threads_dir = os.path.join(config.BASH4LLM_CONFIG_DIR, "ui_state", "threads")
+    os.makedirs(threads_dir, mode=0o700, exist_ok=True)
+    return os.path.join(threads_dir, "index.json")
+
+
+def _read_persisted_threads() -> List[str]:
+    index_file = _get_threads_index_path()
+    threads_set = {"default"}
+    if os.path.isfile(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                raw_threads = data.get("threads", [])
+                for t in raw_threads:
+                    tid = t if isinstance(t, str) else t.get("id")
+                    if tid and THREAD_ID_REGEX.match(str(tid)):
+                        threads_set.add(str(tid))
+        except Exception:
+            pass
+    
+    return sorted(list(threads_set), key=lambda x: (x != "default", x))
+
+
+def _save_thread_to_index(thread_id: str) -> None:
+    if not THREAD_ID_REGEX.match(thread_id):
+        return
+    threads = _read_persisted_threads()
+    if thread_id not in threads:
+        threads.append(thread_id)
+        threads = sorted(list(set(threads)), key=lambda x: (x != "default", x))
+    index_file = _get_threads_index_path()
+    try:
+        with open(index_file, "w", encoding="utf-8") as f:
+            json.dump({"threads": threads}, f, indent=2)
+    except Exception:
+        pass
+
+
+def _remove_thread_from_index(thread_id: str) -> None:
+    threads = [t for t in _read_persisted_threads() if t != thread_id]
+    if "default" not in threads:
+        threads.insert(0, "default")
+    index_file = _get_threads_index_path()
+    try:
+        with open(index_file, "w", encoding="utf-8") as f:
+            json.dump({"threads": threads}, f, indent=2)
+    except Exception:
+        pass
+
+
 def get_canonical_env() -> Dict[str, str]:
     """
     Constructs an authoritative environment dictionary for all subprocess invocations.
@@ -121,7 +172,7 @@ def prune_expired_memory_records() -> None:
     """
     now = time.time()
     MAX_RECORDS = 200
-    TTL_SECONDS = 7200.0  # 2 Hours
+    TTL_SECONDS = 7200.0
 
     expired_job_ids = [
         jid for jid, j in jobs_registry.items()
@@ -358,6 +409,21 @@ async def heartbeat(request: Request, session_id: str = Depends(get_current_sess
     return {"status": "ok"}
 
 
+@app.post("/api/shutdown")
+async def shutdown_server(request: Request, session_id: str = Depends(get_current_session)):
+    """
+    Triggers clean graceful shutdown of the GUI adapter instance.
+    """
+    verify_security_headers(request, active_csrf_token, session_id)
+    
+    def _trigger_shutdown():
+        time.sleep(0.5)
+        os.kill(os.getpid(), signal.SIGINT)
+
+    threading.Thread(target=_trigger_shutdown, daemon=True).start()
+    return {"status": "shutting_down", "message": "Server shutdown initiated."}
+
+
 @app.get("/api/models")
 async def list_models(
     request: Request,
@@ -366,7 +432,6 @@ async def list_models(
 ):
     verify_security_headers(request, active_csrf_token, session_id)
     
-    # Dynamically resolve active provider from config/provider if not passed in query
     active_provider = provider
     if not active_provider:
         provider_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "provider")
@@ -518,7 +583,6 @@ async def unlock_vault(
     vault_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "keys.enc")
     vault_exists = os.path.isfile(vault_file)
 
-    # Server-side defense-in-depth: enforce minimum password length (>= 11 chars) on clean install
     if not vault_exists and len(payload.master_password) < 11:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -590,22 +654,24 @@ async def upload_attachment(
 @app.get("/api/threads")
 async def list_threads(request: Request, session_id: str = Depends(get_current_session)):
     verify_security_headers(request, active_csrf_token, session_id)
-    index_file = os.path.join(config.BASH4LLM_CONFIG_DIR, "ui_state", "threads", "index.json")
-    
-    threads: List[str] = []
-    if os.path.isfile(index_file):
-        try:
-            with open(index_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                raw_threads = data.get("threads", [])
-                threads = [t if isinstance(t, str) else t.get("id", str(t)) for t in raw_threads]
-        except Exception:
-            threads = []
-    
-    if not threads:
-        threads = ["default"]
-
+    threads = _read_persisted_threads()
     return {"threads": threads}
+
+
+@app.post("/api/threads")
+async def create_thread(request: Request, session_id: str = Depends(get_current_session)):
+    verify_security_headers(request, active_csrf_token, session_id)
+    try:
+        body = await request.json()
+        thread_id = str(body.get("thread_id", "")).strip()
+    except Exception:
+        thread_id = ""
+
+    if not thread_id or not THREAD_ID_REGEX.match(thread_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid thread_id format")
+
+    _save_thread_to_index(thread_id)
+    return {"status": "created", "thread_id": thread_id}
 
 
 @app.get("/api/threads/{thread_id}")
@@ -645,10 +711,31 @@ async def delete_thread(thread_id: str, request: Request, session_id: str = Depe
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         env=get_canonical_env()
     )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        err_msg = stderr.decode('utf-8', errors='replace').strip() or "Failed to delete thread"
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=err_msg)
+    await proc.communicate()
+    
+    # Complete cleanup of all matching files on disk (threads & sessions)
+    sha256_hex = hashlib.sha256(thread_id.encode('utf-8')).hexdigest()
+    for sub in ("sessions", "threads"):
+        d = os.path.join(config.BASH4LLM_HISTORY_DIR, sub)
+        if os.path.isdir(d):
+            for fname in (f"{thread_id}.ndjson", f"{sha256_hex}.ndjson"):
+                fp = os.path.join(d, fname)
+                if os.path.isfile(fp):
+                    try:
+                        os.remove(fp)
+                    except OSError:
+                        pass
+            try:
+                for f in os.listdir(d):
+                    if f.startswith(f"{thread_id}.") or f.startswith(f"{sha256_hex}."):
+                        try:
+                            os.remove(os.path.join(d, f))
+                        except OSError:
+                            pass
+            except Exception:
+                pass
+
+    _remove_thread_from_index(thread_id)
 
     return {"status": "deleted", "thread_id": thread_id}
 
@@ -710,6 +797,9 @@ async def create_chat_job(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid JSON payload: {str(e)}"
             )
+
+    if payload.thread_id:
+        _save_thread_to_index(payload.thread_id)
 
     payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     payload_json = json.dumps(payload_dict, sort_keys=True)
