@@ -2,7 +2,7 @@
 // ======================================
 // Bash4LLM⁺ — Bash-first wrapper for the LLM
 // File: extras/gui-py/static/app.js
-// Component: WebApp Vanilla ES6 Client (SSE Token Streaming, Vault Zero-State & UI Logic)
+// Component: WebApp Vanilla ES6 Client (SSE Streaming, Thread Deletion & Shutdown Logic)
 // Copyright (C) 2026 Cristian Evangelisti
 // License: GPL-3.0-or-later
 // Repository: https://github.com/kamaludu/bash4llm
@@ -33,6 +33,7 @@ let contextMode = "messages";
 let threadWindow = 10;
 let targetBytes = 32768;
 let sanitizeOutput = true;
+let isStreamEnabled = true;
 let attachedFiles = [];
 let i18n = {};
 
@@ -49,7 +50,7 @@ function t(key, fallback = "", params = {}) {
 function saveSettingsToLocalStorage() {
   localStorage.setItem("bash4llm_gui_settings", JSON.stringify({
     currentProvider, currentModel, systemPrompt, temperature,
-    maxTokens, contextMode, threadWindow, targetBytes, sanitizeOutput
+    maxTokens, contextMode, threadWindow, targetBytes, sanitizeOutput, isStreamEnabled
   }));
 }
 
@@ -69,6 +70,7 @@ function loadSettingsFromLocalStorage() {
     threadWindow = s.threadWindow ?? threadWindow;
     targetBytes = s.targetBytes ?? targetBytes;
     sanitizeOutput = s.sanitizeOutput ?? sanitizeOutput;
+    isStreamEnabled = s.isStreamEnabled ?? isStreamEnabled;
 
     syncSettingsFormFields();
     updateActiveBadge();
@@ -77,7 +79,7 @@ function loadSettingsFromLocalStorage() {
   }
 }
 
-// Synchronize Settings Modal inputs with active state
+// Synchronize Settings Modal and Toolbar inputs with active state
 function syncSettingsFormFields() {
   if ($("input-system-prompt")) $("input-system-prompt").value = systemPrompt;
   if ($("input-temperature")) $("input-temperature").value = temperature;
@@ -86,6 +88,9 @@ function syncSettingsFormFields() {
   if ($("input-thread-window")) $("input-thread-window").value = threadWindow;
   if ($("select-target-bytes")) $("select-target-bytes").value = targetBytes;
   if ($("check-sanitize")) $("check-sanitize").checked = sanitizeOutput;
+  if ($("check-stream")) $("check-stream").checked = isStreamEnabled;
+  if ($("check-settings-stream")) $("check-settings-stream").checked = isStreamEnabled;
+  if ($("form-stream")) $("form-stream").value = String(isStreamEnabled);
 
   $("group-thread-window")?.classList.toggle("hidden", contextMode !== "messages");
   $("group-target-bytes")?.classList.toggle("hidden", contextMode !== "bytes");
@@ -169,7 +174,6 @@ async function apiFetch(url, options = {}) {
   options.credentials = "same-origin";
   const res = await fetch(url, options);
   
-  // Guard against reload loops on intentional 401s (e.g. invalid vault master password)
   if (res.status === 401 && !url.includes("/api/vault/unlock")) {
     window.location.reload();
   }
@@ -224,7 +228,6 @@ async function checkVaultStatus() {
           if (unlockBtn) unlockBtn.textContent = t("unlock_session", "Unlock Vault Session");
           confirmGroup?.classList.add("hidden");
         } else {
-          // Zero-State Clean Install Flow
           if (text) text.textContent = t("vault_not_init", "🔒 Vault Not Initialized");
           if (unlockBtn) unlockBtn.textContent = t("init_vault", "Initialize Vault");
           confirmGroup?.classList.remove("hidden");
@@ -426,6 +429,7 @@ function updateActiveBadge() {
 }
 
 function setupEventListeners() {
+  // New Thread Creation
   on("btn-new-thread")("click", async () => {
     const autoId = `thread-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 1000)}`;
     const userChoice = prompt(t("prompt_new_thread", "Enter new thread name:"), autoId);
@@ -446,6 +450,68 @@ function setupEventListeners() {
         alert(t("msg_invalid_thread_name", "Invalid thread name. Only letters, numbers, '.', '_' and '-' are allowed."));
       }
     }
+  });
+
+  // Delete Current Thread
+  on("btn-delete-thread")("click", async () => {
+    const isDefault = currentThreadId === "default";
+    const confirmMsg = isDefault 
+      ? t("confirm_clear_default", "Clear all conversation messages in the default thread?")
+      : t("confirm_delete_thread", "Are you sure you want to permanently delete thread '{thread}'?", { thread: currentThreadId });
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await apiFetch(`/api/threads/${encodeURIComponent(currentThreadId)}`, {
+        method: "DELETE"
+      });
+
+      if (res.ok) {
+        if (!isDefault) {
+          knownThreads.delete(currentThreadId);
+          await switchThread("default");
+        } else {
+          renderChatHistory([]);
+        }
+        await loadThreads();
+      } else {
+        alert(t("err_delete_failed", "Failed to delete thread."));
+      }
+    } catch (e) {
+      alert(t("err_delete_failed", "Failed to delete thread."));
+    }
+  });
+
+  // Manual Server Shutdown
+  on("btn-shutdown")("click", async () => {
+    if (!confirm(t("confirm_shutdown", "Are you sure you want to shut down the Bash4LLM GUI server?"))) {
+      return;
+    }
+
+    try {
+      await apiFetch("/api/shutdown", { method: "POST" });
+    } catch (e) {}
+
+    if ($("status-dot")) $("status-dot").className = "status-dot";
+    if ($("status-text")) $("status-text").textContent = t("status_stopped", "Server Stopped");
+    
+    toggleInputState(true);
+    alert(t("msg_server_stopped", "Server has been shut down cleanly. You can safely close this browser window."));
+  });
+
+  // Stream Mode Toggle Handlers
+  on("check-stream")("change", e => {
+    isStreamEnabled = e.target.checked;
+    if ($("check-settings-stream")) $("check-settings-stream").checked = isStreamEnabled;
+    if ($("form-stream")) $("form-stream").value = String(isStreamEnabled);
+    saveSettingsToLocalStorage();
+  });
+
+  on("check-settings-stream")("change", e => {
+    isStreamEnabled = e.target.checked;
+    if ($("check-stream")) $("check-stream").checked = isStreamEnabled;
+    if ($("form-stream")) $("form-stream").value = String(isStreamEnabled);
+    saveSettingsToLocalStorage();
   });
 
   on("btn-toggle-sidebar")("click", () => toggleSidebar(true));
@@ -526,7 +592,6 @@ function setupEventListeners() {
     form.addEventListener("submit", async e => {
       e.preventDefault();
 
-      // PRE-FLIGHT CHECK: If Vault is initialized on disk but locked in RAM, guide user to unlock first
       if (isVaultInitialized && !isVaultUnlocked) {
         alert(t("msg_vault_locked_prompt", "🔒 Key Vault is locked. Please unlock the Vault with your Master Password to chat."));
         checkVaultStatus();
@@ -544,7 +609,7 @@ function setupEventListeners() {
       const payload = {
         thread_id: currentThreadId,
         prompt: prompt,
-        stream: true,
+        stream: isStreamEnabled,
         provider: currentProvider,
         model: currentModel || null,
         system_prompt: systemPrompt || null,
@@ -607,7 +672,9 @@ function setupEventListeners() {
     threadWindow = parseInt($("input-thread-window")?.value || "10");
     targetBytes = parseInt($("select-target-bytes")?.value || "32768");
     sanitizeOutput = $("check-sanitize")?.checked ?? true;
+    isStreamEnabled = $("check-settings-stream")?.checked ?? true;
 
+    syncSettingsFormFields();
     saveSettingsToLocalStorage();
     updateActiveBadge();
     $("settings-modal")?.close();
