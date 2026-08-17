@@ -402,9 +402,45 @@ img, svg, video {
   border-radius: var(--radius-lg);
   font-size: 0.9375rem;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.message-text {
+  flex: 1 1 auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+  min-width: 0;
+}
+
+.btn-copy-msg {
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-copy-msg:hover {
+  color: var(--color-fg-primary);
+  background-color: var(--color-bg-overlay);
+  border-color: var(--color-border-muted);
+}
+
+.btn-copy-msg:focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
 }
 
 .message.user {
