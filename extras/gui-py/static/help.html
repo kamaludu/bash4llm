@@ -15,7 +15,7 @@
       <header class="chat-header">
         <div class="chat-header-left">
           <a href="/" class="btn-tool btn-back-home" id="top" aria-label="Return to Main Application">&#9664; Bash4LLM⁺ WebApp</a>
-          <span class="brand-badge" data-i18n="help">❓ Help</span>
+          <span class="brand-badge" title="? Help"> ❔ Help </span>
         </div>
 
         <!-- Quick Language Navigator Anchors -->
@@ -31,7 +31,9 @@
       <!-- Multilingual Help Articles Container -->
       <section class="help-content-scroll" aria-label="Help Documentation Content">
 
-        <!-- English Documentation -->
+        <!-- ================================================================= -->
+        <!-- 1. ENGLISH DOCUMENTATION                                          -->
+        <!-- ================================================================= -->
         <article class="help-card" id="en" lang="en">
           <header class="help-card-header">
             <h2 class="help-card-title">🇬🇧 English — GUI Command Guide</h2>
@@ -45,13 +47,13 @@
               <li><span class="badge-term">+ New Thread</span>: Create a new session thread.</li>
               <li><span class="badge-term">Thread List</span>: Switch between active conversation histories.</li>
               <li><span class="badge-term">🗑️ Delete</span>: Permanently delete current conversation thread or clear default chat history.</li>
-              <li><span class="badge-term">📊 Stats</span>: View message counts, segment allocations, and total byte usage.</li>
+              <li><span class="badge-term">📊 Stats</span>: View Session Engine snapshot metrics (Total message count, segment allocations, total byte size).</li>
               <li><span class="badge-term">🔒 Vault</span>: Open OpenSSL master key manager dialog.</li>
               <li><span class="badge-term">⚙️ Settings</span>: Open runtime parameter configuration modal.</li>
-              <li><span class="badge-term">🛑 Stop (Server)</span>: Cleanly shut down and terminate the local WebApp backend server.</li>
+              <li><span class="badge-term">🛑 Stop (Server)</span>: Cleanly shut down and terminate the local WebApp backend server instance.</li>
             </ul>
 
-            <h3 class="section-subtitle">✍️ Input Controls</h3>
+            <h3 class="section-subtitle">✍️ Input Controls &amp; Message Feed</h3>
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Enter user query or instruction.</li>
               <li><span class="badge-term">📎 Attach</span>: Upload context file (mapped to <code>-f</code> flag).</li>
@@ -61,6 +63,7 @@
                 <span class="badge-term">SML Gate</span>:
                 Structured Metadata Layout validator. Forces validation of the AI output schema (requires mandatory <code>LISTEN_SUMMARY</code> and <code>CONVERSATION_OUTCOME</code> blocks). If the model hallucinates or fails the schema, SML Gate blocks execution and flags output as unverified.
               </li>
+              <li><span class="badge-term">⧉ Copy</span>: Copy the entire text of a single message to clipboard with instant visual confirmation (✓).</li>
               <li><span class="badge-term">Send / Stop</span>: Submit query stream or interrupt active SSE job immediately.</li>
             </ul>
 
@@ -70,20 +73,23 @@
               <li><span class="badge-term">Set Default</span>: Persist preferred model for active provider.</li>
               <li><span class="badge-term">🔄 Refresh</span>: Query provider endpoint for live updated model catalogs.</li>
               <li><span class="badge-term">Params</span>: Set System Prompt, Temperature (0.0 - 2.0), and Token Limits.</li>
-              <li><span class="badge-term">Context Strategy</span>: Switch between Message Count Window (N Messages) or Token/Byte Budget Mode.</li>
+              <li><span class="badge-term">Context Strategy</span>: Switch between Message Count Window (N Messages) or Token/Byte Budget Mode (Target Bytes: 8 KB to 128 KB).</li>
               <li><span class="badge-term">Output Sanitization</span>: Strip terminal ANSI escape sequences and non-printable binary streams.</li>
             </ul>
 
             <h3 class="section-subtitle">🔒 OpenSSL Key Vault</h3>
             <p>The Vault securely manages API keys locally using OpenSSL AES-256 encryption on the host filesystem.</p>
             <ul class="help-list">
-              <li><span class="badge-term">Unlock Vault Session</span>: Authenticate session in memory via Master Password.</li>
-              <li><span class="badge-term">Save Encrypted Key</span>: Store new encrypted provider credentials safely.</li>
+              <li><span class="badge-term">Initialization</span>: Create Master Password (minimum 11 characters) on clean install. Generates an emergency offline Recovery Key.</li>
+              <li><span class="badge-term">Unlock Vault Session</span>: Authenticate session in memory via Master Password (<code>_B4L_RT_CTX</code>).</li>
+              <li><span class="badge-term">Save Encrypted Key</span>: Store encrypted API credentials for builtin, vendor, or custom providers (<code>Custom Provider Name</code>).</li>
             </ul>
           </div>
         </article>
 
-        <!-- Italian Documentation -->
+        <!-- ================================================================= -->
+        <!-- 2. ITALIAN DOCUMENTATION                                          -->
+        <!-- ================================================================= -->
         <article class="help-card" id="it" lang="it">
           <header class="help-card-header">
             <h2 class="help-card-title">🇮🇹 Italiano — Guida ai comandi della GUI</h2>
@@ -97,13 +103,13 @@
               <li><span class="badge-term">+ Nuova Chat</span>: Crea un nuovo thread di sessione.</li>
               <li><span class="badge-term">Elenco thread</span>: Seleziona un thread per cambiare cronologia conversazione.</li>
               <li><span class="badge-term">🗑️ Elimina</span>: Elimina definitivamente la chat corrente o cancella la cronologia della chat predefinita.</li>
-              <li><span class="badge-term">📊 Statistiche</span>: Visualizza conteggio messaggi, segmenti e utilizzo byte.</li>
+              <li><span class="badge-term">📊 Statistiche</span>: Visualizza le metriche del Session Engine (Conteggio messaggi, segmenti allocati, utilizzo totale byte).</li>
               <li><span class="badge-term">🔒 Vault</span>: Apri la finestra modale del gestore chiavi crittografate.</li>
               <li><span class="badge-term">⚙️ Impostazioni</span>: Configura i parametri di esecuzione a runtime.</li>
               <li><span class="badge-term">🛑 Arresta (Server)</span>: Arresta in modo sicuro e chiudi l'istanza del server backend locale.</li>
             </ul>
 
-            <h3 class="section-subtitle">✍️ Controlli di input</h3>
+            <h3 class="section-subtitle">✍️ Controlli di input e messaggi</h3>
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Inserisci la query o l'istruzione per il modello.</li>
               <li><span class="badge-term">📎 Allega</span>: Carica un file di contesto (flag <code>-f</code>).</li>
@@ -113,6 +119,7 @@
                 <span class="badge-term">SML Gate</span>:
                 (Structured Metadata Layout) Verifica che la risposta dell'IA rispetti lo schema obbligatorio (blocchi <code>LISTEN_SUMMARY</code> e <code>CONVERSATION_OUTCOME</code>). In caso di allucinazione o schema incompleto, SML Gate blocca l'output non conforme.
               </li>
+              <li><span class="badge-term">⧉ Copia</span>: Copia l'intero testo del singolo messaggio negli appunti con conferma visiva immediata (✓).</li>
               <li><span class="badge-term">Invia / Interrompi</span>: Avvia lo streaming o cancella immediatamente il job SSE in corso.</li>
             </ul>
 
@@ -122,40 +129,43 @@
               <li><span class="badge-term">Imposta predefinito</span>: Memorizza il modello di default per il provider selezionato.</li>
               <li><span class="badge-term">🔄 Aggiorna</span>: Interroga l'API remota per scaricare l'elenco modelli aggiornato.</li>
               <li><span class="badge-term">Parametri</span>: Regola Prompt di sistema, Temperatura (0.0 - 2.0) e Token massimi.</li>
-              <li><span class="badge-term">Strategia contesto</span>: Alterna tra conteggio messaggi (N) o budget byte target.</li>
+              <li><span class="badge-term">Strategia contesto</span>: Alterna tra conteggio messaggi (N) o budget token/byte target (8 KB - 128 KB).</li>
               <li><span class="badge-term">Sanificazione output</span>: Rimuove sequenze ANSI e residui binari dal log.</li>
             </ul>
 
             <h3 class="section-subtitle">🔒 Vault chiavi OpenSSL</h3>
             <p>Il modulo Vault cifra le chiavi API direttamente sul filesystem locale tramite cifratura AES-256.</p>
             <ul class="help-list">
-              <li><span class="badge-term">Sblocca sessione Vault</span>: Autentica la sessione attiva con la master password.</li>
-              <li><span class="badge-term">Salva chiave crittografata</span>: Memorizza nuove credenziali cifrate per ciascun provider.</li>
+              <li><span class="badge-term">Inizializzazione</span>: Creazione Master Password (minimo 11 caratteri) su installazione pulita con generazione chiave di recupero offline.</li>
+              <li><span class="badge-term">Sblocca sessione Vault</span>: Autentica la sessione attiva in memoria tramite Master Password (<code>_B4L_RT_CTX</code>).</li>
+              <li><span class="badge-term">Salva chiave crittografata</span>: Memorizza credenziali cifrate per provider ufficiali o personalizzati (<code>Nome provider personalizzato</code>).</li>
             </ul>
           </div>
         </article>
 
-        <!-- Spanish Documentation -->
+        <!-- ================================================================= -->
+        <!-- 3. SPANISH DOCUMENTATION                                          -->
+        <!-- ================================================================= -->
         <article class="help-card" id="es" lang="es">
           <header class="help-card-header">
             <h2 class="help-card-title">🇪🇸 Español — Guía de comandos de la GUI</h2>
             <a href="#top" class="btn-tool btn-sm" aria-label="Volver arriba">⬆ Arriba</a>
           </header>
           <div class="help-card-body">
-            <p><strong>🚀 Resumen:</strong> Interfaz web local para el script wrapper <code>bash4llm</code>.</p>
+            <p><strong>🚀 Resumen:</strong> Interfaz web local de alta resiliencia para el script wrapper <code>bash4llm</code>.</p>
 
             <h3 class="section-subtitle">💬 Barra lateral e hilos</h3>
             <ul class="help-list">
               <li><span class="badge-term">+ Nuevo chat</span>: Crea un nuevo hilo de sesión.</li>
               <li><span class="badge-term">Lista de hilos</span>: Cambia entre historiales de conversación activos.</li>
               <li><span class="badge-term">🗑️ Eliminar</span>: Elimina permanentemente el chat actual o limpia el historial predeterminado.</li>
-              <li><span class="badge-term">📊 Estadísticas</span>: Visualiza el recuento de mensajes y uso de bytes.</li>
+              <li><span class="badge-term">📊 Estadísticas</span>: Visualiza métricas de la sesión (recuento de mensajes, segmentos asignados, uso total de bytes).</li>
               <li><span class="badge-term">🔒 Vault</span>: Abre el gestor de claves OpenSSL.</li>
               <li><span class="badge-term">⚙️ Configuración</span>: Abre los parámetros de ejecución.</li>
               <li><span class="badge-term">🛑 Detener (Servidor)</span>: Apaga y finaliza de forma segura el servidor local de la WebApp.</li>
             </ul>
 
-            <h3 class="section-subtitle">✍️ Controles de entrada</h3>
+            <h3 class="section-subtitle">✍️ Controles de entrada y mensajes</h3>
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Introduce la consulta o instrucción.</li>
               <li><span class="badge-term">📎 Adjuntar</span>: Sube un archivo de contexto (opción <code>-f</code>).</li>
@@ -165,6 +175,7 @@
                 <span class="badge-term">SML Gate</span>:
                 Valida el esquema Structured Metadata Layout (bloques <code>LISTEN_SUMMARY</code> y <code>CONVERSATION_OUTCOME</code>).
               </li>
+              <li><span class="badge-term">⧉ Copiar</span>: Copia el texto completo de un mensaje individual al portapapeles con confirmación visual (✓).</li>
               <li><span class="badge-term">Enviar / Detener</span>: Envía la petición o cancela la transmisión SSE activa.</li>
             </ul>
 
@@ -172,71 +183,101 @@
             <ul class="help-list">
               <li><span class="badge-term">Proveedor / Modelo</span>: Configura el proveedor y modelo activo.</li>
               <li><span class="badge-term">Establecer predeterminado</span>: Guarda el modelo por defecto.</li>
-              <li><span class="badge-term">🔄</span>: Actualiza la lista de modelos remotos.</li>
-              <li><span class="badge-term">Sanitización</span>: Elimina códigos ANSI y binarios.</li>
+              <li><span class="badge-term">🔄 Actualizar</span>: Actualiza la lista de modelos remotos.</li>
+              <li><span class="badge-term">Parámetros</span>: Ajusta Prompt del sistema, Temperatura (0.0 - 2.0) y Tokens máximos.</li>
+              <li><span class="badge-term">Estrategia de contexto</span>: Alterna entre recuento de mensajes (N) o presupuesto de tokens/bytes (8 KB - 128 KB).</li>
+              <li><span class="badge-term">Sanitización</span>: Elimina códigos ANSI y residuos binarios.</li>
             </ul>
 
             <h3 class="section-subtitle">🔒 Vault OpenSSL</h3>
             <p>Almacenamiento seguro cifrado localmente mediante AES-256.</p>
+            <ul class="help-list">
+              <li><span class="badge-term">Inicialización</span>: Crear contraseña maestra (mínimo 11 caracteres) en instalación limpia con clave de recuperación offline.</li>
+              <li><span class="badge-term">Desbloquear sesión</span>: Autentica la sesión activa en memoria (<code>_B4L_RT_CTX</code>).</li>
+              <li><span class="badge-term">Guardar clave cifrada</span>: Guarda claves API para proveedores estándar o personalizados (<code>Nombre de proveedor personalizado</code>).</li>
+            </ul>
           </div>
         </article>
 
-        <!-- French Documentation -->
+        <!-- ================================================================= -->
+        <!-- 4. FRENCH DOCUMENTATION                                           -->
+        <!-- ================================================================= -->
         <article class="help-card" id="fr" lang="fr">
           <header class="help-card-header">
             <h2 class="help-card-title">🇫🇷 Français — Guide des commandes de la GUI</h2>
             <a href="#top" class="btn-tool btn-sm" aria-label="Haut de page">⬆ Haut</a>
           </header>
           <div class="help-card-body">
-            <p><strong>🚀 Aperçu:</strong> Interface web locale pour le script wrapper <code>bash4llm</code>.</p>
+            <p><strong>🚀 Aperçu:</strong> Interface web locale haute résilience pour le script wrapper <code>bash4llm</code>.</p>
 
             <h3 class="section-subtitle">💬 Barre latérale et threads</h3>
             <ul class="help-list">
               <li><span class="badge-term">+ Nouveau chat</span>: Créer un nouveau fil de conversation.</li>
-              <li><span class="badge-term">Liste des threads</span>: Naviguer dans l'historique.</li>
+              <li><span class="badge-term">Liste des threads</span>: Naviguer dans l'historique des conversations.</li>
               <li><span class="badge-term">🗑️ Supprimer</span>: Supprimer définitivement le fil actuel ou effacer l'historique par défaut.</li>
-              <li><span class="badge-term">📊 Statistiques</span>: Afficher les métriques de la session.</li>
+              <li><span class="badge-term">📊 Statistiques</span>: Afficher les métriques de la session (nombre de messages, segments alloués, taille totale en octets).</li>
               <li><span class="badge-term">🔒 Vault</span>: Ouvrir le coffre-fort de clés OpenSSL.</li>
-              <li><span class="badge-term">⚙️ Paramètres</span>: Régler les hyperparamètres.</li>
+              <li><span class="badge-term">⚙️ Paramètres</span>: Régler les paramètres d'exécution.</li>
               <li><span class="badge-term">🛑 Arrêter (Serveur)</span>: Arrêter proprement le serveur d'application web local.</li>
             </ul>
 
-            <h3 class="section-subtitle">✍️ Contrôles de saisie</h3>
+            <h3 class="section-subtitle">✍️ Contrôles de saisie et messages</h3>
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Saisir votre instruction.</li>
               <li><span class="badge-term">📎 Joindre</span>: Téléverser un fichier de contexte (option <code>-f</code>).</li>
-              <li><span class="badge-term">Templates</span>: Sélectionner un modèle de prompt.</li>
+              <li><span class="badge-term">Templates</span>: Sélectionner un modèle de prompt structuré.</li>
               <li><span class="badge-term">Flux (Stream)</span>: Activer ou désactiver le streaming de jetons en temps réel.</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
                 Validation stricte du Structured Metadata Layout (blocs <code>LISTEN_SUMMARY</code> et <code>CONVERSATION_OUTCOME</code>).
               </li>
-              <li><span class="badge-term">Envoyer / Arrêter</span>: Lancer le streaming ou annuler le traitement.</li>
+              <li><span class="badge-term">⧉ Copier</span>: Copier l'intégralité du message dans le presse-papiers avec confirmation visuelle (✓).</li>
+              <li><span class="badge-term">Envoyer / Arrêter</span>: Lancer le streaming ou annuler le traitement SSE immédiatement.</li>
+            </ul>
+
+            <h3 class="section-subtitle">⚙️ Paramètres d'exécution</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Fournisseur / Modèle</span>: Sélectionner le backend LLM et le modèle actif.</li>
+              <li><span class="badge-term">Définir par défaut</span>: Mémoriser le modèle par défaut pour le fournisseur.</li>
+              <li><span class="badge-term">🔄 Actualiser</span>: Interroger l'API pour mettre à jour la liste des modèles.</li>
+              <li><span class="badge-term">Paramètres</span>: Régler le Prompt système, la Température (0.0 - 2.0) et les Tokens max.</li>
+              <li><span class="badge-term">Stratégie de contexte</span>: Alterner entre nombre de messages (N) ou budget tokens/octets (8 Ko - 128 Ko).</li>
+              <li><span class="badge-term">Assainissement</span>: Supprimer les séquences ANSI et les résidus binaires.</li>
+            </ul>
+
+            <h3 class="section-subtitle">🔒 Vault de clés OpenSSL</h3>
+            <p>Stockage sécurisé chiffré localement via OpenSSL AES-256.</p>
+            <ul class="help-list">
+              <li><span class="badge-term">Initialisation</span>: Créer un mot de passe maître (minimum 11 caractères) avec clé de récupération hors ligne.</li>
+              <li><span class="badge-term">Déverrouiller</span>: Authentifier la session active en mémoire (<code>_B4L_RT_CTX</code>).</li>
+              <li><span class="badge-term">Enregistrer la clé</span>: Sauvegarder les clés API pour les fournisseurs standards ou personnalisés (<code>Nom du fournisseur personnalisé</code>).</li>
             </ul>
           </div>
         </article>
 
-        <!-- German Documentation -->
+        <!-- ================================================================= -->
+        <!-- 5. GERMAN DOCUMENTATION                                           -->
+        <!-- ================================================================= -->
         <article class="help-card" id="de" lang="de">
           <header class="help-card-header">
             <h2 class="help-card-title">🇩🇪 Deutsch — GUI-Befehlsanleitung</h2>
             <a href="#top" class="btn-tool btn-sm" aria-label="Nach oben">⬆ Nach oben</a>
           </header>
           <div class="help-card-body">
-            <p><strong>🚀 Übersicht:</strong> Lokale Web-Benutzeroberfläche für das <code>bash4llm</code>-Wrapper-Skript.</p>
+            <p><strong>🚀 Übersicht:</strong> Lokale, hochverfügbare Web-Benutzeroberfläche für das <code>bash4llm</code>-Wrapper-Skript.</p>
 
             <h3 class="section-subtitle">💬 Seitenleiste &amp; Threads</h3>
             <ul class="help-list">
               <li><span class="badge-term">+ Neuer Chat</span>: Neuen Chat-Thread initialisieren.</li>
               <li><span class="badge-term">Thread-Liste</span>: Zwischen Unterhaltungen wechseln.</li>
               <li><span class="badge-term">🗑️ Löschen</span>: Den aktuellen Thread dauerhaft löschen oder den Standard-Chat leeren.</li>
-              <li><span class="badge-term">📊 Statistiken</span>: Sitzungsmetriken und Bytes abrufen.</li>
+              <li><span class="badge-term">📊 Statistiken</span>: Sitzungsmetriken abrufen (Nachrichtenanzahl, Segmente, Byte-Größe).</li>
               <li><span class="badge-term">🔒 Vault</span>: OpenSSL-Schlüssel-Vault öffnen.</li>
               <li><span class="badge-term">⚙️ Einstellungen</span>: Laufzeitkonfiguration anpassen.</li>
               <li><span class="badge-term">🛑 Stoppen (Server)</span>: Den lokalen WebApp-Serverprozess sicher herunterfahren.</li>
             </ul>
 
-            <h3 class="section-subtitle">✍️ Eingabesteuerung</h3>
+            <h3 class="section-subtitle">✍️ Eingabesteuerung und Nachrichten</h3>
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Benutzeranfrage eingeben.</li>
               <li><span class="badge-term">📎 Anhängen</span>: Kontextdatei anhängen (Flag <code>-f</code>).</li>
@@ -246,7 +287,26 @@
                 <span class="badge-term">SML Gate</span>:
                 Erzwingt Structured Metadata Layout Schemaprüfung (<code>LISTEN_SUMMARY</code> und <code>CONVERSATION_OUTCOME</code>).
               </li>
+              <li><span class="badge-term">⧉ Kopieren</span>: Kopiert den gesamten Text einer einzelnen Nachricht mit visueller Bestätigung (✓) in die Zwischenablage.</li>
               <li><span class="badge-term">Senden / Stopp</span>: Stream ausführen oder sofort abbrechen.</li>
+            </ul>
+
+            <h3 class="section-subtitle">⚙️ Laufzeit-Einstellungen</h3>
+            <ul class="help-list">
+              <li><span class="badge-term">Anbieter / Modell</span>: Backend und aktives Modell auswählen.</li>
+              <li><span class="badge-term">Als Standard festlegen</span>: Standardmodell für den Anbieter speichern.</li>
+              <li><span class="badge-term">🔄 Aktualisieren</span>: Modellkatalog vom Anbieter aktualisieren.</li>
+              <li><span class="badge-term">Parameter</span>: System-Prompt, Temperatur (0.0 - 2.0) und Max. Tokens anpassen.</li>
+              <li><span class="badge-term">Kontextstrategie</span>: Wechsel zwischen Nachrichtenanzahl (N) oder Token/Byte-Budget-Modus (8 KB - 128 KB).</li>
+              <li><span class="badge-term">Ausgabebereinigung</span>: Entfernt ANSI-Codes und Binärzeichen.</li>
+            </ul>
+
+            <h3 class="section-subtitle">🔒 OpenSSL-Schlüssel-Vault</h3>
+            <p>Lokale, sichere AES-256-Verschlüsselung auf dem Dateisystem.</p>
+            <ul class="help-list">
+              <li><span class="badge-term">Initialisierung</span>: Master-Passwort erstellen (mindestens 11 Zeichen) mit Offline-Wiederherstellungsschlüssel.</li>
+              <li><span class="badge-term">Vault entsperren</span>: Aktive Sitzung im Arbeitsspeicher authentifizieren (<code>_B4L_RT_CTX</code>).</li>
+              <li><span class="badge-term">Schlüssel speichern</span>: API-Schlüssel für Standard- oder benutzerdefinierte Anbieter sichern (<code>Benutzerdefinierter Anbietername</code>).</li>
             </ul>
           </div>
         </article>
@@ -254,8 +314,5 @@
       </section>
     </main>
   </div>
-
-  <!-- Unified ES6 Client Script -->
-  <script src="/static/app.js" type="module"></script>
 </body>
 </html>
