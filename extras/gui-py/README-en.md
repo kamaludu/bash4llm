@@ -26,7 +26,7 @@ The **`gui-py`** module is an optional, lightweight, high-performance web user i
 
 3. ***Zero Credential Mirroring***:
    * Python does not store, extract, or manipulate LLM credentials or the Vault master password in plaintext on disk.
-   * Provider authentication is delegated entirely to the core `bash4llm` via isolated process environment variables or through the Bash script's native Vault mechanism (`_B4L_RT_CTX`).
+   * Provider authentication is delegated entirely to the core `bash4llm` via isolated process environment variables or through the Bash script's native in-RAM Vault mechanism (`_B4L_RT_CTX`).
 
 4. ***No Double Locking***:
    * The Python Adapter does not apply mutexes or synchronization locks on domain files. If two or more requests target the same `thread_id` simultaneously, Python allocates and runs their respective asynchronous subprocesses, delegating transactional filesystem arbitration to the native atomic locking mechanism of `bash4llm` (`acquire_thread_lock`).
@@ -136,31 +136,31 @@ The core script verifies module cryptographic integrity via `manifest.sha256` an
   ```bash
   ./bash4llm --gui
   ```
-  The wrapper script sanitizes the environment, validates the presence of Python >= 3.10 and required modules, acquires the kernel Advisory Lock on `gui_adapter.lock` via `fcntl.flock`, allocates the first available loopback port (range `19970-20069`), and automatically opens the authentication URL in the default browser via `webbrowser.open()`.
+  The wrapper script sanitizes the environment, validates the presence of Python >= 3.10 and required modules, acquires the kernel Advisory Lock on `gui_adapter.lock` via `fcntl.flock`, and allocates the first available loopback port (starting from `19970`). A dedicated background worker (`_launch_browser_async`) performs a TCP socket readiness check and executes the native platform dispatcher (`xdg-open` on Linux or `open` on macOS) with POSIX session isolation. Automatic browser launch can be disabled by setting `BASH4LLM_GUI_NO_BROWSER=1`.
 
-* **Windows (Git Bash / MSYS2)**:
+* **Windows (Git Bash / MSYS2 / WSL)**:
   ```bash
   ./bash4llm --gui
   ```
-  The script detects the Windows environment, handles the Advisory Lock via `msvcrt.locking` with 1-byte initialization, and validates that the isolated runtime temporary directory is writable.
+  In WSL environments, `wslview` or PowerShell interop (`Start-Process`) is utilized. Under native Windows, the lock is managed via `msvcrt.locking` with 1-byte initialization and browser launching is delegated to `cygstart` or PowerShell.
 
 * **Android (Termux)**:
   ```bash
   ./bash4llm --gui
   ```
-  The server automatically detects the Termux environment (`IS_TERMUX`) and disables automatic browser launching (`webbrowser.open`), printing the full URL with the One-Time Token to the terminal so the user can copy it or open it with their preferred browser.
+  Detects the Termux environment (`IS_TERMUX` / `BASH4LLM_PLAT_ANDROID`) and executes `termux-open-url` to dispatch the Android browser Intent. It concurrently prints the full authentication URL to the terminal as a manual fallback.
 
 ---
 
 ### 🌐 GUI WebApp User Manual
 
-1. **Initial Authentication (One-Time Token)**:
+1. **Initial Authentication (One-Time Token & Direct Handshake)**:
    At startup, a cryptographic 64-hex character `one_time_token` is generated. The browser is directed to:
    `http://127.0.0.1:19970/auth?one_time_token=...`
-   The token is consumed atomically in RAM upon first access, and a secure `HttpOnly` session cookie is issued with the `SameSite=Strict` flag.
+   The token is consumed atomically in RAM upon first access, and the server directly renders `index.html` (`200 OK`) while setting a secure `HttpOnly` host-only session cookie with the `SameSite=Strict` flag. Upon initial load, the client JavaScript runs `window.history.replaceState({}, document.title, "/")` to clean the URL bar.
 
 2. **Thread Navigation (Left Sidebar)**:
-   * **+ New Thread**: Initializes a new conversation context.
+   * **+ New Thread**: Initializes a new multi-turn conversation context.
    * **Thread List**: Displays active conversations. Clicking on a thread loads the message history in read-only mode from `.ndjson` files.
    * **🗑️ Delete**: Permanently deletes the selected thread or clears default chat history.
    * **Rename**: Allows renaming the thread title (updated via `PATCH /api/threads/{id}`).
@@ -184,7 +184,7 @@ The core script verifies module cryptographic integrity via `manifest.sha256` an
    Enforces mandatory semantic validation of the Structured Metadata Layout schema (presence of `LISTEN_SUMMARY` and `CONVERSATION_OUTCOME` blocks). If the model fails the schema, the response is flagged as unverified.
 
 8. **Output Sanitization (Sanitize)**:
-   Automatically strips ANSI terminal color escape sequences and non-printable control characters from the response.
+   Automatically strips ANSI terminal color escape sequences and non-printable control characters from the response stream.
 
 9. **OpenSSL Key Vault Management (🔒 Vault)**:
    Opens the modal dialog to manage API keys encrypted with local AES-256 encryption:
@@ -209,17 +209,17 @@ The core script verifies module cryptographic integrity via `manifest.sha256` an
 extras/gui-py/
 ├── gui-py.sh         # Launcher CLI Wrapper (POSIX Bash 4.0+, 0700)
 ├── main.py           # Entrypoint Adapter Python 3.10+ (FastAPI + Uvicorn)
-├── config.py         # Dataclass, Runtime Settings, Temp Validation
-├── models.py         # Dataclass Job, State Enum, Termination Cause
-├── security.py       # Host/Origin Validation, Cookies, CSRF, Single-Instance Lock
-├── ipc.py            # Subprocess Executor, Pipe I/O, UTF-8 Decoder, SSE Dispatcher
+├── config.py         # Dataclass, Runtime Settings, Canonical Paths
+├── models.py         # Dataclass Job, State Enum, Pydantic Schemas
+├── security.py       # Host/Origin Check, Tempdir Validation, Single-Instance Lock
+├── ipc.py            # Subprocess Pipe Executor, UTF-8 Decoder, SSE Dispatcher
 ├── static/
 │   ├── index.html    # Progressive Enhancement SPA HTML5
 │   ├── help.html     # Integrated multilingual command guide and documentation
 │   ├── error.html    # Minimal HTTP 401/403/500 error template
-│   ├── style.css     # Responsive zero-framework UI design
-│   └── app.js        # SSE Streamer, CSRF Fetch, Form Enhancements
-└── langs/            # Multilingual translations
+│   ├── style.css     # Responsive zero-framework UI design (WCAG AAA)
+│   └── app.js        # SSE Streamer, CSRF Fetch, Client State Machine
+└── langs/            # Multilingual translations matrix
     ├── de.json       # German
     ├── en.json       # English
     ├── es.json       # Spanish
@@ -258,7 +258,7 @@ Each generation request submitted to the WebApp is encapsulated in a `Job` objec
      │              │                            │
      ▼             ▼                            ▼
 ┌───────────┐ ┌──────────┐         ┌──────────────────┐
-│  COMPLETED  │ │  FAILED.   │         │  CANCEL_REQUESTED   │
+│  COMPLETED  │ │  FAILED    │         │  CANCEL_REQUESTED   │
 └───────────┘ └──────────┘         └────────┬─────────┘
 (Exit Code 0)   (Exit Code != 0                   │
                  or JSON error)       ┌─────────┴─────────┐
@@ -288,14 +288,16 @@ The Adapter handles the concurrent presence of multiple browser tabs or clients 
 #### Formal Definition of *Active Client*
 A client is considered **Active** if at least one of the following conditions is met:
 1. It has an open, listening HTTP Server-Sent Events stream (`/api/stream/{job_id}`).
-2. It performed an HTTP interaction or sent a Heartbeat signal (`POST /api/heartbeat`) within the last **60.0 seconds** (`sessions[session_id] >= now - 60.0`).
+2. It performed an HTTP interaction or sent a Heartbeat signal (`POST /api/heartbeat`) within the activity window of **1800.0 seconds** (`sessions[session_id] >= now - 1800.0`).
 
 #### Automatic Graceful Shutdown Algorithm
 To prevent the Python server from running indefinitely in the background when the browser is closed, the Adapter runs a permanent asynchronous background task (`graceful_shutdown_checker`).
 
 The server automatically terminates by sending a `SIGINT` signal to itself if and only if the following logical-temporal equation is satisfied:
 
-$$\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 120.0\text{s}$$
+```math
+\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 1800.0\text{s}
+```
 
 #### RAM Memory Garbage Collection
 The `prune_expired_memory_records()` function runs periodically to prevent unbounded RAM growth:
@@ -306,7 +308,7 @@ The `prune_expired_memory_records()` function runs periodically to prevent unbou
 
 ### Subprocess Management and Cross-Platform Cleanup
 
-Job cancellation (`cancel_job_process`) is a deterministic process termination and **not a transactional rollback**. If the core already committed an NDJSON line before signal reception, that line remains persisted.
+Job cancellation (`cancel_job_process`) is a deterministic process termination and **not a transactional rollback**. If the core already committed an NDJSON line before signal reception, that line remains persisted in the domain.
 
 #### Process Tree Termination Algorithm
 1. **POSIX Platforms (Linux, macOS, WSL, Termux)**:
@@ -407,7 +409,7 @@ To prevent subprocess hangs caused by operating system pipe buffer saturation (O
 To serve conversation message history without subprocess overhead, the Adapter performs a **Read-Only** scan:
 
 1. **Syntax Validation**: Validates the conversation ID format via regex `^[A-Za-z0-9._-]{1,128}$`.
-2. **Canonical Directory Scan**: Searches both `history/sessions/` and `history/threads/`.
+2. **Canonical Directory Scan**: Searches concurrently across `history/sessions/` and `history/threads/`.
 3. **File Resolution**: Looks for both the SHA-256 digest (`{sha256_hex}.ndjson`) and plaintext ID (`{thread_id}.ndjson`), including segmented files (`{id}.*.ndjson`).
 4. If no matching files exist, the Adapter returns an empty array `[]`.
 
@@ -429,7 +431,7 @@ To serve conversation message history without subprocess overhead, the Adapter p
         │        ├── Missing/Invalid on GET / or GET /index.html ──> Return HTTP 401 (error.html)
         │        └── Missing/Invalid on Mutating APIs ──────────> Return HTTP 401 (JSON)
         │
-        ├── 4. Anti-CSRF Token Header Check (X-CSRF-Token for POST, PATCH, DELETE)
+        ├── 4. Anti-CSRF Token Header Check (X-CSRF-Token for POST, PUT, PATCH, DELETE)
         │
         ├── 5. Job Ownership Check (Ownership bound to owner_session_id)
         │
@@ -450,9 +452,9 @@ To serve conversation message history without subprocess overhead, the Adapter p
 * **Cookies & Anti-CSRF**:
   * Session cookie: `Set-Cookie: session_id=...; HttpOnly; SameSite=Strict; Path=/`.
   * CSRF Token: Generated in RAM (`secrets.token_hex(32)`), returned in the `/api/status` payload, and validated in constant time (`secrets.compare_digest`) on the `X-CSRF-Token` header for all mutating operations (`POST`, `PUT`, `PATCH`, `DELETE`).
-* **One-Time Bootstrap Token**:
+* **One-Time Bootstrap Token (Direct Handshake)**:
   * At startup, `active_one_time_token = secrets.token_hex(32)` is generated.
-  * The endpoint `/auth?one_time_token=XYZ` validates the token, consumes it atomically (setting it to `None` in RAM to prevent reuse), issues the session cookie, and executes an `HTTP 302 Redirect` to root `/`.
+  * The endpoint `/auth?one_time_token=XYZ` validates the token, consumes it atomically in RAM (`active_one_time_token = None`), assigns the session cookie, and directly returns `index.html` with status `200 OK`, eliminating any cookie-drop risks associated with browser redirects.
 
 ---
 
@@ -462,7 +464,7 @@ To serve conversation message history without subprocess overhead, the Adapter p
 
 | Endpoint | Method | Mandatory Headers | Input Body / Query | Status & Response Payload | Description & Mapped Core Operation |
 | :--- | :---: | :--- | :--- | :--- | :--- |
-| `/auth` | `GET` | - | `?one_time_token=...` | `302 Redirect /` | Consumes one-time token, sets `session_id` Cookie. |
+| `/auth` | `GET` | - | `?one_time_token=...` | `200 OK` (HTML)<br>`Set-Cookie: session_id=...` | Consumes one-time token, sets `session_id` Cookie, and renders `index.html`. |
 | `/` / `/index.html`| `GET`| Cookie Session | - | `200 OK` (HTML) | Serves the Single Page Application (`static/index.html`). |
 | `/api/status` | `GET` | Cookie Session | - | `200 OK`<br>`{"server":"READY","active_clients":1,"active_jobs":0,"csrf_token":"...","vault_unlocked":bool}` | Updates `last_seen`, returns runtime state, CSRF token, and Vault status. |
 | `/api/heartbeat`| `POST`| Cookie Session | - | `200 OK`<br>`{"status":"ok"}` | Updates client presence timestamp to prevent idle shutdown. |
@@ -501,8 +503,8 @@ The `HTTP 202 Accepted` response returned by the `POST /api/chat` endpoint indic
 | :--- | :--- | :--- | :--- | :--- |
 | **Linux (Generic)** | Bash >= 4.0 | Python 3.10+ | `fcntl.flock` \| `os.kill(pid, SIGTERM)` | Full native support. UID validation and `0700` permissions on `BASH4LLM_TMPDIR`. |
 | **macOS (Darwin)** | Bash >= 4.0 | Python 3.10+ | `fcntl.flock` \| `os.kill(pid, SIGTERM)` | Native BSD utilities. Zero dependencies on non-standard external binaries. |
-| **WSL (Microsoft)** | Bash >= 4.0 | Python 3.10+ | `fcntl.flock` \| `os.kill(pid, SIGTERM)` | Equivalent behavior to native Linux. |
-| **Android (Termux)** | Termux Bash (4.0+) | Python 3.10+ | `fcntl.flock` \| `os.kill(pid, SIGTERM)` | Auto-browser disabled. URL printed to console. JS auto-reconnect on Doze Mode. |
+| **WSL (Microsoft)** | Bash >= 4.0 | Python 3.10+ | `fcntl.flock` \| `os.kill(pid, SIGTERM)` | Equivalent behavior to native Linux. Interop launcher with `wslview`/PowerShell. |
+| **Android (Termux)** | Termux Bash (4.0+) | Python 3.10+ | `fcntl.flock` \| `os.kill(pid, SIGTERM)` | Browser launch with `termux-open-url`. URL printed to console. JS auto-reconnect on Doze Mode. |
 | **Windows (Git Bash / MSYS2)**| Bash >= 4.0 (Git Bash) | Python Windows | `msvcrt.locking` \| `taskkill /F /T /PID` | 1-byte lock file initialization. Windows path normalization. |
 
 ### Mobile Resilience & Termux (Android Doze Mode)

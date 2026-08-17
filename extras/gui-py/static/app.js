@@ -112,6 +112,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  // C. AUTH URL CLEANUP (Bootstrap UX enhancement without triggering navigation/reload)
+  if (window.location.pathname === "/auth") {
+    window.history.replaceState({}, document.title, "/");
+  }
+
   // Restore saved active thread from LocalStorage if available
   const savedThread = localStorage.getItem("bash4llm_current_thread");
   if (savedThread) {
@@ -119,7 +124,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     knownThreads.add(currentThreadId);
   }
 
-  // C. Interactive Workspace Initialization
+  // D. Interactive Workspace Initialization
   setupEventListeners();
   loadSettingsFromLocalStorage();
 

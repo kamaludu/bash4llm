@@ -16,12 +16,13 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
-import webbrowser
 from typing import Dict, Optional, Tuple, List, Any
 
 import uvicorn
@@ -50,7 +51,7 @@ from ipc import (
     THREAD_ID_REGEX
 )
 
-# Termux / Android Environment Auto-Detection
+# Termux / Android Environment Detection
 IS_TERMUX = "TERMUX_VERSION" in os.environ or os.path.exists("/data/data/com.termux")
 
 # Runtime Memory State
@@ -285,6 +286,21 @@ def render_error_page(status_code: int, title: str, message: str) -> HTMLRespons
     )
 
 
+def _render_index_html() -> HTMLResponse:
+    """
+    Centralized helper to render index.html with HTTP 200 OK.
+    Guarantees visual and functional parity between / and /auth endpoints.
+    """
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read(), status_code=status.HTTP_200_OK)
+        except Exception:
+            pass
+    return HTMLResponse(content="<h1>bash4llm WebApp</h1>", status_code=status.HTTP_200_OK)
+
+
 def find_available_loopback_port(start_port: int = 19970, max_attempts: int = 100) -> int:
     for port in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -349,15 +365,21 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
 @app.get("/auth")
 async def authenticate(one_time_token: str, request: Request):
+    """
+    Validates single-use authentication token and directly establishes the authenticated GUI session.
+    Eliminates intermediate 302 redirects to prevent browser cookie drops on external invocations.
+    Executes synchronous in-memory token consumption without yields.
+    """
     global active_one_time_token
-    if not active_one_time_token or not secrets.compare_digest(one_time_token, active_one_time_token):
+    token_to_verify = active_one_time_token
+    active_one_time_token = None  # Consume token immediately in memory before verification
+
+    if not token_to_verify or not secrets.compare_digest(one_time_token, token_to_verify):
         return render_error_page(
             status_code=status.HTTP_401_UNAUTHORIZED,
             title="Invalid or Spent Token",
             message="The one-time authentication token provided in the URL is invalid, already spent, or expired."
         )
-
-    active_one_time_token = None
     
     new_session_id = secrets.token_hex(32)
     sessions[new_session_id] = time.time()
@@ -365,7 +387,7 @@ async def authenticate(one_time_token: str, request: Request):
     global server_has_seen_first_client
     server_has_seen_first_client = True
 
-    response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    response = _render_index_html()
     response.set_cookie(
         key="session_id",
         value=new_session_id,
@@ -379,11 +401,7 @@ async def authenticate(one_time_token: str, request: Request):
 @app.get("/")
 @app.get("/index.html")
 async def root(session_id: str = Depends(get_current_session)):
-    index_path = os.path.join(static_dir, "index.html")
-    if os.path.exists(index_path):
-        with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return HTMLResponse(content="<h1>bash4llm WebApp</h1>")
+    return _render_index_html()
 
 
 @app.get("/api/status")
@@ -929,13 +947,103 @@ async def stream_job_tokens(job_id: str, request: Request, session_id: str = Dep
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-def _launch_browser_async(url: str):
-    time.sleep(1.2)
-    if not IS_TERMUX and not os.environ.get("BASH4LLM_GUI_NO_BROWSER"):
+def _launch_browser_async(url: str, port: int) -> None:
+    """
+    Opportunistic browser launcher worker.
+    Executes a deterministic readiness probe on the loopback socket before dispatching
+    a non-blocking platform-specific launcher. Never blocks server execution or logs credentials.
+    """
+    # 1. Respect explicit configuration opt-out
+    no_browser_env = os.environ.get("BASH4LLM_GUI_NO_BROWSER", "").strip().lower()
+    if no_browser_env in ("1", "true", "yes"):
+        return
+
+    # 2. Opportunistic socket readiness probe with monotonic clock and clamped timeout (max 3.0s)
+    deadline = time.monotonic() + 3.0
+    is_ready = False
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            webbrowser.open(url)
-        except Exception:
+            with socket.create_connection(("127.0.0.1", port), timeout=min(0.1, remaining)):
+                is_ready = True
+                break
+        except OSError:
+            time.sleep(0.05)
+
+    if not is_ready:
+        return
+
+    # 3. Explicit deterministic platform dispatcher
+    cmd: Optional[List[str]] = None
+
+    is_android = os.environ.get("BASH4LLM_PLAT_ANDROID") == "1" or IS_TERMUX
+    is_wsl = os.environ.get("BASH4LLM_PLAT_WSL") == "1"
+    if not is_wsl and sys.platform.startswith("linux"):
+        try:
+            if os.path.exists("/proc/version"):
+                with open("/proc/version", "r", encoding="utf-8") as f:
+                    if "microsoft" in f.read().lower():
+                        is_wsl = True
+        except OSError:
             pass
+
+    is_macos = os.environ.get("BASH4LLM_PLAT_MACOS") == "1" or sys.platform == "darwin"
+    is_cygwin = os.environ.get("BASH4LLM_PLAT_CYGWIN") == "1" or sys.platform == "cygwin"
+    is_bsd = os.environ.get("BASH4LLM_PLAT_BSD") == "1" or "bsd" in sys.platform
+    is_linux = os.environ.get("BASH4LLM_PLAT_LINUX") == "1" or sys.platform.startswith("linux")
+
+    if is_android:
+        bin_path = shutil.which("termux-open-url")
+        if bin_path:
+            cmd = [bin_path, url]
+    elif is_wsl:
+        wslview = shutil.which("wslview")
+        if wslview:
+            cmd = [wslview, url]
+        else:
+            powershell = shutil.which("powershell.exe")
+            if powershell:
+                # Pass URL strictly as positional parameter $args[0] without script interpolation
+                cmd = [powershell, "-NoProfile", "-NonInteractive", "-Command", "& { Start-Process $args[0] }", url]
+    elif is_macos:
+        open_bin = shutil.which("open") or shutil.which("/usr/bin/open")
+        if open_bin:
+            cmd = [open_bin, url]
+    elif is_cygwin:
+        cygstart = shutil.which("cygstart")
+        if cygstart:
+            cmd = [cygstart, url]
+    elif is_linux or is_bsd:
+        # Heuristic check for headless or SSH sessions lacking a local display server
+        is_remote_headless = bool(
+            (os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_CLIENT")) and
+            not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        )
+        if not is_remote_headless:
+            xdg_open = shutil.which("xdg-open")
+            if xdg_open:
+                cmd = [xdg_open, url]
+
+    if not cmd:
+        return
+
+    # 4. Detached process spawn with stream suppression and POSIX session isolation
+    try:
+        popen_kwargs: Dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "close_fds": True,
+        }
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+
+        subprocess.Popen(cmd, **popen_kwargs)
+    except OSError:
+        # Suppress launcher failure silently without leaking URL or token to output streams
+        pass
 
 
 if __name__ == "__main__":
@@ -956,5 +1064,5 @@ if __name__ == "__main__":
     print(f" {auth_url}\n")
     print("=" * 40)
     
-    threading.Thread(target=_launch_browser_async, args=(auth_url,), daemon=True).start()
+    threading.Thread(target=_launch_browser_async, args=(auth_url, port), daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
