@@ -295,7 +295,9 @@ To prevent the Python server from running indefinitely in the background when th
 
 The server automatically terminates by sending a `SIGINT` signal to itself if and only if the following logical-temporal equation is satisfied:
 
-$$\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 1800.0\text{s}$$
+```math
+\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 1800.0\text{s}
+```
 
 #### RAM Memory Garbage Collection
 The `prune_expired_memory_records()` function runs periodically to prevent unbounded RAM growth:
