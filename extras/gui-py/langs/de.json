@@ -14,6 +14,8 @@
   "send": "Senden",
   "cancel": "Stopp",
   "delete": "Löschen",
+  "copy": "Kopieren",
+  "copy_message": "Nachricht kopieren",
   "shutdown": "Stoppen",
   "stream_label": "Stream",
   "enable_streaming": "Echtzeit-Streaming-Ausgabe aktivieren",

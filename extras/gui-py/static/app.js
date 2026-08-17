@@ -339,12 +339,42 @@ function renderChatHistory(messages) {
 function appendMessageUI(role, content) {
   const container = $("chat-messages");
   if (!container) return null;
+
   const div = document.createElement("div");
   div.className = `message ${role}`;
-  div.textContent = content;
+
+  const textDiv = document.createElement("div");
+  textDiv.className = "message-text";
+  textDiv.textContent = content;
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "btn-copy-msg";
+  copyBtn.title = t("copy_message", "Copy message");
+  copyBtn.setAttribute("data-i18n-title", "copy_message");
+  copyBtn.textContent = "⧉";
+
+  copyBtn.addEventListener("click", async () => {
+    const textToCopy = textDiv.textContent || "";
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      copyBtn.textContent = "✓";
+      setTimeout(() => {
+        copyBtn.textContent = "⧉";
+      }, 1500);
+    } catch (err) {
+      console.error("Clipboard copy failed", err);
+    }
+  });
+
+  div.appendChild(textDiv);
+  div.appendChild(copyBtn);
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
-  return div;
+
+  // Return textDiv node so streaming updates only the textual body
+  return textDiv;
 }
 
 function populateSelect(id, items, selected = "", defaultOption = "", defaultOptionKey = "") {
@@ -754,11 +784,11 @@ function setupEventListeners() {
         if (detailsEl) {
           if (data.stats) {
             detailsEl.innerHTML = `
-              <strong>Thread ID:</strong> ${data.session_id || currentThreadId}<br>
-              <strong>Total Messages:</strong> ${data.stats.message_count ?? 0}<br>
-              <strong>Segment Files:</strong> ${data.stats.segments ?? 0}<br>
-              <strong>Total Byte Size:</strong> ${((data.stats.total_size_bytes || 0) / 1024).toFixed(2)} KB
-            `;
+<strong>Thread ID:</strong> ${data.session_id || currentThreadId}<br>
+<strong>Total Messages:</strong> ${data.stats.message_count ?? 0}<br>
+<strong>Segment Files:</strong> ${data.stats.segments ?? 0}<br>
+<strong>Total Byte Size:</strong> ${((data.stats.total_size_bytes || 0) / 1024).toFixed(2)} KB
+  `;
           } else if (data.error) {
             detailsEl.textContent = `${t("msg_snapshot_error", "Snapshot Info")}: ${data.error}`;
           } else {

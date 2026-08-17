@@ -207,8 +207,8 @@ async def graceful_shutdown_checker():
     Monitors server lifecycle, triggers idle shutdown and prunes expired RAM objects.
     """
     global grace_started_at, server_has_seen_first_client
-    CLIENT_ACTIVITY_WINDOW = 60.0
-    IDLE_GRACE_PERIOD = 120.0
+    CLIENT_ACTIVITY_WINDOW = 1800.0  # 30 minutes client activity window
+    IDLE_GRACE_PERIOD = 1800.0       # 30 minutes idle grace period before shutdown
 
     while True:
         await asyncio.sleep(2.0)
@@ -390,7 +390,7 @@ async def root(session_id: str = Depends(get_current_session)):
 async def get_status(request: Request, session_id: str = Depends(get_current_session)):
     verify_security_headers(request, active_csrf_token, session_id)
     now = time.time()
-    active_clients = sum(1 for last_seen in sessions.values() if (now - last_seen) <= 60.0)
+    active_clients = sum(1 for last_seen in sessions.values() if (now - last_seen) <= 1800.0)
     active_jobs = sum(1 for job in jobs_registry.values() if job.state in (JobState.RUNNING, JobState.STREAMING))
     
     return {

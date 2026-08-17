@@ -14,6 +14,8 @@
   "send": "Send",
   "cancel": "Stop",
   "delete": "Delete",
+  "copy": "Copy",
+  "copy_message": "Copy message",
   "shutdown": "Stop",
   "stream_label": "Stream",
   "enable_streaming": "Enable Real-Time Streaming Output",

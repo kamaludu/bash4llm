@@ -14,6 +14,8 @@
   "send": "Invia",
   "cancel": "Interrompi",
   "delete": "Elimina",
+  "copy": "Copia",
+  "copy_message": "Copia messaggio",
   "shutdown": "Arresta",
   "stream_label": "Stream",
   "enable_streaming": "Abilita output in streaming in tempo reale",
