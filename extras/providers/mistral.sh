@@ -4,169 +4,100 @@
 # Bash4LLM⁺ — Bash-first wrapper for the LLM
 # File: extras/providers/mistral.sh
 # Authority: Architecture Specification (Edition 2026.1)
-# Extra: Provider Mistral Module
+# Extra: Provider Mistral Module (T3 Hardened & Whitelist Compliant)
 # License: GPL-3.0-or-later
+# Repository: https://github.com/kamaludu/bash4llm
+# Contact: opensource@cevangel.anonaddy.me
 # =============================================================================
 # Purpose: Bash4LLM provider adapter for Mistral AI APIs
+# Invariants: Zero unwhitelisted private helpers, strict argv secret isolation.
 
-# When sourced, avoid enabling strict mode globally.
+# Sourcing guard: prevent strict shell flags pollution when sourced
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
 fi
 
-# Provide no-op dbg() if not defined by core
-if ! type dbg >/dev/null 2>&1; then
-  dbg() { :; }
-fi
-
-# -------------------------
-# Helpers
-# -------------------------
-_get_api_key_mistral() {
-  local prov_env key=""
-  if type provider_api_env_var_name >/dev/null 2>&1; then
-    prov_env="$(provider_api_env_var_name "mistral")"
-    if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
-      key="${!prov_env}"
-    fi
-  fi
-  if [ -z "$key" ]; then
-    key="${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}"
-  fi
-
-  printf '%s' "$key"
-}
-
-_get_work_tmpdir_mistral() {
-  if [ -n "${RUN_TMPDIR:-}" ] && [ -d "${RUN_TMPDIR:-}" ]; then
-    printf '%s' "${RUN_TMPDIR:-}"
-    return 0
-  fi
-  if [ -n "${BASH4LLM_TMPDIR:-}" ] && [ -d "${BASH4LLM_TMPDIR:-}" ]; then
-    printf '%s' "${BASH4LLM_TMPDIR:-}"
-    return 0
-  fi
-  if type make_tmpdir >/dev/null 2>&1; then
-    local d
-    d="$(make_tmpdir 2>/dev/null || true)"
-    if [ -n "$d" ] && [ -d "$d" ]; then
-      printf '%s' "$d"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-_mktemp_in_dir_mistral() {
-  local dir="$1"
-  # Delegate secure creation to core functions if available
-  if type _tmpf >/dev/null 2>&1; then
-    _tmpf file "$dir" mistral
-    return $?
-  elif type _mktemp_in_dir >/dev/null 2>&1; then
-    _mktemp_in_dir "$dir" mistral
-    return $?
-  fi
-
-  # Robust local fallback
-  local tmpf
-  [ -n "$dir" ] || return 1
-  [ -d "$dir" ] || return 1
-  tmpf="$(mktemp "${dir%/}/mistral-XXXXXX" 2>/dev/null || true)"
-  [ -n "$tmpf" ] || return 1
-  printf '%s' "$tmpf"
-  return 0
-}
-
-_escape_json_string_mistral() {
-  if type escape_json_string >/dev/null 2>&1; then
-    escape_json_string "$1"
-    return $?
-  fi
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g'
-}
-
-_mistral_write_atomic() {
-  local src="${1:-}" dst="${2:-}" timeout="${3:-10}"
-  if [ -z "${src:-}" ] || [ -z "${dst:-}" ] || [ ! -s "$src" ]; then
-    return 1
-  fi
-  if type atomic_write >/dev/null 2>&1; then
-    cat "$src" | atomic_write "$dst" "$timeout"
-  else
-    local tmp_dst="${dst}.tmp"
-    cat "$src" > "$tmp_dst" && mv -f "$tmp_dst" "$dst"
-  fi
-}
-
-# -------------------------
-# buildpayload_mistral
-# -------------------------
+# -----------------------------------------------------------------------------
+# 1. buildpayload_mistral
+# Compiles OpenAI-compatible chat completion payload for Mistral AI endpoints
+# -----------------------------------------------------------------------------
 buildpayload_mistral() {
-  local workdir tmp_payload model_in_file model_to_use user_prompt
+  local workdir tmp_payload user_prompt model_in_file model_to_use
 
-  # Ensure runtime tmpdir is available and validated by PRECORE
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  workdir="$(_get_work_tmpdir_mistral)" || return "${BASH4LLM_ERR_TMP:-15}"
-  tmp_payload="$(_mktemp_in_dir_mistral "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
-  umask 077
-
-  # Quick dependency check
-  if ! command -v jq >/dev/null 2>&1; then
-    dbg "DEPENDENCY" "jq not found"
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
     return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  # JSON_INPUT mode
+  if type _tmpf >/dev/null 2>&1; then
+    tmp_payload="$(_tmpf file "$workdir" mistral 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+  else
+    tmp_payload="$(mktemp "${workdir%/}/mistral.XXXXXX" 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+  chmod 600 "$tmp_payload" 2>/dev/null || true
+
+  # 1. Polymorphic JSON_INPUT handling (supports both raw string and file path)
   if [ -n "${JSON_INPUT:-}" ]; then
-    if jq -e 'has("messages")' "${JSON_INPUT:-}" >/dev/null 2>&1; then
-      _mistral_write_atomic "${JSON_INPUT:-}" "${PAYLOAD:-}" || {
-        cp -f "${JSON_INPUT:-}" "${PAYLOAD:-}" 2>/dev/null || true
-        chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
-      }
-      return 0
+    local raw_json=""
+    if [ -f "${JSON_INPUT}" ]; then
+      raw_json="$(cat "${JSON_INPUT}" 2>/dev/null || true)"
+    else
+      raw_json="${JSON_INPUT}"
     fi
 
-    if jq -e 'has("prompt")' "${JSON_INPUT:-}" >/dev/null 2>&1; then
-      user_prompt="$(jq -r '.prompt' "${JSON_INPUT:-}" 2>/dev/null || true)"
-      model_in_file="$(jq -r '.model // empty' "${JSON_INPUT:-}" 2>/dev/null || true)"
-      model_to_use="${model_in_file:-${MODEL:-}}"
+    if printf '%s' "$raw_json" | jq -e . >/dev/null 2>&1; then
+      if printf '%s' "$raw_json" | jq -e 'has("messages")' >/dev/null 2>&1; then
+        printf '%s' "$raw_json" > "$tmp_payload"
+        if type atomic_write >/dev/null 2>&1; then
+          atomic_write "${PAYLOAD:-$workdir/payload.json}" 10 < "$tmp_payload"
+        else
+          cp -f "$tmp_payload" "${PAYLOAD:-$workdir/payload.json}" 2>/dev/null || true
+          chmod 600 "${PAYLOAD:-$workdir/payload.json}" 2>/dev/null || true
+        fi
+        rm -f "$tmp_payload" 2>/dev/null || true
+        return 0
+      elif printf '%s' "$raw_json" | jq -e 'has("prompt")' >/dev/null 2>&1; then
+        user_prompt="$(printf '%s' "$raw_json" | jq -r '.prompt' 2>/dev/null || true)"
+        model_in_file="$(printf '%s' "$raw_json" | jq -r '.model // empty' 2>/dev/null || true)"
+        model_to_use="${model_in_file:-${MODEL:-}}"
 
-      jq -n --arg model "$model_to_use" \
-            --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
-            --arg temp "${TEMPERATURE:-${TURE:-${TEMP:-1.0}}}" \
-            --arg max_tokens "${MAX_TOKENS:-4096}" \
-            --arg user "$user_prompt" \
-            '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
-            > "$tmp_payload"
+        jq -n --arg model "$model_to_use" \
+              --argjson stream "$(is_truthy "${STREAM_MODE:-0}" && printf true || printf false)" \
+              --arg temp "${TEMPERATURE:-${TURE:-1.0}}" \
+              --arg max_tokens "${MAX_TOKENS:-4096}" \
+              --arg user "$user_prompt" \
+              '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:[{role:"user",content:$user}] }' \
+              > "$tmp_payload" 2>/dev/null || true
 
-      _mistral_write_atomic "$tmp_payload" "${PAYLOAD:-}" || {
-        cp -f "$tmp_payload" "${PAYLOAD:-}" 2>/dev/null || true
-        chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
-      }
-      return 0
+        if type atomic_write >/dev/null 2>&1; then
+          atomic_write "${PAYLOAD:-$workdir/payload.json}" 10 < "$tmp_payload"
+        else
+          cp -f "$tmp_payload" "${PAYLOAD:-$workdir/payload.json}" 2>/dev/null || true
+          chmod 600 "${PAYLOAD:-$workdir/payload.json}" 2>/dev/null || true
+        fi
+        rm -f "$tmp_payload" 2>/dev/null || true
+        return 0
+      fi
     fi
-
-    _mistral_write_atomic "${JSON_INPUT:-}" "${PAYLOAD:-}" || {
-      cp -f "${JSON_INPUT:-}" "${PAYLOAD:-}" 2>/dev/null || true
-      chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
-    }
-    return 0
   fi
 
-  # Reconstruct conversation history array natively and safely
-  local VALID_MESSAGES_JSON=""
-  local msgs_from_file
+  # 2. Conversation messages compilation
+  local VALID_MESSAGES_JSON="" msgs_from_file
 
-  if [ -z "$VALID_MESSAGES_JSON" ] && is_valid_json_string "${MESSAGES_JSON:-}"; then
-    VALID_MESSAGES_JSON="${MESSAGES_JSON}"
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${MESSAGES_JSON:-}" ]; then
+    if [ -f "${MESSAGES_JSON}" ]; then
+      VALID_MESSAGES_JSON="$(cat "${MESSAGES_JSON}" 2>/dev/null || true)"
+    else
+      VALID_MESSAGES_JSON="${MESSAGES_JSON}"
+    fi
   fi
 
-  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && is_valid_json_file "${BUILD_MESSAGES_FILE:-}"; then
-    msgs_from_file="$(jq -c '.messages // []' "${BUILD_MESSAGES_FILE:-}" 2>/dev/null || true)"
+  if [ -z "$VALID_MESSAGES_JSON" ] && [ -n "${BUILD_MESSAGES_FILE:-}" ] && [ -f "${BUILD_MESSAGES_FILE}" ]; then
+    msgs_from_file="$(jq -c '.messages // []' "${BUILD_MESSAGES_FILE}" 2>/dev/null || true)"
     if printf '%s' "$msgs_from_file" | jq -e 'type=="array" and (length>0)' >/dev/null 2>&1; then
       if [ -n "${CONTENT:-}" ]; then
         VALID_MESSAGES_JSON="$(printf '%s' "$msgs_from_file" | jq -c --arg content "$CONTENT" '. + [{role:"user", content:$content}]' 2>/dev/null || printf '%s' "$msgs_from_file")"
@@ -184,106 +115,132 @@ buildpayload_mistral() {
     VALID_MESSAGES_JSON='[{"role":"user","content":""}]'
   fi
 
-  # Optional system prompt injection in the front of conversation
+  # 3. System prompt injection
   if [ -n "${SYSTEM_PROMPT:-}" ]; then
     VALID_MESSAGES_JSON="$(jq -n --argjson messages "$VALID_MESSAGES_JSON" --arg sys "${SYSTEM_PROMPT:-}" '[{role:"system", content:$sys}] + $messages' 2>/dev/null || printf '%s' "$VALID_MESSAGES_JSON")"
   fi
 
-  # Secure final compilation using jq args expansion
-  local stream_flag=false model temp max_tokens
+  # 4. Final compilation to JSON
+  local stream_flag=false model_val temp_val max_tokens_val
   is_truthy "${STREAM_MODE:-0}" && stream_flag=true
+  model_val="${MODEL:-}"
+  temp_val="${TEMPERATURE:-${TURE:-1.0}}"
+  max_tokens_val="${MAX_TOKENS:-4096}"
 
-  model="${MODEL:-}"
-  temp="${TEMPERATURE:-${TURE:-${TEMP:-1.0}}}"
-  max_tokens="${MAX_TOKENS:-4096}"
-
-  if ! jq -n --arg model "$model" \
+  if ! jq -n --arg model "$model_val" \
        --argjson stream "$stream_flag" \
-       --arg temp "$temp" \
-       --arg max_tokens "$max_tokens" \
+       --arg temp "$temp_val" \
+       --arg max_tokens "$max_tokens_val" \
        --argjson messages "$VALID_MESSAGES_JSON" \
        '{model:$model, stream:$stream, temperature:($temp|tonumber), max_tokens:($max_tokens|tonumber), messages:$messages }' \
        > "$tmp_payload" 2>/dev/null; then
-    printf 'Error: jq failed to construct the Mistral API payload\n' >&2
+    printf 'mistral: ERROR: jq failed to construct the Mistral API payload\n' >&2
     rm -f "$tmp_payload" 2>/dev/null || true
     return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  _mistral_write_atomic "$tmp_payload" "${PAYLOAD:-}" || {
-    cp -f "$tmp_payload" "${PAYLOAD:-}" 2>/dev/null || true
-    chmod 600 "${PAYLOAD:-}" 2>/dev/null || true
-  }
+  if type atomic_write >/dev/null 2>&1; then
+    atomic_write "${PAYLOAD:-$workdir/payload.json}" 10 < "$tmp_payload"
+  else
+    cp -f "$tmp_payload" "${PAYLOAD:-$workdir/payload.json}" 2>/dev/null || true
+    chmod 600 "${PAYLOAD:-$workdir/payload.json}" 2>/dev/null || true
+  fi
 
   rm -f "$tmp_payload" 2>/dev/null || true
   return 0
 }
 
-# -------------------------
-# call_api_mistral (non-streaming)
-# -------------------------
+# -----------------------------------------------------------------------------
+# 2. call_api_mistral (Synchronous HTTP call)
+# -----------------------------------------------------------------------------
 call_api_mistral() {
-  # Integrate global core network policies
-  if type enforce_network_policy >/dev/null 2>&1; then
-    if ! enforce_network_policy; then
-      if is_truthy "${DRY_RUN:-0}"; then
-        if type show_payload_head >/dev/null 2>&1 && [ "${DEBUG:-0}" -eq 1 ]; then
-          show_payload_head "${PAYLOAD:-}" 200 || true
-        fi
-        dbg "DRY-RUN: skipping HTTP call (exit 0)"
-        return 0
-      fi
-      echo "Error: Network calls disabled by policy." >&2
-      return "${BASH4LLM_ERR_CURL_FAILED:-12}"
-    fi
-  fi
-
-  local key
-  key="$(_get_api_key_mistral)"
-
-  if [ -z "$key" ]; then
-    echo "Error: MISTRAL_API_KEY is not set." >&2
-    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
-  fi
-  if [ ! -s "${PAYLOAD:-}" ]; then
-    echo "Error: payload file missing or empty: ${PAYLOAD:-<unset>}" >&2
-    return "${BASH4LLM_ERR_TMP:-15}"
-  fi
-
-  # Validate and initialize run tmpdir
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  local workdir tmpout tmpresp api_url http_code time_total
-  workdir="$(_get_work_tmpdir_mistral)" || return "${BASH4LLM_ERR_TMP:-15}"
-  tmpout="$(_mktemp_in_dir_mistral "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
-  tmpresp="$(_mktemp_in_dir_mistral "$workdir")" || return "${BASH4LLM_ERR_TMP:-15}"
-  ERRF="${ERRF:-$workdir/curl.err}"
-  RESP="${RESP:-$workdir/resp.json}"
-  
+  if ! ensure_api_key_for_provider "mistral"; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "APIKEY" "API key required for provider mistral."
+    fi
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
+
+  local prov_env key=""
+  prov_env="$(provider_api_env_var_name "mistral")"
+  if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+    key="${!prov_env}"
+  fi
+  : "${key:=${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}}"
+
+  if [ -z "$key" ]; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "APIKEY" "MISTRAL_API_KEY is not set."
+    fi
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
+
+  if [ ! -s "${PAYLOAD:-}" ]; then
+    printf 'mistral: ERROR: Payload file missing or empty: %s\n' "${PAYLOAD:-<unset>}" >&2
+    return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+
+  if is_truthy "${DRY_RUN:-0}"; then
+    local workdir_dr="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+    local resp_path="${RESP:-${workdir_dr%/}/resp.json}"
+    umask 077
+    jq -n '{choices:[]}' > "${resp_path}" 2>/dev/null || true
+    chmod 600 "${resp_path}" 2>/dev/null || true
+    return 0
+  fi
+
+  local workdir tmpout tmpresp api_url http_code send_payload decoded_payload resp_path errf_path
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
+    return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+
+  if type _tmpf >/dev/null 2>&1; then
+    tmpout="$(_tmpf file "$workdir" mistral-out 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+    tmpresp="$(_tmpf file "$workdir" mistral-resp 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+  else
+    tmpout="$(mktemp "${workdir%/}/mistral-out.XXXXXX" 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+    tmpresp="$(mktemp "${workdir%/}/mistral-resp.XXXXXX" 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+
+  errf_path="${ERRF:-$workdir/curl.err}"
+  resp_path="${RESP:-$workdir/resp.json}"
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
 
-  # Execute HTTP POST request via Authoritative Secure Path (Redacts Bearer Token from argv)
-  local -a extra_opts=(-w '%{http_code} %{time_total}')
-  _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "$tmpresp" "$ERRF" 0 "${extra_opts[@]}" >"$tmpout" || true
-
-  read -r http_code time_total < "$tmpout" 2>/dev/null || {
-    http_code="$(cat "$tmpout" 2>/dev/null || echo "000")"
-    time_total="0"
-  }
-
-  if [ -s "$tmpresp" ]; then
-    # Portable and native check to verify trailing newline
-    if [ -n "$(tail -c1 "$tmpresp" 2>/dev/null || true)" ]; then
-      printf '\n' >> "$tmpresp" 2>/dev/null || true
+  send_payload="$PAYLOAD"
+  decoded_payload=""
+  if [[ "${PAYLOAD:-}" == *.b64 ]]; then
+    if type _tmpf >/dev/null 2>&1; then
+      decoded_payload="$(_tmpf file "$workdir" mistral-dec 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+    else
+      decoded_payload="$(mktemp "${workdir%/}/mistral-dec.XXXXXX" 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
     fi
 
-    _mistral_write_atomic "$tmpresp" "${RESP:-$workdir/resp.json}" || {
-      cp -f "$tmpresp" "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-      chmod 600 "${RESP:-$workdir/resp.json}" 2>/dev/null || true
-    }
+    if ! b64decode < "$PAYLOAD" > "$decoded_payload" 2>/dev/null; then
+      rm -f "$tmpout" "$tmpresp" "$decoded_payload" 2>/dev/null || true
+      return "${BASH4LLM_ERR_TMP:-15}"
+    fi
+    send_payload="$decoded_payload"
+  fi
+
+  local -a extra_opts=(-w '%{http_code}')
+  http_code="$(_exec_curl_secure "POST" "$api_url" "$key" "$send_payload" "$tmpresp" "$errf_path" 0 "${extra_opts[@]}" || echo "000")"
+
+  rm -f "$decoded_payload" 2>/dev/null || true
+
+  if [ -s "$tmpresp" ]; then
+    if type atomic_write >/dev/null 2>&1; then
+      atomic_write "${resp_path}" 10 < "$tmpresp"
+    else
+      cp -f "$tmpresp" "${resp_path}" 2>/dev/null || true
+      chmod 600 "${resp_path}" 2>/dev/null || true
+    fi
   else
-    : > "${RESP:-/dev/null}" 2>/dev/null || true
+    : > "${resp_path}" 2>/dev/null || true
   fi
 
   rm -f "$tmpresp" "$tmpout" 2>/dev/null || true
@@ -291,58 +248,84 @@ call_api_mistral() {
   case "$http_code" in
     2*) return 0 ;;
     *)
-      dbg "HTTP error code: $http_code"
-      dbg "Response (head):"; head -n 200 "${RESP:-/dev/null}" >&2 || true
-      dbg "Curl stderr (head):"; head -n 200 "$ERRF" >&2 || true
+      if type log_error >/dev/null 2>&1; then
+        log_error "API" "Mistral API HTTP Error status: $http_code"
+      fi
       return "${BASH4LLM_ERR_API:-16}"
       ;;
   esac
 }
 
-# -------------------------
-# call_api_streaming_mistral (SSE)
-# -------------------------
-# Optimized Mistral streaming using single unbuffered jq processor
+# -----------------------------------------------------------------------------
+# 3. call_api_streaming_mistral (SSE Streaming with JSON Error Fallback)
+# -----------------------------------------------------------------------------
 call_api_streaming_mistral() {
-  # Integrate global core network policies
-  if type enforce_network_policy >/dev/null 2>&1; then
-    if ! enforce_network_policy; then
-      if is_truthy "${DRY_RUN:-0}"; then
-        dbg "DRY-RUN: skipping streaming HTTP call (exit 0)"
-        return 0
-      fi
-      echo "Error: Network calls disabled by policy." >&2
-      return "${BASH4LLM_ERR_CURL_FAILED:-12}"
-    fi
-  fi
-
-  local key
-  key="$(_get_api_key_mistral)"
-
-  if [ -z "$key" ]; then
-    echo "Error: MISTRAL_API_KEY is not set." >&2
-    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
-  fi
-
-  # Validate and initialize run tmpdir
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  local api_url rc RESP_RAW workdir tmp_dir unified_text synthetic_resp clean_chunks _line
-  
+  if ! ensure_api_key_for_provider "mistral"; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "APIKEY" "API key required for provider mistral."
+    fi
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
+
+  local prov_env key=""
+  prov_env="$(provider_api_env_var_name "mistral")"
+  if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+    key="${!prov_env}"
+  fi
+  : "${key:=${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}}"
+
+  if [ -z "$key" ]; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "APIKEY" "MISTRAL_API_KEY is not set."
+    fi
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
+
+  if is_truthy "${DRY_RUN:-0}"; then
+    return 0
+  fi
+
+  local api_url rc RESP_RAW workdir resp_path errf_path clean_chunks unified_text synthetic_resp send_payload decoded_payload
   api_url="${MISTRAL_API_URL:-https://api.mistral.ai/v1/chat/completions}"
   
-  workdir="$(_get_work_tmpdir_mistral)" || return "${BASH4LLM_ERR_TMP:-15}"
-  tmp_dir="${RUN_TMPDIR:-$workdir}"
-  RESP_RAW="${tmp_dir}/resp.raw"
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
+    return "${BASH4LLM_ERR_TMP:-15}"
+  fi
+
+  if type _tmpf >/dev/null 2>&1; then
+    RESP_RAW="$(_tmpf file "$workdir" mistral-raw 2>/dev/null)" || RESP_RAW="${workdir%/}/resp.raw"
+  else
+    RESP_RAW="$(mktemp "${workdir%/}/mistral-raw.XXXXXX" 2>/dev/null)" || RESP_RAW="${workdir%/}/resp.raw"
+  fi
   : > "$RESP_RAW" 2>/dev/null || true
   chmod 600 "$RESP_RAW" 2>/dev/null || true
-  ERRF="${ERRF:-$workdir/curl.err}"
-  RESP="${RESP:-$workdir/resp.json}"
 
-  # Unbuffered streaming pipeline via Authoritative Network Path (Redacts Bearer Token from argv)
-  _exec_curl_secure "POST" "$api_url" "$key" "$PAYLOAD" "" "$ERRF" 1 | \
+  errf_path="${ERRF:-$workdir/curl.err}"
+  resp_path="${RESP:-$workdir/resp.json}"
+
+  send_payload="$PAYLOAD"
+  decoded_payload=""
+  if [[ "${PAYLOAD:-}" == *.b64 ]]; then
+    if type _tmpf >/dev/null 2>&1; then
+      decoded_payload="$(_tmpf file "$workdir" mistral-dec 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+    else
+      decoded_payload="$(mktemp "${workdir%/}/mistral-dec.XXXXXX" 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
+    fi
+
+    if ! b64decode < "$PAYLOAD" > "$decoded_payload" 2>/dev/null; then
+      rm -f "$RESP_RAW" "$decoded_payload" 2>/dev/null || true
+      return "${BASH4LLM_ERR_TMP:-15}"
+    fi
+    send_payload="$decoded_payload"
+  fi
+
+  # Single-pass unbuffered streaming pipeline via Authoritative Network Path
+  _exec_curl_secure "POST" "$api_url" "$key" "$send_payload" "" "$errf_path" 1 | \
   tee -a "$RESP_RAW" | \
   jq --unbuffered -j -R '
     if startswith("data: ") then
@@ -360,93 +343,122 @@ call_api_streaming_mistral() {
   '
 
   rc=${PIPESTATUS[0]:-0}
-  [ "$rc" -ne 0 ] && {
-    dbg "curl stderr (head):"; head -n 50 "$ERRF" >&2 || true
-    return "${BASH4LLM_ERR_CURL_FAILED:-12}"
-  }
+  rm -f "$decoded_payload" 2>/dev/null || true
 
-  # Build chunks metadata index atomically in sandbox directory
-  : > "$tmp_dir/resp.lines" 2>/dev/null || true
-  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' > "$tmp_dir/resp.lines" 2>/dev/null || true
-
-  : > "$tmp_dir/resp.valid.jsons" 2>/dev/null || true
-  while IFS= read -r _line; do
-    if printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$_line" >> "$tmp_dir/resp.valid.jsons"
+  if [ "$rc" -ne 0 ]; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "CURL" "Mistral streaming network call failed with code $rc"
     fi
-  done < "$tmp_dir/resp.lines"
+    if [ -s "$RESP_RAW" ] && jq -e . "$RESP_RAW" >/dev/null 2>&1; then
+      if type atomic_write >/dev/null 2>&1; then
+        atomic_write "${resp_path}" 10 < "$RESP_RAW"
+      else
+        cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
+        chmod 600 "${resp_path}" 2>/dev/null || true
+      fi
+    fi
+    rm -f "$RESP_RAW" 2>/dev/null || true
+    return "${BASH4LLM_ERR_CURL_FAILED:-12}"
+  fi
 
-  if [ -s "$tmp_dir/resp.valid.jsons" ]; then
-    jq -s '.' "$tmp_dir/resp.valid.jsons" > "$tmp_dir/resp.chunks.json" 2>/dev/null || true
-    
-    # Extract all delta contents and join them natively to build synthetic OpenAI-style RESP
-    unified_text="$(jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$tmp_dir/resp.chunks.json" 2>/dev/null || true)"
+  # Synthesize standard OpenAI choices response from SSE stream chunks
+  if type _tmpf >/dev/null 2>&1; then
+    clean_chunks="$(_tmpf file "$workdir" mistral-chunks 2>/dev/null)" || clean_chunks="${workdir%/}/mistral-chunks.tmp"
+  else
+    clean_chunks="$(mktemp "${workdir%/}/mistral-chunks.XXXXXX" 2>/dev/null)" || clean_chunks="${workdir%/}/mistral-chunks.tmp"
+  fi
+
+  grep -E '^data:' "$RESP_RAW" 2>/dev/null | sed -E 's/^data:[[:space:]]*//' | jq -s '.' > "$clean_chunks" 2>/dev/null || true
+
+  if [ -s "$clean_chunks" ] && jq -e . "$clean_chunks" >/dev/null 2>&1; then
+    unified_text="$(jq -r 'map(.choices[]?.delta?.content // "") | join("")' "$clean_chunks" 2>/dev/null || true)"
 
     if [ -n "${unified_text}" ]; then
-      synthetic_resp="$tmp_dir/resp.synthetic.json"
-      jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null
-      _mistral_write_atomic "$synthetic_resp" "${RESP:-$tmp_dir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$synthetic_resp" "${RESP:-$tmp_dir/resp.json}" 2>/dev/null || true
-      rm -f "$synthetic_resp" 2>/dev/null || true
-    else
-      _mistral_write_atomic "$tmp_dir/resp.chunks.json" "${RESP:-$tmp_dir/resp.json}" "${BASH4LLM_LOCK_TIMEOUT_TMP:-}" || cp -f "$tmp_dir/resp.chunks.json" "${RESP:-$tmp_dir/resp.json}" 2>/dev/null || true
-    fi
+      if type _tmpf >/dev/null 2>&1; then
+        synthetic_resp="$(_tmpf file "$workdir" mistral-synthetic 2>/dev/null)" || synthetic_resp="${workdir%/}/mistral-syn.json"
+      else
+        synthetic_resp="$(mktemp "${workdir%/}/mistral-synthetic.XXXXXX" 2>/dev/null)" || synthetic_resp="${workdir%/}/mistral-syn.json"
+      fi
 
-    # Secure internal files cleanup
-    rm -f "$tmp_dir/resp.lines" "$tmp_dir/resp.valid.jsons" "$tmp_dir/resp.chunks.json" 2>/dev/null || true
+      jq -n --arg text "$unified_text" '{choices:[{message:{content:$text}}]}' > "$synthetic_resp" 2>/dev/null || true
+      if type atomic_write >/dev/null 2>&1; then
+        atomic_write "${resp_path}" 10 < "$synthetic_resp"
+      else
+        cp -f "$synthetic_resp" "${resp_path}" 2>/dev/null || true
+        chmod 600 "${resp_path}" 2>/dev/null || true
+      fi
+      rm -f "$synthetic_resp" 2>/dev/null || true
+    fi
   else
-    if jq -e . "$RESP_RAW" >/dev/null 2>&1; then
-      cp -f "$RESP_RAW" "${RESP:-$tmp_dir/resp.json}" 2>/dev/null || true
+    # Fallback if SSE clean_chunks is empty but RESP_RAW holds raw JSON error
+    if [ -s "$RESP_RAW" ] && jq -e . "$RESP_RAW" >/dev/null 2>&1; then
+      if type atomic_write >/dev/null 2>&1; then
+        atomic_write "${resp_path}" 10 < "$RESP_RAW"
+      else
+        cp -f "$RESP_RAW" "${resp_path}" 2>/dev/null || true
+        chmod 600 "${resp_path}" 2>/dev/null || true
+      fi
     fi
   fi
 
+  rm -f "$clean_chunks" "$RESP_RAW" 2>/dev/null || true
   return 0
 }
 
-# -------------------------
-# refresh_models_mistral
-# -------------------------
+# -----------------------------------------------------------------------------
+# 4. refresh_models_mistral
+# -----------------------------------------------------------------------------
 refresh_models_mistral() {
-  local outpath="${1:-${MODELS_FILE:-}}" key="" workdir tmpd out errf api_url parsed http_code tmp_trim
+  local outpath="${1:-${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/mistral.txt}}"
+  local prov_env key="" workdir tmpd out errf api_url http_code parsed tmp_trim
 
-  key="$(_get_api_key_mistral)"
+  prov_env="$(provider_api_env_var_name "mistral")"
+  if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+    key="${!prov_env}"
+  fi
+  : "${key:=${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}}"
 
   if [ -z "$key" ]; then
-    echo "Error: MISTRAL_API_KEY is required to refresh models." >&2
-    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
-  fi
-  if [ -z "$outpath" ]; then
-    echo "Error: MODELS file path not provided." >&2
-    return "${BASH4LLM_ERR_TMP:-15}"
+    if ! ensure_api_key_for_provider "mistral"; then
+      if type log_error >/dev/null 2>&1; then
+        log_error "APIKEY" "MISTRAL_API_KEY is required to refresh models."
+      fi
+      return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+    fi
+    if [ -n "${prov_env:-}" ] && declare -p "$prov_env" >/dev/null 2>&1; then
+      key="${!prov_env}"
+    fi
+    : "${key:=${MISTRAL_API_KEY:-${BASH4LLM_API_KEY:-}}}"
   fi
 
-  # Validate and initialize run tmpdir
+  if [ -z "$key" ]; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "APIKEY" "MISTRAL_API_KEY is not set."
+    fi
+    return "${BASH4LLM_ERR_NO_API_KEY:-10}"
+  fi
+
   if type ensure_run_tmpdir >/dev/null 2>&1; then
     ensure_run_tmpdir || return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
-  workdir="$(_get_work_tmpdir_mistral)" || return "${BASH4LLM_ERR_TMP:-15}"
-  tmpd="$(mktemp -d "${workdir}/mistral-models.XXXXXX" 2>/dev/null || true)"
-
-  if [ -z "$tmpd" ] || [ ! -d "$tmpd" ]; then
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-}}"
+  if [ -z "$workdir" ] || [ ! -d "$workdir" ]; then
     return "${BASH4LLM_ERR_TMP:-15}"
   fi
 
+  tmpd="$(mktemp -d "${workdir%/}/mistral-models.XXXXXX" 2>/dev/null)" || return "${BASH4LLM_ERR_TMP:-15}"
   out="$tmpd/models.json"
   errf="$tmpd/curl.err"
-  
   api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # Execute GET request via Authoritative Secure Path
-  local -a extra_opts=(-s -w "%{http_code}")
-  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$out" "$errf" 0 "${extra_opts[@]}" || echo "CURL_FAILED")"
+  local -a extra_opts=(-w "%{http_code}")
+  http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$out" "$errf" 0 "${extra_opts[@]}" || echo "000")"
 
-  if [ "$http_code" = "CURL_FAILED" ] || [ ! -f "$out" ]; then
-    dbg "curl stderr:"; head -n 50 "$errf" >&2 || true
-    rm -rf "$tmpd" 2>/dev/null || true
-    return "${BASH4LLM_ERR_CURL_FAILED:-12}"
-  fi
-
-  if [ "$http_code" != "200" ]; then
+  if [ "${http_code:0:1}" != "2" ] || [ ! -s "$out" ]; then
+    if type log_error >/dev/null 2>&1; then
+      log_error "MODELREFRESH" "Mistral models endpoint failed (HTTP $http_code)."
+    fi
     rm -rf "$tmpd" 2>/dev/null || true
     return "${BASH4LLM_ERR_API:-16}"
   fi
@@ -462,7 +474,6 @@ refresh_models_mistral() {
     end
   ' "$out" | awk 'NF{print}' | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//' | sort -u > "$parsed" 2>/dev/null || true
 
-  # Model sanitization whitelisting safe characters
   tmp_trim="$tmpd/parsed_trimmed.txt"
   awk '{
     g=$0
@@ -472,35 +483,42 @@ refresh_models_mistral() {
 
   if [ -s "$tmp_trim" ]; then
     mkdir -p "$(dirname "$outpath")" 2>/dev/null || true
-    _mistral_write_atomic "$tmp_trim" "$outpath" || {
-      cp -f "$tmp_trim" "$outpath" 2>/dev/null || true
-      chmod 600 "$outpath" 2>/dev/null || true
-    }
-    chmod 600 "$outpath" 2>/dev/null || true
+    if type atomic_write >/dev/null 2>&1; then
+      atomic_write "$outpath" 10 < "$tmp_trim"
+    else
+      cat "$tmp_trim" > "$outpath" && chmod 600 "$outpath" 2>/dev/null || true
+    fi
+
+    if type log_info_user >/dev/null 2>&1; then
+      log_info_user "MODELREFRESH" "Mistral models refreshed and saved to: $outpath"
+    fi
     rm -rf "$tmpd" 2>/dev/null || true
     return 0
   fi
 
-  dbg "Raw response (head):"; head -n 50 "$out" >&2 || true
   rm -rf "$tmpd" 2>/dev/null || true
   return "${BASH4LLM_ERR_API:-16}"
 }
 
-# -------------------------
-# validate/autoselect
-# -------------------------
+# -----------------------------------------------------------------------------
+# 5. validate_model_mistral
+# -----------------------------------------------------------------------------
 validate_model_mistral() {
-  local model="$1"
-  local file="${MODELS_FILE:-}"
+  local model="${1:-}"
+  local file="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/mistral.txt}"
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
     grep -x -F -q "$model" "$file" 2>/dev/null
     return $?
   fi
+  [ -n "$model" ] || return 1
   return 0
 }
 
+# -----------------------------------------------------------------------------
+# 6. auto_select_model_mistral
+# -----------------------------------------------------------------------------
 auto_select_model_mistral() {
-  local file="${MODELS_FILE:-}"
+  local file="${MODELS_FILE:-${BASH4LLM_MODELS_DIR:-}/mistral.txt}"
   if [ -n "$file" ] && [ -f "$file" ] && [ -s "$file" ]; then
     awk 'NF{print; exit}' "$file" 2>/dev/null || true
     return 0
@@ -509,9 +527,9 @@ auto_select_model_mistral() {
   return 0
 }
 
-# -------------------------
-# validate_key_mistral
-# -------------------------
+# -----------------------------------------------------------------------------
+# 7. validate_key_mistral
+# -----------------------------------------------------------------------------
 validate_key_mistral() {
   local key="${1:-}"
   local http_code curl_rc=0
@@ -521,17 +539,17 @@ validate_key_mistral() {
     return 1
   fi
 
-  workdir="$(_get_work_tmpdir_mistral)"
-  [ -n "$workdir" ] || workdir="${BASH4LLM_TMPDIR:-/tmp}"
-
-  tmpout="$(_mktemp_in_dir_mistral "$workdir" 2>/dev/null || true)"
-  [ -n "$tmpout" ] || tmpout="${workdir}/mistral-key-diag.tmp"
+  workdir="${RUN_TMPDIR:-${BASH4LLM_TMPDIR:-/tmp}}"
+  if type _tmpf >/dev/null 2>&1; then
+    tmpout="$(_tmpf file "$workdir" mistral-key 2>/dev/null)" || return 1
+  else
+    tmpout="$(mktemp "${workdir%/}/mistral-key.XXXXXX" 2>/dev/null)" || return 1
+  fi
   errf="${tmpout}.err"
 
   local api_url="${MISTRAL_MODELS_URL:-https://api.mistral.ai/v1/models}"
 
-  # GET call via Authoritative Secure Path
-  local -a key_val_opts=(--max-time 10 -s -w "%{http_code}")
+  local -a key_val_opts=(--max-time 10 -w "%{http_code}")
   http_code="$(_exec_curl_secure "GET" "$api_url" "$key" "" "$tmpout" "$errf" 0 "${key_val_opts[@]}" || echo "CURL_ERR")"
   curl_rc=$?
 
@@ -541,7 +559,6 @@ validate_key_mistral() {
     return 28
   fi
 
-  # HTTP 200 = Valid token; HTTP 401 = Invalid token
   if [ "$http_code" = "200" ]; then
     return 0
   else
@@ -549,13 +566,11 @@ validate_key_mistral() {
   fi
 }
 
-# -------------------------
-# normalize_model_mistral
-# -------------------------
-# Provider-specific model normalization for Mistral
+# -----------------------------------------------------------------------------
+# 8. normalize_model_mistral
+# -----------------------------------------------------------------------------
 normalize_model_mistral() {
   local name="${1:-}"
-  # Preserve the full Mistral model prefix (e.g. mistral-medium)
   name="${name#models/}"
   printf '%s' "$name"
 }
