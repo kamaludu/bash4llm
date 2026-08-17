@@ -285,7 +285,9 @@ Per evitare che il server Python rimanga in esecuzione indefinitamente in backgr
 
 Il server si arresta automaticamente inviando un segnale `SIGINT` a se stesso se e solo se è soddisfatta la seguente equazione logico-temporale:
 
-$$\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 1800.0\text{s}$$
+```math
+\text{server\_has\_seen\_first\_client} == \text{True} \quad \land \quad \text{Active Clients} == 0 \quad \land \quad \text{Active Jobs} == 0 \quad \land \quad (\text{now} - \text{grace\_started\_at}) \ge 1800.0\text{s}
+```
 
 #### Garbage Collection della Memoria RAM
 La funzione `prune_expired_memory_records()` viene eseguita periodicamente per prevenire accumuli di memoria:
