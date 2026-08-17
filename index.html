@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bash4LLM⁺ | Zero-Dependency POSIX Bash Framework for LLM Inference</title>
-  <meta name="description" content="Production-grade, zero-dependency POSIX Bash framework for secure, low-latency LLM inference, SSE streaming, thread persistence, interactive TUI chat, and OpenSSL AES-256 encrypted key management.">
+  <meta name="description" content="Production-grade, zero-dependency POSIX Bash framework for secure, low-latency LLM inference, SSE streaming, persistent thread contexts, TUI chat, Web GUI, and OpenSSL AES-256 encrypted key management.">
   <link rel="canonical" href="https://kamaludu.github.io/bash4llm/">
   
   <!-- Open Graph Metadata -->
@@ -46,7 +46,6 @@
       justify-content: center;
     }
 
-    /* Stile globale per i link di testo e liste (alto contrasto WCAG AAA) */
     a {
       color: var(--link);
       text-decoration: underline;
@@ -239,12 +238,17 @@
     footer a:hover {
       color: var(--link);
     }
+    
+    hr {
+      border: 2px solid var(--border);
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <div class="version-badge">v2.8.5 · GPL-3.0-or-later</div>
+      <div class="version-badge">v2.8.5.3 · GPL-3.0-or-later</div>
       <h1>Bash4LLM⁺</h1>
       <p class="subtitle">
         Zero-dependency POSIX Bash client framework for secure, low-latency Large Language Model (LLM) inference, SSE streaming, persistent thread contexts, and OpenSSL AES-256 encrypted secret management.
@@ -253,22 +257,23 @@
       <nav class="nav-bar" aria-label="Main Navigation">
         <a href="https://github.com/kamaludu/bash4llm" class="btn">Official Repository</a>
         <a href="llms.txt" class="btn btn-highlight" rel="index" title="LLM Documentation Index">LLM Documentation Index (/llms.txt)</a>
-        <a href="https://github.com/kamaludu/bash4llm/releases" class="btn">Releases & Release Notes</a>
+        <a href="https://github.com/kamaludu/bash4llm/releases" class="btn">Releases &amp; Release Notes</a>
       </nav>
     </header>
 
     <main>
       <!-- Overview & Purpose -->
       <section id="overview">
-        <h2>Overview & Architecture Principles</h2>
+        <h2>Overview &amp; Architecture Principles</h2>
         <p>
-          🇮🇹 <strong>Bash4LLM⁺</strong> è un framework client POSIX Bash di livello enterprise progettato per eseguire operazioni con Modelli Linguistici di Grandi Dimensioni (LLM) in ambienti shell ristretti, pipeline CI/CD, container e dispositivi embedded (incluso Android Termux).
+          🇮🇹 <strong>Bash4LLM⁺</strong> è un framework client POSIX Bash progettato per eseguire operazioni con Modelli Linguistici di Grandi Dimensioni (LLM) in ambienti shell ristretti, pipeline CI/CD, container e dispositivi embedded (incluso Android Termux).
         </p>
         <p>
           🇬🇧 <strong>Bash4LLM⁺</strong> is a production-grade POSIX Bash client framework designed to execute Large Language Model operations in restricted shell environments, CI/CD pipelines, container instances, and embedded platforms (including Android Termux).
         </p>
+        <hr>
         <p>
-          It achieves sub-10ms cold-start execution with <strong>zero third-party package dependencies</strong> (no Python, Node.js, Docker, or pip/npm modules required), relying strictly on base system POSIX utilities, <code>curl</code>, and <code>jq</code>.
+          It achieves sub-10ms cold-start execution with <strong>zero third-party package dependencies</strong> for core CLI and TUI execution (no Python, Node.js, Docker, or pip/npm modules required), relying strictly on base system POSIX utilities, <code>curl</code>, and <code>jq</code>.
         </p>
       </section>
 
@@ -281,8 +286,12 @@
             <p>Groq core provider by default, extensible to Gemini, Mistral, and Hugging Face via dynamic checksum-verified modules with Provider API contract versioning.</p>
           </div>
           <div class="card-item">
-            <h3>SSE Streaming & TUI Chat</h3>
+            <h3>SSE Streaming &amp; TUI Chat</h3>
             <p>Supports real-time Server-Sent Events (SSE) responses and features an interactive terminal UI chat REPL (<code>extras/chat/tui-repl.sh</code>) with multi-language i18n support.</p>
+          </div>
+          <div class="card-item">
+            <h3>Web GUI Interface</h3>
+            <p>Optional WebApp interface (<code>extras/gui-py/</code>) powered by FastAPI and Vanilla ES6. Features Server-Sent Events (SSE) streaming and WCAG AAA compliant visual interface.</p>
           </div>
           <div class="card-item">
             <h3>Encrypted Secret Vault</h3>
@@ -297,10 +306,10 @@
 
       <!-- Security Invariants -->
       <section id="security">
-        <h2>Security Invariants & Protections</h2>
+        <h2>Security Invariants &amp; Protections</h2>
         <ul>
           <li><strong>Zero Dynamic Code Evaluation:</strong> Guarantees zero usage of shell <code>eval</code>, eliminating dynamic script injection vectors.</li>
-          <li><strong>Zero Process Table Secret Leaking:</strong> API tokens and Bearer credentials are passed via unlinked File Descriptors (<code>/dev/fd/3</code>), keeping credentials hidden from <code>ps aux</code> process listings.</li>
+          <li><strong>Zero Process Table Secret Leaking:</strong> API credentials are passed via <code>_exec_curl_secure</code>, which allocates an isolated temporary header file with <code>0600</code> permissions passed to cURL via <code>-H @"$hdr_file"</code> and unlinked immediately post-execution, preventing credential exposure in <code>ps aux</code> process listings.</li>
           <li><strong>Zero Shared Temp Directory Usage:</strong> Enforces private runtime execution directories created under <code>umask 077</code>.</li>
           <li><strong>Memory-Locked Function Guards:</strong> Critical security and network routing functions are sealed using <code>readonly -f</code>.</li>
           <li><strong>Ed25519 Manifest Signature Verification:</strong> Extension modules are validated against <code>manifest.sha256</code> and <code>manifest.sha256.sig</code> using anti-TOCTOU staging copy isolation.</li>
@@ -309,12 +318,13 @@
 
       <!-- System Footprint -->
       <section id="requirements">
-        <h2>Runtime Requirements & System Footprint</h2>
+        <h2>Runtime Requirements &amp; System Footprint</h2>
         <p>Execution requires standard base OS utilities available in <code>$PATH</code>:</p>
         <ul>
           <li><strong>Shell Runtime:</strong> <code>bash</code> (version 4.0 or newer).</li>
-          <li><strong>HTTP Transport & Data Processing:</strong> <code>curl</code> and <code>jq</code>.</li>
+          <li><strong>HTTP Transport &amp; Data Processing:</strong> <code>curl</code> and <code>jq</code>.</li>
           <li><strong>POSIX Core Utilities (20):</strong> <code>mktemp</code>, <code>stat</code>, <code>base64</code>, <code>find</code>, <code>awk</code>, <code>sed</code>, <code>grep</code>, <code>xargs</code>, <code>tr</code>, <code>sort</code>, <code>head</code>, <code>wc</code>, <code>tee</code>, <code>date</code>, <code>mv</code>, <code>chmod</code>, <code>cp</code>, <code>rm</code>, <code>printf</code>, <code>comm</code>.</li>
+          <li><strong>Optional Web GUI Runtime:</strong> <code>Python &ge; 3.10</code> with <code>fastapi</code>, <code>uvicorn</code>, and <code>pydantic</code> (required strictly for <code>--gui</code> / <code>--webapp</code> execution; core CLI and TUI operate with zero external runtimes).</li>
           <li><strong>Optional Binaries (Auto-Fallback):</strong> <code>flock</code> (reverts to atomic <code>mkdir</code> locking), <code>openssl</code>, <code>ssh-keygen</code>, <code>gzip</code>, <code>shred</code>/<code>dd</code>.</li>
         </ul>
       </section>
@@ -323,19 +333,22 @@
       <section id="examples">
         <h2>CLI Quick Start</h2>
         <pre><code># Basic single-prompt query
-./bin/bash4llm "Explain quantum computing in two sentences."
+./bash4llm "Explain quantum computing in two sentences."
 
 # Real-time Server-Sent Events (SSE) streaming
-./bin/bash4llm --stream "Generate a POSIX shell script for sorting files."
+./bash4llm --stream "Generate a POSIX shell script for sorting files."
 
 # Launch interactive TUI REPL chat
-./bin/bash4llm --chat
+./bash4llm --chat
+
+# Launch Web GUI interface
+./bash4llm --gui
 
 # Execute within persistent conversation thread
-./bin/bash4llm --thread project_refactor "Analyze the auth architecture."
+./bash4llm --thread project_refactor "Analyze the auth architecture."
 
 # Enforce Vault key retrieval policy
-BASH4LLM_REQUIRE_VAULT=1 ./bin/bash4llm "Query using encrypted vault credentials"</code></pre>
+BASH4LLM_REQUIRE_VAULT=1 ./bash4llm "Query using encrypted vault credentials"</code></pre>
       </section>
 
       <!-- Exit Codes -->
