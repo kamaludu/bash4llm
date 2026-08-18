@@ -62,7 +62,7 @@
 
 ## Architettura, Core Engine & Specifica del Safety Gate
 
-## 🇮🇹 Sezione Italiana
+## Sezione Italiana
 
 ## 1. Panoramica del Sistema & Flusso Topologico
 
