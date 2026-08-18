@@ -1,4 +1,5 @@
-# Structured Metadata Layout [🇮🇹](#architettura) / [🇬🇧](#architecture)
+# Structured Metadata Layout (SML v2.0)
+## [🇮🇹](#sezione-italiana) [🇬🇧](#english-section)
 
 ```text
                        +---------------------------------------+
@@ -59,7 +60,8 @@
                                               +--------------------------+                                +--------------------------+
 ```
 
-## Architettura, Core Engine & Specifica del Safety Gate (SML v2.0) 🇮🇹
+## Architettura, Core Engine & Specifica del Safety Gate
+## Sezione italiana 🇮🇹
 
 ## 1. Panoramica del Sistema & Flusso Topologico
 
@@ -292,7 +294,8 @@ Ogni volta che `extras/hooks/sml-gate.sh` o `extras/templates/sml.txt` viene agg
 
 ---
 
-## Architecture, Core Engine & Safety Gate Specification (SML v2.0) 🇬🇧
+## Architecture, Core Engine & Safety Gate Specification
+## 🇬🇧
 
 ## 1. System Overview & Topological Flow
 
