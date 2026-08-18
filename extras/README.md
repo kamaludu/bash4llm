@@ -187,6 +187,10 @@ L'integrità dei moduli è garantita dal manifest `manifest.sha256` e dalla rela
 
 ---
 
+# Ecosystem and Extended Modules (Extras) — Bash4LLM⁺
+
+---
+
 <a id="english-section"></a>
 ## 🇬🇧 English Section
 
