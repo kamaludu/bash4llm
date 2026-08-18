@@ -1,62 +1,62 @@
 # Structured Metadata Layout (SML v2.0) [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
 
 ```text
-                       +---------------------------------------+
-                       |             USER INVOCATION           |
-                       | CLI: ./bash4llm -t sml --validate-sml |
-                       | GUI: [x] Validate SML + sml.txt       |
-                       +---------------------------------------+
-                                           |
-                                           v
-                       +---------------------------------------+
-                       |       CORE: assemble_content()        |
-                       |    Injects extras/templates/sml.txt   |
-                       +---------------------------------------+
-                                           |
-                                           v
-                       +---------------------------------------+
-                       |     CORE: build_payload_from_vars()   |
-                       |   Compiles JSON payload ($PAYLOAD)    |
-                       +---------------------------------------+
-                                           |
-                                           v
-                       +---------------------------------------+
-                       |           LLM API INFERENCE           |
-                       |    (Groq, Gemini, Mistral, etc.)      |
-                       +---------------------------------------+
-                                           |
-                                           v
-                       +---------------------------------------+
-                       |     CORE: perform_request_once()      |
-                       |  Extracts text ($RESP -> $text)       |
-                       +---------------------------------------+
-                                           |
-                                           v
-                   +-----------------------------------------------+
-                   |        CORE: validate_response_syntax()       |
-                   +-----------------------------------------------+
-                          |                                 |
-                [FAIL]    |                       [PASS]    |
-                          v                                 v
-       +------------------------------------+  +-------------------------+
-       | * log_error "SYNTAX_VAL"           |  | execute_isolated_hook   |
-       | * emit_json_diagnostics (code 13)  |  | "post" "hook" "SUCCESS" |
-       | * release_thread_lock              |  +-------------------------+
-       | * exit 13 (BASH4LLM_ERR_PARSE)     |               |
-       +------------------------------------+               v
-                                              +--------------------------+
-                                              | extras/hooks/sml-gate.sh |
-                                              | * Strip ``` fences (AWK) |
-                                              | * Anchored POSIX ERE     |
-                                              | * Emit b64 payload       |
-                                              +--------------------------+
-                                                            |
-                                                            v
-                                              +--------------------------+
-                                              | CORE: finalize_and_      |
-                                              |        output()          |
-                                              | (Stdout / GUI / NDJSON)  |
-                                              +--------------------------+                                +--------------------------+
+                  +---------------------------------------+
+                  |             USER INVOCATION           |
+                  | CLI: ./bash4llm -t sml --validate-sml |
+                  | GUI: [x] Validate SML + sml.txt       |
+                  +---------------------------------------+
+                                      |
+                                      v
+                  +---------------------------------------+
+                  |       CORE: assemble_content()        |
+                  |    Injects extras/templates/sml.txt   |
+                  +---------------------------------------+
+                                      |
+                                      v
+                  +---------------------------------------+
+                  |     CORE: build_payload_from_vars()   |
+                  |   Compiles JSON payload ($PAYLOAD)    |
+                  +---------------------------------------+
+                                      |
+                                      v
+                  +---------------------------------------+
+                  |           LLM API INFERENCE           |
+                  |    (Groq, Gemini, Mistral, etc.)      |
+                  +---------------------------------------+
+                                      |
+                                      v
+                  +---------------------------------------+
+                  |     CORE: perform_request_once()      |
+                  |  Extracts text ($RESP -> $text)       |
+                  +---------------------------------------+
+                                      |
+                                      v
+              +-----------------------------------------------+
+              |        CORE: validate_response_syntax()       |
+              +-----------------------------------------------+
+                     |                                 |
+           [FAIL]    |                       [PASS]    |
+                     v                                 v
+  +------------------------------------+  +-------------------------+
+  | * log_error "SYNTAX_VAL"           |  | execute_isolated_hook   |
+  | * emit_json_diagnostics (code 13)  |  | "post" "hook" "SUCCESS" |
+  | * release_thread_lock              |  +-------------------------+
+  | * exit 13 (BASH4LLM_ERR_PARSE)     |               |
+  +------------------------------------+               v
+                                         +--------------------------+
+                                         | extras/hooks/sml-gate.sh |
+                                         | * Strip ``` fences (AWK) |
+                                         | * Anchored POSIX ERE     |
+                                         | * Emit b64 payload       |
+                                         +--------------------------+
+                                                       |
+                                                       v
+                                         +--------------------------+
+                                         | CORE: finalize_and_      |
+                                         |        output()          |
+                                         | (Stdout / GUI / NDJSON)  |
+                                         +--------------------------+                                +--------------------------+
 ```
 
 ## Architettura, Core Engine & Specifica del Safety Gate
