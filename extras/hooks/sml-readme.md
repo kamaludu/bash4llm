@@ -1,5 +1,5 @@
 # Structured Metadata Layout (SML v2.0)
-## [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
+## [🇮🇹](#sezione-italiana) [🇬🇧](#-english-section)
 
 ```text
                        +---------------------------------------+
