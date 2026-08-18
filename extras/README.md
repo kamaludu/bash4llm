@@ -77,16 +77,14 @@ extras/
 
 `./bash4llm --install-extras </path/to/extras/>`
 
-**[🇮🇹 Italiano](#sezione-italiana) / [🇬🇧 English](#english-section)**
+## [🇮🇹 Italiano](#sezione-italiana) / [🇬🇧 English](#english-section)
 
 ---
 
 # Ecosistema e Moduli Estesi (Extras) — Bash4LLM⁺
 
----
-
 <a id="sezione-italiana"></a>
-## 🇮🇹 Sezione Italiana
+### 🇮🇹 Sezione Italiana
 
 La cartella `extras/` ospita l'ecosistema di estensioni modulari e opzionali per **Bash4LLM⁺**. L'architettura è rigorosamente segregata: il Core `./bash4llm` rimane un componente fidato, minimale e a dipendenze zero (POSIX/Bash 4.0+), mentre gli *extras* estendono le capacità operative integrando dipendenze opzionali e circoscritte (*soft dependencies* come OpenSSL o Python 3.10+).
 
@@ -189,10 +187,8 @@ L'integrità dei moduli è garantita dal manifest `manifest.sha256` e dalla rela
 
 # Ecosystem and Extended Modules (Extras) — Bash4LLM⁺
 
----
-
 <a id="english-section"></a>
-## 🇬🇧 English Section
+### 🇬🇧 English Section
 
 The `extras/` directory hosts the modular, optional extension ecosystem for **Bash4LLM⁺**. The architecture follows a strict segregation model: the Core `./bash4llm` executable remains a trusted, minimal, and zero-dependency component (standard POSIX/Bash 4.0+), while the *extras* introduce targeted, opt-in enhancements (*soft dependencies* such as OpenSSL or Python 3.10+).
 
