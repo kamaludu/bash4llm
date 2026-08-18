@@ -42,7 +42,8 @@ extras/
 │       ├── fr.json
 │       └── it.json
 ├── hooks/                    # Hooks 
-│   └── sml-gate.sh           # Structured Metadata Layout - Semantic Safety Gate
+│   ├── sml-gate.sh           # Structured Metadata Layout - Semantic Safety Gate
+│   └── sml-readme.md 
 ├── providers/                # Optional LLM Provider Extension Modules
 │   ├── gemini.sh
 │   ├── huggingface.md
