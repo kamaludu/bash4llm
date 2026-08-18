@@ -1,5 +1,5 @@
 # Structured Metadata Layout (SML v2.0)
-## [🇮🇹](#sezione-italiana) [🇬🇧](#-english-section)
+## [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
 
 ```text
                        +---------------------------------------+
@@ -62,7 +62,7 @@
 
 ## Architettura, Core Engine & Specifica del Safety Gate
 
-## Sezione Italiana
+## 🇮🇹 Sezione Italiana
 
 ## 1. Panoramica del Sistema & Flusso Topologico
 
