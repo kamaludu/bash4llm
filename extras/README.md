@@ -47,7 +47,8 @@ extras/
 │   ├── gemini.sh
 │   ├── huggingface.md
 │   ├── huggingface.sh
-│   └── mistral.sh
+│   ├── mistral.sh
+│   └── openrouter.sh
 ├── security/                 # Active Security, Encryption & Output Sanitization
 │   ├── OPENSSL-HELPER.md
 │   ├── generate-manifest.sh  # Official Extras Manifest Generator & Ed25519 Signer
@@ -71,6 +72,7 @@ extras/
 ├── manifest.sha256           # SHA-256 Cryptographic Module Integrity Manifest
 ├── manifest.sha256.sig       # Ed25519 Cryptographic Signature
 └── official-ed25519.pub      # Official Ed25519 Public Key
+
 ```
 
 **Installazione / Installation**
