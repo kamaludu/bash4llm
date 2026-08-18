@@ -133,6 +133,34 @@ Use of a secondary provider:
 
 ---
 
+## Extended Modules (*Extras*)
+
+While the Core `./bash4llm` executable is completely self-contained and zero-dependency (POSIX/Bash 4.0+ compliant), the `extras/` directory extends system capabilities via modular, opt-in components with targeted soft dependencies. All modules strictly enforce **Zero-Eval** design, workspace isolation (`RUN_TMPDIR`, zero `/tmp` pollution), and the Principle of Least Privilege (`0700` directories, `0600` files, with execution bits restricted strictly to the 4 authorized entrypoint categories).
+
+* **Advanced User Interfaces**:
+  * **TUI REPL (`extras/chat/tui-repl.sh`)**: 100% native full-screen interactive Bash Terminal UI with multilingual localization (`--chat`, `--tui`).
+  * **WebApp GUI (`extras/gui-py/`)**: Python 3.10+ browser interface (FastAPI + Uvicorn) featuring real-time SSE streaming and CSRF protection (`--gui`, `--webapp`).
+* **Extended LLM Providers (`extras/providers/`)**: Subshell-isolated plug-and-play drivers for OpenAI-compatible endpoints including `gemini`, `mistral`, and `huggingface` (`--provider <name>`).
+* **Security, Encryption & Sanitization (`extras/security/`)**:
+  * **OpenSSL Key Vault (`openssl-helper.sh`)**: Local symmetric API key vault using AES-256-CBC, PBKDF2 (100k iterations), Master Password, and a 32-char offline Recovery Key (`--vault`).
+  * **Output Sanitizer (`output-sanitizer.sh`)**: Zero-Eval stream filter removing ANSI escape sequences and non-printable characters (`--sanitize`).
+* **Advanced Session Engine (`extras/session/session-engine.sh`)**: Extended conversation context engine with size-based NDJSON segmentation (1MB), log rotation (`.gz`), deduplication, byte-budgeting, and TTL-governed memory caching.
+* **Semantic Safety Hooks (`extras/hooks/sml-gate.sh`)**: Post-execution safety gate validating *Structured Metadata Layout* (SML v2.0) response compliance (`--validate-sml`).
+* **Shell Autocompletion (`extras/docs/bash4llm-completion.sh`)**: Native Bash 4.0+ contextual completion module for CLI flags, cached local models, and error codes.
+* **Master Test Suite (`extras/test/run-all-tests.sh`)**: 6-level verification pyramid (Sanity, Compatibility, Regression, Hardening, Concurrency, Stress) paired with the `scintilla-t3.sh` suite for refactored safety validation (`--test`, `--run-all-tests`).
+
+### Supply Chain Integrity & Manifest
+Module loading enforces the **Manifest-Authorized** model: every component must match its registered SHA-256 hash in `extras/manifest.sha256` (tamper attempts fail-closed with exit code `17` / `BASH4LLM_ERR_SEC`). To update the manifest after local changes:
+
+```bash
+# Fast local SHA-256 manifest regeneration
+./extras/security/generate-manifest.sh --no-sign-if-missing-key
+```
+
+> 📖 For comprehensive technical documentation on every module, refer to the [Extras Architecture Guide](extras/README.md).
+
+---
+
 ## Security and filesystem permissions 🚨
 
 To protect the `bash4llm` script from unauthorized modifications in shared environments, appropriate read/execution permissions can be set for the operating system in use:

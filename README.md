@@ -133,6 +133,34 @@ Uso di un provider secondario:
 
 ---
 
+## Moduli Aggiuntivi (*Extras*)
+
+Mentre il Core `./bash4llm` è un eseguibile completamente autonomo e privo di dipendenze esterne (compatibile POSIX/Bash 4.0+), la cartella `extras/` estende il runtime attraverso moduli opzionali con dipendenze software mirate (*soft dependencies*). Tutti i moduli aderiscono al principio di **Zero-Eval**, all'isolamento su filesystem (`RUN_TMPDIR`, no `/tmp`) e al principio del minimo privilegio (`0700` per le directory, `0600` per i file e bit di esecuzione limitato ai 4 entrypoint autorizzati).
+
+* **Interfacce Utente Avanzate**:
+  * **TUI REPL (`extras/chat/tui-repl.sh`)**: Interfaccia interattiva a schermo intero nativa al 100% in Bash con supporto multilingua (`--chat`, `--tui`).
+  * **WebApp GUI (`extras/gui-py/`)**: Interfaccia grafica su browser in Python 3.10+ (FastAPI + Uvicorn) con streaming SSE e protezione CSRF (`--gui`, `--webapp`).
+* **Provider LLM Estesi (`extras/providers/`)**: Driver plug-and-play caricati in subshell isolata per backend OpenAI-compatibili come `gemini`, `mistral` e `huggingface` (`--provider <nome>`).
+* **Sicurezza, Cifratura e Sanitizzazione (`extras/security/`)**:
+  * **OpenSSL Key Vault (`openssl-helper.sh`)**: Cifratura locale delle chiavi API con AES-256-CBC, PBKDF2 (100k iterazioni), Master Password e Recovery Key offline a 32 char (`--vault`).
+  * **Output Sanitizer (`output-sanitizer.sh`)**: Motore Zero-Eval per il filtraggio deterministico di sequenze ANSI e caratteri non stampabili (`--sanitize`).
+* **Session Engine Avanzato (`extras/session/session-engine.sh`)**: Gestione di contesti estesi con segmentazione NDJSON su soglia (1MB), rotazione automatica (`.gz`), deduplicazione, byte-budgeting e caching in memoria con TTL.
+* **Hooks e Validazione Semantica (`extras/hooks/sml-gate.sh`)**: Gate di conformità per forzare la struttura *Structured Metadata Layout* (SML v2.0) sulle risposte (`--validate-sml`).
+* **Autocompletamento Shell (`extras/docs/bash4llm-completion.sh`)**: Modulo di completamento contestuale nativo per Bash 4.0+ per opzioni CLI, modelli e codici d'errore.
+* **Master Test Suite (`extras/test/run-all-tests.sh`)**: Framework di collaudo a 6 livelli (Sanity, Compatibility, Regression, Hardening, Concurrency, Stress) integrato con la suite `scintilla-t3.sh` per la verifica del refactoring di sicurezza (`--test`, `--run-all-tests`).
+
+### Integrità della Supply Chain & Manifest
+Il caricamento dei moduli segue il modello **Manifest-Authorized**: ogni componente deve corrispondere al checksum SHA-256 registrato in `extras/manifest.sha256` (verificato contro manomissioni con codice d'uscita `17` / `BASH4LLM_ERR_SEC`). Per registrare modifiche o moduli aggiunti in locale:
+
+```bash
+# Aggiornamento locale rapido del manifest SHA-256
+./extras/security/generate-manifest.sh --no-sign-if-missing-key
+```
+
+> 📖 Per la documentazione tecnica completa di ogni componente, consulta la [Guida agli Extras](extras/README.md).
+
+---
+
 ## Sicurezza e permessi del filesystem 🚨
 
 Per proteggere lo script `bash4llm` da modifiche non autorizzate in ambienti condivisi, è possibile impostare i permessi di sola lettura/esecuzione appropriati per il sistema operativo in uso:
