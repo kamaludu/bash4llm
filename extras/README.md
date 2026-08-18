@@ -58,6 +58,8 @@ extras/
 │   ├── README.md
 │   ├── session-engine.sh
 │   └── struttura.md
+├── templates/                  
+│   └── sml.txt               # Structured Metadata Layout v2.0 prompt template 
 ├── test/                     # Automated Verification Test Suites
 │   ├── README-tests.md
 │   ├── compatibility.sh
