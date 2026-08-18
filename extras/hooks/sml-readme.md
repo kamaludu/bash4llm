@@ -1,8 +1,6 @@
 # Structured Metadata Layout (SML v2.0)
 ## [🇮🇹](#-sezione-italiana) [🇬🇧](#-english-section)
 
-**[🇮🇹 Italiano](#-sezione-italiana) / [🇬🇧 English](#-english-section)**
-
 ```text
                        +---------------------------------------+
                        |             USER INVOCATION           |
@@ -63,7 +61,6 @@
 ```
 
 ## Architettura, Core Engine & Specifica del Safety Gate
-## Sezione italiana 🇮🇹
 
 ## 🇮🇹 Sezione Italiana
 
@@ -299,7 +296,7 @@ Ogni volta che `extras/hooks/sml-gate.sh` o `extras/templates/sml.txt` viene agg
 ---
 
 ## Architecture, Core Engine & Safety Gate Specification
-## 🇬🇧
+## 🇬🇧 English section
 
 ## 1. System Overview & Topological Flow
 
