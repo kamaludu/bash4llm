@@ -56,7 +56,8 @@
                                          | CORE: finalize_and_      |
                                          |        output()          |
                                          | (Stdout / GUI / NDJSON)  |
-                                         +--------------------------+                                +--------------------------+
+                                         +--------------------------+
+
 ```
 
 ## Architettura, Core Engine & Specifica del Safety Gate
