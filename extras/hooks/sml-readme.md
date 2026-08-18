@@ -65,6 +65,8 @@
 ## Architettura, Core Engine & Specifica del Safety Gate
 ## Sezione italiana 🇮🇹
 
+## 🇮🇹 Sezione Italiana
+
 ## 1. Panoramica del Sistema & Flusso Topologico
 
 Il sottosistema **Structured Metadata Layout (SML v2.0)** in **Bash4LLM⁺ (v2.8.5.3+)** è una pipeline end-to-end di validazione semantica, sanitizzazione e sagomatura dell'output (output-shaping). Si estende su tre livelli architetturali:
