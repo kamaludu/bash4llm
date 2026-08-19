@@ -150,8 +150,8 @@ extras/
 
 ### 5. Semantic Safety Hooks (`extras/hooks/`)
 * **SML Safety Gate (`sml-gate.sh`)**
-  * **Invocazione Core:** `bash4llm --validate-sml`
-  * **Caratteristiche:** Hook post-esecuzione isolato che convalida formalmente che l'output dell'LLM sia conforme allo standard *Structured Metadata Layout* (SML v2.0), verificando la presenza e la coerenza dei blocchi obbligatori `LISTEN_SUMMARY:` e `CONVERSATION_OUTCOME:`.
+  * **Invocazione Core:** `bash4llm -t sml --validate-sml`
+  * **Caratteristiche:** Hook post-esecuzione isolato (T2 Boundary Integration Hook) che opera in una subshell sandboxata. Convalida formalmente che l'output dell'LLM sia conforme allo standard *Structured Metadata Layout* (SML v2.0): rimuove i fence Markdown esterni tramite AWK, verifica la presenza rigorosa di tutti e 5 gli header obbligatori (`SML_VERSION: 2.0`, `LISTEN_SUMMARY:`, `CONVERSATION_OUTCOME:`, `PROPOSED_TRANSITION:`, `EVIDENCE_TYPE:`) e convalida i valori enum ammessi per la categoria epistemica (`FACTUAL`, `ANALYTICAL`, `PROCEDURAL`, `CONVERSATIONAL`, `SYNTHETIC`). In caso di esito positivo emette il payload trasformato in Base64 (`TRANSFORMED_PAYLOAD`); in caso di errore sintattico o schema incompleto, la pipeline blocca l'esecuzione in modalità *fail-closed* (codice d'uscita 13 `SYNTAX_VAL`).
 
 ### 6. Autocompletamento e Documentazione (`extras/docs/`)
 * **Shell Completion Module (`bash4llm-completion.sh`)**
@@ -254,8 +254,8 @@ extras/
 
 ### 5. Semantic Safety Hooks (`extras/hooks/`)
 * **SML Safety Gate (`sml-gate.sh`)**
-  * **Core Invocation:** `bash4llm --validate-sml`
-  * **Features:** Isolated post-execution hook validating that assistant completions strictly adhere to the *Structured Metadata Layout* (SML v2.0) specification by checking for required `LISTEN_SUMMARY:` and `CONVERSATION_OUTCOME:` structures.
+  * **Core Invocation:** `bash4llm -t sml --validate-sml`
+  * **Features:** Isolated post-execution hook (T2 Boundary Integration Hook) that operates in a sandboxed subshell. Formally validates that the LLM output conforms to the *Structured Metadata Layout* (SML v2.0) standard: it removes external Markdown fences via AWK, rigorously checks the presence of all 5 mandatory headers (`SML_VERSION: 2.0`, `LISTEN_SUMMARY:`, `CONVERSATION_OUTCOME:`, `PROPOSED_TRANSITION:`, `EVIDENCE_TYPE:`), and validates the allowed enum values for the epistemic category (`FACTUAL`, `ANALYTICAL`, `PROCEDURAL`, `CONVERSATIONAL`, `SYNTHETIC`). If successful, it emits the Base64-transformed payload (`TRANSFORMED_PAYLOAD`); in case of a syntactic error or incomplete schema, the pipeline blocks execution in *fail-closed* mode (exit code 13 `SYNTAX_VAL`).
 
 ### 6. Autocompletion & Documentation (`extras/docs/`)
 * **Native Shell Completion (`bash4llm-completion.sh`)**
