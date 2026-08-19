@@ -57,11 +57,13 @@
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Enter user query or instruction.</li>
               <li><span class="badge-term">📎 Attach</span>: Upload context file (mapped to <code>-f</code> flag).</li>
-              <li><span class="badge-term">Templates</span>: Apply structured prompt template from repository.</li>
+              <li>
+                <span class="badge-term">Templates</span>: Apply a pre-defined prompt template from the repository (e.g., <code>sml.txt</code>, essential when enabling the <strong>SML Gate</strong> option to instruct the LLM to adopt the required structure)[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span).
+              </li>
               <li><span class="badge-term">Stream</span>: Toggle real-time token streaming on or off (blocking full-response mode).</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
-                Structured Metadata Layout validator. Forces validation of the AI output schema (requires mandatory <code>LISTEN_SUMMARY</code> and <code>CONVERSATION_OUTCOME</code> blocks). If the model hallucinates or fails the schema, SML Gate blocks execution and flags output as unverified.
+                (Structured Metadata Layout v2.0) AI output syntax and compliance validator[span_4](start_span)[span_4](end_span). <em>Note:</em> for proper operation, the <code>sml.txt</code> template must be selected concurrently (or SML instructions included in the prompt)[span_5](start_span)[span_5](end_span). Verifies the presence of all 5 mandatory headers (<code>SML_VERSION: 2.0</code>, <code>LISTEN_SUMMARY</code>, <code>CONVERSATION_OUTCOME</code>, <code>PROPOSED_TRANSITION</code>, and <code>EVIDENCE_TYPE</code>) and the validity of epistemic category enum tokens (<code>FACTUAL</code>, <code>ANALYTICAL</code>, <code>PROCEDURAL</code>, <code>CONVERSATIONAL</code>, <code>SYNTHETIC</code>)[span_6](start_span)[span_6](end_span). In case of an incomplete schema, hallucination, or syntax error, it blocks output in <em>fail-closed</em> mode (error code 13 <code>SYNTAX_VAL</code>)[span_7](start_span)[span_7](end_span).
               </li>
               <li><span class="badge-term">⧉ Copy</span>: Copy the entire text of a single message to clipboard with instant visual confirmation (✓).</li>
               <li><span class="badge-term">Send / Stop</span>: Submit query stream or interrupt active SSE job immediately.</li>
@@ -113,11 +115,13 @@
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Inserisci la query o l'istruzione per il modello.</li>
               <li><span class="badge-term">📎 Allega</span>: Carica un file di contesto (flag <code>-f</code>).</li>
-              <li><span class="badge-term">Template</span>: Applica un template di prompt predefinito.</li>
+              <li>
+                <span class="badge-term">Template</span>: Applica un template di prompt predefinito dal repository (es. <code>sml.txt</code>, indispensabile quando si attiva l'opzione <strong>SML Gate</strong> per istruire l'LLM ad adottare la struttura richiesta)[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span).
+              </li>
               <li><span class="badge-term">Stream</span>: Attiva o disattiva la generazione in tempo reale (passando alla modalità risposta intera).</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
-                (Structured Metadata Layout) Verifica che la risposta dell'IA rispetti lo schema obbligatorio (blocchi <code>LISTEN_SUMMARY</code> e <code>CONVERSATION_OUTCOME</code>). In caso di allucinazione o schema incompleto, SML Gate blocca l'output non conforme.
+                (Structured Metadata Layout v2.0) Validatore di sintassi e conformità dell'output dell'IA[span_7](start_span)[span_7](end_span). <em>Nota:</em> affinché funzioni correttamente, è necessario selezionare contestualmente il template <code>sml.txt</code> (o inserire le istruzioni SML nel prompt)[span_8](start_span)[span_8](end_span). Verifica la presenza di tutti e 5 gli header obbligatori (<code>SML_VERSION: 2.0</code>, <code>LISTEN_SUMMARY</code>, <code>CONVERSATION_OUTCOME</code>, <code>PROPOSED_TRANSITION</code> ed <code>EVIDENCE_TYPE</code>) e la validità dei token enum per la categoria epistemica (<code>FACTUAL</code>, <code>ANALYTICAL</code>, <code>PROCEDURAL</code>, <code>CONVERSATIONAL</code>, <code>SYNTHETIC</code>)[span_9](start_span)[span_9](end_span). In caso di schema incompleto, allucinazione o errore di sintassi, blocca l'output in modalità <em>fail-closed</em> (codice di errore 13 <code>SYNTAX_VAL</code>)[span_10](start_span)[span_10](end_span).
               </li>
               <li><span class="badge-term">⧉ Copia</span>: Copia l'intero testo del singolo messaggio negli appunti con conferma visiva immediata (✓).</li>
               <li><span class="badge-term">Invia / Interrompi</span>: Avvia lo streaming o cancella immediatamente il job SSE in corso.</li>
@@ -169,11 +173,13 @@
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Introduce la consulta o instrucción.</li>
               <li><span class="badge-term">📎 Adjuntar</span>: Sube un archivo de contexto (opción <code>-f</code>).</li>
-              <li><span class="badge-term">Plantillas</span>: Aplica una plantilla de prompt.</li>
+              <li>
+                <span class="badge-term">Plantillas</span>: Aplica una plantilla de prompt predefinida desde el repositorio (ej. <code>sml.txt</code>, indispensable al activar la opción <strong>SML Gate</strong> para instruir al LLM a adoptar la estructura requerida)[span_20](start_span)[span_20](end_span)[span_21](start_span)[span_21](end_span).
+              </li>
               <li><span class="badge-term">Stream</span>: Alterna la transmisión en tiempo real de tokens.</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
-                Valida el esquema Structured Metadata Layout (bloques <code>LISTEN_SUMMARY</code> y <code>CONVERSATION_OUTCOME</code>).
+                (Structured Metadata Layout v2.0) Validador de sintaxis y conformidad de la salida de la IA[span_22](start_span)[span_22](end_span). <em>Nota:</em> para su correcto funcionamiento, es necesario seleccionar simultáneamente la plantilla <code>sml.txt</code> (o incluir las instrucciones SML en el prompt)[span_23](start_span)[span_23](end_span). Verifica la presencia de los 5 encabezados obligatorios (<code>SML_VERSION: 2.0</code>, <code>LISTEN_SUMMARY</code>, <code>CONVERSATION_OUTCOME</code>, <code>PROPOSED_TRANSITION</code> y <code>EVIDENCE_TYPE</code>) y la validez de los tokens enum para la categoría epistémica (<code>FACTUAL</code>, <code>ANALYTICAL</code>, <code>PROCEDURAL</code>, <code>CONVERSATIONAL</code>, <code>SYNTHETIC</code>)[span_24](start_span)[span_24](end_span). En caso de esquema incompleto, alucinación o error de sintaxis, bloquea la salida en modo <em>fail-closed</em> (código de error 13 <code>SYNTAX_VAL</code>)[span_25](start_span)[span_25](end_span).
               </li>
               <li><span class="badge-term">⧉ Copiar</span>: Copia el texto completo de un mensaje individual al portapapeles con confirmación visual (✓).</li>
               <li><span class="badge-term">Enviar / Detener</span>: Envía la petición o cancela la transmisión SSE activa.</li>
@@ -225,11 +231,13 @@
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Saisir votre instruction.</li>
               <li><span class="badge-term">📎 Joindre</span>: Téléverser un fichier de contexte (option <code>-f</code>).</li>
-              <li><span class="badge-term">Templates</span>: Sélectionner un modèle de prompt structuré.</li>
+              <li>
+                <span class="badge-term">Templates</span> : Appliquer un modèle de prompt prédéfini depuis le dépôt (ex. <code>sml.txt</code>, indispensable lors de l'activation de l'option <strong>SML Gate</strong> pour instruire le LLM d'adopter la structure requise)[span_8](start_span)[span_8](end_span)[span_9](start_span)[span_9](end_span).
+              </li>
               <li><span class="badge-term">Flux (Stream)</span>: Activer ou désactiver le streaming de jetons en temps réel.</li>
               <li>
-                <span class="badge-term">SML Gate</span>:
-                Validation stricte du Structured Metadata Layout (blocs <code>LISTEN_SUMMARY</code> et <code>CONVERSATION_OUTCOME</code>).
+                <span class="badge-term">SML Gate</span> :
+                (Structured Metadata Layout v2.0) Validateur de syntaxe et de conformité de la sortie de l'IA[span_10](start_span)[span_10](end_span). <em>Remarque :</em> pour un fonctionnement correct, il est nécessaire de sélectionner simultanément le modèle <code>sml.txt</code> (ou d'insérer les instructions SML dans le prompt)[span_11](start_span)[span_11](end_span). Vérifie la présence des 5 en-têtes obligatoires (<code>SML_VERSION: 2.0</code>, <code>LISTEN_SUMMARY</code>, <code>CONVERSATION_OUTCOME</code>, <code>PROPOSED_TRANSITION</code> et <code>EVIDENCE_TYPE</code>) ainsi que la validité des jetons énumérés pour la catégorie épistémique (<code>FACTUAL</code>, <code>ANALYTICAL</code>, <code>PROCEDURAL</code>, <code>CONVERSATIONAL</code>, <code>SYNTHETIC</code>)[span_12](start_span)[span_12](end_span). En cas de schéma incomplet, d'hallucination ou d'erreur de syntaxe, bloque la sortie en mode <em>fail-closed</em> (code d'erreur 13 <code>SYNTAX_VAL</code>)[span_13](start_span)[span_13](end_span).
               </li>
               <li><span class="badge-term">⧉ Copier</span>: Copier l'intégralité du message dans le presse-papiers avec confirmation visuelle (✓).</li>
               <li><span class="badge-term">Envoyer / Arrêter</span>: Lancer le streaming ou annuler le traitement SSE immédiatement.</li>
@@ -281,11 +289,13 @@
             <ul class="help-list">
               <li><span class="badge-term">Prompt</span>: Benutzeranfrage eingeben.</li>
               <li><span class="badge-term">📎 Anhängen</span>: Kontextdatei anhängen (Flag <code>-f</code>).</li>
-              <li><span class="badge-term">Templates</span>: Prompt-Vorlage anwenden.</li>
+              <li>
+                <span class="badge-term">Templates</span>: Eine vordefinierte Prompt-Vorlage aus dem Repository anwenden (z. B. <code>sml.txt</code>, unerlässlich bei der Aktivierung der Option <strong>SML Gate</strong>, um das LLM anzuweisen, die geforderte Struktur zu übernehmen)[span_14](start_span)[span_14](end_span)[span_15](start_span)[span_15](end_span).
+              </li>
               <li><span class="badge-term">Stream</span>: Echtzeit-Token-Streaming aktivieren oder deaktivieren.</li>
               <li>
                 <span class="badge-term">SML Gate</span>:
-                Erzwingt Structured Metadata Layout Schemaprüfung (<code>LISTEN_SUMMARY</code> und <code>CONVERSATION_OUTCOME</code>).
+                (Structured Metadata Layout v2.0) Syntax- und Konformitätsprüfer für die KI-Ausgabe[span_16](start_span)[span_16](end_span). <em>Hinweis:</em> Für eine ordnungsgemäße Funktion muss gleichzeitig die Vorlage <code>sml.txt</code> ausgewählt werden (oder die SML-Anweisungen müssen im Prompt enthalten sein)[span_17](start_span)[span_17](end_span). Überprüft das Vorhandensein aller 5 obligatorischen Header (<code>SML_VERSION: 2.0</code>, <code>LISTEN_SUMMARY</code>, <code>CONVERSATION_OUTCOME</code>, <code>PROPOSED_TRANSITION</code> und <code>EVIDENCE_TYPE</code>) sowie die Gültigkeit der Enum-Tokens für die epistemische Kategorie (<code>FACTUAL</code>, <code>ANALYTICAL</code>, <code>PROCEDURAL</code>, <code>CONVERSATIONAL</code>, <code>SYNTHETIC</code>)[span_18](start_span)[span_18](end_span). Bei unvollständigem Schema, Halluzination oder Syntaxfehler wird die Ausgabe im <em>Fail-Closed</em>-Modus blockiert (Fehlercode 13 <code>SYNTAX_VAL</code>)[span_19](start_span)[span_19](end_span).
               </li>
               <li><span class="badge-term">⧉ Kopieren</span>: Kopiert den gesamten Text einer einzelnen Nachricht mit visueller Bestätigung (✓) in die Zwischenablage.</li>
               <li><span class="badge-term">Senden / Stopp</span>: Stream ausführen oder sofort abbrechen.</li>
