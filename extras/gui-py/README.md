@@ -65,7 +65,7 @@ pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
 
 **Termux (Android)**
 ```sh
-# 1. Installazione di Python e strumenti di build (necessari per pydantic-core)
+# 1. Aggiornamento del sistema e installazione tool di compilazione
 pkg update && pkg upgrade -y
 pkg install -y python rust clang binutils make libffi
 
@@ -73,9 +73,14 @@ pkg install -y python rust clang binutils make libffi
 python -m venv .venv
 source .venv/bin/activate
 
-# 3. Aggiornamento di pip (nella venv) e installazione delle librerie
+# 3. Aggiornamento pip e installazione pacchetti (inclusa gestione form/upload)
 pip install --upgrade pip
-pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
+pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0" python-multipart
+```
+*Per avviare la GUI nell'ambiente virtuale di Python: `.venv`*
+```sh
+source .venv/bin/activate
+./bash4llm --gui
 ```
 
 **macOS (con Homebrew)**
