@@ -65,15 +65,15 @@ pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
 
 **Termux (Android)**
 ```sh
-# 1. Python installation (already includes pip and venv)
-pkg update
-pkg install -y python
+# 1. Python installation and build tools (necessary for pydantic-core)
+pkg update && pkg upgrade -y
+pkg install -y python rust clang binutils make libffi
 
-# 2. Virtual environment creation and activation
+# 2. Creation and activation of the virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# 3. Python library installation
+# 3. Pip update (in venv) and installation of libraries
 pip install --upgrade pip
 pip install "fastapi>=0.100.0" "uvicorn>=0.20.0" "pydantic>=2.0.0"
 ```
