@@ -1,6 +1,6 @@
 [![Logo 320](../docs/img/bash4llm320.png "Logo bash4llm")](../README.md)
 
-# Bash4llm Extras
+# Bash4LLM⁺ Extras
 
 [![Manifest Integrity & Auto-Update](https://github.com/kamaludu/bash4llm/actions/workflows/extras-integrity-manifest.yml/badge.svg)](https://github.com/kamaludu/bash4llm/actions/workflows/extras-integrity-manifest.yml)
 [![Latest Release](https://img.shields.io/github/v/release/kamaludu/bash4llm?sort=semver&style=flat&color=4EAA25&label=version&labelColor=2B2B2B&logo=gnu-bash&logoColor=white)](https://github.com/kamaludu/bash4llm/releases)
