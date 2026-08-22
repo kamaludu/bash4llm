@@ -6,6 +6,11 @@
 
 La presente specifica tecnica descrive l'architettura, i flussi crittografici, le misure di tolleranza ai guasti e i dettagli implementativi del modulo opzionale di sicurezza `openssl-helper.sh` per la suite `Bash4LLM⁺`.
 
+**Requisiti** (oltre a quelli di bash4llm):
+- Binario CLI: **openssl** versione 1.1.1 o superiore (su Termux installare **openssl-tool**).  
+- Utility di terminale: **stty** (per l'input nascosto delle password).  
+- Cancellazione sicura: **dd** (standard) oppure **shred** (opzionale).
+
 ---
 
 ## 1. Introduzione e Principi di Progettazione
