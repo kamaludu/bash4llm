@@ -15,7 +15,7 @@ set -euo pipefail
 
 # Resolves bash4llm binary dynamically by walking up the directory tree
 resolve_bash4llm_bin() {
-  if [ -n "${BASH4LLM_BIN:-}" ] && [ -f "${BASH4LLM_BIN}" ]; then
+  if [ -n "${BASH4LLM_BIN:-}" ] && [ -f "${BASH4LLM_BIN}" ] && [ -r "${BASH4LLM_BIN}" ]; then
     printf '%s' "${BASH4LLM_BIN}"
     return 0
   fi
@@ -40,14 +40,14 @@ resolve_bash4llm_bin() {
 }
 
 BASH4LLM_BIN="$(resolve_bash4llm_bin)"
-TEST_MODEL="llama-3.3-70b-versatile"
 
 printf "=== [T3 TEST] VERIFYING REFACTORED BASH4LLM ENHANCEMENTS ===\n"
 
 # 1. Test Syntax Validation Flag (Reject non-SML text)
 printf "Test 1: SML Validation Reject Check ... "
-INVALID_OUT=$(echo "Hello world" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --validate-sml --dry-run 2>&1 || true)
-if echo "$INVALID_OUT" | grep -qE "SYNTAX_VAL|13|14"; then
+INVALID_RC=0
+INVALID_OUT="$(printf 'Hello world\n' | bash "$BASH4LLM_BIN" --validate-sml --dry-run 2>&1)" || INVALID_RC=$?
+if [ "$INVALID_RC" -eq 13 ] || echo "$INVALID_OUT" | grep -qE "SYNTAX_VAL|13|14"; then
   printf "PASSED\n"
 else
   printf "FAILED\n" && exit 1
@@ -55,8 +55,10 @@ fi
 
 # 2. Test Output Sanitization Flag
 printf "Test 2: Output Sanitization Check ... "
-CLEAN_TEXT=$(echo -e "\x1B[31mRedText\x1B[0m" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --sanitize --dry-run 2>&1 || true)
-if [[ "$CLEAN_TEXT" != *"\x1B"* ]]; then
+RAW_INPUT=$'\e[31mRedText\e[0m'
+CLEAN_RC=0
+CLEAN_TEXT="$(printf '%s\n' "$RAW_INPUT" | bash "$BASH4LLM_BIN" --sanitize --dry-run 2>&1)" || CLEAN_RC=$?
+if [ "$CLEAN_RC" -eq 0 ] && [[ "$CLEAN_TEXT" != *$'\e'* ]] && [[ "$CLEAN_TEXT" != *$'\033'* ]] && [[ "$CLEAN_TEXT" != *"\x1B"* ]]; then
   printf "PASSED\n"
 else
   printf "FAILED\n" && exit 1
@@ -64,7 +66,8 @@ fi
 
 # 3. Test JSON Diagnostics Flag
 printf "Test 3: JSON Diagnostics Output Check ... "
-DIAG_OUT=$(echo "Hello" | bash "$BASH4LLM_BIN" -m "$TEST_MODEL" --validate-sml --json-diagnostics --dry-run 2>&1 || true)
+DIAG_RC=0
+DIAG_OUT="$(printf 'Hello\n' | bash "$BASH4LLM_BIN" --validate-sml --json-diagnostics --dry-run 2>&1)" || DIAG_RC=$?
 if echo "$DIAG_OUT" | grep '^{' | jq -e 'select(.bash4llm_status == "ERROR")' >/dev/null 2>&1; then
   printf "PASSED\n"
 else
