@@ -5885,7 +5885,16 @@ if [ -n "${PRINT_MODEL_FILE:-}" ]; then
   exit 0
 fi
 
+# Load local configurations and whitelist templates for accurate display
+load_local_config
+load_whitelist
+
 if [ "${SHOW_CONFIG:-0}" -eq 1 ]; then
+  # Protected resolution of the active model for the current provider
+  if resolve_model >/dev/null 2>&1; then
+    MODEL="$FINAL_MODEL"
+  fi
+
   : "${ALLOWED_MODELS:=}"
   printf '%s configuration:\n' "${C_BGREEN}Bash4LLM⁺${C_RST}"
   printf '  - Name: %s\n' "$SCRIPT_NAME"
