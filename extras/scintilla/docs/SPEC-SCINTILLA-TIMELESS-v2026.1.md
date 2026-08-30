@@ -1,6 +1,6 @@
 [![Specifica](https://img.shields.io/badge/✴️_SCINTILLA-SPECIFICA_CANONICA_DIVULGATIVA-2ea44f?style=for-the-badge&labelColor=gold)](SPEC-SCI-TL--NATLANGv2026.1.md)
 
-# SCINTILLA Core - CANONICAL SPECIFICATION
+# ✴ SCINTILLA Core - CANONICAL SPECIFICATION
 ## Canonical Standard Edition v4.5.6
 
 **Core Deterministico e Umano-Centrico per la Gestione di Percorsi di Emancipazione Personale**
