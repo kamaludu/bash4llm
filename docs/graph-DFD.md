@@ -235,7 +235,7 @@
 
 ---
 
-## Ecco un metodo pratico in due fasi — prima per **verificare e validare** le tabelle, poi per **sfruttarle concretamente** sullo sviluppo, sicurezza e manutenzione di `bash4llm`.
+*Ecco un metodo pratico in due fasi — prima per **verificare e validare** le tabelle, poi per **sfruttarle concretamente** sullo sviluppo, sicurezza e manutenzione di `bash4llm`.*
 
 ### Fase 1: Come controllare e validare le tabelle
 
